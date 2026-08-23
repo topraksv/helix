@@ -69,8 +69,35 @@ const TIMESTAMP_COLUMNS = new Set(["created_at", "updated_at", "deleted_at", "ca
 
 export type ExistingImportIds = Partial<Record<SyncedTableName, ReadonlySet<string>>>;
 
-function invalidBackup(): never {
-  throw new UserFacingError(tr.errors.invalidBackupFile);
+type RejectionReason = keyof typeof tr.errors.invalidBackupReason;
+
+/**
+ * Refuse the bundle, saying WHERE.
+ *
+ * A restore is all-or-nothing: one bad row rejects the file. With a bare
+ * "Geçersiz yedek dosyası" the owner of a refused backup has no next step and
+ * no way to find the row — locating a real one took five rounds of bisecting
+ * the file with the source open. `table` and `row` are the file's own
+ * coordinates (row is 1-based, as a person counting entries would), and
+ * `reason` names the rule rather than the internal predicate that ran.
+ */
+function invalidBackup(
+  reason: RejectionReason = "shape",
+  table?: string,
+  rowIndex?: number,
+): never {
+  if (table == null || rowIndex == null) {
+    throw new UserFacingError(
+      `${tr.errors.invalidBackupFile}: ${tr.errors.invalidBackupReason[reason]}.`,
+    );
+  }
+  throw new UserFacingError(
+    tr.errors.invalidBackupWhere(
+      tr.backupTables[table] ?? table,
+      rowIndex + 1,
+      tr.errors.invalidBackupReason[reason],
+    ),
+  );
 }
 
 function isIsoTimestamp(value: unknown): boolean {
@@ -513,9 +540,9 @@ export function validateBundleRelationships(bundle: ExportBundle, existing: Exis
   }
 
   for (const [table, column, target] of RELATIONS) {
-    for (const row of bundle.tables[table] ?? []) {
+    for (const [index, row] of (bundle.tables[table] ?? []).entries()) {
       const id = row[column];
-      if (id != null && !available[target].has(String(id))) invalidBackup();
+      if (id != null && !available[target].has(String(id))) invalidBackup("link", table, index);
     }
   }
 
@@ -523,23 +550,40 @@ export function validateBundleRelationships(bundle: ExportBundle, existing: Exis
     subscription: "subscriptions",
     recurring_income: "recurring_incomes",
   };
-  for (const row of bundle.tables.expected_payments ?? []) {
+  for (const [index, row] of (bundle.tables.expected_payments ?? []).entries()) {
     // Legacy installment/loan rows can remain as tombstones for sync and
     // backup recovery. They have no live meaning and must not be allowed back
     // into the active expected-payment graph.
     if (row.deleted_at != null) continue;
     const target = expectedTargets[String(row.kind) as ExpectedKind];
-    if (!target || !available[target].has(String(row.ref_id))) invalidBackup();
+    if (!target || !available[target].has(String(row.ref_id))) invalidBackup("link", "expected_payments", index);
   }
 
-  for (const row of bundle.tables.computed_columns ?? []) {
+  for (const [index, row] of (bundle.tables.computed_columns ?? []).entries()) {
     let definition: ComputedColumnDefinition;
     try {
       definition = parseDefinition(JSON.parse(String(row.definition)));
     } catch {
-      invalidBackup();
+      invalidBackup("definition", "computed_columns", index);
     }
-    if (definitionCategoryIds(definition).some((id) => !available.categories.has(id))) invalidBackup();
+    if (definitionCategoryIds(definition).some((id) => !available.categories.has(id))) {
+      invalidBackup("link", "computed_columns", index);
+    }
+  }
+}
+
+/** Every row of one table, refused at the first one that breaks a rule. */
+function validateTableRows(
+  table: SyncedTableName,
+  rows: readonly Record<string, unknown>[],
+  sourceUsers: Set<string>,
+): void {
+  const ids = new Set<string>();
+  for (const [index, row] of rows.entries()) {
+    if (!row || typeof row !== "object" || !isValidImportRow(table, row)) invalidBackup("shape", table, index);
+    if (ids.has(String(row.id))) invalidBackup("duplicate", table, index);
+    ids.add(String(row.id));
+    sourceUsers.add(String(row.user_id));
   }
 }
 
@@ -552,30 +596,21 @@ export function validateExportBundle(raw: unknown): ExportBundle {
     typeof bundle.tables !== "object" ||
     !isIsoTimestamp(bundle.exportedAt)
   ) {
-    invalidBackup();
+    invalidBackup("envelope");
   }
   const tableNames = new Set(Object.keys(SYNCED_TABLES));
-  if (Object.keys(bundle.tables).some((table) => !tableNames.has(table))) invalidBackup();
+  if (Object.keys(bundle.tables).some((table) => !tableNames.has(table))) invalidBackup("unknownTable");
   let totalRows = 0;
   const sourceUsers = new Set<string>();
   for (const table of Object.keys(SYNCED_TABLES) as SyncedTableName[]) {
     const rows = bundle.tables[table];
     if (rows == null) continue;
-    if (!Array.isArray(rows)) invalidBackup();
+    if (!Array.isArray(rows)) invalidBackup("shape", table, 0);
     totalRows += rows.length;
     if (totalRows > MAX_BACKUP_ROWS) throw new UserFacingError(tr.errors.backupTooLarge);
-    const ids = new Set<string>();
-    if (rows.some((row) => {
-      if (!row || typeof row !== "object" || !isValidImportRow(table, row)) return true;
-      if (ids.has(String(row.id))) return true;
-      ids.add(String(row.id));
-      sourceUsers.add(String(row.user_id));
-      return false;
-    })) {
-      invalidBackup();
-    }
+    validateTableRows(table, rows, sourceUsers);
   }
-  if (sourceUsers.size > 1) invalidBackup();
+  if (sourceUsers.size > 1) invalidBackup("mixedAccounts");
   return bundle as ExportBundle;
 }
 

@@ -259,6 +259,25 @@ export function connectMarkets(): void {
 }
 
 /**
+ * Reconnect now, at the user's request.
+ *
+ * The socket already retries on its own with a growing backoff, so the empty
+ * card was not stuck — but after a long offline stretch the next automatic
+ * attempt can be a minute away, and the card gave a person nothing to do about
+ * it but wait without knowing that. Dropping the socket first is what makes
+ * this different from `connectMarkets`, which returns immediately when one
+ * already exists.
+ */
+export function retryMarkets(): void {
+  if (socket) {
+    socket.removeAllListeners();
+    socket.disconnect();
+    socket = null;
+  }
+  connectMarkets();
+}
+
+/**
  * Pause after a short grace instead of closing during transient React/iOS
  * lifecycle changes. An immediate close+open can make the provider rate-limit
  * the replacement socket; a real background/sign-out still tears down soon.

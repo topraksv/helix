@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { findSubscriptionCategory, subscriptionCostSummary } from "../src/domain/subscriptions";
+import { findSubscriptionCategory, subscriptionCostSummary, variableAmountBand } from "../src/domain/subscriptions";
 import { normalizedMonthlyLoadMinor } from "../src/domain/analytics";
 
 describe("subscription category reuse", () => {
@@ -184,5 +184,79 @@ describe("subscription cost summary", () => {
     }));
     expect(summary([rule()], history, 3).recentChanges).toHaveLength(3);
     expect(summary([rule()], history, 0).recentChanges).toEqual([]);
+  });
+});
+
+/**
+ * A variable bill stores 0 for "the invoice has not arrived". Three surfaces
+ * were formatting that zero as ₺0,00 — which asserts a free bill — and the
+ * monthly total was absorbing it without saying so.
+ */
+describe("variable subscription amounts", () => {
+  const TODAY = "2026-08-23";
+  const variable = (over = {}) => ({
+    id: "elektrik",
+    name: "Elektrik",
+    amountMinor: 0,
+    currency: "TRY",
+    intervalMonths: 1,
+    nextDueDate: "2026-08-28",
+    isActive: true,
+    amountMode: "variable" as const,
+    ...over,
+  });
+
+  it("counts an active variable rule with no invoice yet", () => {
+    const result = subscriptionCostSummary(
+      [variable(), { ...variable({ id: "netflix", name: "Netflix", amountMinor: 200_00, amountMode: "fixed" as const }) }],
+      [],
+      TODAY,
+      normalizedMonthlyLoadMinor,
+    );
+    expect(result.unknownAmountCount).toBe(1);
+    // The total is still stated; what changes is that the omission is declared.
+    expect(result.monthlyTryMinor).toBe(200_00);
+  });
+
+  it("does not count a variable rule whose invoice is already entered", () => {
+    const result = subscriptionCostSummary(
+      [variable({ amountMinor: 1_450_00 })],
+      [],
+      TODAY,
+      normalizedMonthlyLoadMinor,
+    );
+    expect(result.unknownAmountCount).toBe(0);
+    expect(result.monthlyTryMinor).toBe(1_450_00);
+  });
+
+  it("does not count a cancelled variable rule", () => {
+    expect(
+      subscriptionCostSummary([variable({ isActive: false })], [], TODAY, normalizedMonthlyLoadMinor).unknownAmountCount,
+    ).toBe(0);
+  });
+
+  it("builds a band from what the bill has actually charged", () => {
+    const band = variableAmountBand([
+      { subscriptionId: "elektrik", amountMinor: 1_100_00, currency: "TRY", effectiveFrom: "2026-05-01" },
+      { subscriptionId: "elektrik", amountMinor: 1_800_00, currency: "TRY", effectiveFrom: "2026-06-01" },
+      { subscriptionId: "elektrik", amountMinor: 1_450_00, currency: "TRY", effectiveFrom: "2026-07-01" },
+    ], "TRY");
+    expect(band).toEqual({ minMinor: 1_100_00, maxMinor: 1_800_00, currency: "TRY", samples: 3 });
+  });
+
+  it("ignores the zero sentinel and other currencies when building the band", () => {
+    const band = variableAmountBand([
+      { subscriptionId: "elektrik", amountMinor: 0, currency: "TRY", effectiveFrom: "2026-05-01" },
+      { subscriptionId: "elektrik", amountMinor: 900_00, currency: "USD", effectiveFrom: "2026-06-01" },
+      { subscriptionId: "elektrik", amountMinor: 1_450_00, currency: "TRY", effectiveFrom: "2026-07-01" },
+    ], "TRY");
+    expect(band).toEqual({ minMinor: 1_450_00, maxMinor: 1_450_00, currency: "TRY", samples: 1 });
+  });
+
+  it("has no band at all when nothing has been charged", () => {
+    expect(variableAmountBand([], "TRY")).toBeNull();
+    expect(variableAmountBand([
+      { subscriptionId: "elektrik", amountMinor: 0, currency: "TRY", effectiveFrom: "2026-05-01" },
+    ], "TRY")).toBeNull();
   });
 });

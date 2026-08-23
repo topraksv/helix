@@ -28,6 +28,7 @@ import CloudOff from "lucide-react-native/icons/cloud-off";
 import FileDown from "lucide-react-native/icons/file-down";
 import RefreshCw from "lucide-react-native/icons/refresh-cw";
 import X from "lucide-react-native/icons/x";
+import { isSupabaseConfigured } from "../sync/supabase";
 import * as Sharing from "expo-sharing";
 import { useSyncDeadLettersState, useUserId } from "../data/hooks";
 import { dismissSyncDeadLetter, retrySyncDeadLetter } from "../data/repo";
@@ -141,7 +142,11 @@ export default function SyncIssuesScreen() {
         <EmptyState
           icon={CloudOff}
           title={tr.settings.syncQuarantineEmpty}
-          hint={tr.settings.syncQuarantineEmptyHint}
+          // An empty quarantine means "nothing is stuck", not "everything
+          // reached the cloud". On a device with no cloud configured the
+          // second sentence was simply false, and it contradicted Settings
+          // one screen away.
+          hint={isSupabaseConfigured ? tr.settings.syncQuarantineEmptyHint : tr.settings.syncQuarantineEmptyLocal}
         />
       </Screen>
     );

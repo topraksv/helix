@@ -515,3 +515,50 @@ describe("per-table restore rules", () => {
     expect(isValidImportRow("investment_products", { ...investmentProduct, target_weight_bp: null })).toBe(true);
   });
 });
+
+/**
+ * A restore rejects the whole bundle when one row breaks one rule, and the
+ * message used to be four words: "Geçersiz yedek dosyası". Finding the real
+ * cause of a refused backup took five rounds of bisecting the file WITH the
+ * source open. The refusal now names the section, the row and the rule.
+ */
+describe("backup rejection says where", () => {
+  const envelope = (tables: Record<string, unknown[]>) => ({
+    version: 1,
+    exportedAt: "2026-08-23T00:00:00.000Z",
+    tables,
+  });
+  const personRow = () => ({
+    id: id(41),
+    user_id: sourceUserId,
+    created_at: timestamp,
+    updated_at: timestamp,
+    deleted_at: null,
+    tombstone_version: 0,
+    name: "Ben",
+    is_self: 1,
+  });
+
+  it("names the section and the 1-based row for a malformed row", () => {
+    const good = { ...personRow(), id: "11111111-1111-7111-8111-111111111111" };
+    const bad = { ...personRow(), id: "not-a-uuid" };
+    expect(() => validateExportBundle(envelope({ persons: [good, bad] })))
+      .toThrowError(/Kişiler bölümündeki 2\. kayıt/);
+  });
+
+  it("names a duplicate id as a duplicate, not as a shape problem", () => {
+    const row = { ...personRow(), id: "11111111-1111-7111-8111-111111111111" };
+    expect(() => validateExportBundle(envelope({ persons: [row, { ...row }] })))
+      .toThrowError(/2\. kayıt.*aynı kimlik/);
+  });
+
+  it("says the envelope is unreadable rather than blaming a row", () => {
+    expect(() => validateExportBundle({ version: 99, exportedAt: "2026-08-23T00:00:00.000Z", tables: {} }))
+      .toThrowError(/dosya başlığı okunamıyor/);
+  });
+
+  it("names an unrecognised section", () => {
+    expect(() => validateExportBundle(envelope({ not_a_table: [] } as Record<string, unknown[]>)))
+      .toThrowError(/tanınmayan bir bölüm/);
+  });
+});

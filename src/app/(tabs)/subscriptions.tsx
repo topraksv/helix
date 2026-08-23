@@ -15,7 +15,7 @@ import TrendingUp from "lucide-react-native/icons/trending-up";
 import Wallet from "lucide-react-native/icons/wallet";
 import Zap from "lucide-react-native/icons/zap";
 import { normalizedMonthlyLoadMinor } from "../../domain/analytics";
-import { subscriptionCostSummary } from "../../domain/subscriptions";
+import { subscriptionCostSummary, variableAmountBand } from "../../domain/subscriptions";
 import { addDaysISO, daysBetweenISO, todayISO, type ISODate } from "../../domain/dates";
 import { formatMinorCompact } from "../../domain/money";
 import { shortDateLabel, tr } from "../../i18n/tr";
@@ -33,9 +33,11 @@ import { WorkspaceGrid } from "../../ui/workspace-layout";
 
 function SubscriptionScheduleOverview({
   active,
+  priceHistory,
   today,
 }: {
   active: ReturnType<typeof useSubscriptionsState>["data"];
+  priceHistory: ReturnType<typeof usePriceHistoryState>["data"];
   today: ISODate;
 }) {
   const { palette } = useTheme();
@@ -57,26 +59,47 @@ function SubscriptionScheduleOverview({
   const nextStop = scheduleStops[0] ?? null;
   const nextDate = nextStop?.date ?? null;
   const nextPayments = nextStop?.payments ?? [];
-  const nextCurrencies = new Set(nextPayments.map((subscription) => subscription.currency));
-  const nextAmount = nextCurrencies.size === 1 && nextPayments.length > 0
-    ? formatMinorCompact(
-        nextPayments.reduce((total, subscription) => total + subscription.amountMinor, 0),
-        nextPayments[0]!.currency,
-      )
-    : null;
+  // A variable rule stores 0 until its invoice is entered. Summing that zero
+  // into a stop printed "₺0,00" beside a bill that is simply not known yet —
+  // the one thing `occurrenceAmountText` exists to prevent, bypassed because
+  // this card sums rules rather than occurrences. When history has samples the
+  // band is shown instead, which is more than either previous answer gave.
+  const historyBySubscription = React.useMemo(() => {
+    const grouped = new Map<string, typeof priceHistory>();
+    for (const row of priceHistory) {
+      const bucket = grouped.get(row.subscriptionId);
+      if (bucket) bucket.push(row);
+      else grouped.set(row.subscriptionId, [row]);
+    }
+    return grouped;
+  }, [priceHistory]);
+
+  const stopAmountText = React.useCallback((payments: typeof active): string | null => {
+    const currencies = new Set(payments.map((payment) => payment.currency));
+    if (currencies.size !== 1 || payments.length === 0) return null;
+    const currency = payments[0]!.currency;
+    const unknown = payments.filter((payment) => payment.amountMode === "variable" && payment.amountMinor === 0);
+    const known = payments.reduce((total, payment) => total + payment.amountMinor, 0);
+    if (unknown.length === 0) return formatMinorCompact(known, currency);
+    if (unknown.length === payments.length && payments.length === 1) {
+      const band = variableAmountBand(historyBySubscription.get(payments[0]!.id) ?? [], currency);
+      if (!band) return tr.subs.unknownAmount;
+      return band.minMinor === band.maxMinor
+        ? tr.subs.expectedAround(formatMinorCompact(band.minMinor, currency))
+        : tr.subs.expectedBand(formatMinorCompact(band.minMinor, currency), formatMinorCompact(band.maxMinor, currency));
+    }
+    // Mixed stop: what is known is a floor, and saying so beats both a wrong
+    // total and no figure at all.
+    return tr.subs.atLeastAmount(formatMinorCompact(known, currency));
+  }, [historyBySubscription]);
+
+  const nextAmount = stopAmountText(nextPayments);
   const nextDayOffset = nextDate == null ? null : Math.max(0, daysBetweenISO(today, nextDate));
   const nextLabel = nextPayments.length === 1
     ? nextPayments[0]!.name
     : tr.subs.sameDayPayments(nextPayments.length);
 
-  const stopAmount = (payments: typeof active) => {
-    const currencies = new Set(payments.map((payment) => payment.currency));
-    if (currencies.size !== 1 || payments.length === 0) return null;
-    return formatMinorCompact(
-      payments.reduce((total, payment) => total + payment.amountMinor, 0),
-      payments[0]!.currency,
-    );
-  };
+  const stopAmount = stopAmountText;
 
   return (
     <Card
@@ -281,6 +304,7 @@ function SubscriptionCostSummary({
         intervalMonths: subscription.intervalMonths,
         nextDueDate: subscription.nextDueDate,
         isActive: subscription.isActive,
+        amountMode: subscription.amountMode,
       })),
       priceHistory.map((row) => ({
         subscriptionId: row.subscriptionId,
@@ -310,6 +334,15 @@ function SubscriptionCostSummary({
       {summary.excludedCurrencyCount > 0 ? (
         <Text style={[type.small, { color: palette.textSecondary, marginTop: spacing.sm }]}>
           {tr.subs.costExcluded(summary.excludedCurrencyCount)}
+        </Text>
+      ) : null}
+      {/* A variable bill with no invoice yet enters this total as zero. The
+          total said ₺1.853,23 with an electricity bill inside it and nothing
+          on screen admitted the omission — the same reason foreign-currency
+          rules are declared one line above. */}
+      {summary.unknownAmountCount > 0 ? (
+        <Text style={[type.small, { color: palette.textSecondary, marginTop: spacing.sm }]}>
+          {tr.subs.costUnknownExcluded(summary.unknownAmountCount)}
         </Text>
       ) : null}
       {summary.nextRenewal ? (
@@ -465,7 +498,7 @@ export default function SubscriptionsScreen() {
       <DataStateNotice status={dataStatus} retry={retryData} />
       {active.length > 0 ? (
         <>
-          <SubscriptionScheduleOverview active={active} today={today} />
+          <SubscriptionScheduleOverview active={active} priceHistory={priceHistoryState.data} today={today} />
           <SubscriptionCostSummary
             subscriptions={subscriptions}
             priceHistory={priceHistoryState.data}

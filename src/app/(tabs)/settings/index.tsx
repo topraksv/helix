@@ -471,7 +471,7 @@ export default function SettingsScreen() {
       });
       const message =
         result.skipped > 0
-          ? `${tr.settings.importSuccess(result.imported)} ${tr.errors.importInvalidRows(result.skipped)}`
+          ? `${tr.settings.importSuccess(result.imported)} ${tr.errors.importSkippedRows(result.skipped)}`
           : tr.settings.importSuccess(result.imported);
       notify(message);
       void syncNow(userId);

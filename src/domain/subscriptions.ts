@@ -110,6 +110,44 @@ export interface SubscriptionCostLike {
   intervalMonths: number;
   nextDueDate: ISODate;
   isActive: boolean;
+  amountMode?: "fixed" | "variable";
+}
+
+/**
+ * The range a variable bill has actually charged, from its own history.
+ *
+ * A variable rule stores 0 for "invoice not in yet", and that zero has been
+ * leaking onto screens as ₺0,00 — which asserts a free bill. But the app is
+ * not empty-handed here: every entered invoice is already appended to
+ * `price_history`, and nothing ever read it back. Two or more samples make a
+ * band worth showing; one makes a single previous figure, which is still more
+ * than "unknown"; none leaves it genuinely unknown.
+ *
+ * Deliberately a plain min/max of what was charged, not an average or a
+ * trend. An electricity bill is seasonal, and a mean over four samples would
+ * be a confident-looking number with nothing behind it.
+ */
+export interface VariableAmountBand {
+  minMinor: number;
+  maxMinor: number;
+  currency: string;
+  samples: number;
+}
+
+export function variableAmountBand(
+  history: readonly PriceHistoryLike[],
+  currency: string,
+): VariableAmountBand | null {
+  let minMinor = Number.POSITIVE_INFINITY;
+  let maxMinor = 0;
+  let samples = 0;
+  for (const row of history) {
+    if (row.currency !== currency || row.amountMinor <= 0) continue;
+    samples += 1;
+    if (row.amountMinor < minMinor) minMinor = row.amountMinor;
+    if (row.amountMinor > maxMinor) maxMinor = row.amountMinor;
+  }
+  return samples === 0 ? null : { minMinor, maxMinor, currency, samples };
 }
 
 /** One rule's price moving from one figure to another on a known day. */
@@ -130,6 +168,10 @@ export interface SubscriptionCostSummary {
   /** Active rules whose currency has no TRY figure here, so the totals can
    *  say what they exclude instead of quietly under-reporting. */
   excludedCurrencyCount: number;
+  /** Active variable rules whose invoice has not arrived, counted for the same
+   *  reason: they enter the monthly total as zero, and a total that silently
+   *  under-reports an electricity bill is worse than one that says so. */
+  unknownAmountCount: number;
   /** Most recent first, newest `limit` only. */
   recentChanges: PriceChange[];
   /** The next charge due on or after today, if any active rule has one. */
@@ -159,11 +201,13 @@ export function subscriptionCostSummary(
   const active = subscriptions.filter((subscription) => subscription.isActive);
   let monthlyTryMinor = 0;
   let excludedCurrencyCount = 0;
+  let unknownAmountCount = 0;
   for (const subscription of active) {
     if (subscription.currency !== "TRY") {
       excludedCurrencyCount += 1;
       continue;
     }
+    if (subscription.amountMode === "variable" && subscription.amountMinor === 0) unknownAmountCount += 1;
     monthlyTryMinor += monthlyLoad(subscription.amountMinor, subscription.intervalMonths);
   }
 
@@ -210,6 +254,7 @@ export function subscriptionCostSummary(
     monthlyTryMinor,
     annualTryMinor: monthlyTryMinor * 12,
     excludedCurrencyCount,
+    unknownAmountCount,
     recentChanges: changes.slice(0, Math.max(0, limit)),
     nextRenewal: next
       ? {

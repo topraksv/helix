@@ -218,7 +218,14 @@ export async function importBundle(
     );
   } catch (error) {
     if (error instanceof InvestmentDomainError) {
-      throw new UserFacingError(tr.errors.invalidBackupFile);
+      // The investment wallet is replayed as a whole, so this failure has no
+      // single row to point at — but it does have a section, and that alone
+      // is the difference between "your backup is broken" and "look at the
+      // investment operations". Finding this one by bisecting the file took
+      // five restores; naming the section costs nothing.
+      throw new UserFacingError(
+        `${tr.errors.invalidBackupFile}: ${tr.backupTables.investment_operations} — ${tr.errors.invalidBackupReason.investments}.`,
+      );
     }
     throw error;
   }

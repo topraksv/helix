@@ -1,6 +1,6 @@
 /** Pure model for either orientation of the cash-flow matrix. */
 
-import { monthColumnBasis, type MonthLedger } from "./balance";
+import { monthColumnBasis, monthFlowTotals, type MonthLedger } from "./balance";
 import { creditCardSplitsByMonth } from "./analytics";
 import { evaluateComputedColumn, parseDefinition } from "./computed-columns";
 import { makeMonthKey, type ISODate, type MonthKey } from "./dates";
@@ -49,12 +49,24 @@ export function buildCashFlowMatrixModel(input: {
   today: ISODate;
   openingLabel: string;
   closingLabel: string;
+  /** First month the workspace has a ledger for; earlier months never existed. */
+  startMonth?: MonthKey;
 }): CashFlowMatrixModel {
   const dataByMonth = new Map(input.yearMonths.map((month) => [month.month, month]));
-  const months = Array.from({ length: 12 }, (_, index) => {
+  const allMonths = Array.from({ length: 12 }, (_, index) => {
     const month = makeMonthKey(input.year, index + 1);
     return { month, data: dataByMonth.get(month) ?? null };
   });
+  // A workspace that starts in July has no January. The grid drew all twelve
+  // regardless, so the first year opened on six blank rows a person had to
+  // scroll past — and blank rows in a ledger read as lost data rather than as
+  // months that never existed. Trimmed only when something is left: a year
+  // entirely before the start keeps its twelve, so the screen still reaches
+  // its own empty-year state instead of rendering a table with no rows.
+  const fromStart = input.startMonth == null
+    ? allMonths
+    : allMonths.filter((entry) => entry.month >= input.startMonth!);
+  const months = fromStart.length > 0 ? fromStart : allMonths;
   const cardSplits = creditCardSplitsByMonth(input.transactions, input.creditCardIds, input.today);
 
   const columns: CashFlowMatrixColumn[] = [
@@ -98,13 +110,20 @@ export function buildCashFlowMatrixModel(input: {
         ),
       };
     }),
+    // The balance columns read `monthFlowTotals`, exactly like the month card
+    // and the computed columns beside them. They used to read the
+    // realized-only chain (`openingMinor`/`closingMinor`) while the category
+    // cells in the SAME ROW already carried the planned rows, so a future
+    // month showed +30.000 of income beside a balance that never moved — the
+    // row did not add up on its own face, and tapping it opened a card that
+    // disagreed by the whole planned amount. One accessor, one dataset.
     {
       key: "opening",
       label: input.openingLabel,
       categoryId: null,
       computed: false,
       system: true,
-      values: new Map(input.yearMonths.map((month) => [month.month, month.openingMinor])),
+      values: new Map(input.yearMonths.map((month) => [month.month, monthFlowTotals(month).openingMinor])),
     },
     {
       key: "closing",
@@ -112,7 +131,7 @@ export function buildCashFlowMatrixModel(input: {
       categoryId: null,
       computed: false,
       system: true,
-      values: new Map(input.yearMonths.map((month) => [month.month, month.closingMinor])),
+      values: new Map(input.yearMonths.map((month) => [month.month, monthFlowTotals(month).closingMinor])),
     },
   ];
 

@@ -84,6 +84,7 @@ export const tr = {
     // The Settings destination is called "Araçlar"; the popup inside an amount
     // field is still just the calculator and must say so.
     calculatorTitle: "Hesap Makinesi",
+    datePicker: "Tarih seç",
     selectOption: "Seç",
     fieldError: (message: string) => `Alan hatası: ${message}`,
     tourStep: (step: number, total: number, title: string) => `${total} adımdan ${step}. ${title}`,
@@ -122,12 +123,57 @@ export const tr = {
     framedBody: "Güvenliğin için Helix başka bir sitenin içinde gösterilmez. Uygulamayı doğrudan açabilirsin.",
     openDirectly: "Helix'i Doğrudan Aç",
   },
+  /** What each backup section is called in the file, for restore diagnostics. */
+  backupTables: {
+    persons: "Kişiler",
+    categories: "Kalemler",
+    category_budgets: "Harcama limitleri",
+    investment_profiles: "Yatırım alanı",
+    investment_products: "Yatırım ürünleri",
+    payment_sources: "Ödeme yöntemleri",
+    computed_columns: "Hesaplanan kolonlar",
+    installment_plans: "Taksit ve kredi planları",
+    credit_card_statements: "Kart ekstreleri",
+    subscriptions: "Abonelikler",
+    transactions: "İşlemler",
+    attachments: "Ek dosyalar",
+    matrix_colors: "Tablo renk işaretleri",
+    investment_operations: "Yatırım hareketleri",
+    price_history: "Fiyat geçmişi",
+    recurring_incomes: "Düzenli gelirler",
+    expected_payments: "Beklenen ödemeler",
+    balance_adjustments: "Bakiye düzeltmeleri",
+    cell_notes: "Hücre notları",
+    settings: "Ayarlar",
+    fx_rates: "Döviz kurları",
+  } as Record<string, string>,
   errors: {
     title: "Hata",
     database: "Veritabanı hatası",
     supabaseNotConfigured: "Supabase yapılandırılmadı",
     signUpFailed: "Kayıt oluşturulamadı",
     invalidBackupFile: "Geçersiz yedek dosyası",
+    /**
+     * WHERE the file was refused, in the file's own coordinates.
+     *
+     * A restore rejects the whole bundle when one row breaks one rule, and the
+     * message used to be four words. Finding the real cause of a refused
+     * backup took five rounds of bisecting the file WITH the source open; the
+     * owner of a single backup has no such route. The refusal now names the
+     * table, the row and the rule, which is enough to open the JSON and look.
+     */
+    invalidBackupWhere: (table: string, row: number, reason: string) =>
+      `Geçersiz yedek dosyası. ${table} bölümündeki ${row}. kayıt alınamadı: ${reason}.`,
+    invalidBackupReason: {
+      shape: "alan biçimi beklenenden farklı",
+      duplicate: "aynı kimlik dosyada iki kez geçiyor",
+      link: "bağlı olduğu kayıt dosyada yok",
+      definition: "kolon tanımı okunamıyor",
+      envelope: "dosya başlığı okunamıyor",
+      mixedAccounts: "dosya birden fazla hesabın kaydını taşıyor",
+      unknownTable: "tanınmayan bir bölüm var",
+      investments: "yatırım hareketleri kendi içinde tutarsız (nakit, miktar ya da maliyet)",
+    },
     backupTooLarge: "Yedek dosyası güvenli içe aktarma sınırını aşıyor.",
     workspaceResetFailed: "Cihazdaki önceki hesabın verileri temizlenemedi; giriş yapılamadı. Lütfen tekrar dene.",
     fxUnavailable: "Döviz kuru henüz alınamadı. İnternete bağlanınca tekrar dene.",
@@ -137,7 +183,12 @@ export const tr = {
     undoFailed: "Geri alınamadı. Lütfen tekrar dene.",
     appCrashed: "Beklenmeyen bir sorun oluştu.",
     appCrashedHint: "Uygulama bu ekranı gösteremedi. Yeniden dene; sorun sürerse uygulamayı kapatıp aç.",
-    importInvalidRows: (n: number) => `${n} geçersiz kayıt atlandı.`,
+    /* NOT an error, and it was filed as one. `importBundle` counts a row as
+       skipped when the LOCAL copy is newer than or the same age as the one in
+       the file — the device already holds the better version. Calling those
+       "geçersiz" told someone restoring their only backup that part of their
+       data was corrupt. The Excel importer already said this correctly. */
+    importSkippedRows: (n: number) => `${n} kayıt zaten güncel olduğu için atlandı.`,
   },
   databaseRecovery: {
     title: "Yerel veritabanı güvenli moda alındı",
@@ -410,7 +461,7 @@ export const tr = {
     forecastCurrent: "Şu anki bakiye",
     forecastIncoming: "Bekleyen gelir",
     forecastOutgoing: "Kalan gider",
-    forecastResult: "Ay sonunda tahmini",
+    forecastResult: "Ay sonu tahmini",
     forecastTypical: "Tipik harcamanla",
     forecastTypicalHint: (amount: string) =>
       `Yukarıdaki rakam yalnız bildiklerini toplar; markete, yakıta, dışarıda yemeğe ayın kalanında ne gideceğini bilemez. Son altı ayda abonelik ve taksit dışı harcaman ayda ne tuttuysa, bu ay şimdiye kadar harcadığın düşülerek ${amount} daha bekleniyor.`,
@@ -429,9 +480,14 @@ export const tr = {
     remoteChangeNotice: "Başka bir cihazdaki değişiklikler uygulandı.",
   },
   catchup: {
-    title: "Onay Bekleyenler",
+    /* "Onay Bekleyenler" sat one tap away from `attention.title`,
+       "Bekleyenler", and the two screens could not be told apart by name. They
+       do different jobs: this one asks whether payments that were DUE actually
+       happened; the other collects what needs a decision next. The title now
+       says which. */
+    title: "Ödeme Onayı",
     subtitle: (d: string) => `${d} tarihinden beri`,
-    nothing: "Onay bekleyen bir şey yok, güncelsin ✅",
+    nothing: "Onay bekleyen bir şey yok, güncelsin",
     skipped: (name: string) => `${name} atlandı`,
     fixAmount: "Tutarı Düzelt",
   },
@@ -611,7 +667,12 @@ export const tr = {
   cashflow: {
     title: productTerms.financialTable,
     monthDetail: "Ay Detayı",
-    opening: "Ay Başı", closing: "Güncel Bakiye",
+    /* "Güncel Bakiye" is the DASHBOARD's label for the one balance that is
+       true right now (`dashboard.actualBalance`). Using the same words for a
+       per-month column meant Aralık had a "current balance" too, and the two
+       numbers were allowed to differ without anyone noticing. A month column
+       names a month boundary. */
+    opening: "Ay Başı", closing: "Ay Sonu",
     adjustedCell: (amount: string) => `Bu ay bakiye ${amount} düzeltildi`,
     income: "Gelir", expense: "Gider", transfer: "Yatırım", adjustment: "Bakiye Düzeltmesi",
     addTransaction: "İşlem Ekle",
@@ -634,7 +695,11 @@ export const tr = {
        row-focused one never mentioned that tapping a month opens it, although
        it does there too. A one-line version fit the width and lost the reader,
        so this says the whole thing in plain sentences and wraps if it must. */
-    tableHint: "Tabloyu yana kaydır. Kaleme dokun: aylık dökümü açılır. Aya dokun: o ay açılır. 📌 kolonu sabitler.",
+    /* The pin used to be an emoji here while the table header drew the real
+       lucide pin two centimetres below — one idea, two pictures, and the
+       emoji took neither the palette nor the theme. The guide now names the
+       control instead of trying to draw it. */
+    tableHint: "Tabloyu yana kaydır. Kaleme dokun: aylık dökümü açılır. Aya dokun: o ay açılır. Başlıktaki iğneye dokun: kolon sabitlenir.",
     tableGuide: "Mali tabloyu okuma rehberi",
     /* The colours are the owner's to name, so the guide names the GESTURE and
        lets the legend beside it carry whatever they are called today. */
@@ -687,7 +752,7 @@ export const tr = {
           : "Çektiğin tutar bakiyene eklenir; yatırım toplamını azaltır.",
     tryEquivalent: (v: string) => `≈ ${v}`,
     staleRate: "Kur güncel değil, son bilinen kur kullanıldı",
-    rateNotFound: "⚠ Kur bulunamadı. Önce internetle bir kez kur çek",
+    rateNotFound: "Kur bulunamadı. Önce internetle bir kez kur çek",
     singleCharge: "Tek Çekim",
     category: "Kategori", source: productTerms.paymentMethod, person: "Kimin İçin",
     categoryPlaceholder: "Kategori seç", sourcePlaceholder: "Ödeme yöntemi seç",
@@ -798,6 +863,16 @@ export const tr = {
     variableAmountBadge: "Değişken tutar",
     estimatedBadge: "Tahmini",
     unknownAmount: "Tutar belirtilmedi",
+    /* A variable bill is not free, and printing ₺0,00 for one said it was.
+       These three read out of `price_history`, which every entered invoice has
+       been filling since the table existed and nothing ever read back. */
+    expectedBand: (low: string, high: string) => `${low} – ${high} bekleniyor`,
+    expectedAround: (amount: string) => `Geçen sefer ${amount}`,
+    atLeastAmount: (amount: string) => `En az ${amount}`,
+    costUnknownExcluded: (count: number) =>
+      count === 1
+        ? "Faturası henüz girilmemiş 1 abonelik bu toplama sıfır olarak giriyor."
+        : `Faturası henüz girilmemiş ${count} abonelik bu toplama sıfır olarak giriyor.`,
     enterAmount: "Tutarı Gir",
     amountEntryTitle: "Bu ayın gerçek tutarı",
     currentAmount: "Girilen tutar",
@@ -1010,7 +1085,7 @@ export const tr = {
     balanceAdjustmentsHint: "Her düzeltme ayrı bir hareket olarak görünür; gelir-gider istatistiklerine dahil edilmez ve buradan geri alınabilir.",
     noBalanceAdjustments: "Henüz bakiye düzeltmesi yok",
     noBalanceAdjustmentsHint: "Gerçek bakiye ile hesaplanan bakiye ayrıştığında yukarıdaki alan farkı bugüne kaydeder.",
-    balanceWillMark: "Bakiyeni düzeltirsen Mali Tablo'da o ayın Güncel Bakiye hücresinde renkli bir nokta belirir; hücreye dokunarak buraya dönebilirsin.",
+    balanceWillMark: "Bakiyeni düzeltirsen Mali Tablo'da o ayın Ay Sonu hücresinde renkli bir nokta belirir; hücreye dokunarak buraya dönebilirsin.",
     balanceAdjustmentFallback: "Bakiye düzeltmesi",
     balanceAdjustmentDeleted: "Bakiye düzeltmesi silindi",
     historyOpeningTitle: "Geçmiş Başlangıç Noktası",
@@ -1049,8 +1124,11 @@ export const tr = {
     exportCsvDesc: "Tüm hareketlerini Excel ya da Google Sheets'te açılabilecek bir tabloya çıkar.",
     import: "Yedekten Geri Yükle",
     importDesc: "Daha önce oluşturduğun yedek dosyasını yükle, verilerini olduğu gibi geri getir.",
-    importConfirm: "Mevcut verilerin üzerine yazılabilir. Devam edilsin mi?",
-    importSuccess: (n: number) => `✅ ${n} kayıt içe aktarıldı`,
+    /* "yazılabilir" — may be overwritten — left the one irreversible step in
+       the app ambiguous about what it does. A restore keeps whichever copy of
+       a row is newer, which is a rule that can be stated. */
+    importConfirm: "Yedekteki her kayıt, bu cihazdaki eşinin üzerine yazılır; yalnızca bu cihazda daha yeni olanlar korunur. Bu işlem geri alınamaz. Devam edilsin mi?",
+    importSuccess: (n: number) => `${n} kayıt içe aktarıldı`,
     sync: "Cihazlarını Güncelle",
     syncNow: "Şimdi Güncelle",
     syncState: { idle: "Cihazların güncel", syncing: "Güncelleniyor…", attention: "Bazı kayıtlar yalnız bu cihazda", error: "Güncelleme bekliyor", unconfigured: "Yalnız bu cihaz" },
@@ -1089,7 +1167,11 @@ export const tr = {
     },
     syncQuarantineUntried: "Henüz denenmedi.",
     syncQuarantineEmpty: "Bekleyen kayıt kalmadı.",
-    syncQuarantineEmptyHint: "Her şey buluta gönderildi.",
+    /* Said "Her şey buluta gönderildi" unconditionally, including on a
+       device where Settings was simultaneously saying no cloud is configured.
+       The caller now picks by actual sync state. */
+    syncQuarantineEmptyHint: "Bekleyen her kayıt buluta gönderildi.",
+    syncQuarantineEmptyLocal: "Bulut senkronu kapalı; kayıtların yalnızca bu cihazda tutuluyor.",
     syncQuarantineTypes,
     columnVisible: "Mali Tablo'da göster",
     deleteCategoryTitle: "Kalemi sil",
@@ -1453,6 +1535,12 @@ export const tr = {
     offline: "Çevrimdışı",
     offlineHint: "Canlı bağlantı şu an kurulamıyor; internet gelince fiyatlar otomatik güncellenir.",
     noData: "Henüz fiyat alınamadı. Bağlantı kurulduğunda canlı altın ve döviz fiyatları burada görünecek.",
+    /* The card sat empty for the height of the dense list beside it with
+       nothing a person could do. The socket does retry on its own, but after a
+       long offline stretch the next attempt can be a minute away and the card
+       never said so. */
+    retryNow: "Yeniden Dene",
+    autoRetry: "Bağlantı kendiliğinden yeniden denenir.",
     referenceRate: (d: string) => `Referans kur · ${d}`,
   },
   dataState: {

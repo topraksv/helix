@@ -508,6 +508,13 @@ export default function InvestmentsScreen() {
           />
         </View>
       )}
+      {/* Stays on the shared compact formatter, which is a tested invariant of
+          this design system: one display policy for money, so a new surface
+          cannot quietly pick a different unit. It does mean a wallet total of
+          ₺1.000.000,00 prints as "₺1 Mn" beside parts that are exact, because
+          the compact threshold is set by the narrowest matrix cell rather than
+          by this card. Changing that is a change to the money policy itself,
+          not to this line. */}
       <Text style={[type.small, { color: palette.textSecondary, marginTop: spacing.xs }]}>
         {tr.investments.portfolioTotal}: {formatMinorCompact(totalCapital)}
       </Text>
@@ -715,13 +722,22 @@ export default function InvestmentsScreen() {
                     compact={compact}
                     label={product.realizedProfitLossMinor === 0 ? tr.investments.realizedResult : resultPositive ? tr.investments.realizedProfit : tr.investments.realizedLoss}
                     accent={product.realizedProfitLossMinor === 0 ? palette.border : resultPositive ? palette.positive : palette.negative}
-                    value={product.realizedProfitLossMinor === 0 ? (
-                      <Text style={[type.amountSm, { color: palette.textSecondary }]}>—</Text>
-                    ) : (
+                    /* ₺0,00, not "—". The hero four rows above states the same
+                       quantity for the whole portfolio as ₺0,00, and one
+                       screen cannot spell zero two ways: an em dash reads as
+                       "not recorded", which is a different claim from "nothing
+                       has been realised yet". The label already carries the
+                       distinction — it says "Gerçekleşen sonuç" rather than
+                       kâr or zarar when there is no direction. */
+                    value={(
                       <Amount
                         minor={product.realizedProfitLossMinor}
                         colorized={false}
-                        color={resultPositive ? palette.positiveText : palette.negativeText}
+                        color={
+                          product.realizedProfitLossMinor === 0
+                            ? palette.textSecondary
+                            : resultPositive ? palette.positiveText : palette.negativeText
+                        }
                         accessibilityLabel={formatMinorCompact(product.realizedProfitLossMinor)}
                         style={[type.amountSm, { textAlign: "left" }]}
                       />
