@@ -296,6 +296,12 @@ export default function SignInScreen() {
             textContentType="emailAddress"
             returnKeyType="next"
             placeholder={tr.placeholders.email}
+            /* The submit button is disabled until this is valid, and it used
+               to be the only sign — a grey "Giriş yap" with nothing saying
+               why. The password field beside it already got this right for a
+               short password; the two now behave the same way. It waits for a
+               plausible attempt rather than complaining at the first letter. */
+            error={email.trim().length > 3 && !emailValid ? tr.auth.emailInvalid : null}
           />
           {mode !== "forgot" ? (
             <Field

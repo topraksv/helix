@@ -5,11 +5,11 @@ import { Animated, PanResponder, StyleSheet, Text, View } from "react-native";
 import Svg, { Circle, ClipPath, Defs, Path, Rect, Line as SvgLine, Text as SvgText } from "react-native-svg";
 import type { Distribution } from "../domain/analytics";
 import { compactMoneyScale, formatMinorCompact, formatMinorCompactAtScale, type CompactMoneyScale, usesCompactMoneyScale } from "../domain/money";
-import { tr } from "../i18n/tr";
+import { tr, upperTR } from "../i18n/tr";
 import { resolveBarAxis } from "./chart-axis";
 import { Amount } from "./primitives";
 import { useDrawIn } from "./motion-primitives";
-import { chart, font, motion, radius, spacing, type, useTheme } from "./theme";
+import { chart, chartSeriesColors, font, motion, radius, spacing, type, useTheme } from "./theme";
 import { useMeasuredWidth } from "./viewport";
 import { shouldUseLargeAxisType } from "./responsive";
 
@@ -80,22 +80,10 @@ type SeriesColors = readonly [string, string, string, string, string, string, st
  * slice can never accidentally look like success or danger.
  */
 export function useSeriesColors(): SeriesColors {
-  const { palette } = useTheme();
+  const { scheme } = useTheme();
   // Identity must be stable: a chart memo keying on this array would never
   // hold if it were a fresh literal every render.
-  return useMemo(
-    () => [
-      palette.primary,
-      palette.secondary,
-      palette.surfaceStrong,
-      palette.tertiary,
-      palette.primaryStrong,
-      palette.secondaryStrong,
-      palette.tertiaryStrong,
-      palette.textSecondary,
-    ],
-    [palette],
-  );
+  return useMemo(() => chartSeriesColors(scheme) as unknown as SeriesColors, [scheme]);
 }
 
 function seriesColor(colors: SeriesColors, index: number): string {
@@ -113,6 +101,9 @@ const LEGEND_BASIS = 220;
 /** Below this the ring stops being readable, so the pair wraps instead. */
 const MIN_PAIRED_RING = 140;
 
+/** Sentinel colour for a legend row that is not a slice of the ring. */
+export const SUPPLEMENTAL_MARK = "supplemental";
+
 export function distributionDonutData(
   distribution: Distribution,
   colors: SeriesColors,
@@ -125,23 +116,42 @@ export function distributionDonutData(
       : [{ label: tr.common.none, valueMinor: distribution.uncategorizedExpenseMinor }])
     .sort((a, b) => b.valueMinor - a.valueMinor);
   const positive = rows.filter((row) => row.valueMinor > 0);
-  const remainder = positive.slice(7).reduce((sum, row) => sum + row.valueMinor, 0);
+  /**
+   * Six named categories, not seven.
+   *
+   * The ring can hold three kinds of slice at once — the named categories,
+   * "Diğer", and "Yatırıma ayrılan" — and the ramp has eight colours, so seven
+   * categories left nothing for the other two. It did not fall back: "Yatırıma
+   * ayrılan" was hard-coded to `colors[4]` and the refund rows to `colors[1]`,
+   * both of which a fifth or second category had already taken, so any month
+   * with five or more categories AND a transfer drew two different slices in
+   * the same colour and printed two identical swatches in the legend.
+   *
+   * Six leaves slot 6 for "Diğer" and slot 7 for the aside, which is the most
+   * the ring can distinguish anyway — and the sixth-largest category in a
+   * month is already a sliver.
+   */
+  const NAMED_SLICES = 6;
+  const remainder = positive.slice(NAMED_SLICES).reduce((sum, row) => sum + row.valueMinor, 0);
   return {
     slices: [
-      ...positive.slice(0, 7).map((row, index) => ({ ...row, color: seriesColor(colors, index) })),
-      ...(remainder > 0 ? [{ label: tr.common.other, valueMinor: remainder, color: colors[7] }] : []),
+      ...positive.slice(0, NAMED_SLICES).map((row, index) => ({ ...row, color: seriesColor(colors, index) })),
+      ...(remainder > 0 ? [{ label: tr.common.other, valueMinor: remainder, color: colors[6] }] : []),
       ...(distribution.transferTotalMinor > 0
-        ? [{ label: tr.dashboard.investmentAside, valueMinor: distribution.transferTotalMinor, color: colors[4] }]
+        ? [{ label: tr.dashboard.investmentAside, valueMinor: distribution.transferTotalMinor, color: colors[7] }]
         : []),
     ],
     supplementalSlices: [
+      // Supplemental rows are not in the ring, so they take no categorical
+      // colour: the legend draws them as a hollow neutral mark instead, which
+      // says "alongside the total" rather than competing with a slice.
       ...rows.filter((row) => row.valueMinor < 0).map((row) => ({
         label: tr.dashboard.refundAside(row.label),
         valueMinor: row.valueMinor,
-        color: colors[1],
+        color: SUPPLEMENTAL_MARK,
       })),
       ...(distribution.transferTotalMinor < 0
-        ? [{ label: tr.dashboard.investmentRefundAside, valueMinor: distribution.transferTotalMinor, color: colors[1] }]
+        ? [{ label: tr.dashboard.investmentRefundAside, valueMinor: distribution.transferTotalMinor, color: SUPPLEMENTAL_MARK }]
         : []),
     ],
     totalMinor: distribution.expenseTotalMinor + distribution.transferTotalMinor,
@@ -189,6 +199,8 @@ export function Donut({
   const cx = fittedSize / 2;
   const cy = fittedSize / 2;
   const strokeWidth = chart.donutWidth;
+  const centreLabelSize = Math.max(chart.axisFontSize, Math.round(fittedSize * chart.centreLabelRatio));
+  const centreValueSize = Math.max(type.label.fontSize, Math.round(fittedSize * chart.centreValueRatio));
   const circumference = 2 * Math.PI * r;
   // Redrawn whenever the arcs themselves change — a different period, a
   // different filter, an edited amount. Without a token the reveal was a
@@ -278,10 +290,31 @@ export function Donut({
                 return <SvgLine key={`gap-${i}`} x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y} stroke={palette.surface} strokeWidth={2} />;
               })
             : null}
-          <SvgText x={cx} y={cy - 7} textAnchor="middle" fontFamily={font.semibold} fontSize={9} fontWeight="600" fill={palette.textSecondary}>
-            {tr.analysis.chartTotal.toLocaleUpperCase("tr-TR")}
+          {/* The ring is drawn at 152, 236 or 300 depending on the viewport,
+              so its middle is sized from the ring and not from a constant: at
+              300 a fixed 13pt figure read as a footnote inside its own chart.
+              Both lines carry a real face — an SvgText inherits nothing, and
+              without one the browser fell back to its default SVG font
+              (Times), so the one number at the centre of the picture was the
+              only text in the app not set in Inter. */}
+          <SvgText
+            x={cx}
+            y={cy - centreValueSize * 0.55}
+            textAnchor="middle"
+            fontFamily={font.semibold}
+            fontSize={centreLabelSize}
+            fill={palette.textSecondary}
+          >
+            {upperTR(tr.analysis.chartTotal)}
           </SvgText>
-          <SvgText x={cx} y={cy + 10} textAnchor="middle" fontSize={13} fontWeight="600" fill={palette.text}>
+          <SvgText
+            x={cx}
+            y={cy + centreValueSize * 0.78}
+            textAnchor="middle"
+            fontFamily={font.bold}
+            fontSize={centreValueSize}
+            fill={palette.text}
+          >
             {formatMinorCompact(displayTotal)}
           </SvgText>
         </Svg>
@@ -335,7 +368,19 @@ export function Donut({
             // the donut it belongs to.
             <View key={`${s.label}-${i}`} style={{ gap: 6, marginBottom: 2 }}>
               <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
-                <View style={{ width: 9, height: 9, borderRadius: 3, backgroundColor: s.color }} />
+                {supplemental ? (
+                  <View
+                    style={{
+                      width: 9,
+                      height: 9,
+                      borderRadius: 3,
+                      borderWidth: 1.5,
+                      borderColor: palette.textSecondary,
+                    }}
+                  />
+                ) : (
+                  <View style={{ width: 9, height: 9, borderRadius: 3, backgroundColor: s.color }} />
+                )}
                 <Text style={[type.small, { color: palette.text, flex: 1 }]}>{s.label}</Text>
                 <Text
                   style={[type.small, { color: palette.textSecondary, fontVariant: ["tabular-nums"] }]}
@@ -461,7 +506,11 @@ export function Lines({
   const TICKS = 5;
   const ticks = Array.from({ length: TICKS }, (_, i) => max - ((max - min) / (TICKS - 1)) * i);
   const axisScale = chartAxisScale([...values, ...ticks]);
-  const padding = { left: chartAxisLabelGutter(ticks, 9, 54, axisScale), right: 12, top: 12, bottom: 24 };
+  // Same two steps `Bars` picks between, and the gutter is measured from the
+  // size actually drawn — it used to be measured from 9 while the labels were
+  // drawn at 9 too, so raising one without the other would have clipped them.
+  const axisFontSize = shouldUseLargeAxisType(width) ? chart.axisFontSizeLarge : chart.axisFontSize;
+  const padding = { left: chartAxisLabelGutter(ticks, axisFontSize, 54, axisScale), right: 12, top: 12, bottom: 24 };
   const plotW = width - padding.left - padding.right;
   const plotH = height - padding.top - padding.bottom;
   const x = (i: number) => padding.left + (xLabels.length <= 1 ? plotW / 2 : (i / (xLabels.length - 1)) * plotW);
@@ -539,7 +588,8 @@ export function Lines({
             <SvgText
               x={padding.left - 8}
               y={y(value) + 3}
-              fontSize={9}
+              fontFamily={font.medium}
+              fontSize={axisFontSize}
               fill={palette.textSecondary}
               textAnchor="end"
             >
@@ -595,7 +645,7 @@ export function Lines({
         })}
         {xLabels.map((l, i) =>
           xLabels.length <= 6 || i % Math.ceil(xLabels.length / 6) === 0 ? (
-            <SvgText key={`x${i}`} x={x(i)} y={height - 6} fontSize={9} fill={palette.textSecondary} textAnchor="middle">
+            <SvgText key={`x${i}`} x={x(i)} y={height - 6} fontFamily={font.medium} fontSize={axisFontSize} fill={palette.textSecondary} textAnchor="middle">
               {l}
             </SvgText>
           ) : null,
@@ -762,7 +812,7 @@ export function Bars({
   if (!axis || groups.length === 0) return null;
   const { min, max, ticks } = axis;
   const span = Math.max(axis.step, max - min);
-  const axisFontSize = shouldUseLargeAxisType(width) ? 11 : 10;
+  const axisFontSize = shouldUseLargeAxisType(width) ? chart.axisFontSizeLarge : chart.axisFontSize;
   const axisScale = chartAxisScale([
     ...groups.flatMap((group) => group.values),
     ...ticks,
@@ -915,7 +965,7 @@ export function Bars({
           })}
           {groups.map((g, gi) =>
             gi % everyN === 0 ? (
-              <SvgText key={`l-${gi}`} x={pad.left + gi * groupW + groupW / 2} y={height - 7} fontSize={11} fontWeight="600" fill={palette.textSecondary} textAnchor="middle">
+              <SvgText key={`l-${gi}`} x={pad.left + gi * groupW + groupW / 2} y={height - 7} fontFamily={font.semibold} fontSize={chart.axisFontSizeLarge} fill={palette.textSecondary} textAnchor="middle">
                 {g.label}
               </SvgText>
             ) : null,

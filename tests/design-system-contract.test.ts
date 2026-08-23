@@ -95,7 +95,7 @@ describe("design-system metric contracts", () => {
     expect(controlSize.segmented).toBeGreaterThan(controlSize.regular);
     // `emoji` is a glyph standing in for an icon, so it is sized with the
     // marks and not with the copy beside it.
-    expect(iconSize).toEqual({ compact: 15, control: 17, accessory: 18, headerBack: 24, emoji: 14 });
+    expect(iconSize).toEqual({ compact: 15, control: 17, accessory: 18, headerBack: 24 });
     // `selected` replaces the `selected ? 2 : 1` written into five screens and
     // the `selected ? 1.5 : hairline` written into two more.
     expect(borderWidth).toEqual({ control: 1.5, toggle: 1, selected: 2 });

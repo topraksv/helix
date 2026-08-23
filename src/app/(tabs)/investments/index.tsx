@@ -33,24 +33,8 @@ import { combineLiveStates } from "../../../data/live-state";
 import { type InvestmentAssetType } from "../../../domain/investments";
 import { formatMinorCompact } from "../../../domain/money";
 import { todayISO } from "../../../domain/dates";
-import { tr } from "../../../i18n/tr";
-import {
-  Amount,
-  Body,
-  Button,
-  Card,
-  ChipPicker,
-  DataStateNotice,
-  EmptyState,
-  Heading,
-  HeroCard,
-  MetricStrip,
-  Row,
-  Screen,
-  SectionHeader,
-  Spread,
-  IconButton,
-} from "../../../ui/components";
+import { dateLabel, tr } from "../../../i18n/tr";
+import { Amount, Body, Button, Card, ChipPicker, DataStateNotice, EmptyState, Eyebrow, Heading, HeroCard, IconButton, MetricStrip, Row, Screen, SectionHeader, Spread } from "../../../ui/components";
 import { Donut, useSeriesColors } from "../../../ui/charts";
 import { useDrawIn } from "../../../ui/motion-primitives";
 import { interactionSurface } from "../../../ui/interaction";
@@ -202,16 +186,7 @@ function AllocationStrip({
       {/* The same section eyebrow the dashboard's month block uses. As plain
           secondary body text this heading was the same size and weight as the
           holding names directly under it, so the group had no visible start. */}
-      <Text
-        style={[type.label, {
-          color: palette.textSecondary,
-          textTransform: "uppercase",
-          letterSpacing: 1.1,
-          fontSize: type.caption.fontSize,
-        }]}
-      >
-        {tr.investments.distribution}
-      </Text>
+      <Eyebrow>{tr.investments.distribution}</Eyebrow>
       {/* A ranked bar per holding, not one stacked strip.
           The strip answered "what is the split" and nothing else: three clay
           tones in a 9pt track cannot be compared to each other, and the legend
@@ -786,14 +761,14 @@ export default function InvestmentsScreen() {
                     alignItems: "center",
                     gap: spacing.sm,
                     paddingVertical: spacing.sm,
-                    borderTopWidth: index === 0 ? 0 : 1,
+                    borderTopWidth: index === 0 ? 0 : StyleSheet.hairlineWidth,
                     borderTopColor: palette.border + "70",
                   }}
                 >
-                  <View style={{ width: 8, height: 36, borderRadius: 4, backgroundColor: movementTone.line }} />
+                  <View style={{ width: 8, height: 36, borderRadius: circle(8), backgroundColor: movementTone.line }} />
                   <View style={{ flex: 1, minWidth: 0 }}>
                     <Text style={[type.label, { color: palette.text }]}>{product?.name ?? tr.investments.product}</Text>
-                    <Text style={[type.small, { color: palette.textSecondary }]}>{labels[operation.kind]} · {operation.operationDate}</Text>
+                    <Text style={[type.small, { color: palette.textSecondary }]}>{labels[operation.kind]} · {dateLabel(operation.operationDate)}</Text>
                     {compact ? (
                       <Amount
                         minor={operation.totalMinor}

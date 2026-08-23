@@ -348,6 +348,18 @@ export function shouldStackPanelAction(viewportWidth: number): boolean {
   return viewportWidth < PANEL_ACTION_STACK_WIDTH;
 }
 
+/**
+ * Where an operation's calculation summary can sit beside its form rather than
+ * under it. It was written inline in `investments/operation.tsx` as a bare
+ * `>= 560` — the one threshold in the app that was neither in this file nor a
+ * copy of something that was.
+ */
+const PAIRED_OPERATION_SUMMARY_WIDTH = 560;
+
+export function shouldPairOperationSummary(contentWidth: number): boolean {
+  return contentWidth >= PAIRED_OPERATION_SUMMARY_WIDTH;
+}
+
 /** Where chart axis labels can afford the larger of the two type sizes. */
 const LARGE_AXIS_TYPE_WIDTH = 480;
 

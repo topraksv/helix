@@ -12,7 +12,7 @@ import React, { useEffect, useRef, useState, type ReactNode } from "react";
 import { Animated, Easing, View } from "react-native";
 import { useReducedMotion } from "./motion";
 import { tr } from "../i18n/tr";
-import { loadingSize, motion, radius, useTheme } from "./theme";
+import { circle, loadingSize, motion, radius, useTheme } from "./theme";
 
 const DOTS = 3;
 
@@ -44,12 +44,17 @@ export function LoadingIndicator({
   size = 8,
   progress,
   label = tr.dataState.loading,
+  color,
 }: {
   size?: number;
   progress?: ProgressValue | null;
   label?: string;
+  /** Ink for the dots. Defaults to the accent; a filled control passes its own
+   *  foreground, because the accent ON the accent is nothing at all. */
+  color?: string;
 }) {
   const { palette } = useTheme();
+  const ink = color ?? palette.primary;
   const reducedMotion = useReducedMotion();
   // One value per dot, so each sits at its own point in the same cycle.
   const values = useRef(Array.from({ length: DOTS }, () => new Animated.Value(0))).current;
@@ -122,7 +127,7 @@ export function LoadingIndicator({
               width: fill.interpolate({ inputRange: [0, 1], outputRange: ["0%", "100%"] }),
               height: "100%",
               borderRadius: radius.full,
-              backgroundColor: palette.primary,
+              backgroundColor: ink,
             }}
           />
         </View>
@@ -133,8 +138,8 @@ export function LoadingIndicator({
             style={{
               width: size,
               height: size,
-              borderRadius: size / 2,
-              backgroundColor: palette.primary,
+              borderRadius: circle(size),
+              backgroundColor: ink,
               opacity: reducedMotion ? 0.55 : value.interpolate({ inputRange: [0, 1], outputRange: [0.25, 1] }),
             }}
           />

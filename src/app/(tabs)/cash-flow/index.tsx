@@ -61,7 +61,7 @@ import { interactionSurface } from "../../../ui/interaction";
 import { circle, controlSize, iconSize, matrixColorStyle, radius, spacing, type, useTheme } from "../../../ui/theme";
 import { ledgerCellWidth, shouldStartTableDetailsOpen, shouldUseWideWorkspace } from "../../../ui/responsive";
 import { useContentWidth } from "../../../ui/viewport";
-import { categoryIcon } from "../../../domain/category-icons";
+import { CategoryIcon } from "../../../ui/category-icon";
 
 type MatrixModel = ReturnType<typeof buildCashFlowMatrixModel>;
 
@@ -638,7 +638,6 @@ function MonthFocusTable({
               ? noteByCategory.get(column.categoryId)
               : undefined;
           const onPress = actionFor(column);
-          const iconText = category ? categoryIcon(category) : null;
           return (
             <Pressable
               key={column.key}
@@ -670,12 +669,17 @@ function MonthFocusTable({
                   marginRight: spacing.sm,
                 }}
               >
+                {/* One drawing language in one box. This used to be a 15pt
+                    lucide Sigma, a 14pt colour emoji, or a 15pt lucide Flag
+                    depending on the column — three marks that agreed about
+                    nothing, stacked down a single column of the app's main
+                    financial surface. */}
                 {column.computed ? (
-                  <Sigma accessible={false} size={15} color={palette.tertiaryText} />
-                ) : iconText ? (
-                  <Text style={{ fontSize: iconSize.emoji }}>{iconText}</Text>
+                  <Sigma accessible={false} size={iconSize.compact} color={palette.tertiaryText} />
+                ) : category ? (
+                  <CategoryIcon category={category} size={iconSize.compact} color={palette.accentText} />
                 ) : (
-                  <Flag accessible={false} size={15} color={palette.textSecondary} />
+                  <Flag accessible={false} size={iconSize.compact} color={palette.textSecondary} />
                 )}
               </View>
               <View style={{ flex: 1, minWidth: 0, paddingVertical: spacing.sm }}>

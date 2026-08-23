@@ -176,8 +176,8 @@ function PaletteChoice({
         </View>
         <View style={{ position: "absolute", right: spacing.sm, top: spacing.sm, width: 24, height: 24, borderRadius: circle(24), backgroundColor: swatch.primary }} />
         <View style={{ position: "absolute", right: spacing.sm, bottom: spacing.sm, flexDirection: "row", gap: 3 }}>
-          <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: swatch.positive }} />
-          <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: swatch.negative }} />
+          <View style={{ width: 7, height: 7, borderRadius: circle(7), backgroundColor: swatch.positive }} />
+          <View style={{ width: 7, height: 7, borderRadius: circle(7), backgroundColor: swatch.negative }} />
         </View>
         {selected ? (
           <View
@@ -819,7 +819,7 @@ export default function SettingsScreen() {
       ) : null}
 
       <SectionHeader>{tr.settings.transferSection}</SectionHeader>
-      <Card>
+      <Card rows>
         <ListRow
           icon={FileDown}
           title={tr.settings.export}

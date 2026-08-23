@@ -89,6 +89,27 @@ export default function Root({ children }: PropsWithChildren) {
               // `#root input` outranks `#root *` so fields keep their caret.
               "#root,#root *{-webkit-user-select:none;user-select:none;}" +
               "#root input,#root textarea{-webkit-user-select:text;user-select:text;}" +
+              // Keyboard focus, drawn by the app rather than left to the UA.
+              //
+              // `palette.focus` existed and reached exactly one control — a
+              // text field's active border — so every button, row, card, tab
+              // and table cell fell back to the browser's own ring: a colour
+              // from no palette here, and one that `Card`'s `overflow:hidden`
+              // clipped on the first and last row of every card.
+              //
+              // `:focus-visible` and not `:focus`, so a mouse press never
+              // draws it; the browser is the only party that knows which
+              // device moved focus. The offset is NEGATIVE so the ring is
+              // painted inside its own box and cannot be clipped by an
+              // ancestor that hides overflow. Reduced-transparency and
+              // high-contrast users get the same ring; it is not decorative.
+              "#root :focus-visible{outline:2px solid var(--helix-focus,#3C6F96);outline-offset:-2px;}" +
+              // react-native-web sets `outline:none` on its own pressables in
+              // some paths; this restores the ring for the elements that
+              // actually take focus without touching anything else.
+              "#root [tabindex]:focus-visible,#root [role=button]:focus-visible,#root [role=tab]:focus-visible," +
+              "#root a:focus-visible,#root input:focus-visible,#root textarea:focus-visible," +
+              "#root select:focus-visible{outline:2px solid var(--helix-focus,#3C6F96);outline-offset:-2px;}" +
               // Theme and palette changes cross-fade the real pixels through
               // the View Transitions API (see `ui/theme-transition.ts`). The
               // browser default is a 250ms fade; half a second reads as a

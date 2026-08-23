@@ -670,7 +670,7 @@ export function SelectionGrid({
                   {selected ? (
                     <Check accessible={false} size={15} color={tone === "plus" ? palette.onPrimary : palette.onDestructive} strokeWidth={2.4} />
                   ) : option.icon ? (
-                    <Text accessible={false} aria-hidden style={{ fontSize: iconSize.emoji }}>{option.icon}</Text>
+                    <option.icon accessible={false} size={iconSize.compact} color={palette.textSecondary} strokeWidth={2} />
                   ) : tone === "plus" ? (
                     <Plus accessible={false} size={14} color={palette.textSecondary} />
                   ) : (

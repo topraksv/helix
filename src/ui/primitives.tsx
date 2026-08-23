@@ -13,7 +13,6 @@
 
 import React, { useEffect, useRef, useState, type ReactNode } from "react";
 import {
-  ActivityIndicator,
   Animated,
   Easing,
   Platform,
@@ -38,7 +37,9 @@ import { haptic, type HapticKind } from "./haptics";
 import { interactionSurface } from "./interaction";
 import { useReducedMotion } from "./motion";
 import { useCountUp } from "./motion-primitives";
-import { borderWidth, controlSize, font, generatedBadgeForeground, iconSize, motion, radius, spacing, staggerDelay, stateOpacity, type, useTheme, type Palette } from "./theme";
+import { LoadingIndicator } from "./loading-indicator";
+import { upperTR } from "../i18n/tr";
+import { borderWidth, controlSize, font, generatedBadgeForeground, iconSize, motion, proseLeading, radius, spacing, staggerDelay, stateOpacity, type, useTheme, type Palette } from "./theme";
 
 export function controlStateStyle(palette: Palette, active: boolean, error = false) {
   return {
@@ -250,8 +251,64 @@ export function Body({
 } & Omit<TextProps, "children" | "style">) {
   const { palette } = useTheme();
   return (
-    <Text {...props} style={[type.body, { color: muted ? palette.textSecondary : palette.text }, style]}>
+    <Text
+      {...props}
+      style={[
+        type.body,
+        // Prose, and the only role that gets a line box. See `proseLeading`.
+        Platform.OS === "web" && { lineHeight: Math.round(type.body.fontSize * proseLeading) },
+        { color: muted ? palette.textSecondary : palette.text },
+        style,
+      ]}
+    >
       {children}
+    </Text>
+  );
+}
+
+/**
+ * The small capital line that names the block under it.
+ *
+ * One component, so the ten hand-written eyebrows cannot go on disagreeing
+ * about size, weight and letter-spacing — five recipes for one job.
+ *
+ * The CASING is done differently on each platform, and deliberately:
+ *
+ * Web keeps `textTransform`. The document is `lang="tr"`, and browsers case
+ * per the document language, so it is already correct there — and it leaves
+ * the real string in the DOM, which is what a screen reader reads. Uppercasing
+ * the text itself would hand assistive technology "GÜNCEL BAKİYE", which some
+ * screen readers spell out letter by letter.
+ *
+ * Native has neither of those. React Native's transform has no locale and maps
+ * "i" to "I" rather than "İ" — GÜNCEL BAKIYE, NISAN, HAZIRAN, EKIM on the
+ * shipped iOS and Android builds. So the string is cased here, correctly, and
+ * the untouched original is handed to accessibility alongside it.
+ */
+export function Eyebrow({
+  children,
+  color,
+  align,
+  style,
+}: {
+  children: string;
+  color?: string;
+  align?: "left" | "center" | "right";
+  style?: StyleProp<TextStyle>;
+}) {
+  const { palette } = useTheme();
+  const web = Platform.OS === "web";
+  return (
+    <Text
+      accessibilityLabel={web ? undefined : children}
+      style={[
+        type.eyebrow,
+        { color: color ?? palette.textSecondary, textAlign: align },
+        web && { textTransform: "uppercase" as const },
+        style,
+      ]}
+    >
+      {web ? children : upperTR(children)}
     </Text>
   );
 }
@@ -494,7 +551,7 @@ export function Button({
       ]}
     >
       {loading ? (
-        <ActivityIndicator accessibilityLabel={label} color={colors.foreground} />
+        <LoadingIndicator size={6} label={label} color={colors.foreground} />
       ) : (
         <>
           {IconCmp ? <IconCmp accessible={false} size={small ? iconSize.compact : iconSize.control} color={toned ? toneColor : colors.foreground} strokeWidth={2.2} /> : null}
@@ -506,6 +563,69 @@ export function Button({
         </>
       )}
     </Pressable>
+  );
+}
+
+/**
+ * The shape of content that has not arrived.
+ *
+ * The app had one placeholder — two flat grey blocks in the dashboard's hero —
+ * and nothing anywhere else, so a loading screen showed three different
+ * behaviours at once: a grey box where the balance goes, three dots where the
+ * data notice goes, and simply nothing where the other cards go. Then all of
+ * it appeared in one frame and the page jumped twice.
+ *
+ * A skeleton is not a spinner and must not read as one: it says "something of
+ * about this size is coming here". The pulse is deliberately slow and shallow
+ * — a fast or high-contrast shimmer competes with the content that replaces
+ * it — and Reduce Motion holds it still at the midpoint rather than removing
+ * it, because the SHAPE is the message and only the movement is decoration.
+ */
+export function Skeleton({
+  width,
+  height,
+  radius: cornerRadius = radius.sm,
+  style,
+}: {
+  width?: number | `${number}%`;
+  height: number;
+  radius?: number;
+  style?: StyleProp<ViewStyle>;
+}) {
+  const { palette } = useTheme();
+  const reducedMotion = useReducedMotion();
+  const pulse = useRef(new Animated.Value(reducedMotion ? 0.5 : 0)).current;
+  useEffect(() => {
+    if (reducedMotion) {
+      pulse.setValue(0.5);
+      return;
+    }
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulse, { toValue: 1, duration: motion.loading, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+        Animated.timing(pulse, { toValue: 0, duration: motion.loading, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+      ]),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [pulse, reducedMotion]);
+  return (
+    <Animated.View
+      accessible={false}
+      // The block is scenery while the real thing loads; the screen's own
+      // `DataStateNotice` is what announces the wait.
+      aria-hidden
+      style={[
+        {
+          width,
+          height,
+          borderRadius: cornerRadius,
+          backgroundColor: palette.surfaceAlt,
+          opacity: pulse.interpolate({ inputRange: [0, 1], outputRange: [0.55, 1] }),
+        },
+        style,
+      ]}
+    />
   );
 }
 
@@ -727,7 +847,7 @@ export function InitialsBadge({ name, size = 36 }: { name: string; size?: number
       style={{
         width: size,
         height: size,
-        borderRadius: size / 3,
+        borderRadius: radius.md,
         backgroundColor: bg,
         alignItems: "center",
         justifyContent: "center",

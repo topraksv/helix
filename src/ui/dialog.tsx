@@ -15,9 +15,11 @@ import React, { useState } from "react";
 import { Modal, Platform, Pressable, StyleSheet, Text, TextInput, View, useWindowDimensions } from "react-native";
 import { create } from "zustand";
 import { Button, FadeIn } from "./components";
-import { font, radius, spacing, themeShadow, type, useTheme } from "./theme";
+import { circle, font, radius, spacing, themeShadow, type, useTheme } from "./theme";
 import { tr } from "../i18n/tr";
 import { INPUT_LIMITS } from "../domain/input";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { shouldPresentOptionsAsSheet } from "./responsive";
 import { useModalAccessibility } from "./accessibility";
 import { advanceRequestQueue, emptyRequestQueue, enqueueRequest, type RequestQueue } from "./request-queue";
 import { useReducedMotion } from "./motion";
@@ -146,17 +148,35 @@ function DialogShell({
 }) {
   const { palette } = useTheme();
   const reducedMotion = useReducedMotion();
-  const { height } = useWindowDimensions();
+  const { height, width } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+  /**
+   * A phone gets a sheet, a desktop keeps the centred box.
+   *
+   * Centred is right when there is a pointer: the dialog sits in the middle of
+   * attention and the mouse is already anywhere. On a phone it put "Sil" and
+   * "Vazgeç" in the vertical middle of the screen — the part of a tall phone a
+   * thumb reaches least — while the bottom third sat empty behind a scrim.
+   *
+   * The app already knows where that line is: `shouldPresentOptionsAsSheet` is
+   * the same question the option picker asks, so the two agree by construction
+   * instead of by coincidence.
+   */
+  const asSheet = shouldPresentOptionsAsSheet(width);
   return (
     <Modal transparent animationType={modalAnimationType(reducedMotion)} visible onRequestClose={onDismiss}>
       <Pressable
         accessible={false}
         tabIndex={-1}
-        style={{ flex: 1, backgroundColor: palette.scrim, justifyContent: "center" }}
+        style={{ flex: 1, backgroundColor: palette.scrim, justifyContent: asSheet ? "flex-end" : "center" }}
         onPress={onDismiss}
       >
         <KeyboardSafeScrollView
-          contentContainerStyle={{ flexGrow: 1, justifyContent: "center", padding: spacing.lg }}
+          contentContainerStyle={{
+            flexGrow: 1,
+            justifyContent: asSheet ? "flex-end" : "center",
+            padding: asSheet ? 0 : spacing.lg,
+          }}
           bottomOffset={Math.min(140, Math.round(height * 0.22))}
           extraKeyboardSpace={spacing.lg}
           keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
@@ -165,13 +185,43 @@ function DialogShell({
           showsVerticalScrollIndicator={false}
           bounces={false}
         >
-          <Pressable testID={operation ? "operation-dialog-surface" : undefined} accessible={false} tabIndex={-1} accessibilityViewIsModal onPress={() => {}} style={{ alignSelf: "center", width: "100%", maxWidth: operation ? 520 : 400 }}>
+          <Pressable testID={operation ? "operation-dialog-surface" : undefined} accessible={false} tabIndex={-1} accessibilityViewIsModal onPress={() => {}} style={{ alignSelf: "center", width: "100%", maxWidth: asSheet ? undefined : operation ? 520 : 400 }}>
             <FadeIn
               style={[
-                { backgroundColor: palette.surface, borderRadius: radius.lg, padding: operation ? spacing.xl : spacing.lg },
+                {
+                  backgroundColor: palette.surface,
+                  padding: operation ? spacing.xl : spacing.lg,
+                  // A sheet is attached to the bottom edge, so only its top
+                  // corners are round and its own padding carries the home
+                  // indicator rather than leaving the buttons on top of it.
+                  ...(asSheet
+                    ? {
+                        borderTopLeftRadius: radius.xl,
+                        borderTopRightRadius: radius.xl,
+                        paddingBottom: (operation ? spacing.xl : spacing.lg) + insets.bottom,
+                      }
+                    : { borderRadius: radius.lg }),
+                  borderCurve: "continuous" as const,
+                },
                 themeShadow.card(palette),
               ]}
             >
+              {asSheet ? (
+                // The grab handle every bottom sheet on both platforms wears.
+                // Decoration: the scrim behind it is the dismiss target and it
+                // is already reachable.
+                <View
+                  accessible={false}
+                  style={{
+                    alignSelf: "center",
+                    width: 36,
+                    height: 4,
+                    borderRadius: circle(4),
+                    backgroundColor: palette.surfaceStrong,
+                    marginBottom: spacing.md,
+                  }}
+                />
+              ) : null}
               <View ref={titleRef} accessible accessibilityRole="header" tabIndex={-1}>
                 {operation ? <OperationDialogHeader kind={operation} title={title} message={message} testID="operation-dialog-header" /> : <Text style={[type.heading, { color: palette.text, marginBottom: spacing.sm }]}>{title}</Text>}
               </View>

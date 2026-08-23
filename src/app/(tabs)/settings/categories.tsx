@@ -8,7 +8,7 @@ import { useCategoriesState, useUserId } from "../../../data/hooks";
 import { combineLiveStates } from "../../../data/live-state";
 import { categoryReferenceUsage, createCategory, deleteCategoryWithBudgets, reorderCategoryGroup, restoreCategoryWithBudgets, updateCategory } from "../../../data/repo";
 import type { CategoryReferenceUsage } from "../../../data/repo";
-import { categoryIcon } from "../../../domain/category-icons";
+import { CategoryIcon } from "../../../ui/category-icon";
 import { scheduleSync } from "../../../sync/engine";
 import { appAlert, appConfirm } from "../../../ui/dialog";
 import { tr } from "../../../i18n/tr";
@@ -24,7 +24,7 @@ import { CategoryDeleteSheet, UNCATEGORIZED_CHOICE } from "../../../ui/category-
 import { DraggableList, ReorderGrip } from "../../../ui/draggable-list";
 import { placeholderPools, useRotatingPlaceholder } from "../../../ui/placeholders";
 import { useUndo } from "../../../ui/undo";
-import { radius, spacing, type, useTheme } from "../../../ui/theme";
+import { iconSize, radius, spacing, type, useTheme } from "../../../ui/theme";
 import { useOperationGuard } from "../../../ui/operation-guard";
 import { useDirtyExitGuard } from "../../../ui/dirty-exit";
 import { WorkspaceSplit } from "../../../ui/workspace-layout";
@@ -347,10 +347,9 @@ export default function CategoriesScreen({ header }: { header?: ReactNode } = {}
                     <Spread>
                       <Row gap={spacing.sm} style={{ flex: 1, alignItems: "center", paddingRight: spacing.sm }}>
                         <ReorderGrip handle={handle} position={index + 1} count={group.length} />
-                        <Body style={{ flex: 1 }}>
-                          {categoryIcon(c)} {c.name}
-                        </Body>
-                        {c.isTransfer ? <Badge text={tr.cashflow.transfer} /> : null}
+                        <CategoryIcon category={c} size={iconSize.control} />
+                        <Body style={{ flex: 1 }}>{c.name}</Body>
+                        {c.isTransfer ? <Badge testID="category-transfer-marker" text={tr.cashflow.transfer} /> : null}
                       </Row>
                       <Row gap={spacing.sm} style={{ alignItems: "center" }}>
                         {/* Every column repeats these two controls, so the

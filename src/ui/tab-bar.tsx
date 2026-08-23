@@ -28,12 +28,18 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Animated, PanResponder, Platform, Pressable, Text, View, useWindowDimensions, type ViewStyle } from "react-native";
 import type { BottomTabBarProps } from "@react-navigation/bottom-tabs";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { selectionTap } from "./haptics";
 import { useReducedMotion, useReduceTransparency } from "./motion";
 import { shouldUseCompactNavigationMaterial, tabLabelsFit, tooWide } from "./responsive";
 import { font, maxFontScale, motion, NAV_GLASS, navigationMaterial, radius, stateOpacity, TAB_BAR, tabBarBottomOffset, tabBarHeight, themeShadow, type, useTheme } from "./theme";
 
 /** The bar's own inset. The selection slides inside it, not over its edge. */
 const BAR_PADDING = 2;
+
+/** How far a finger travels before the bar treats it as a scrub and not a tap. */
+const DRAG_CLAIM_DISTANCE = 24;
+/** How much more horizontal than vertical that travel has to be. */
+const DRAG_HORIZONTAL_BIAS = 1.5;
 export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
   const { palette, scheme } = useTheme();
   const insets = useSafeAreaInsets();
@@ -63,7 +69,15 @@ export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
     const route = routes[index];
     if (!route || index === current) return;
     const event = navigation.emit({ type: "tabPress", target: route.key, canPreventDefault: true });
-    if (!event.defaultPrevented) navigation.navigate(route.name, route.params);
+    if (!event.defaultPrevented) {
+      // Crossing into a tab is a selection changing, and the scrub was the one
+      // way of changing it that said nothing: the destination slid past under
+      // a thumb that is covering the bar it is sliding along. Same feedback a
+      // press already gives, once per crossing rather than once per frame —
+      // `goToIndex` returns early when the index has not actually moved.
+      selectionTap();
+      navigation.navigate(route.name, route.params);
+    }
   };
 
   // Dragging across the bar scrubs through the tabs, so the box is measured in
@@ -122,11 +136,21 @@ export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
   const pan = useMemo(
     () =>
       PanResponder.create({
-        // Claim only a deliberate drag along the navigation's own axis, so a tap
-        // still reaches the Pressable underneath and a scroll still belongs to
-        // the page.
+        /**
+         * Claim only a deliberate drag along the navigation's own axis, so a
+         * tap still reaches the Pressable underneath and a scroll still
+         * belongs to the page.
+         *
+         * The threshold used to be 8pt, which is inside the slop of an
+         * ordinary tap: the bar sits where a held thumb rests, so a press that
+         * slid a little navigated somewhere the user had not chosen. It is now
+         * a distance nobody crosses by accident, and the gesture also has to
+         * be clearly horizontal rather than merely more horizontal than
+         * vertical — a diagonal flick towards the bar no longer counts.
+         */
         onMoveShouldSetPanResponder: (_event, gesture) =>
-          Math.abs(gesture.dx) > 8 && Math.abs(gesture.dx) > Math.abs(gesture.dy),
+          Math.abs(gesture.dx) > DRAG_CLAIM_DISTANCE
+          && Math.abs(gesture.dx) > Math.abs(gesture.dy) * DRAG_HORIZONTAL_BIAS,
         onPanResponderMove: (_event, gesture) => {
           const { x, width } = barBox.current;
           const count = latest.current.routes.length;
@@ -290,7 +314,12 @@ export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
         padding: BAR_PADDING,
         flexDirection: "row",
         alignItems: "center",
-        borderRadius: radius.md,
+        // The bar floats over the page, and at `radius.md` it was more square
+        // than the RESTING cards underneath it — which reads as a panel that
+        // failed to detach rather than as a layer above. `xl` is the widest
+        // corner in the scale and the only one that suits a 56pt pill.
+        borderRadius: radius.xl,
+        borderCurve: "continuous",
         ...material,
       }}
     >
@@ -304,7 +333,7 @@ export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
             bottom: BAR_PADDING,
             left: BAR_PADDING,
             width: slotWidth,
-            borderRadius: radius.sm,
+            borderRadius: radius.lg,
             backgroundColor: palette.primarySoft,
             borderWidth: 1,
             borderColor: palette.primary,

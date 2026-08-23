@@ -28,7 +28,7 @@ import { useSyncStatus } from "../sync/status";
 import { appAlert } from "../ui/dialog";
 import { ExpectedAmountSheet } from "../ui/expected-amount-sheet";
 import { useUndo } from "../ui/undo";
-import { Amount, Badge, Body, Card, DataStateNotice, EmptyState, ListRow, Row, Screen, SectionHeader } from "../ui/components";
+import { Amount, Badge, Body, Card, DataStateNotice, EmptyState, Eyebrow, ListRow, Row, Screen, SectionHeader } from "../ui/components";
 import { font, iconSize, radius, spacing, type, useTheme } from "../ui/theme";
 
 export default function UpcomingScreen() {
@@ -163,9 +163,7 @@ export default function UpcomingScreen() {
                     <Text style={[type.label, { color: item.status === "late" ? palette.errorText : palette.textStrong, fontFamily: font.semibold }]}>
                       {Number(item.date.slice(8, 10))}
                     </Text>
-                    <Text style={[type.small, { color: palette.textSecondary, fontFamily: font.semibold, fontSize: type.micro.fontSize, textTransform: "uppercase" }]}>
-                      {shortMonthLabel(monthKeyOf(item.date))}
-                    </Text>
+                    <Eyebrow>{shortMonthLabel(monthKeyOf(item.date))}</Eyebrow>
                   </View>
                 )}
                 title={item.name ?? item.categoryName ?? tr.common.paymentFallback}

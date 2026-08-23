@@ -26,25 +26,12 @@ import { userMessage } from "../../../domain/user-error";
 import { tr } from "../../../i18n/tr";
 import { scheduleSync } from "../../../sync/engine";
 import { DateField } from "../../../ui/calendar";
-import {
-  Amount,
-  Button,
-  Card,
-  DataStateNotice,
-  FadeIn,
-  Field,
-  IconButton,
-  Label,
-  MoneyField,
-  PanelHeader,
-  Screen,
-  Segmented,
-  Select,
-} from "../../../ui/components";
+import { Amount, Button, Card, DataStateNotice, Eyebrow, FadeIn, Field, IconButton, Label, MoneyField, PanelHeader, Screen, Segmented, Select } from "../../../ui/components";
 import { appAlert } from "../../../ui/dialog";
 import { navigateBack } from "../../../ui/navigation";
 import { placeholderPools, useRotatingPlaceholder } from "../../../ui/placeholders";
 import { controlSize, font, radius, spacing, type, useTheme } from "../../../ui/theme";
+import { shouldPairOperationSummary } from "../../../ui/responsive";
 import { useContentWidth } from "../../../ui/viewport";
 
 const VALID_KINDS = new Set<InvestmentOperationKind>(["existing", "buy", "sell", "contribution"]);
@@ -96,7 +83,7 @@ export default function InvestmentOperationScreen() {
   const { palette } = useTheme();
   // The impact chip only shares the heading row where a chip-sized column can
   // still hold the sentence; below that it takes its own row.
-  const wideSummary = useContentWidth() >= 560;
+  const wideSummary = shouldPairOperationSummary(useContentWidth());
   const productsState = useInvestmentProductsState();
   const operationsState = useInvestmentOperationsState();
   const profilesState = useInvestmentProfilesState();
@@ -124,9 +111,9 @@ export default function InvestmentOperationScreen() {
   const [contributionMode, setContributionMode] = useState<ContributionMode>("units");
   const [busy, setBusy] = useState(false);
   const hydratedEdit = useRef<string | null>(null);
-  const quantityPlaceholder = useRotatingPlaceholder(placeholderPools.investmentQuantity, { prefix: false });
-  const unitPlaceholder = useRotatingPlaceholder(placeholderPools.investmentUnitPrice, { prefix: false });
-  const notePlaceholder = useRotatingPlaceholder(placeholderPools.investmentNote);
+  const quantityPlaceholder = useRotatingPlaceholder(placeholderPools.investmentQuantity, { prefix: false, active: quantity.length === 0 });
+  const unitPlaceholder = useRotatingPlaceholder(placeholderPools.investmentUnitPrice, { prefix: false, active: unitRaw.length === 0 || totalRaw.length === 0 });
+  const notePlaceholder = useRotatingPlaceholder(placeholderPools.investmentNote, { active: note.length === 0 });
 
   useEffect(() => {
     if (!editing || hydratedEdit.current === editing.id) return;
@@ -256,7 +243,7 @@ export default function InvestmentOperationScreen() {
               <ImpactIcon accessible={false} size={21} color={impactColor} strokeWidth={2.2} />
             </View>
             <View style={{ flex: 1, minWidth: 0 }}>
-              <Text style={[type.small, { color: palette.textSecondary, textTransform: "uppercase", letterSpacing: 0.7 }]}>{tr.investments.calculationSummary}</Text>
+              <Eyebrow>{tr.investments.calculationSummary}</Eyebrow>
               <Text style={[type.heading, { color: palette.textStrong, marginTop: 2 }]}>{pageTitle}</Text>
               <Text style={[type.small, { color: palette.textSecondary, marginTop: 2 }]}>
                 {selected ? `${selected.name} · ${tr.investments.types[selected.assetType]}` : tr.investments.product}

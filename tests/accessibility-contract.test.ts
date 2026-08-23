@@ -21,7 +21,7 @@ import { readFileSync } from "node:fs";
 import { sourceFiles } from "./source-corpus";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { maxFontScale } from "../src/ui/theme";
+import { maxFontScale, proseLeading, type } from "../src/ui/theme";
 
 const root = process.cwd();
 const source = (path: string) => readFileSync(join(root, path), "utf8");
@@ -113,12 +113,40 @@ describe("Dynamic Type is never opted out of", () => {
    * Type clipping bug: the glyphs grow, the line box does not, and descenders are
    * cut. The shared type scale therefore sets `fontSize` only and lets the
    * platform derive the line box.
+   *
+   * The rule is now stated against the SCALE ITSELF rather than against the
+   * text of the file after it. The old form sliced the source from
+   * `export const type` to the end and rejected the word anywhere in it, which
+   * also rejected the paragraph EXPLAINING why the scale has no leading — a
+   * test that fails when you document it is a test that discourages the
+   * documentation.
+   *
+   * The one place a line box is allowed is `proseLeading`, and it is allowed
+   * because it is none of the things this rule is about: it is a RATIO, applied
+   * on web only, to prose only, derived from the role's own fontSize. Native —
+   * the only platform where Dynamic Type can outgrow a fixed box — never
+   * receives it. See the note on `proseLeading` in `theme.ts`.
    */
   it("the shared type scale pins no lineHeight against a scaling fontSize", () => {
-    const theme = source("src/ui/theme.ts");
-    const scale = theme.slice(theme.indexOf("export const type"));
-    expect(scale).toContain("fontSize");
-    expect(scale).not.toMatch(/lineHeight/);
+    for (const [name, role] of Object.entries(type)) {
+      expect(role, `${name} must declare a size`).toHaveProperty("fontSize");
+      expect(role, `${name} must not pin a line box`).not.toHaveProperty("lineHeight");
+    }
+  });
+
+  it("keeps prose leading a web-only ratio, never a native constant", () => {
+    expect(proseLeading).toBeGreaterThan(1.4);
+    expect(proseLeading).toBeLessThan(1.7);
+    const primitives = source("src/ui/primitives.tsx");
+    // The single call site, and it is guarded and derived rather than written.
+    const leadingLines = primitives
+      .split("\n")
+      // The STYLE property, not a local of the same name (`useLedeAlignment`
+      // measures one and calls it that).
+      .filter((line) => /lineHeight:/.test(line));
+    expect(leadingLines).toHaveLength(1);
+    expect(leadingLines[0]).toContain('Platform.OS === "web"');
+    expect(leadingLines[0]).toContain("type.body.fontSize * proseLeading");
   });
 });
 

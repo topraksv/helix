@@ -23,6 +23,7 @@ import { AMOUNT_LABELS, needsVariableAmountEntry, occurrenceAmountText } from ".
 import { buildUpcomingTimeline } from "../../domain/upcoming";
 import { clockOrDateTimeLabel, dateLabel, dateTimeLabel, monthName, tr } from "../../i18n/tr";
 import { useSession } from "../../auth/session";
+import { kv } from "../../services/kv";
 import {
   settingValue,
   useCategoriesState,
@@ -44,7 +45,7 @@ import { convertToTryMinor } from "../../domain/fx";
 import { lookupRate, useFxRates } from "../../services/fx-fetch";
 import { appAlert } from "../../ui/dialog";
 import { scheduleSync } from "../../sync/engine";
-import { Amount, Badge, Body, Button, Card, DataStateNotice, DisclosureChevron, Divider, HeroCard, ListRow, MetricStrip, Row, STATUS_W, Screen, SectionHeader, Segmented, Spread } from "../../ui/components";
+import { Amount, Badge, Body, Button, Card, DataStateNotice, DisclosureChevron, Divider, Eyebrow, HeroCard, ListRow, MetricStrip, Row, Screen, SectionHeader, Segmented, Skeleton, Spread, STATUS_W } from "../../ui/components";
 import { Collapse, useScreenFocus, useValueFlash } from "../../ui/motion-primitives";
 import { Bars, ChartFrame, Donut, distributionDonutData, useSeriesColors } from "../../ui/charts";
 import { CalendarSheet } from "../../ui/calendar";
@@ -57,7 +58,7 @@ import { marketTileColumns, shouldPairDashboardPanels, shouldSplitDashboardHero,
 import { useContentWidth, useMeasuredWidth } from "../../ui/viewport";
 import { interactionSurface } from "../../ui/interaction";
 import { useWarmRoute } from "../../ui/route-warmup";
-import { circle, font, heroSurface, radius, spacing, type, useTheme } from "../../ui/theme";
+import { circle, controlSize, font, heroSurface, iconSize, radius, spacing, type, useTheme } from "../../ui/theme";
 import { devError } from "../../services/logger";
 import { useOperationGuard } from "../../ui/operation-guard";
 
@@ -308,7 +309,7 @@ function MarketsCard({ fill = false, desktopColumns = 2 }: { fill?: boolean; des
           accessibilityLabel={statusLabel}
         >
           {/* The dot claims liveness only once real quotes are flowing. */}
-          <View accessible={false} style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: status === "live" ? palette.success : palette.textSecondary }} />
+          <View accessible={false} style={{ width: 7, height: 7, borderRadius: circle(7), backgroundColor: status === "live" ? palette.success : palette.textSecondary }} />
           <Text style={[type.small, { color: palette.textSecondary, textAlign: "right", flexShrink: 1 }]}>{statusLabel}</Text>
         </Row>
         {quoted.length > 0 ? (
@@ -360,6 +361,30 @@ function MarketsCard({ fill = false, desktopColumns = 2 }: { fill?: boolean; des
   );
 }
 
+/**
+ * Re-render when the wall clock crosses an hour.
+ *
+ * The greeting and the date under it are both read from `new Date()` at render
+ * time and nothing asked for another render, so a session left open said "İyi
+ * günler" at 19:00 and was still saying "İyi akşamlar" — over yesterday's date
+ * — at three in the morning. The timer is armed to the next hour boundary
+ * rather than to a fixed interval, so it fires once an hour on the hour and
+ * costs one render.
+ */
+function useHourTick(): number {
+  const [tick, setTick] = React.useState(0);
+  React.useEffect(() => {
+    const now = new Date();
+    const next = new Date(now);
+    next.setHours(now.getHours() + 1, 0, 0, 0);
+    const timer = setTimeout(() => setTick((value) => value + 1), next.getTime() - now.getTime());
+    return () => clearTimeout(timer);
+  }, [tick]);
+  return tick;
+}
+
+const CHART_TYPE_KEY = "helix.dashboard.chart";
+
 function greeting(): string {
   const hour = new Date().getHours();
   if (hour < 6) return tr.dashboard.greetingNight;
@@ -373,6 +398,7 @@ export default function DashboardScreen() {
   // create. Built while the navigator is fading between two scenes it drops
   // frames once, on the first arrival; built here, in idle, it drops none.
   useWarmRoute("cash-flow");
+  useHourTick();
   const userId = useUserId();
   const previousLoginAt = useSession((state) => state.previousLoginAt);
   // "You told me X; the table says Y" — computed here so the hero can mark it
@@ -512,7 +538,19 @@ export default function DashboardScreen() {
 
   // A paid item realizes on its actual payment day, not its planned due day.
   const [showForecast, setShowForecast] = React.useState(false);
+  // Remembered, like the ledger's own view mode and pins. It was the one
+  // view preference in the app that reset itself: choosing bars and coming
+  // back from another tab put the pie chart back.
   const [chartType, setChartType] = React.useState<"pie" | "bars">("pie");
+  React.useEffect(() => {
+    void kv.get(CHART_TYPE_KEY).then((value) => {
+      if (value === "pie" || value === "bars") setChartType(value);
+    });
+  }, []);
+  const changeChartType = React.useCallback((value: "pie" | "bars") => {
+    setChartType(value);
+    void kv.set(CHART_TYPE_KEY, value);
+  }, []);
   const [paying, setPaying] = React.useState<(typeof expected)[number] | null>(null);
   const [amountEditing, setAmountEditing] = React.useState<(typeof expected)[number] | null>(null);
   const defaultPaidDate = (dueDate: string): ISODate => (dueDate <= today ? (dueDate as ISODate) : today);
@@ -593,7 +631,7 @@ export default function DashboardScreen() {
                 { value: "bars", label: tr.analysis.chartBars },
               ]}
               value={chartType}
-              onChange={setChartType}
+              onChange={changeChartType}
             />
             {/* No `alignItems: center` here: the chart already lays its ring
                 and legend out as one centred row, and centring the wrapper
@@ -686,34 +724,45 @@ export default function DashboardScreen() {
           <View style={wideDashboard ? { flexDirection: "row", alignItems: "stretch" } : undefined}>
             <View style={wideDashboard ? { flex: 1, paddingRight: spacing.xl, justifyContent: "center" } : undefined}>
               <Row gap={spacing.sm} style={{ alignItems: "center" }}>
-                <Text style={[type.label, { color: heroInk, textTransform: "uppercase", letterSpacing: 1, fontSize: type.caption.fontSize }]}>
-                  {tr.dashboard.actualBalance}
-                </Text>
+                <Eyebrow color={heroInk}>{tr.dashboard.actualBalance}</Eyebrow>
                 {/* The ledger has moved away from the last figure the user
                     confirmed against a real account. The mark is the way to the
                     screen that can say by how much and put it right. */}
                 {balanceDrift != null ? (
+                  // The painted pill stays compact — it sits beside a label
+                  // in a hero — but the PRESSABLE is the platform minimum.
+                  // It used to be the pill: 2pt of vertical padding around a
+                  // 10pt label measured about 18pt tall, on a control that
+                  // navigates. `hitSlop` would not have rescued it either;
+                  // react-native-web does not implement it, which is the same
+                  // trap `IconButton` documents.
                   <Pressable
                     accessibilityRole="button"
                     accessibilityLabel={tr.settings.balanceDriftTitle}
                     onPress={() => router.push("/opening-balance")}
-                    style={(state) => ({
-                      flexDirection: "row",
-                      alignItems: "center",
-                      gap: 4,
-                      paddingHorizontal: spacing.sm,
-                      paddingVertical: 2,
-                      borderRadius: radius.full,
-                      backgroundColor: palette.warning + "1C",
-                      ...interactionSurface(palette, state),
-                      borderWidth: StyleSheet.hairlineWidth,
-                      borderColor: palette.warning + "80",
-                    })}
+                    style={{ minHeight: controlSize.minimumTarget, justifyContent: "center" }}
                   >
-                    <TriangleAlert accessible={false} size={12} color={palette.warningText} strokeWidth={2.4} />
-                    <Text style={[type.small, { color: palette.warningText, fontSize: type.micro.fontSize, fontFamily: font.semibold }]}>
-                      {tr.settings.balanceDriftShort}
-                    </Text>
+                    {(state) => (
+                      <View
+                        style={{
+                          flexDirection: "row",
+                          alignItems: "center",
+                          gap: 4,
+                          paddingHorizontal: spacing.sm,
+                          paddingVertical: spacing.xs,
+                          borderRadius: radius.full,
+                          backgroundColor: palette.warning + "1C",
+                          ...interactionSurface(palette, state, { base: palette.warning + "1C" }),
+                          borderWidth: StyleSheet.hairlineWidth,
+                          borderColor: palette.warning + "80",
+                        }}
+                      >
+                        <TriangleAlert accessible={false} size={iconSize.compact} color={palette.warningText} strokeWidth={2.4} />
+                        <Text style={[type.small, { color: palette.warningText, fontFamily: font.semibold }]}>
+                          {tr.settings.balanceDriftShort}
+                        </Text>
+                      </View>
+                    )}
                   </Pressable>
                 ) : null}
               </Row>
@@ -775,9 +824,9 @@ export default function DashboardScreen() {
                       of the same row, in the one vocabulary this app reserves
                       for the sign of money. */}
                   {projectedDelta != null && projectedDelta >= 0 ? (
-                    <TrendingUp size={18} color={palette.textSecondary} />
+                    <TrendingUp accessible={false} size={iconSize.accessory} color={palette.textSecondary} />
                   ) : (
-                    <TrendingDown size={18} color={palette.textSecondary} />
+                    <TrendingDown accessible={false} size={iconSize.accessory} color={palette.textSecondary} />
                   )}
                   <View style={{ flex: 1, gap: 2, minWidth: 0 }}>
                     <Text style={[type.label, { color: palette.textSecondary }]}>{tr.dashboard.forecastToggle}</Text>
@@ -811,9 +860,7 @@ export default function DashboardScreen() {
 
             <View style={wideDashboard ? { flex: 1, paddingLeft: spacing.xl, justifyContent: "space-between" } : undefined}>
               <View>
-                <Text style={[type.label, { color: palette.textSecondary, textTransform: "uppercase", letterSpacing: 1.1, fontSize: type.caption.fontSize }]}>
-                  {monthName(month)}
-                </Text>
+                <Eyebrow>{monthName(month)}</Eyebrow>
                 <MetricStrip
                   testID="dashboard-month-metrics"
                   style={{ marginTop: spacing.md }}
@@ -841,9 +888,13 @@ export default function DashboardScreen() {
         </HeroCard>
       ) : (
         <HeroCard>
-          {/* Same label/amount line heights as the loaded state. */}
-          <View style={{ width: 120, height: 13, borderRadius: radius.sm, backgroundColor: palette.border }} />
-          <View style={{ width: 208, height: 38, borderRadius: radius.sm, backgroundColor: palette.border, marginTop: spacing.xs }} />
+          {/* Same label and amount line heights as the loaded state, so the
+              hero does not change height when the figures arrive. These used
+              to be flat blocks of `border` — a colour that reads as a rule,
+              not as content — and they did not move, so they looked like a
+              layout that had failed rather than one that was loading. */}
+          <Skeleton width={120} height={type.label.fontSize} />
+          <Skeleton width={208} height={type.amountLg.fontSize} style={{ marginTop: spacing.xs }} />
         </HeroCard>
       )}
 
@@ -871,7 +922,7 @@ export default function DashboardScreen() {
               <Amount minor={-remainingFixedMinor} colorized={false} color={palette.negativeText} />
             </Spread>
           ) : null}
-          <View style={{ height: StyleSheet.hairlineWidth, backgroundColor: palette.border, marginVertical: spacing.sm }} />
+          <Divider />
           <Spread>
             <Body style={{ fontFamily: font.semibold }}>{tr.dashboard.forecastResult}</Body>
             <Amount
@@ -924,7 +975,23 @@ export default function DashboardScreen() {
         <View style={pairedDashboard ? { flex: 1, minWidth: 0 } : undefined}>
           {/* Upcoming payments */}
           <SectionHeader>{tr.dashboard.upcoming}</SectionHeader>
-      {dataStatus === "loading" || dataStatus === "error" ? null : (late.length > 0 || upcoming.length > 0) && selfPersonId ? (
+      {dataStatus === "error" ? null : dataStatus === "loading" ? (
+        /* The panel keeps its shape instead of leaving a gap that the real
+           card later pushes open. Three rows is what an ordinary account
+           shows, so the page settles rather than jumps. */
+        <Card style={pairedDashboard ? { flex: 1 } : undefined}>
+          {[0, 1, 2].map((row) => (
+            <Row key={row} gap={spacing.md} style={{ alignItems: "center", paddingVertical: spacing.md - 2 }}>
+              <Skeleton width={24} height={24} radius={radius.sm} />
+              <View style={{ flex: 1, gap: 6 }}>
+                <Skeleton width="60%" height={type.body.fontSize} />
+                <Skeleton width="40%" height={type.small.fontSize} />
+              </View>
+              <Skeleton width={STATUS_W} height={controlSize.minimumTarget} radius={radius.md} />
+            </Row>
+          ))}
+        </Card>
+      ) : (late.length > 0 || upcoming.length > 0) && selfPersonId ? (
         <Card style={pairedDashboard ? { flex: 1 } : undefined}>
           <View style={pairedDashboard ? { flexGrow: 1 } : undefined}>
             {dashboardLate.map((e) => (
@@ -1051,9 +1118,9 @@ export default function DashboardScreen() {
                 <>
                   <CalendarClock size={25} color={palette.accentText} strokeWidth={1.8} />
                   <View style={{ position: "absolute", bottom: spacing.sm, flexDirection: "row", gap: 4 }}>
-                    <View style={{ width: 5, height: 5, borderRadius: 3, backgroundColor: palette.surfaceStrong }} />
-                    <View style={{ width: 5, height: 5, borderRadius: 3, backgroundColor: palette.surfaceStrong }} />
-                    <View style={{ width: 5, height: 5, borderRadius: 3, backgroundColor: palette.primary }} />
+                    <View style={{ width: 5, height: 5, borderRadius: circle(5), backgroundColor: palette.surfaceStrong }} />
+                    <View style={{ width: 5, height: 5, borderRadius: circle(5), backgroundColor: palette.surfaceStrong }} />
+                    <View style={{ width: 5, height: 5, borderRadius: circle(5), backgroundColor: palette.primary }} />
                   </View>
                 </>
               )}

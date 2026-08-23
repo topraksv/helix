@@ -117,6 +117,29 @@ cost an incident to learn are repeated here.
   one and not the other.
 - A header's rule is always reserved and recoloured, never toggled on. A border
   that appears with a state moves the text beside it by those pixels.
+- The mark for a category or a payment source is a lucide component, and the
+  emoji→component table lives in `src/ui/category-icon.tsx` — the UI layer,
+  deliberately, not `src/domain/category-icons.ts`. The domain rule still picks
+  a glyph from a Turkish name and the stored value is unchanged, so nothing in
+  the database, a backup or a sync payload had to move for the app to stop
+  drawing emoji. The table is total because `icon` is written in only two
+  places, both from `suggestCategoryIcon`, and there is no icon picker; a value
+  from an older build still falls back rather than asserting.
+- Categorical chart colours come from `chartSeries`, not from the palette's
+  brand families. Measured across the shipped palettes, every non-surface token
+  sits inside roughly 20 L\* and 70° of hue, which cannot supply eight
+  distinguishable series — the ramp built from them put a surface colour in
+  slot 2 at 1.68–2.03 against its own background and collapsed to ΔE 1.1 under
+  deuteranopia. A category colour is an encoding and carries no brand meaning,
+  so the ramp is allowed to leave the fan; its separation comes from a
+  lightness ladder as much as from hue, because lightness is the axis
+  colour-blindness leaves intact.
+- Small-capital eyebrows case their text differently per platform, and the
+  difference is not cosmetic. Web keeps `textTransform`, because `lang="tr"`
+  makes the browser case correctly AND the untransformed string stays in the
+  DOM for a screen reader. Native has neither property — its transform maps
+  "i" to "I" rather than "İ" — so `Eyebrow` cases the string itself there and
+  hands the original to `accessibilityLabel`.
 
 ## Incident-derived decisions
 

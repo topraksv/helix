@@ -7,7 +7,6 @@ import { countInstallmentsForPlan, createInstallmentPlan, CreditCardCycleRequire
 import { useAllTransactionsState, useCategoriesState, usePersonsState, usePlansState, useSourcesState, useUserId } from "../data/hooks";
 import { combineLiveStates } from "../data/live-state";
 import { classifyRecordId } from "../domain/route-params";
-import { categoryIcon, paymentSourceIcon } from "../domain/category-icons";
 import { addMonthsToKey, monthKeyOf, todayISO, type MonthKey } from "../domain/dates";
 import { deriveStartMonth, isValidInstallmentCount, planProgress, type GeneratedInstallment } from "../domain/installments";
 import { formatMinorCompact, formatMinorInput } from "../domain/money";
@@ -19,6 +18,7 @@ import CreditCard from "lucide-react-native/icons/credit-card";
 import Landmark from "lucide-react-native/icons/landmark";
 import Trash2 from "lucide-react-native/icons/trash-2";
 import type { LucideIcon } from "lucide-react-native";
+import { categoryIconComponent, paymentSourceIconComponent } from "../ui/category-icon";
 import { Badge, Body, Button, Card, ChoiceTile, DataStateNotice, FadeIn, Field, Heading, IconButton, Label, MetricStrip, MoneyField, PanelHeader, Row, Screen, SegmentBar, Select, Spread } from "../ui/components";
 import { useSubmitOnEnter } from "../ui/keyboard";
 import { appAlert, appConfirm } from "../ui/dialog";
@@ -400,7 +400,7 @@ function PlanForm({ existing }: { existing?: ReturnType<typeof usePlansState>["d
             <Select
               label={tr.tx.source}
               placeholder={tr.tx.sourcePlaceholder}
-              options={sourceOptions.map((s) => ({ value: s.id, label: s.name, icon: paymentSourceIcon(s.type) }))}
+              options={sourceOptions.map((s) => ({ value: s.id, label: s.name, icon: paymentSourceIconComponent(s.type) }))}
               value={sourceId}
               onChange={setSourceId}
               onCreate={{ label: tr.installments.addCard, run: () => router.push("/payment-sources") }}
@@ -412,7 +412,7 @@ function PlanForm({ existing }: { existing?: ReturnType<typeof usePlansState>["d
             <Select
               label={tr.tx.category}
               placeholder={tr.tx.categoryPlaceholder}
-              options={categories.filter((c) => c.kind === "expense").map((c) => ({ value: c.id, label: c.name, icon: categoryIcon(c) }))}
+              options={categories.filter((c) => c.kind === "expense").map((c) => ({ value: c.id, label: c.name, icon: categoryIconComponent(c) }))}
               value={categoryId}
               onChange={setCategoryId}
               onCreate={{ label: tr.tx.addCategory, run: () => router.push("/columns-editor") }}

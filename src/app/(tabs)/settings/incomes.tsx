@@ -13,8 +13,8 @@ import { combineLiveStates } from "../../../data/live-state";
 import { deleteRecurringIncomeWithExpected, restoreDeletedRule, upsertRecurringIncome } from "../../../data/repo";
 import { scheduleSync } from "../../../sync/engine";
 import { shortDateLabel, tr } from "../../../i18n/tr";
+import { categoryIconComponent } from "../../../ui/category-icon";
 import { Body, Button, Card, CardList, ChipPicker, DataStateNotice, EmptyState, FadeIn, Field, Label, MoneyField, PanelHeader, Row, Screen, SectionHeader, Select } from "../../../ui/components";
-import { categoryIcon } from "../../../domain/category-icons";
 import { RuleRow } from "../../../ui/rule-row";
 import { useUndo } from "../../../ui/undo";
 import { font, radius, spacing, type, useTheme } from "../../../ui/theme";
@@ -320,7 +320,7 @@ export default function IncomeRulesScreen() {
         {incomeCategories.length > 1 ? (
           <Select
             label={tr.incomes.categoryLabel}
-            options={incomeCategories.map((c) => ({ value: c.id, label: c.name, icon: categoryIcon(c) }))}
+            options={incomeCategories.map((c) => ({ value: c.id, label: c.name, icon: categoryIconComponent(c) }))}
             value={categoryId}
             onChange={setCategoryChoice}
           />

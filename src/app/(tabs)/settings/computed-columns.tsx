@@ -37,6 +37,7 @@ import { monthKeyOf, todayISO, yearOf } from "../../../domain/dates";
 import { formatMinorCompact } from "../../../domain/money";
 import { scheduleSync } from "../../../sync/engine";
 import { tr } from "../../../i18n/tr";
+import { categoryIconComponent } from "../../../ui/category-icon";
 import { Amount, Body, Button, Card, ChipPicker, DataStateNotice, Divider, EmptyState, FadeIn, Field, IconButton, Label, PanelHeader, Row, Screen, SelectionGrid, Spread, Toggle } from "../../../ui/components";
 import { DraggableList, ReorderGrip } from "../../../ui/draggable-list";
 import { useUndo } from "../../../ui/undo";
@@ -269,7 +270,7 @@ export default function ComputedColumnsScreen({ header }: { header?: ReactNode }
     }
   };
 
-  const categoryChips = categories.map((c) => ({ value: c.id, label: c.name, icon: c.icon }));
+  const categoryChips = categories.map((c) => ({ value: c.id, label: c.name, icon: categoryIconComponent(c) }));
 
   if (!dataReady) {
     return (

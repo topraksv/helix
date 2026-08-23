@@ -86,8 +86,17 @@ describe("the month-end forecast carries one colour meaning", () => {
   );
 
   it("draws the direction with the glyph, in a neutral colour", () => {
-    expect(arrow).toContain("<TrendingUp size={18} color={palette.textSecondary} />");
-    expect(arrow).toContain("<TrendingDown size={18} color={palette.textSecondary} />");
+    // The invariant is the COLOUR and the pair of glyphs, not how the size is
+    // spelled — pinning `size={18}` made moving the literal onto the shared
+    // `iconSize` scale read as a regression, which is the same trap the
+    // forecast-padding test below already documents.
+    for (const glyph of ["<TrendingUp", "<TrendingDown"]) {
+      const at = arrow.indexOf(glyph);
+      expect(at, `${glyph} must be drawn`).toBeGreaterThanOrEqual(0);
+      const tag = arrow.slice(at, arrow.indexOf("/>", at));
+      expect(tag, `${glyph} must be neutral`).toContain("color={palette.textSecondary}");
+      expect(tag, `${glyph} is decoration beside a label`).toContain("accessible={false}");
+    }
     // The red/green vocabulary belongs to the amount below, which reads the
     // sign of the money. The arrow must not compete for it.
     expect(arrow).not.toContain("palette.positiveText");

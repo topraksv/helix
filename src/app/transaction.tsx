@@ -28,13 +28,13 @@ import {
 } from "../data/hooks";
 import { combineLiveStates } from "../data/live-state";
 import { classifyRecordId } from "../domain/route-params";
-import { categoryIcon, paymentSourceIcon } from "../domain/category-icons";
 import { previewTryMinor, resolveTransactionSave } from "../domain/transaction-draft";
 import { assertISODate, isISODate, lastDayOf, monthKeyOf, todayISO, type MonthKey } from "../domain/dates";
 import { isValidCardCycle, statementForPurchase } from "../domain/card-statements";
 import { formatMinorCompact, formatMinorInput } from "../domain/money";
 import { deriveStartMonth, isValidInstallmentCount } from "../domain/installments";
 import { lookupRate, useFxRates } from "../services/fx-fetch";
+import { categoryIconComponent, paymentSourceIconComponent } from "../ui/category-icon";
 import { CurrencyPicker } from "../ui/currency-picker";
 import { scheduleSync } from "../sync/engine";
 import { dateLabel, monthLabel, tr } from "../i18n/tr";
@@ -137,7 +137,7 @@ function InvestmentRefundForm({ transactionsState }: { transactionsState: Return
   const [monthKey, setMonthKey] = useState<MonthKey>(monthKeyOf(todayISO()));
   const [dateStr, setDateStr] = useState(todayISO());
   const [busy, setBusy] = useState(false);
-  const amountPlaceholder = useRotatingPlaceholder(placeholderPools.amount);
+  const amountPlaceholder = useRotatingPlaceholder(placeholderPools.amount, { active: amountRaw.length === 0 });
   React.useEffect(() => {
     if (categoryId || transferCategories.length !== 1) return;
     setCategoryId(transferCategories[0]!.id);
@@ -259,7 +259,7 @@ function InvestmentRefundForm({ transactionsState }: { transactionsState: Return
           testID="transaction-category"
           label={tr.tx.category}
           placeholder={tr.tx.categoryPlaceholder}
-          options={transferCategories.map((category) => ({ value: category.id, label: category.name, icon: categoryIcon(category) }))}
+          options={transferCategories.map((category) => ({ value: category.id, label: category.name, icon: categoryIconComponent(category) }))}
           value={categoryId}
           onChange={setCategoryId}
           onCreate={{ label: tr.tx.addCategory, run: () => router.push("/columns-editor") }}
@@ -412,9 +412,9 @@ function TransactionForm({ existing, investmentRefund = false }: { existing?: Ex
   const kindForCategories = entryType === "income" ? "income" : "expense";
   const categoryOptions = categories
     .filter((c) => c.kind === kindForCategories && (entryType !== "transfer" || c.isTransfer))
-    .map((c) => ({ value: c.id, label: c.name, icon: categoryIcon(c) }));
+    .map((c) => ({ value: c.id, label: c.name, icon: categoryIconComponent(c) }));
 
-  const sourceOptions = sources.map((s) => ({ value: s.id, label: s.name, icon: paymentSourceIcon(s.type) }));
+  const sourceOptions = sources.map((s) => ({ value: s.id, label: s.name, icon: paymentSourceIconComponent(s.type) }));
   const selectedSource = sources.find((source) => source.id === sourceId);
   const isCreditCardExpense = entryType === "expense" && selectedSource?.type === "credit_card";
   const cardCycle = selectedSource
@@ -589,8 +589,9 @@ function TransactionForm({ existing, investmentRefund = false }: { existing?: Ex
 
   // Desktop: Enter saves (unless the note textarea or a popup has focus).
   useSubmitOnEnter(() => void save(false), canSave && !busy);
-  const amountPlaceholder = useRotatingPlaceholder(placeholderPools.amount);
-  const notePlaceholder = useRotatingPlaceholder(placeholderPools.note);
+  // Only while the field is actually showing one. See `placeholders.ts`.
+  const amountPlaceholder = useRotatingPlaceholder(placeholderPools.amount, { active: amountRaw.length === 0 });
+  const notePlaceholder = useRotatingPlaceholder(placeholderPools.note, { active: note.length === 0 });
 
   if (!dataReady) {
     return (

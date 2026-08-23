@@ -7,7 +7,6 @@ import { useRouter } from "expo-router";
 import { bulkMonthEntry } from "../data/repo";
 import { useCategoriesState, usePersonsState, useUserId } from "../data/hooks";
 import { combineLiveStates } from "../data/live-state";
-import { categoryIcon } from "../domain/category-icons";
 import { addMonthsToKey, isCurrentOrFutureMonth, monthKeyOf, todayISO } from "../domain/dates";
 import { categoryTableEntryType } from "../domain/transactions";
 import { monthLabel, tr } from "../i18n/tr";
@@ -153,7 +152,7 @@ export default function BulkEntryModal() {
               {rows.map((c) => (
                 <View key={c.id}>
                   <MoneyField
-                    label={`${categoryIcon(c)} ${c.name} · ${c.kind === "income" ? tr.settings.kindIncome : tr.settings.kindExpense}`}
+                    label={`${c.name} · ${c.kind === "income" ? tr.settings.kindIncome : tr.settings.kindExpense}`}
                     value={values[c.id]?.raw ?? ""}
                     onChangeMinor={(raw, minor) => setValues((v) => ({ ...v, [c.id]: { raw, minor } }))}
                     inline

@@ -27,7 +27,7 @@ import { Button, Card, CardList, DataStateNotice, EmptyState, FadeIn, MetricStri
 import { RuleRow, type RuleBadge } from "../../ui/rule-row";
 import { Logo } from "../../ui/logo";
 import { useUndo } from "../../ui/undo";
-import { circle, radius, spacing, type, useTheme } from "../../ui/theme";
+import { circle, font, radius, spacing, type, useTheme } from "../../ui/theme";
 import { appAlert } from "../../ui/dialog";
 import { WorkspaceGrid } from "../../ui/workspace-layout";
 
@@ -148,9 +148,22 @@ function SubscriptionScheduleOverview({
                       borderColor: palette.primary + "70",
                     }}
                   >
-                    <Text style={[type.amountSm, { color: palette.primaryText, fontSize: nextDayOffset === 0 ? 12 : nextDayOffset === 1 ? 11 : 18 }]}>
-                      {nextDayOffset === 0 ? tr.subs.todayShort : nextDayOffset === 1 ? tr.subs.tomorrowShort : nextDayOffset}
-                    </Text>
+                    {/* One size, whatever the disc says. It used to pick
+                        between 18, 12 and 11 depending on whether the answer
+                        was a number, "Bugün" or "Yarın" — three type sizes for
+                        one control, none of them on the scale, and an 11pt
+                        word lost inside a 54pt circle. A word is a word: it
+                        takes the label role, a figure takes the figure role,
+                        and both fill the same disc. */}
+                    {nextDayOffset === 0 || nextDayOffset === 1 ? (
+                      <Text style={[type.label, { color: palette.primaryText, fontFamily: font.semibold, textAlign: "center" }]}>
+                        {nextDayOffset === 0 ? tr.subs.todayShort : tr.subs.tomorrowShort}
+                      </Text>
+                    ) : (
+                      <Text style={[type.heading, { color: palette.primaryText, fontVariant: ["tabular-nums"] }]}>
+                        {nextDayOffset}
+                      </Text>
+                    )}
                     {nextDayOffset != null && nextDayOffset > 1 ? (
                       <Text style={[type.small, { color: palette.primaryText, fontSize: type.micro.fontSize }]}>{tr.subs.daysShort}</Text>
                     ) : null}
@@ -173,11 +186,11 @@ function SubscriptionScheduleOverview({
               }}
             >
               <View style={{ flex: 1, padding: spacing.sm, borderRadius: radius.sm, backgroundColor: palette.primarySoft, borderLeftWidth: 3, borderLeftColor: palette.primary }}>
-                <Text style={[type.amountSm, { color: palette.textStrong }]}>{upcoming.length}</Text>
+                <Text style={[type.heading, { color: palette.textStrong, fontVariant: ["tabular-nums"] }]}>{upcoming.length}</Text>
                 <Text style={[type.small, { color: palette.textSecondary }]}>{tr.subs.next31Days}</Text>
               </View>
               <View style={{ flex: 1, padding: spacing.sm, borderRadius: radius.sm, backgroundColor: palette.secondarySoft, borderLeftWidth: 3, borderLeftColor: palette.secondary }}>
-                <Text style={[type.amountSm, { color: palette.textStrong }]}>{autoPayCount}/{active.length}</Text>
+                <Text style={[type.heading, { color: palette.textStrong, fontVariant: ["tabular-nums"] }]}>{autoPayCount}/{active.length}</Text>
                 <Text style={[type.small, { color: palette.textSecondary }]}>{tr.subs.automaticShort}</Text>
               </View>
             </View>

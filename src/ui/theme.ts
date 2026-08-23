@@ -172,7 +172,7 @@ const amberDark: Palette = {
   surfaceTranslucent: "#191512EB",
   surfaceAlt: "#27211D",
   surfaceStrong: "#473D36",
-  border: "#5F534A",
+  border: "#807064",
   controlBorder: "#8F8176",
   textStrong: "#F2ECE6",
   text: "#E5DDD6",
@@ -243,7 +243,7 @@ const petrolDark: Palette = {
   surfaceTranslucent: "#15191CEB",
   surfaceAlt: "#20262A",
   surfaceStrong: "#3A444A",
-  border: "#536068",
+  border: "#687882",
   controlBorder: "#89969D",
   textStrong: "#F1F3F3",
   text: "#E2E6E7",
@@ -314,7 +314,7 @@ const serviDark: Palette = {
   surfaceTranslucent: "#171917EB",
   surfaceAlt: "#232623",
   surfaceStrong: "#414641",
-  border: "#596059",
+  border: "#6F786F",
   controlBorder: "#8B938C",
   textStrong: "#F0F2ED",
   text: "#E2E7E1",
@@ -476,7 +476,65 @@ export const chart = {
   donutWidth: 20,
   markerRadius: 4,
   barRadius: 4,
+  /**
+   * Text drawn INSIDE an SVG, which is drawing geometry rather than a
+   * typographic role — but it is still read by a person, so it obeys the same
+   * floor the type scale sets. `Bars` already stepped its axis between two
+   * sizes; `Lines` and the donut were left at 9, a quarter under that floor.
+   *
+   * `axis` / `axisLarge` mirror the two steps `shouldUseLargeAxisType` picks
+   * between. `centreLabel` and `centreValue` are the donut's middle, and they
+   * are RATIOS of the ring rather than constants: the ring is drawn at 152,
+   * 236 or 300 depending on the viewport, and a fixed 13pt figure that reads
+   * as the answer on a phone reads as a footnote inside a 300pt ring.
+   */
+  axisFontSize: 10,
+  axisFontSizeLarge: 11,
+  centreLabelRatio: 0.062,
+  centreValueRatio: 0.098,
 } as const;
+
+/**
+ * Categorical series colours.
+ *
+ * These deliberately leave the theme's brand fan, and that is the whole point.
+ * Measured across the three shipped palettes, every non-surface token sits in a
+ * band roughly 20 L* wide and 70° of hue — so the palette's own vocabulary
+ * cannot supply eight colours a person can tell apart, and the ramp built from
+ * it did not: the three `*Strong` entries were 7.4-8.6 ΔE from their own base,
+ * `surfaceStrong` failed the 3:1 a graphical object owes its background in all
+ * six schemes (1.68-2.03), and under deuteranopia two pairs collapsed to
+ * ΔE 1.1 — the same colour to roughly 6% of men.
+ *
+ * A category colour carries no brand meaning; it is an encoding. So this is a
+ * purpose-built ramp, chosen by search rather than by eye, and its separation
+ * comes from a LIGHTNESS ladder as much as from hue — lightness is the axis
+ * colour-blindness leaves intact.
+ *
+ * Measured: minimum pairwise ΔE2000 11.6 (light) / 16.5 (dark); under
+ * deuteranopia 10.1 / 11.5; minimum contrast 3.13 / 4.49 against every surface
+ * and surfaceAlt the app paints them on. Purple and magenta stay out of the
+ * ramp entirely, as everywhere else in this app.
+ *
+ * `tests/theme-contrast.test.ts` re-measures all of it from these values.
+ */
+export const chartSeries = {
+  light: ["#9c3548", "#008a99", "#997026", "#005fa4", "#535f06", "#006853", "#007ec4", "#a56758"],
+  dark: ["#eeb67b", "#0096cb", "#509a68", "#89c7fa", "#ee9ea5", "#51d5c3", "#a09b51", "#219a9d"],
+} as const;
+
+/**
+ * The series ramp for a scheme, as a plain function.
+ *
+ * `useSeriesColors` is a hook, so a test cannot call it — and the contract test
+ * that claimed to "mirror" it had silently drifted to a list of eight tokens
+ * the app stopped using, which is why none of the defects above were caught.
+ * The hook now memoizes THIS, and the test imports THIS, so the two cannot
+ * describe different ramps again.
+ */
+export function chartSeriesColors(scheme: "light" | "dark"): readonly string[] {
+  return chartSeries[scheme];
+}
 
 /** Shared control geometry. Keep compact visual controls distinct from the
  *  minimum interactive target: compact buttons use hitSlop to reach 44pt. */
@@ -550,11 +608,12 @@ export function segmentedMaxWidth(optionCount: number): number {
  * halves to a whole point at 1x, 2x and 3x alike.
  */
 /**
- * `emoji` is a glyph used as an icon: a user-chosen category mark rendered by
- * the text engine rather than by lucide. It sizes with the other marks, not
- * with the copy beside it, so it belongs here and not in the type scale.
+ * `emoji` is gone. It sized a glyph that the text engine drew as an icon —
+ * a category or payment-source mark — and those are lucide components now,
+ * so they take `compact` or `control` like every other mark in the app. See
+ * `ui/category-icon.tsx` for why the change stayed in the UI layer.
  */
-export const iconSize = { compact: 15, control: 17, accessory: 18, headerBack: 24, emoji: 14 } as const;
+export const iconSize = { compact: 15, control: 17, accessory: 18, headerBack: 24 } as const;
 
 /**
  * `selected` is the ring a chosen tile wears. It used to be written as
@@ -622,6 +681,20 @@ export const type = {
   sectionTitle: { fontSize: 16, fontFamily: font.semibold, letterSpacing: -0.2 },
   body: { fontSize: 15, fontFamily: font.regular },
   label: { fontSize: 13, fontFamily: font.medium },
+  /**
+   * The small capital line that names the block under it.
+   *
+   * There were ten of these and five recipes: `label` at caption size with
+   * letter-spacing 1, the same at 1.1, `small` at micro size with no spacing
+   * at all, and `small` at 0.6 and 0.7 in the operation flow. Same job, five
+   * answers, so no two screens introduced a section the same way.
+   *
+   * The role carries size, face and spacing only. The CASING is not here on
+   * purpose: `textTransform: "uppercase"` is locale-blind on native and turns
+   * Turkish "i" into "I" rather than "İ", so the text goes through
+   * `upperTR` in `i18n/tr.ts` instead and this role never sees it.
+   */
+  eyebrow: { fontSize: 11, fontFamily: font.semibold, letterSpacing: 1 },
   small: { fontSize: 12, fontFamily: font.regular },
   /** What a figure beside it is called. */
   caption: { fontSize: 11, fontFamily: font.regular },
@@ -659,6 +732,32 @@ export const type = {
   amount: { fontSize: 15, fontFamily: font.semibold, fontVariant: ["tabular-nums" as const] },
   amountSm: { fontSize: 12, fontFamily: font.medium, fontVariant: ["tabular-nums" as const] },
 };
+
+/**
+ * Prose leading, and why it is a ratio applied at one call site rather than a
+ * number in the scale above.
+ *
+ * A pinned `lineHeight` beside a scaling `fontSize` is the Dynamic Type
+ * clipping bug the scale refuses outright, and it is right to: iOS
+ * accessibility sizes reach ~3.1x, the glyphs grow and a constant line box does
+ * not, so descenders are cut. Neither `PixelRatio.getFontScale()` nor
+ * `useWindowDimensions().fontScale` reports that multiplier on iOS — both
+ * follow Display Zoom — so there is no honest way to scale a line box with it.
+ *
+ * The web half has the opposite problem and no such excuse. React Native Web
+ * writes `font: 14px System` on every Text, and the `font` shorthand RESETS
+ * `line-height` to `normal` — about 1.21 for Inter. So every paragraph in this
+ * app was set at 1.21 where prose wants ~1.5, and Turkish makes that worse than
+ * it sounds: a ğ or ş descender ends up nearly touching the İ dots on the line
+ * below.
+ *
+ * Browser page zoom scales a px line box with the text, so a derived value is
+ * safe there in a way it is not on native. This therefore applies on web only,
+ * to PROSE only — `Body`, which is the one role that runs to several lines —
+ * and it is derived from that role's own fontSize rather than written out, so
+ * it cannot drift from it.
+ */
+export const proseLeading = 1.5;
 
 /**
  * The dense action tile used by equal-width action rails.

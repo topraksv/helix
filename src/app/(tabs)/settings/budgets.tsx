@@ -11,8 +11,8 @@ import { monthKeyOf, todayISO } from "../../../domain/dates";
 import { formatMinorCompact, formatMinorInput } from "../../../domain/money";
 import { tr } from "../../../i18n/tr";
 import { scheduleSync } from "../../../sync/engine";
+import { categoryIconComponent } from "../../../ui/category-icon";
 import { Body, Button, Card, CardList, DataStateNotice, EmptyState, IconButton, MoneyField, MonthStepper, PanelHeader, Row, Screen, SectionHeader, SegmentBar, Select, Spread } from "../../../ui/components";
-import { categoryIcon } from "../../../domain/category-icons";
 import { useDirtyExitGuard } from "../../../ui/dirty-exit";
 import { useOperationGuard } from "../../../ui/operation-guard";
 import { WorkspaceSplit } from "../../../ui/workspace-layout";
@@ -154,7 +154,7 @@ export default function BudgetsScreen() {
         ) : null}
         <Select
           label={tr.budgets.category}
-          options={expenseCategories.map((category) => ({ value: category.id, label: category.name, icon: categoryIcon(category) }))}
+          options={expenseCategories.map((category) => ({ value: category.id, label: category.name, icon: categoryIconComponent(category) }))}
           value={categoryId}
           placeholder={tr.budgets.pickCategory}
           onChange={(value) => confirmDiscard(() => {

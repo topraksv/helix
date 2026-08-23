@@ -30,7 +30,7 @@ import { installmentDisplayTitle } from "../../../domain/installments";
 import { formatMinorCompact } from "../../../domain/money";
 import { signedBalanceEffectOf } from "../../../domain/transactions";
 import { transactionDateText } from "../../../ui/transaction-date";
-import { categoryIcon } from "../../../domain/category-icons";
+import { CategoryIcon } from "../../../ui/category-icon";
 import { monthLabel, tr } from "../../../i18n/tr";
 import { Amount, Body, Button, Card, DataStateNotice, DisclosureChevron, EmptyState, Field, Heading, Row, Screen, Spread } from "../../../ui/components";
 import { useDrawIn } from "../../../ui/motion-primitives";
@@ -38,7 +38,7 @@ import { TransactionRow } from "../../../ui/transaction-row";
 import { useUndo } from "../../../ui/undo";
 import { selectionTapIfChanged } from "../../../ui/haptics";
 import { interactionSurface } from "../../../ui/interaction";
-import { controlSize, motion, radius, spacing, type, useTheme } from "../../../ui/theme";
+import { controlSize, iconSize, motion, radius, spacing, type, useTheme } from "../../../ui/theme";
 import { navigateBack } from "../../../ui/navigation";
 import { useDirtyExitGuard } from "../../../ui/dirty-exit";
 import { appAlert } from "../../../ui/dialog";
@@ -357,10 +357,10 @@ export default function MonthDetailScreen() {
             >
               <Spread style={{ alignItems: "flex-start" }}>
                 <View style={{ flex: 1, paddingRight: spacing.md }}>
-                  <Heading style={{ marginVertical: 0 }}>
-                    {category ? `${categoryIcon(category)} ` : ""}
-                    {title}
-                  </Heading>
+                  <Row gap={spacing.sm} style={{ alignItems: "center" }}>
+                    {category ? <CategoryIcon category={category} size={iconSize.control} /> : null}
+                    <Heading style={{ marginVertical: 0, flex: 1, minWidth: 0 }}>{title}</Heading>
+                  </Row>
                   {/* The note itself is the indicator. A badge saying "Not"
                       read like a category of its own, and a floating pill
                       never lined up with the serif heading beside it. Quoting

@@ -161,7 +161,13 @@ test("the transfer classification appears once, in the row being edited", async 
 
   // A transfer column still says so on the collapsed row — read-only, and only
   // where it is true. The seeded "Yatırım" column is the one such column.
-  const marker = page.getByText("Yatırım", { exact: true });
+  //
+  // Targeted by test id and not by its text: the marker reads "Yatırım" and so
+  // does the seeded category's NAME, which used to be un-matchable only
+  // because an emoji sat in front of it in the same Text. The category mark is
+  // a drawn icon now, so the name is exact text too and a text locator counts
+  // both. What this test is about is the marker, so it asks for the marker.
+  const marker = page.getByTestId("category-transfer-marker");
   await expect(marker).toHaveCount(1);
 
   // Editing a column reveals its own classification, and only its own.

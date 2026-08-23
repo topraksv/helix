@@ -313,10 +313,18 @@ function RootLayoutInner() {
   useEffect(() => {
     if (Platform.OS !== "web" || typeof document === "undefined") return;
     document.documentElement.style.colorScheme = scheme;
+    // The keyboard focus ring is drawn by a real `:focus-visible` rule in
+    // `+html.tsx` rather than from a Pressable's `focused` flag, because only
+    // the browser knows whether focus arrived from a key or from a click — and
+    // a ring on every mouse press is worse than no ring at all. The rule needs
+    // the live palette, which only this side knows, so the colour crosses over
+    // as a custom property.
+    document.documentElement.style.setProperty("--helix-focus", theme.palette.focus);
     return () => {
       document.documentElement.style.removeProperty("color-scheme");
+      document.documentElement.style.removeProperty("--helix-focus");
     };
-  }, [scheme]);
+  }, [scheme, theme.palette.focus]);
 
   useEffect(() => {
     void loadDevicePreferences();

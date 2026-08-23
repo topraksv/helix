@@ -205,6 +205,7 @@ export const tr = {
     localSignOutDialogStepBackupTitle: "İstersen önce yedek al",
     localSignOutDialogStepBackupDetail: "Yedek Oluştur ile verilerini dışa aktarabilirsin.",
     passwordMin: "En az 8 karakter",
+    emailInvalid: "Geçerli bir e-posta adresi girin",
     noAccount: "Hesabın yok mu?",
     signUpAction: "Kayıt ol",
     haveAccount: "Zaten hesabın var mı?",
@@ -1543,6 +1544,25 @@ export const tr = {
   },
   months: ["Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran", "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık"],
 } as const;
+
+/**
+ * Turkish upper case.
+ *
+ * `textTransform: "uppercase"` is the obvious way to write a small-capital
+ * eyebrow and it is wrong here. On the web it happens to work, because
+ * `<html lang="tr">` is set and browsers case per the document language — so
+ * the defect is invisible in the browser suite. React Native's own transform
+ * has no locale: it maps "i" to "I" rather than to "İ", so on the shipped iOS
+ * and Android builds the dashboard read GÜNCEL BAKIYE, and three months a year
+ * came out NISAN, HAZIRAN and EKIM.
+ *
+ * `toLocaleUpperCase("tr-TR")` is what the rest of this file already uses for
+ * names and search keys; eyebrows now go through the same door. The dotless ı
+ * is handled by the same mapping, so MAYIS and KASIM stay correct too.
+ */
+export function upperTR(value: string): string {
+  return value.toLocaleUpperCase("tr-TR");
+}
 
 export function monthLabel(monthKey: string): string {
   const [y, m] = monthKey.split("-");

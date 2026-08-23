@@ -2,7 +2,89 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { BRAND, brandPlate } from "../src/ui/brand-colors";
 import { badgeHue, initialsBadgeColor } from "../src/ui/badge-color";
-import { darkPalette, DEFAULT_PALETTE_ID, generatedBadgeForeground, heroSurface, lightPalette, PALETTES, resolvePaletteId, type Palette } from "../src/ui/theme";
+import { chartSeriesColors, darkPalette, DEFAULT_PALETTE_ID, generatedBadgeForeground, heroSurface, lightPalette, PALETTES, resolvePaletteId, type Palette } from "../src/ui/theme";
+
+/** sRGB hex to CIE Lab (D65), for perceptual difference rather than luminance. */
+function toLab(hex: string): [number, number, number] {
+  const channels = hex.match(/[0-9a-f]{2}/gi);
+  if (!channels || channels.length !== 3) throw new Error(`Unsupported color: ${hex}`);
+  const [r, g, b] = channels.map((value) => {
+    const c = Number.parseInt(value, 16) / 255;
+    return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+  }) as [number, number, number];
+  const x = (r * 0.4124564 + g * 0.3575761 + b * 0.1804375) / 0.95047;
+  const y = r * 0.2126729 + g * 0.7151522 + b * 0.072175;
+  const z = (r * 0.0193339 + g * 0.119192 + b * 0.9503041) / 1.08883;
+  const f = (t: number) => (t > 0.008856 ? Math.cbrt(t) : 7.787 * t + 16 / 116);
+  return [116 * f(y) - 16, 500 * (f(x) - f(y)), 200 * (f(y) - f(z))];
+}
+
+function lchHue(hex: string): number {
+  const [, a, b] = toLab(hex);
+  return ((Math.atan2(b, a) * 180) / Math.PI + 360) % 360;
+}
+
+/** CIEDE2000. Below ~10 two fills stop being two categories to a reader. */
+function deltaE2000(hexA: string, hexB: string): number {
+  const [L1, a1, b1] = toLab(hexA);
+  const [L2, a2, b2] = toLab(hexB);
+  const C1 = Math.hypot(a1, b1);
+  const C2 = Math.hypot(a2, b2);
+  const Cb = (C1 + C2) / 2;
+  const G = 0.5 * (1 - Math.sqrt(Cb ** 7 / (Cb ** 7 + 25 ** 7)));
+  const a1p = (1 + G) * a1;
+  const a2p = (1 + G) * a2;
+  const C1p = Math.hypot(a1p, b1);
+  const C2p = Math.hypot(a2p, b2);
+  const h1p = ((Math.atan2(b1, a1p) * 180) / Math.PI + 360) % 360;
+  const h2p = ((Math.atan2(b2, a2p) * 180) / Math.PI + 360) % 360;
+  const dLp = L2 - L1;
+  const dCp = C2p - C1p;
+  const dhp = C1p * C2p === 0 ? 0 : (((h2p - h1p + 180) % 360) - 180);
+  const dHp = 2 * Math.sqrt(C1p * C2p) * Math.sin((dhp * Math.PI) / 360);
+  const Lbp = (L1 + L2) / 2;
+  const Cbp = (C1p + C2p) / 2;
+  let hbp: number;
+  if (C1p * C2p === 0) hbp = h1p + h2p;
+  else if (Math.abs(h1p - h2p) <= 180) hbp = (h1p + h2p) / 2;
+  else hbp = h1p + h2p < 360 ? (h1p + h2p + 360) / 2 : (h1p + h2p - 360) / 2;
+  const rad = (d: number) => (d * Math.PI) / 180;
+  const T = 1 - 0.17 * Math.cos(rad(hbp - 30)) + 0.24 * Math.cos(rad(2 * hbp))
+    + 0.32 * Math.cos(rad(3 * hbp + 6)) - 0.2 * Math.cos(rad(4 * hbp - 63));
+  const Sl = 1 + (0.015 * (Lbp - 50) ** 2) / Math.sqrt(20 + (Lbp - 50) ** 2);
+  const Sc = 1 + 0.045 * Cbp;
+  const Sh = 1 + 0.015 * Cbp * T;
+  const Rt = -Math.sin(rad(60 * Math.exp(-(((hbp - 275) / 25) ** 2))))
+    * (2 * Math.sqrt(Cbp ** 7 / (Cbp ** 7 + 25 ** 7)));
+  return Math.sqrt((dLp / Sl) ** 2 + (dCp / Sc) ** 2 + (dHp / Sh) ** 2 + Rt * (dCp / Sc) * (dHp / Sh));
+}
+
+/**
+ * Brettel/Viénot deuteranopia, the common red-green deficiency (~6% of men).
+ *
+ * This is the case the old ramp failed hardest: two pairs measured ΔE 1.1,
+ * which is one colour wearing two names in the legend.
+ */
+function simulateDeuteranopia(hex: string): string {
+  const channels = hex.match(/[0-9a-f]{2}/gi);
+  if (!channels || channels.length !== 3) throw new Error(`Unsupported color: ${hex}`);
+  const [r, g, b] = channels.map((value) => {
+    const c = Number.parseInt(value, 16) / 255;
+    return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+  }) as [number, number, number];
+  const L = 17.8824 * r + 43.5161 * g + 4.11935 * b;
+  const S = 0.0299566 * r + 0.184309 * g + 1.46709 * b;
+  const Md = 0.494207 * L + 1.24827 * S;
+  const back = (c: number) => {
+    const v = Math.max(0, Math.min(1, c));
+    const encoded = v <= 0.0031308 ? v * 12.92 : 1.055 * v ** (1 / 2.4) - 0.055;
+    return Math.round(Math.max(0, Math.min(1, encoded)) * 255).toString(16).padStart(2, "0");
+  };
+  return "#"
+    + back(0.080944 * L - 0.130504 * Md + 0.116721 * S)
+    + back(-0.0102485 * L + 0.0540194 * Md - 0.113615 * S)
+    + back(-0.000365 * L - 0.00412 * Md + 0.693513 * S);
+}
 
 const shippedPalettes = Object.values(PALETTES).flatMap(({ light, dark }) => [light, dark]);
 
@@ -158,7 +240,7 @@ describe("semantic theme contrast", () => {
       surfaceStrong: "#473D36", textStrong: "#F2ECE6",
       text: "#E5DDD6", textSecondary: "#BEB2A8", textMuted: "#9D9289",
       primary: "#D88967", accentText: "#E7A68B", primaryStrong: "#BE6B4A",
-      primarySoft: "#3C2A22", border: "#5F534A",
+      primarySoft: "#3C2A22", border: "#807064",
     });
   });
 
@@ -391,51 +473,78 @@ describe("semantic theme contrast", () => {
     }
   });
 
-  // Categorical chart fills identify a category; they must not read as a
-  // status scale. Amber beside red is the worst case — a warning-then-danger
-  // ramp for two categories that mean nothing of the kind, and the pair hardest
-  // to tell apart with a red-green colour vision deficiency.
-  it("never places the semantic accents next to each other in chart series", () => {
-    // Hue families, since the palette has three near-identical clay tones that
-    // would otherwise count as three distinct categories.
-    const family = (palette: Palette) =>
-      new Map<string, string>([
-        [palette.primary, "primary"],
-        [palette.primaryStrong, "primary"],
-        [palette.accentText, "primary"],
-        [palette.positive, "green"],
-        [palette.warning, "amber"],
-        [palette.negative, "red"],
-        [palette.surfaceStrong, "neutral"],
-        [palette.textSecondary, "neutral"],
-      ]);
+  /**
+   * The categorical ramp, measured rather than described.
+   *
+   * The test that stood here claimed to "mirror `useSeriesColors`, which cannot
+   * be imported (it is a hook)" — and had drifted: it checked eight tokens
+   * (`positive`, `warning`, `negative`, `accentText` …) that the hook had
+   * stopped returning, so for as long as it was green it was guarding a ramp
+   * that did not exist. That is why none of the following was caught:
+   *
+   *   - `surfaceStrong` sat in slot 2 and measured 1.68-2.03 against the
+   *     surfaces it was drawn on, where a graphical object owes 3:1;
+   *   - the three `*Strong` entries were 7.4-8.6 ΔE from their own base hue;
+   *   - under deuteranopia two pairs fell to ΔE 1.1 — one colour, not two.
+   *
+   * The fix is structural: the ramp is a plain function, so this imports the
+   * real thing. And the assertions are measurements, so a future ramp has to
+   * earn its slot rather than be described accurately.
+   */
+  const SURFACES = shippedPalettes.flatMap((p) => [p.surface, p.surfaceAlt]);
 
-    for (const palette of shippedPalettes) {
-      // Mirrors `useSeriesColors`, which cannot be imported here (it is a hook).
-      const series = [
-        palette.primary,
-        palette.positive,
-        palette.surfaceStrong,
-        palette.primaryStrong,
-        palette.warning,
-        palette.textSecondary,
-        palette.accentText,
-        palette.negative,
-      ];
-      const families = series.map((color) => family(palette).get(color));
-      expect(families, "every series colour must be a known palette token").not.toContain(undefined);
+  it("keeps every series colour legible on every surface it is drawn on", () => {
+    for (const scheme of ["light", "dark"] as const) {
+      const grounds = shippedPalettes
+        .filter((p) => (luminance(p.surface) > 0.5) === (scheme === "light"))
+        .flatMap((p) => [p.surface, p.surfaceAlt]);
+      for (const colour of chartSeriesColors(scheme)) {
+        for (const ground of grounds) {
+          expect(
+            contrastRatio(colour, ground),
+            `series ${colour} on ${ground} (${scheme})`,
+          ).toBeGreaterThanOrEqual(3);
+        }
+      }
+    }
+    expect(SURFACES.length).toBeGreaterThan(0);
+  });
 
-      const semantic = new Set(["green", "amber", "red"]);
-      for (let index = 0; index < families.length; index += 1) {
-        // Charts wrap: with more categories than colours the last is drawn
-        // beside the first, so the adjacency check has to wrap too.
-        const current = families[index]!;
-        const next = families[(index + 1) % families.length]!;
-        expect(current, `series ${index} and ${(index + 1) % families.length} share a hue family`).not.toBe(next);
-        expect(
-          semantic.has(current) && semantic.has(next),
-          `series ${index} (${current}) sits next to ${next}`,
-        ).toBe(false);
+  it("keeps every pair of series colours apart, in normal and red-green vision", () => {
+    for (const scheme of ["light", "dark"] as const) {
+      const ramp = chartSeriesColors(scheme);
+      expect(ramp).toHaveLength(8);
+      for (let i = 0; i < ramp.length; i += 1) {
+        for (let j = i + 1; j < ramp.length; j += 1) {
+          const a = ramp[i]!;
+          const b = ramp[j]!;
+          expect(deltaE2000(a, b), `${scheme}: ${a} vs ${b}`).toBeGreaterThanOrEqual(10);
+          expect(
+            deltaE2000(simulateDeuteranopia(a), simulateDeuteranopia(b)),
+            `${scheme}: ${a} vs ${b} under deuteranopia`,
+          ).toBeGreaterThanOrEqual(9);
+        }
+      }
+    }
+  });
+
+  it("keeps purple and magenta out of the ramp, as everywhere else", () => {
+    for (const scheme of ["light", "dark"] as const) {
+      for (const colour of chartSeriesColors(scheme)) {
+        const hue = lchHue(colour);
+        expect(hue > 288 && hue < 356, `${colour} sits in the purple/magenta band`).toBe(false);
+      }
+    }
+  });
+
+  it("never lets a category colour double as a status colour", () => {
+    const statuses = new Set(
+      shippedPalettes.flatMap((p) => [p.positive, p.negative, p.success, p.error, p.warning, p.destructive]
+        .map((c) => c.toLowerCase())),
+    );
+    for (const scheme of ["light", "dark"] as const) {
+      for (const colour of chartSeriesColors(scheme)) {
+        expect(statuses.has(colour.toLowerCase()), `${colour} is also a status colour`).toBe(false);
       }
     }
   });

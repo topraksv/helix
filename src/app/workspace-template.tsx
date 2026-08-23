@@ -16,6 +16,7 @@ import { useCategoriesState, useUserId } from "../data/hooks";
 import { combineLiveStates } from "../data/live-state";
 import { tr } from "../i18n/tr";
 import { scheduleSync } from "../sync/engine";
+import { categoryIconComponent } from "../ui/category-icon";
 import { Button, DataStateNotice, EmptyState, Screen, SectionHeader, SelectionGrid } from "../ui/components";
 import { navigateBack } from "../ui/navigation";
 import { useOperationGuard } from "../ui/operation-guard";
@@ -26,15 +27,14 @@ const ALL_TEMPLATES = [...TEMPLATE_CATEGORIES, ...TEMPLATE_EXTRA_CATEGORIES];
 
 const norm = (s: string) => s.toLocaleLowerCase("tr-TR");
 /**
- * One tile per template category. The icon is passed separately rather than
- * packed into the label: `ToggleGrid` gives it a fixed column, so the names
- * line up instead of starting wherever the previous emoji's advance width
- * happened to end.
+ * One tile per template category. The mark is passed separately rather than
+ * packed into the label, so the names line up in their own column instead of
+ * starting wherever the previous mark's advance width happened to end.
  */
 const tile = (c: (typeof TEMPLATE_CATEGORIES)[number]) => ({
   value: c.name,
   label: `${c.name} · ${c.kind === "income" ? tr.settings.kindIncome : tr.settings.kindExpense}`,
-  icon: c.icon,
+  icon: categoryIconComponent(c),
 });
 
 export default function WorkspaceTemplateModal() {

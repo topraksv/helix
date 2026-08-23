@@ -16,6 +16,7 @@ import { formatMinorCompact } from "../../../domain/money";
 import { signedBalanceEffectOf } from "../../../domain/transactions";
 import { filterTransactions, sortTransactions, type TransactionSortMode } from "../../../domain/transaction-search";
 import { budgetProgress } from "../../../domain/budgets";
+import { categoryIconComponent, paymentSourceIconComponent } from "../../../ui/category-icon";
 import { transactionDateText } from "../../../ui/transaction-date";
 import { monthLabel, monthName, shortMonthLabel, tr } from "../../../i18n/tr";
 import {
@@ -27,7 +28,6 @@ import {
   useTxLike,
 } from "../../../data/hooks";
 import { combineLiveStates } from "../../../data/live-state";
-import { categoryIcon, paymentSourceIcon } from "../../../domain/category-icons";
 import { Amount, Badge, Body, Button, Card, CardList, DataStateNotice, Divider, EmptyState, Field, FieldNote, Heading, IconButton, ListRow, MetricStrip, Row, Screen, SectionHeader, Segmented, Select, Spread } from "../../../ui/components";
 import { Bars, ChartFrame, Donut, Lines, distributionDonutData, useSeriesColors } from "../../../ui/charts";
 import { Collapse } from "../../../ui/motion-primitives";
@@ -42,6 +42,11 @@ type Period = "1m" | "3m" | "6m" | "12m" | "year" | "custom";
 
 /** Results shown before the user asks for the rest. */
 const RESULT_PREVIEW_COUNT = 5;
+
+/** What one table row occupies when its label fits a single line, and the
+ *  header plus footer around the rows. A CEILING input, never a measurement. */
+const ANALYSIS_ROW_HEIGHT = 52;
+const ANALYSIS_TABLE_CHROME = 60;
 
 export default function AnalysisScreen() {
   const today = todayISO();
@@ -311,7 +316,7 @@ export default function AnalysisScreen() {
 
       <Select
         label={tr.tx.category}
-        options={[{ value: "", label: tr.analysis.allCategories }, ...categories.map((c) => ({ value: c.id, label: c.name, icon: categoryIcon(c) }))]}
+        options={[{ value: "", label: tr.analysis.allCategories }, ...categories.map((c) => ({ value: c.id, label: c.name, icon: categoryIconComponent(c) }))]}
         value={categoryFilter ?? ""}
         onChange={(v) => {
           setCategoryFilter(v === "" ? null : v);
@@ -356,7 +361,7 @@ export default function AnalysisScreen() {
           <View style={{ flex: 1 }}>
             <Select
               label={tr.analysis.searchSource}
-              options={[{ value: "", label: tr.common.all }, ...sources.map((source) => ({ value: source.id, label: source.name, icon: paymentSourceIcon(source.type) }))]}
+              options={[{ value: "", label: tr.common.all }, ...sources.map((source) => ({ value: source.id, label: source.name, icon: paymentSourceIconComponent(source.type) }))]}
               value={sourceFilter ?? ""}
               onChange={(value) => setSourceFilter(value || null)}
             />
@@ -641,7 +646,14 @@ export default function AnalysisScreen() {
       {rows.length === 0 ? (
         <EmptyState icon={Inbox} title={tr.cashflow.emptyMonth} />
       ) : (
-        <Card padded={false} style={{ height: Math.min(rows.length, 8) * 52 + 60 }}>
+        // `maxHeight`, not `height`. The old form multiplied the row count by a
+        // constant 52 and added 60 for the chrome, which is only true while
+        // every label fits one line — and this app never shortens a label, so a
+        // category called "Araç, Yakıt ve Otopark" wraps and the real row is
+        // taller than the box computed for it. A ceiling lets the table be as
+        // tall as its content needs up to the same limit, and short tables no
+        // longer reserve height they do not use.
+        <Card padded={false} style={{ maxHeight: Math.min(rows.length, 8) * ANALYSIS_ROW_HEIGHT + ANALYSIS_TABLE_CHROME }}>
           <StickyTable
             cornerLabel={tr.tx.category}
             headWidth={compact ? 112 : 148}
@@ -651,7 +663,9 @@ export default function AnalysisScreen() {
             columns={[...monthKeys.map((m) => ({ key: m, label: shortMonthLabel(m) })), { key: "__total", label: tr.common.total }]}
             rows={rows.map(({ category, data }) => ({
               key: category.id,
-              label: `${categoryIcon(category)} ${category.name}`,
+              // A dense grid row is labelled by its name. The glyph in the string also
+              // spent part of `softWrapLabel`'s character budget on a picture.
+              label: category.name,
               onLabelPress: () => setSelected(selected === category.id ? null : category.id),
               rowHighlight: selected === category.id,
               cells: [
@@ -708,8 +722,12 @@ export default function AnalysisScreen() {
   );
 
   if (!dataReady) {
+    // Same `Screen`, same width, same scroll mode as the ready state. It used
+    // to differ in all three, so the page arrived without its heading, then
+    // re-mounted WITH one the moment data landed and pushed everything below
+    // it down the screen.
     return (
-      <Screen width="workspace">
+      <Screen scroll={false} width="workspace">
         <DataStateNotice status={dataStatus} retry={retryData} />
       </Screen>
     );

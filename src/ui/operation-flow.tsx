@@ -13,6 +13,7 @@ import Trash2 from "lucide-react-native/icons/trash-2";
 import WalletCards from "lucide-react-native/icons/wallet-cards";
 import type { LucideIcon } from "lucide-react-native";
 import { circle, radius, spacing, type, type Palette, useTheme } from "./theme";
+import { Eyebrow } from "./primitives";
 import { tr } from "../i18n/tr";
 import { useReducedMotion } from "./motion";
 
@@ -309,7 +310,7 @@ export function OperationSignature({
           <Icon accessible={false} size={compact ? 17 : 21} color={color} strokeWidth={2.2} />
         </View>
         <View style={{ flex: 1, minWidth: 0 }}>
-          {!compact ? <Text style={[type.small, { color, textTransform: "uppercase", letterSpacing: 0.7 }]}>{eyebrow}</Text> : null}
+          {!compact ? <Eyebrow color={color}>{eyebrow}</Eyebrow> : null}
           <Text style={[compact ? type.body : type.heading, { color: foreground, marginTop: compact ? 0 : 2 }]}>{title}</Text>
           <Text style={[compact ? type.small : type.body, { color: palette.textSecondary, marginTop: compact ? 1 : 3 }]}>{description}</Text>
         </View>
@@ -388,7 +389,7 @@ function DialogMessage({
   const background = tone === "danger" ? palette.error + "14" : tone === "warning" ? palette.warning + "12" : palette.surfaceAlt;
   return (
     <View testID="operation-dialog-message" style={{ borderRadius: radius.md, borderWidth: StyleSheet.hairlineWidth, borderColor: color + "55", backgroundColor: background, padding: spacing.md, marginTop: spacing.lg }}>
-      <Text style={[type.small, { color, textTransform: "uppercase", letterSpacing: 0.7 }]}>{label}</Text>
+      <Eyebrow color={color}>{label}</Eyebrow>
       <Text selectable style={[type.body, { color: palette.text, marginTop: spacing.xs }]}>{message}</Text>
     </View>
   );
@@ -421,7 +422,7 @@ function DialogFact({
     >
       <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
         <Icon accessible={false} size={16} color={color} strokeWidth={2.2} />
-        <Text style={[type.small, { color, textTransform: "uppercase", letterSpacing: 0.6, flex: 1 }]}>{label}</Text>
+        <Eyebrow color={color} style={{ flex: 1 }}>{label}</Eyebrow>
       </View>
       <Text style={[type.small, { color: palette.text, marginTop: spacing.xs }]}>{detail}</Text>
     </View>
@@ -429,10 +430,10 @@ function DialogFact({
 }
 
 function DialogPlan({ children }: { children: React.ReactNode }) {
-  const { palette } = useTheme();
+
   return (
     <View testID="operation-dialog-plan" style={{ marginTop: spacing.lg, gap: spacing.sm }}>
-      <Text style={[type.small, { color: palette.textSecondary, textTransform: "uppercase", letterSpacing: 0.7 }]}>{tr.common.operationPlan}</Text>
+      <Eyebrow>{tr.common.operationPlan}</Eyebrow>
       <View style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.sm }}>{children}</View>
     </View>
   );
@@ -458,7 +459,7 @@ function DialogHeading({
         <Icon accessible={false} size={24} color={color} strokeWidth={2.2} />
       </View>
       <View style={{ flex: 1, minWidth: 0 }}>
-        <Text style={[type.small, { color, textTransform: "uppercase", letterSpacing: 0.7 }]}>{eyebrow}</Text>
+        <Eyebrow color={color}>{eyebrow}</Eyebrow>
         <Text style={[type.heading, { color: palette.text, marginTop: 2 }]}>{title}</Text>
       </View>
     </View>

@@ -11,13 +11,13 @@ import { createRecordId, CreditCardCycleRequiredError, ensureSubscriptionCategor
 import { useCategoriesState, usePersonsState, useSourcesState, useSubscriptionsState, useUserId } from "../data/hooks";
 import { combineLiveStates } from "../data/live-state";
 import { classifyRecordId } from "../domain/route-params";
-import { categoryIcon, paymentSourceIcon } from "../domain/category-icons";
 import { advanceDueDate, dueDateInMonth, nextDueAfter } from "../domain/recurrence";
 import { normalizedMonthlyLoadMinor } from "../domain/analytics";
 import { isMonthDay, monthKeyOf, todayISO, type ISODate } from "../domain/dates";
 import { formatMinorCompact, formatMinorInput } from "../domain/money";
 import { dateLabel, shortDateLabel, tr } from "../i18n/tr";
 import { scheduleSync } from "../sync/engine";
+import { categoryIconComponent, paymentSourceIconComponent } from "../ui/category-icon";
 import { CurrencyPicker } from "../ui/currency-picker";
 import { Amount, Body, Button, Card, ChipPicker, DataStateNotice, FadeIn, Field, FieldNote, Label, MoneyField, PanelHeader, Row, Screen, Select, Spread, Toggle } from "../ui/components";
 import { useSubmitOnEnter } from "../ui/keyboard";
@@ -490,7 +490,7 @@ function SubscriptionForm({ existing }: { existing?: ReturnType<typeof useSubscr
               <Select
                 label={tr.tx.category}
                 placeholder={tr.tx.categoryPlaceholder}
-                options={expenseCategories.map((category) => ({ value: category.id, label: category.name, icon: categoryIcon(category) }))}
+                options={expenseCategories.map((category) => ({ value: category.id, label: category.name, icon: categoryIconComponent(category) }))}
                 value={selectedCategoryId}
                 onChange={(value) => {
                   setCategoryId(value);
@@ -524,7 +524,7 @@ function SubscriptionForm({ existing }: { existing?: ReturnType<typeof useSubscr
                 <Select
                   label={tr.tx.source}
                   placeholder={tr.tx.sourcePlaceholder}
-                  options={sources.map((s) => ({ value: s.id, label: s.name, icon: paymentSourceIcon(s.type) }))}
+                  options={sources.map((s) => ({ value: s.id, label: s.name, icon: paymentSourceIconComponent(s.type) }))}
                   value={sourceId}
                   onChange={setSourceId}
                   onCreate={{ label: tr.tx.addSource, run: () => router.push("/payment-sources") }}
