@@ -212,7 +212,12 @@ test("budget summary keeps its forecast, charts and cash-flow tab route", async 
     return { top: style.paddingTop, bottom: style.paddingBottom };
   });
   expect(forecastPadding.bottom).toBe(forecastPadding.top);
-  const forecastDetails = page.getByText("Ay sonunda tahmini", { exact: true });
+  // "Şu anki bakiye" only exists inside the expanded panel, so it is the
+  // unambiguous handle for "is it open". The panel's own result row used to be
+  // called "Ay sonunda tahmini" while the toggle above it said "Ay sonu
+  // tahmini" — one figure, two names, forty pixels apart. Now that both say
+  // the same thing, matching on that text would find the toggle too.
+  const forecastDetails = page.getByText("Şu anki bakiye", { exact: true });
   await expect(forecastDetails).toHaveCount(0);
   for (let attempt = 0; attempt < 2; attempt += 1) {
     await forecastToggle.click();

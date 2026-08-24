@@ -1833,7 +1833,7 @@ test("desktop action systems use intentional full-width or single-stream geometr
   // fixture contains pending items, the actual grid must still stay a single
   // readable stream on desktop.
   if (await grid.count() === 0) {
-    await expect(page.getByText("Onay bekleyen bir şey yok, güncelsin ✅", { exact: true })).toBeVisible();
+    await expect(page.getByText("Onay bekleyen bir şey yok, güncelsin", { exact: true })).toBeVisible();
     return;
   }
   await expect(grid).toBeVisible();
