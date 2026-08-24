@@ -117,7 +117,12 @@ test("a clean browser restores a backup and a relationally invalid file writes n
   const invalidChooser = invalidPage.waitForEvent("filechooser");
   await invalidPage.getByRole("button", { name: /Yedek \(JSON\) içe aktar/ }).click();
   await (await invalidChooser).setFiles(invalidPath);
-  await expect(invalidPage.getByText("Geçersiz yedek dosyası", { exact: true })).toBeVisible();
+  // The refusal names WHERE, not just that it happened. Four words with no
+  // coordinates is what made a real refusal take five rounds of bisecting the
+  // file with the source open; the owner of a single backup has no such route.
+  await expect(invalidPage.getByText(/Geçersiz yedek dosyası\./)).toBeVisible();
+  await expect(invalidPage.getByText(/bölümündeki \d+\. kayıt alınamadı/)).toBeVisible();
+  await expect(invalidPage.getByText(/bağlı olduğu kayıt dosyada yok/)).toBeVisible();
   await invalidPage.getByRole("button", { name: "Tamam" }).click();
   await invalidPage.getByRole("button", { name: "Hemen Kullanmaya Başla" }).click();
   // The rejected file must have written nothing, so this browser still has no

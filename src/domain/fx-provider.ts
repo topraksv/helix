@@ -115,9 +115,24 @@ export function parseOpenExchangeRates(value: unknown): ProviderRateBatch {
  * Flag and name per currency, so the list reads as places rather than as codes.
  *
  * The flag is an emoji built from the country's regional-indicator pair — no
- * image, no request, no licence, and it inherits the row's text colour. XDR and
- * other supranational codes would have no flag, which is one more reason the
- * offered set stays curated.
+ * image, no request, no licence. XDR and other supranational codes would have
+ * no flag, which is one more reason the offered set stays curated.
+ *
+ * It does NOT inherit the row's text colour, whatever this comment used to
+ * say: an emoji flag is a colour glyph the platform draws, and it is the one
+ * place in this app where a mark escapes the palette. It is kept anyway, and
+ * the reasoning is worth stating so the next reader does not re-open it:
+ *
+ *   - it is illustrative, not structural. The currency's NAME and CODE carry
+ *     the meaning on every row, so nothing is lost when the flag is absent —
+ *     which is the test `category-icon.tsx` applies to an emoji and the one
+ *     the category marks failed.
+ *   - Windows ships no flag emoji font, so Chrome and Edge there render the
+ *     regional-indicator pair as its two letters ("TR", "US"). That is a
+ *     degraded picture rather than a wrong or missing one, beside a name that
+ *     already says the same thing.
+ *
+ * A mark that carried meaning on its own would not get this exemption.
  */
 export const CURRENCY_INFO: Record<(typeof FETCHED_FX_CURRENCIES)[number] | "TRY", { flag: string; name: string }> = {
   TRY: { flag: "🇹🇷", name: "Türk Lirası" },
