@@ -9,7 +9,7 @@ import { and, asc, desc, eq, getTableColumns, gte, isNull, lte } from "drizzle-o
 import { getDb } from "../db/client";
 import * as s from "../db/schema";
 import { useSession } from "../auth/session";
-import { buildLedgerBundle, type LedgerBundle } from "../domain/balance";
+import { buildLedgerChain, ledgerChainEndYear, sliceLedgerYear, type LedgerBundle, type LedgerChain } from "../domain/balance";
 import { projectInvestmentState } from "../domain/investment-projection";
 import type { InvestmentState } from "../domain/investments";
 import { daysBetweenISO, todayISO, type MonthKey } from "../domain/dates";
@@ -738,32 +738,45 @@ export function useInvestmentWalletSnapshot(): InvestmentWalletSnapshot {
  * once, and a per-hook `useMemo` rebuilt the whole chain once per mounted
  * screen on every write AND handed each screen a different `LedgerBundle`
  * identity, which invalidated every downstream memo built on it too. Keyed
- * on the exact inputs `buildLedgerBundle` receives — note that's the raw
+ * on the exact inputs `buildLedgerChain` receives — note that's the raw
  * `adjustments` array (stable identity from the shared live query), not the
  * `{ date, amountMinor }` array mapped from it below, which is a fresh
  * identity every render and would never hit.
  *
- * Keyed by year rather than held in one slot: Dashboard pins the current year
- * while Mali Tablo's year is user-selectable, and both stay mounted in the tab
- * navigator. A single slot alternates between the two the moment those years
- * differ and rebuilds the chain on every render of either — worse than the
- * per-hook `useMemo` this replaces. Bounded to the handful of years that can
- * be on screen at once so it stays a cache, not a leak.
+ * Keyed by END YEAR rather than by the year on screen. The chain does not
+ * depend on which year is being looked at: `buildLedger` walks every
+ * transaction and chains every month from the anchor forward, and for any year
+ * at or before the current one the result is identical whichever year the
+ * screen shows — only the twelve-month slice differs. Keying by the year on
+ * screen meant every step through history rebuilt the whole chain: measured at
+ * 6x CPU throttle on a five-year, 3.000-row workspace, moving one year back
+ * blocked the main thread for 208ms redoing arithmetic it already had.
+ *
+ * Bounded to the handful of end years that can be on screen at once (Dashboard
+ * pins the current year while Mali Tablo's is selectable, and a user looking
+ * ahead extends the chain) so it stays a cache, not a leak.
  */
 const LEDGER_CACHE_LIMIT = 4;
-type LedgerCacheEntry = { inputs: readonly unknown[]; value: LedgerBundle | null };
-const ledgerBundleCache = new Map<number, LedgerCacheEntry>();
+type LedgerCacheEntry = { inputs: readonly unknown[]; value: LedgerChain | null };
+const ledgerChainCache = new Map<number, LedgerCacheEntry>();
 
 /**
- * Full chained ledger from start month through the requested year.
- *
- * Six screens read this, and the chain walks every transaction the account
- * has. Keyed on the data (and on the calendar day, which is what makes a row
- * realized) rather than on the render: it used to rebuild the whole chain for
- * every pin, layout measurement, resize and navigation re-render, and handed
- * back a new bundle identity each time, so the consumers' own memos over it
- * could never hit either.
+ * Per-chain year slices, so stepping back to a year already visited returns
+ * the SAME bundle object. A fresh identity would invalidate every memo the
+ * screens build on it, which is the cost this cache exists to avoid.
+ * `WeakMap`, so a chain that falls out of the cache above takes its slices
+ * with it.
  */
+const ledgerSliceCache = new WeakMap<LedgerChain, Map<number, LedgerBundle>>();
+
+function sliceCacheFor(chain: LedgerChain): Map<number, LedgerBundle> {
+  const existing = ledgerSliceCache.get(chain);
+  if (existing) return existing;
+  const created = new Map<number, LedgerBundle>();
+  ledgerSliceCache.set(chain, created);
+  return created;
+}
+
 export function useLedgerState(year: number): LiveValueResult<LedgerBundle | null> {
   const settingsState = useSettingsMapState();
   const personsState = usePersonsState();
@@ -786,28 +799,41 @@ export function useLedgerState(year: number): LiveValueResult<LedgerBundle | nul
   const openingBalanceMinor = settingValue<number>(settings, "opening_balance_minor", 0);
   const includePendingInCells = settingValue<boolean>(settings, "show_pending_in_table", true);
   const inputs = [configuredStart, openingBalanceMinor, includePendingInCells, txLike, adjustments, today] as const;
-  const cached = ledgerBundleCache.get(year);
-  let data: LedgerBundle | null;
+  const endYear = ledgerChainEndYear(year, today);
+  const cached = ledgerChainCache.get(endYear);
+  let chain: LedgerChain | null;
   if (cached && cached.inputs.length === inputs.length && cached.inputs.every((input, index) => input === inputs[index])) {
-    data = cached.value;
+    chain = cached.value;
   } else {
-    data = buildLedgerBundle({
+    chain = buildLedgerChain({
       configuredStart,
       openingBalanceMinor,
       includePendingInCells,
       transactions: txLike,
       adjustments: adjustments.map((row) => ({ date: row.date, amountMinor: row.amountMinor })),
-      year,
+      endYear,
       today,
     });
-    // Delete before set so the re-inserted year moves to the end of Map's
+    // Delete before set so the re-inserted entry moves to the end of Map's
     // insertion order, making the eviction below least-recently-used.
-    ledgerBundleCache.delete(year);
-    ledgerBundleCache.set(year, { inputs, value: data });
-    while (ledgerBundleCache.size > LEDGER_CACHE_LIMIT) {
-      const oldest = ledgerBundleCache.keys().next();
+    ledgerChainCache.delete(endYear);
+    ledgerChainCache.set(endYear, { inputs, value: chain });
+    while (ledgerChainCache.size > LEDGER_CACHE_LIMIT) {
+      const oldest = ledgerChainCache.keys().next();
       if (oldest.done) break;
-      ledgerBundleCache.delete(oldest.value);
+      ledgerChainCache.delete(oldest.value);
+    }
+  }
+  // The slice is a filter over months already computed, and it has to keep a
+  // stable identity or every memo built on the bundle is invalidated again.
+  const sliceCache = chain ? sliceCacheFor(chain) : null;
+  let data: LedgerBundle | null = null;
+  if (chain && sliceCache) {
+    const hit = sliceCache.get(year);
+    if (hit) data = hit;
+    else {
+      data = sliceLedgerYear(chain, year);
+      sliceCache.set(year, data);
     }
   }
   return { data, status, error, updatedAt, retry };

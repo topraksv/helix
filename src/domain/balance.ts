@@ -252,6 +252,86 @@ export interface LedgerBundle {
 }
 
 /**
+ * The chain itself, which does not depend on which year is being looked at.
+ *
+ * Splitting this out is the difference between a year switch costing a full
+ * rebuild and costing an array filter. `buildLedger` walks every transaction
+ * the account has and chains every month from the anchor forward; for any year
+ * at or before the current one the result is byte-identical whichever year the
+ * screen is showing, because only the SLICE differs. Measured at 6x CPU
+ * throttle on a five-year, 3.000-row workspace, moving between years blocked
+ * the main thread for 208ms doing arithmetic it had already done.
+ *
+ * `endYear` is the one thing a requested year can change: looking at 2028 has
+ * to extend the chain that far. It is therefore part of the cache key rather
+ * than the year itself, so browsing backwards through history never rebuilds.
+ */
+export function ledgerChainEndYear(year: number, today: ISODate): number {
+  return Math.max(year, yearOf(today));
+}
+
+export interface LedgerChain {
+  ledger: MonthLedger[];
+  startMonth: MonthKey;
+  actualBalanceMinor: Minor;
+  txLike: TxLike[];
+}
+
+export function buildLedgerChain(input: {
+  configuredStart: MonthKey | null;
+  openingBalanceMinor: Minor;
+  includePendingInCells: boolean;
+  transactions: TxLike[];
+  adjustments: AdjustmentLike[];
+  endYear: number;
+  today: ISODate;
+}): LedgerChain | null {
+  const { configuredStart, transactions, adjustments, endYear, today } = input;
+  if (!configuredStart) return null;
+
+  const { startMonth, openingBalanceMinor } = resolveLedgerAnchor(
+    configuredStart,
+    input.openingBalanceMinor,
+    transactions,
+    adjustments,
+    today,
+  );
+  const ledger = buildLedger({
+    openingBalanceMinor,
+    startMonth,
+    endMonth: makeMonthKey(endYear, 12),
+    transactions,
+    adjustments,
+    today,
+    includePendingInCells: input.includePendingInCells,
+  });
+  // buildLedger already scanned every transaction and applies the same
+  // realized/today rules. Its current-month close is the actual balance, so a
+  // normal render does not need a second O(N) currentBalance pass. Keep the
+  // direct calculation only for the unusual case where the configured anchor
+  // starts after the current month.
+  const currentLedgerMonth = ledger.find((entry) => entry.month === monthKeyOf(today));
+  const actualBalanceMinor = currentLedgerMonth?.closingMinor ?? currentBalance({
+    openingBalanceMinor,
+    transactions,
+    adjustments,
+    today,
+  });
+  return { ledger, startMonth, actualBalanceMinor, txLike: transactions };
+}
+
+/** One year's view of a chain that has already been built. */
+export function sliceLedgerYear(chain: LedgerChain, year: number): LedgerBundle {
+  return {
+    ledger: chain.ledger,
+    yearMonths: chain.ledger.filter((month) => yearOf(month.month) === year),
+    startMonth: chain.startMonth,
+    actualBalanceMinor: chain.actualBalanceMinor,
+    txLike: chain.txLike,
+  };
+}
+
+/**
  * The whole ledger a screen reads: the back-anchored chain, the requested
  * year's slice and the balance that is true right now.
  *
@@ -270,45 +350,8 @@ export function buildLedgerBundle(input: {
   year: number;
   today: ISODate;
 }): LedgerBundle | null {
-  const { configuredStart, transactions, adjustments, year, today } = input;
-  if (!configuredStart) return null;
-
-  const { startMonth, openingBalanceMinor } = resolveLedgerAnchor(
-    configuredStart,
-    input.openingBalanceMinor,
-    transactions,
-    adjustments,
-    today,
-  );
-  const endMonth = makeMonthKey(Math.max(year, yearOf(today)), 12);
-  const ledger = buildLedger({
-    openingBalanceMinor,
-    startMonth,
-    endMonth,
-    transactions,
-    adjustments,
-    today,
-    includePendingInCells: input.includePendingInCells,
-  });
-  // buildLedger already scanned every transaction and applies the same
-  // realized/today rules. Its current-month close is the actual balance, so a
-  // normal render does not need a second O(N) currentBalance pass. Keep the
-  // direct calculation only for the unusual case where the configured anchor
-  // starts after the current month.
-  const currentLedgerMonth = ledger.find((entry) => entry.month === monthKeyOf(today));
-  const actualBalanceMinor = currentLedgerMonth?.closingMinor ?? currentBalance({
-    openingBalanceMinor,
-    transactions,
-    adjustments,
-    today,
-  });
-  return {
-    ledger,
-    yearMonths: ledger.filter((month) => yearOf(month.month) === year),
-    startMonth,
-    actualBalanceMinor,
-    txLike: transactions,
-  };
+  const chain = buildLedgerChain({ ...input, endYear: ledgerChainEndYear(input.year, input.today) });
+  return chain ? sliceLedgerYear(chain, input.year) : null;
 }
 
 /**

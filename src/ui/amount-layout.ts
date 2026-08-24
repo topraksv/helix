@@ -49,6 +49,19 @@ const SAFE_UNMEASURED_LENGTH = 9;
  * those are always measured; `regular` is measured only when it is long
  * enough to be at risk. Pure, so the bound is a test rather than a screenshot.
  */
-export function shouldMeasureAmountFit(scale: AmountScale, formatted: string): boolean {
+export function shouldMeasureAmountFit(
+  scale: AmountScale,
+  formatted: string,
+  callerFixedFontSize = false,
+): boolean {
+  // A caller that names its own font size has already decided what fits. The
+  // ledger does exactly that: it derives one size per column from
+  // `ledgerCellWidth` and the widest amount in it, then hands that size to
+  // every cell. Measuring each of them again asks the browser for a synchronous
+  // layout per cell — 504 of them on a five-year workspace, in an effect that
+  // re-runs on every grid re-render. Measured at 6x CPU throttle, that was
+  // 532ms to pin a column and 750ms to switch orientation: a visible freeze on
+  // a phone, for an answer the caller already had.
+  if (callerFixedFontSize) return false;
   return scale !== "regular" || formatted.length > SAFE_UNMEASURED_LENGTH;
 }

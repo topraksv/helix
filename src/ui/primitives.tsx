@@ -396,7 +396,9 @@ function Figure({
   const textRef = useRef<Text>(null);
   const availableWidth = useRef(0);
   const intrinsicWidth = useRef(0);
-  const shouldProbeOverflow = shouldMeasureAmountFit(scale, formatted);
+  // The caller named a font size, so it has already decided what fits.
+  const fitsItself = typeof requestedFontSize !== "number";
+  const shouldProbeOverflow = shouldMeasureAmountFit(scale, formatted, !fitsItself);
   const shrinkToNextStep = () => {
     const next = nextAmountFontSize(scale, fittedSize);
     if (next !== fittedSize) setFit({ key: fitKey, size: next });
@@ -414,7 +416,15 @@ function Figure({
       testID={testID}
       selectable
       accessibilityLabel={accessibilityLabel ?? settled}
-      onTextLayout={(event) => {
+      // No measurement at all when the caller named the font size. Both
+      // handlers below exist to run the fit ladder, and react-native-web
+      // implements `onLayout` with a ResizeObserver PER ELEMENT — so a ledger
+      // that paints 504 amounts was carrying 504 observers, each doing a
+      // `scrollWidth` read (a forced synchronous layout) every time anything
+      // moved. Pinning a column moves everything. The ledger derives one size
+      // per column from `ledgerCellWidth` and the widest amount in it before
+      // it renders a single cell, so there is nothing here left to discover.
+      onTextLayout={fitsItself ? (event) => {
         const widestLine = Math.max(...event.nativeEvent.lines.map((line) => line.width), 0);
         intrinsicWidth.current = widestLine;
         if (
@@ -422,8 +432,8 @@ function Figure({
           && (availableWidth.current <= 0 || widestLine <= availableWidth.current + 1)
         ) return;
         shrinkToNextStep();
-      }}
-      onLayout={(event) => {
+      } : undefined}
+      onLayout={fitsItself ? (event) => {
         // RN Web does not consistently dispatch onTextLayout. The DOM overflow
         // probe below catches a nowrap value whose glyphs are wider than its
         // flexed box; native still uses the line width and height signals.
@@ -433,7 +443,7 @@ function Figure({
         if (typeof webNode?.scrollWidth === "number") intrinsicWidth.current = webNode.scrollWidth;
         const singleLineBudget = fittedSize * fontScale * 1.7;
         if (layout.height > singleLineBudget || (shouldProbeOverflow && intrinsicWidth.current > layout.width + 1)) shrinkToNextStep();
-      }}
+      } : undefined}
       style={[
         large || hero ? type.amountLg : type.amount,
         { color: resolved, ...(large || hero ? { alignSelf: "stretch" as const } : null), flexShrink: 1, minWidth: 0, maxWidth: "100%", textAlign: "right" },
