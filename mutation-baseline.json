@@ -216,14 +216,23 @@
       "measuredOn": "0dda8f4ab515ff54e3f87476074b9cd1c8ec055c",
       "measuredDate": "2026-08-22"
     },
+    "src/domain/brand-marks.ts": {
+      "score": 100,
+      "killed": 16,
+      "timeout": 0,
+      "survived": 0,
+      "noCoverage": 0,
+      "measuredOn": "93f59856f33f8646f00e988daacb8bddbf3dc29b",
+      "measuredDate": "2026-08-24"
+    },
     "src/domain/card-statements.ts": {
-      "score": 91,
-      "killed": 91,
+      "score": 91.18,
+      "killed": 93,
       "timeout": 0,
       "survived": 9,
       "noCoverage": 0,
-      "measuredOn": "0dda8f4ab515ff54e3f87476074b9cd1c8ec055c",
-      "measuredDate": "2026-08-22"
+      "measuredOn": "93f59856f33f8646f00e988daacb8bddbf3dc29b",
+      "measuredDate": "2026-08-24"
     },
     "src/domain/cash-flow-matrix.ts": {
       "score": 98.55,
@@ -262,13 +271,13 @@
       "measuredDate": "2026-08-23"
     },
     "src/domain/fx-provider.ts": {
-      "score": 94.44,
-      "killed": 255,
+      "score": 94.51,
+      "killed": 258,
       "timeout": 0,
       "survived": 15,
       "noCoverage": 0,
-      "measuredOn": "0dda8f4ab515ff54e3f87476074b9cd1c8ec055c",
-      "measuredDate": "2026-08-22"
+      "measuredOn": "93f59856f33f8646f00e988daacb8bddbf3dc29b",
+      "measuredDate": "2026-08-24"
     },
     "src/domain/investments.ts": {
       "score": 98.87,
@@ -280,13 +289,13 @@
       "measuredDate": "2026-08-20"
     },
     "src/domain/logo-domain.ts": {
-      "score": 96.5,
-      "killed": 136,
+      "score": 96.55,
+      "killed": 138,
       "timeout": 2,
       "survived": 5,
       "noCoverage": 0,
-      "measuredOn": "e74e17d4740a531ce1a342a2eeb52f9b7841e0fc",
-      "measuredDate": "2026-08-23"
+      "measuredOn": "93f59856f33f8646f00e988daacb8bddbf3dc29b",
+      "measuredDate": "2026-08-24"
     },
     "src/domain/market.ts": {
       "score": 100,
@@ -356,9 +365,18 @@
       "killed": 0,
       "timeout": 0,
       "survived": 0,
-      "noCoverage": 51,
-      "measuredOn": "a9263150c9529d2bdb5552037b378916cbb57f34",
-      "measuredDate": "2026-08-21"
+      "noCoverage": 62,
+      "measuredOn": "93f59856f33f8646f00e988daacb8bddbf3dc29b",
+      "measuredDate": "2026-08-24"
+    },
+    "src/services/attachment-store.web.ts": {
+      "score": 0,
+      "killed": 0,
+      "timeout": 0,
+      "survived": 0,
+      "noCoverage": 91,
+      "measuredOn": "93f59856f33f8646f00e988daacb8bddbf3dc29b",
+      "measuredDate": "2026-08-24"
     },
     "src/services/backup-remap.ts": {
       "score": 60.32,
