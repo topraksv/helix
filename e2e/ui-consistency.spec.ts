@@ -2004,8 +2004,16 @@ test("compact financial-table pins stay beside headers and month labels keep bre
   const billsHeader = await page.getByTestId("table-column-label").filter({ hasText: "Faturalar" }).first().boundingBox();
   expect(billsHeader).not.toBeNull();
   expect(billsHeader!.height).toBeLessThanOrEqual(30);
+  // The current month and the one after it, rather than two hard-coded names.
+  // A fresh workspace starts in the current month, and the grid no longer
+  // draws the months before its own start — twelve rows for a workspace that
+  // owns five is what made a blank row read as lost data. Any two rows serve
+  // this test, which is about pin geometry and label breathing room.
   const year = currentMonthKey().slice(0, 4);
-  for (const month of ["Temmuz", "Ağustos"]) {
+  const monthName = (offset: number) => new Intl.DateTimeFormat("tr-TR", { month: "long", timeZone: "Europe/Istanbul" })
+    .format(new Date(Date.UTC(Number(year), Number(currentMonthKey().slice(5, 7)) - 1 + offset, 1)))
+    .replace(/^./u, (character) => character.toLocaleUpperCase("tr-TR"));
+  for (const month of [monthName(0), monthName(1)]) {
     const metrics = await page.getByRole("link", { name: `${month} ${year}`, exact: true }).evaluate((row) => {
       const text = row.querySelector<HTMLElement>('[data-testid="table-row-label"]')!;
       const rowBox = row.getBoundingClientRect();
@@ -2024,7 +2032,9 @@ test("compact financial-table pins stay beside headers and month labels keep bre
   }
 
   await page.getByRole("radio", { name: "Kolon odaklı" }).click();
-  await assertPinBesideLabel("Temmuz kolonunu sabitle", "Tem");
+  // In column-focus the months ARE the columns, so the same reasoning applies:
+  // the current month is the first one a fresh workspace has.
+  await assertPinBesideLabel(`${monthName(0)} kolonunu sabitle`, monthName(0).slice(0, 3));
 });
 
 test("bulk entry gives long item names more room than bounded amounts", async ({ page }) => {

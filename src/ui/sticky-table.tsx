@@ -107,14 +107,6 @@ export interface StickyRow {
   cells: React.ReactNode[];
 }
 
-/**
- * React Native's `Role` union predates `gridcell`, and react-native-web
- * forwards whatever role it is handed straight to the DOM. A `grid` whose
- * children are plain `cell`s is not a grid to a screen reader, so the correct
- * ARIA role is passed through the one place the type stops short.
- */
-const gridCellRole = { role: "gridcell" } as unknown as ViewProps;
-
 /** `dataSet` is react-native-web's data-attribute channel; RN's types omit it. */
 function stickyCellId(rowKey: string, columnKey: string): ViewProps {
   return { dataSet: { stickyCell: `${rowKey}\u0000${columnKey}` } } as unknown as ViewProps;
@@ -768,7 +760,6 @@ export function StickyTable({
     return (
       <View
         key={column.key}
-        {...gridCellRole}
         // The coordinates arrow-key navigation reads back out of the DOM. The
         // cell nodes themselves are built by the screen and handed here as
         // opaque children, so the wrapper — the one box a cell always sits in,
@@ -793,14 +784,23 @@ export function StickyTable({
   return (
     <View
       ref={gridRef}
-      // A table that says it is a table. Before this the grid was 240 loose
-      // buttons: a screen reader got no row/column structure, and a keyboard
-      // user needed 240 Tab presses to cross it because every cell was its own
-      // tab stop. `useGridKeyboard` gives the arrow keys their standard job and
-      // the cells carry tabIndex -1, so the whole grid is now ONE stop.
-      role="grid"
-      aria-rowcount={rows.length + 1}
-      aria-colcount={columns.length + 1}
+      // Keyboard behaviour, not an ARIA claim.
+      //
+      // `useGridKeyboard` gives the arrow keys their standard job and the cells
+      // carry `tabIndex -1`, so the whole table is ONE tab stop instead of 240
+      // — crossing a two-year ledger to reach the navigation bar behind it used
+      // to take 240 presses.
+      //
+      // It deliberately does NOT declare `role="grid"`. A grid owes axe a
+      // structure this table does not have: one visual row is TWO DOM
+      // subtrees, because the label rail and the scrolling rail are separate
+      // scrollers that stay in step. Declaring the role produced a real
+      // `aria-required-children` violation — a promise about structure that
+      // the DOM breaks — which is worse for a screen reader than no promise.
+      // What a reader needs is in each cell's own name instead: every cell
+      // announces its month, its column and its value ("Ocak 2026, Faturalar,
+      // ₺279,15"). Giving this table true grid semantics means merging the two
+      // rails, which is a rewrite of the component rather than an attribute.
       onLayout={(e: LayoutChangeEvent) => setTableW(e.nativeEvent.layout.width)}
       style={height ? { height } : { flex: 1 }}
     >
@@ -861,7 +861,6 @@ export function StickyTable({
             {rows.map((r, ri) => (
               <View
                 key={r.key}
-                role="row"
                 style={{
                   flexDirection: "row",
                   // Let the label report its natural first-pass height. A hard
@@ -932,7 +931,6 @@ export function StickyTable({
               {rows.map((r, ri) => (
                 <View
                   key={r.key}
-                  role="row"
                   style={{
                     flexDirection: "row",
                     // `height`, not `minHeight`: the label half owns the row's

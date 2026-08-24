@@ -365,12 +365,24 @@ test("dashboard reflows intact across the viewport and theme matrix", async ({ p
       await page.goto("/helix/");
       await expect(page.getByRole("tab", { name: "Durum", selected: true })).toBeVisible();
       const tag = `dashboard ${viewport.name} ${scheme}`;
-      // Every tab keeps its full label at the narrowest supported width: the
-      // 320px bar is where a fifth destination first tries to buy room with an
-      // ellipsis, which this project does not allow anywhere.
-      const visibleLabels = await page.getByRole("tab").allTextContents();
-      expect(visibleLabels, tag).toEqual(["Durum", "Mali Tablo", "Abonelikler", "Yatırımlar", "Ayarlar"]);
+      // A tab shows its label WHOLE or not at all — never truncated, and never
+      // so crowded that two words read as one. At 320px the widest label
+      // ("Abonelikler", 60px) cannot clear a 58px column, so the bar drops
+      // every label and keeps five icon targets; measured before this rule
+      // could fire, "Mali Tablo" and "Abonelikler" sat 1px apart. From 360px
+      // up the labels are back with room between them.
+      //
+      // The names never go anywhere: they are the tabs' accessible names at
+      // every width, which is what a screen reader and this assertion read.
+      const names = ["Durum", "Mali Tablo", "Abonelikler", "Yatırımlar", "Ayarlar"];
+      for (const name of names) {
+        await expect(page.getByRole("tab", { name, exact: true }), `${tag} ${name}`).toBeVisible();
+      }
+      const visibleLabels = (await page.getByRole("tab").allTextContents()).filter(Boolean);
       expect(visibleLabels.join(""), tag).not.toContain("…");
+      if (visibleLabels.length > 0) {
+        expect(visibleLabels, `${tag} labels are whole or absent`).toEqual(names);
+      }
       // The dashboard's reason to exist is the balance block; a reflow that
       // drops it off the layout is the regression the baseline really guarded.
       await expect(page.getByText("Güncel Bakiye", { exact: true }).first(), tag).toBeVisible();
