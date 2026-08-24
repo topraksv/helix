@@ -10,7 +10,7 @@
   "dependencies": {
     "@react-navigation/bottom-tabs": "^7.4.0",
     "@react-navigation/native": "^7.1.8",
-    "@supabase/supabase-js": "^2.112.2",
+    "@supabase/supabase-js": "^2.112.3",
     "babel-preset-expo": "~54.0.12",
     "drizzle-orm": "^0.45.2",
     "expo": "~54.0.36",
@@ -48,10 +48,10 @@
     "uuidv7": "^1.2.1",
     "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz",
     "zod": "^4.4.3",
-    "zustand": "^5.0.14"
+    "zustand": "^5.0.15"
   },
   "devDependencies": {
-    "@axe-core/playwright": "^4.12.1",
+    "@axe-core/playwright": "^4.13.0",
     "@expo-google-fonts/ibm-plex-serif": "^0.4.1",
     "@expo-google-fonts/inter": "^0.4.2",
     "@playwright/test": "^1.62.1",
