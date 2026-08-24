@@ -170,7 +170,27 @@ Standing rules:
   expresses hierarchy, never financial meaning.
 - Direction is never carried by colour alone: a glyph or a word says it too.
 - Displayed money goes through the shared compact formatter. Integer kuruş and
-  ISO dates are the storage contract.
+  ISO dates are the storage contract. The compact threshold is set by the
+  narrowest matrix cell, not by the card asking, so a wallet total of
+  ₺1.000.000,00 reads "₺1 Mn" beside parts that are exact. Changing that is a
+  change to the money policy itself; a surface may not opt out locally.
+- **A figure that belongs to an arithmetic triple carries its sign; a magnitude
+  does not.** Gelir / Çıkış / Net değişim is a triple and must add up on its
+  face, so the outflow is negative in every one of them. A table cell, a
+  category breakdown row and a donut's total are magnitudes: the column heading
+  says the direction and the figure stays unsigned. One expense once appeared as
+  −₺7.669,05 in a hero strip and ₺7.669,05 in the card directly under it.
+- **A total may never be less precise, or differently signed, than the parts
+  printed beside it.**
+- **Zero is not blank, and blank is not zero.** In a value cell — a category,
+  a breakdown row — zero means "nothing happened" and the cell stays empty *and
+  announces itself empty*. In a running balance it is a real figure the chain
+  arrived at, so it prints ₺0,00. The two must never disagree between what is
+  drawn and what is spoken: 91 of 240 ledger cells once rendered blank while
+  telling a screen reader "₺0,00".
+- **One quantity, one name.** "Güncel Bakiye" named both the dashboard's live
+  balance and a per-month column, and the two were free to differ. Before
+  reusing a label, check what else already answers to it.
 - Contextual table marks are the four fixed hues in `src/domain/matrix-colors.ts`.
   Their *names* are the owner's and are stored once for the whole account; the
   hue is the theme's and is measured in both schemes. The mark's strength is a
@@ -227,7 +247,97 @@ history for pinned headers and hover containment and the same no-per-cell-hooks
 rule. Not attempted while the cell editor answers the same need from one tap
 away.
 
-## 9. What proves it
+## 9. Accessibility floor
+
+Not a review stage — these are structural and are cheapest to get right while
+the component is being written.
+
+- **Headings carry a level.** `Screen`'s title is 1, `SectionHeader` is 2,
+  `PanelHeader` is 3. React Native's `header` role supplies no level, so
+  `aria-level` is passed explicitly; without it every heading in the app
+  announced as level 1 (nine of them on Settings) and heading-to-heading
+  navigation — the way a screen reader user crosses a long page — said nothing.
+  An empty-state sentence is not a page title: it is level 2 at most.
+- **A dialog has a name.** `role="dialog"` with no `aria-label` announces
+  "iletişim kutusu" and stops. The title is always in scope where the modal is
+  built; pass it.
+- **State that is drawn is state that is announced.** react-native-web does not
+  derive `aria-expanded` from `accessibilityState`, so a disclosure sets both.
+  The same applies to `selected` and `busy`.
+- **A dense grid is one tab stop, not hundreds.** Cells carry `tabIndex={-1}`
+  and the arrow keys move between them (`ui/grid-navigation.ts`); the table
+  declares `grid` / `row` / `gridcell`. Mali Tablo was 240 tab stops, so
+  reaching the navigation bar behind it took 240 presses.
+- **A target below 44pt needs a reason and a measurement.** WCAG 2.5.8's 24px
+  is a floor, not the target. Where the layout genuinely cannot give 44 — the
+  column pin shares a ~134px financial column with that column's label — the
+  box grows for coarse pointers only, and the compromise is written down.
+- **`hitSlop` is not a touch target.** react-native-web ignores it, so a target
+  bought with it is one size on a phone and another in a browser. Every box
+  carries its own minimum. Enforced by `tests/design-system-contract.test.ts`.
+- Contrast is measured against the *composited* background, in both schemes,
+  including the alpha the surface actually paints.
+
+## 10. Brand marks
+
+A logo is fetched only when it is the right one and big enough to draw.
+
+- **Minimum 48px** (`MIN_MARK_PX`). The app draws marks in a 36-48pt tile,
+  which is up to 144 device pixels at 3x; a 16px favicon blown up that far is a
+  smear. Below the bar the app's own mark — a brand chip, a utility glyph, or
+  initials — is the higher-quality picture, because it is drawn at the tile's
+  exact size and stays sharp at any density.
+- **No borrowed marks.** Two payment methods drew another institution's logo
+  byte for byte (Nays served İş Bankası's file, Advantage served HSBC's). A
+  method that cannot be recognised as itself is worse than one with no mark.
+- **The measurement is data, not a memory.** `src/ui/brand-marks.ts` records
+  every domain's real pixel size; `tests/brand-domains.test.ts` enforces the
+  two rules above; `scripts/audit-brand-marks.mjs` refreshes it. Run by hand —
+  it asks a third party once per domain, and this app is offline-first.
+- `sz=256` is not a resize request. Measured: the service returns the best size
+  a site publishes and never upscales.
+
+## 11. Charts
+
+- **Hover previews, a press locks.** A hover clears when the pointer leaves; a
+  press survives the pointer leaving and the finger lifting, and a hover may
+  not displace it. Both are the same state, resolved in `ui/chart-focus.ts`.
+- **A lock can always be let go.** Empty space in either half of the chart
+  releases it — the hole in the ring, the space around the legend rows, the
+  gutters outside a plot. Re-pressing the locked element releases it too, but
+  that cannot be the only way out: on a three-percent arc it is a target a few
+  pixels wide.
+- **The link runs both ways.** A ring and its legend are two drawings of one
+  list; locking either lights the other.
+- **A category keeps its hue across themes.** The light and dark ramps pair
+  index for index within 6°, enforced by `tests/theme-contrast.test.ts`. Six of
+  eight once changed hue family between schemes, so every chart recoloured
+  itself at sunset.
+- Emphasis is by width, never by opacity: the ramp clears the 3:1 floor by too
+  little to fade.
+
+## 12. Dense surfaces
+
+Rules that only matter where a screen paints hundreds of nodes, and that are
+invisible until it does. Mali Tablo is the surface they were measured on: five
+years, 40 columns, 3.000 rows, 504 cells, at 6x CPU throttle.
+
+- **No per-cell measurement.** react-native-web implements `onLayout` with a
+  ResizeObserver per element, and a cell that reads `scrollWidth` in an effect
+  forces a synchronous layout. A caller that has already computed a size passes
+  it, and the component skips its own fit pass entirely.
+- **Cache on what actually varies.** The ledger chain does not depend on the
+  year being displayed — only the twelve-month slice does — so it is keyed by
+  end year and the slices are memoised per chain. Keyed by displayed year, every
+  step through history rebuilt the whole chain.
+- **A memoised leaf needs referentially stable props.** Every handler reaching a
+  cell is a `useCallback`; a per-render closure defeats the memo silently.
+- **Measure click-to-paint inside the page**, not across the automation
+  boundary. The first measurement of this screen reported 532ms for an
+  interaction that a CPU profile showed to be 86% idle: it was timing the test
+  harness.
+
+## 13. What proves it
 
 | Rule | Proof |
 |---|---|
@@ -237,6 +347,12 @@ away.
 | Hover belongs to the control under the pointer | `e2e/ui-consistency.spec.ts` |
 | Cards, rows and clusters keep even insets | `e2e/ui-consistency.spec.ts` |
 | Nothing overflows its viewport across the target matrix | `e2e/ui-consistency.spec.ts` |
+| No `hitSlop` standing in for a touch target | `tests/design-system-contract.test.ts` |
+| Every fetched brand mark is ≥48px and unique to its owner | `tests/brand-domains.test.ts` |
+| A category keeps its hue in both themes | `tests/theme-contrast.test.ts` |
+| Chart focus locks, previews and releases as specified | `tests/chart-focus.test.ts` |
+| Grid arrow-key movement clamps at every edge | `tests/grid-keyboard.test.ts` |
+| A ledger row adds up on its face, and matches the month card | `tests/cash-flow-matrix.test.ts` |
 
 Visual regressions are proved with behaviour, semantics, measured geometry,
 overflow, focus and rendered contrast first. A screenshot baseline is added

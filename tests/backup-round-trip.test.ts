@@ -292,4 +292,38 @@ describe("backup round trip", () => {
     ).get(SOURCE_USER) as { amount_mode: string };
     expect(restored.amount_mode, "an older backup restores as a fixed subscription").toBe("fixed");
   });
+
+  /**
+   * A restore is all-or-nothing, and the investment wallet is replayed as a
+   * whole — so a bundle whose operations do not add up has no single row to
+   * point at. The refusal used to be four words ("Geçersiz yedek dosyası"),
+   * and finding the real cause of one took five rounds of bisecting the file
+   * with the source open. It names the section now.
+   */
+  it("says which section a replay-level refusal came from", async () => {
+    const personId = await createPerson(SOURCE_USER, "Ben");
+    void personId;
+    const bundle = parseExportBundleText(await buildExportText(SOURCE_USER));
+    const now = "2026-08-01T00:00:00.000Z";
+    const id = (n: number) => `00000000-0000-7000-8000-${String(n).padStart(12, "0")}`;
+    const row = (extra: Record<string, unknown>) => ({
+      user_id: SOURCE_USER, created_at: now, updated_at: now, deleted_at: null, tombstone_version: 0, ...extra,
+    });
+    bundle.tables.investment_profiles = [row({
+      id: id(901), started_on: "2026-01-01", opening_cash_minor: 1_000_00, setup_completed: 1,
+    })];
+    bundle.tables.investment_products = [row({
+      id: id(902), asset_type: "metal", name: "Gram Altın", market_code: null, note: null, target_weight_bp: null,
+    })];
+    // Buying ₺500.000 of gold out of a ₺1.000 wallet: every row is individually
+    // well formed, and the whole is not.
+    bundle.tables.investment_operations = [row({
+      id: id(903), product_id: id(902), kind: "buy", operation_date: "2026-02-01",
+      quantity: "100", unit_price_minor: 5_000_00, total_minor: 500_000_00,
+      cost_basis_minor: 0, realized_profit_loss_minor: 0, note: null, import_key: null,
+    })];
+
+    await expect(importBundle(SOURCE_USER, bundle)).rejects.toThrow(/Yatırım hareketleri/);
+    await expect(importBundle(SOURCE_USER, bundle)).rejects.toThrow(/tutarsız/);
+  });
 });

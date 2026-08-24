@@ -6,11 +6,11 @@
 
 import { create } from "zustand";
 import { io, type Socket } from "socket.io-client";
-import { freshMarketQuote, validMarketQuote } from "../domain/market";
+import { freshMarketQuote, liveMarketSymbol, MARKET_FEED_URL, validMarketQuote } from "../domain/market";
 import { kv } from "./kv";
 import { MARKET_SYMBOLS } from "../domain/investment-catalog";
 
-const FEED_URL = "wss://hrmsocketonly.haremaltin.com";
+
 const THROTTLE_MS = 3000;
 const MARKET_STALE_MS = 60_000;
 const LIFECYCLE_GRACE_MS = 5000;
@@ -203,7 +203,7 @@ export function applyFeed(data: Record<string, FeedEntry>, now = Date.now()) {
  *  Used to convert a foreign-currency amount to TRY at confirm time (we already
  *  pull USDTRY/EURTRY from this feed — no separate FX call needed). */
 export function marketSellRateTry(currency: string, now = Date.now()): number | null {
-  const code = currency === "USD" ? "USDTRY" : currency === "EUR" ? "EURTRY" : null;
+  const code = liveMarketSymbol(currency);
   if (!code) return null;
   const price = useMarkets.getState().prices[code];
   return price && freshMarketQuote(price.receivedAt, now, MARKET_STALE_MS) && Number.isFinite(price.sellTry) && price.sellTry > 0
@@ -219,7 +219,7 @@ export function marketLastKnownRateTry(
   currency: string,
   now = Date.now(),
 ): { rateTry: number; receivedAt: number; live: boolean } | null {
-  const code = currency === "USD" ? "USDTRY" : currency === "EUR" ? "EURTRY" : null;
+  const code = liveMarketSymbol(currency);
   if (!code) return null;
   const price = useMarkets.getState().prices[code];
   if (!price || !Number.isFinite(price.sellTry) || price.sellTry <= 0) return null;
@@ -240,7 +240,7 @@ export function connectMarkets(): void {
   if (socket) return;
   useMarkets.setState({ status: "connecting" });
   void hydrateSnapshot();
-  socket = io(FEED_URL, {
+  socket = io(MARKET_FEED_URL, {
     transports: ["websocket"],
     reconnectionDelay: 5_000,
     reconnectionDelayMax: 60_000,

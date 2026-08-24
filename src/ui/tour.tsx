@@ -164,15 +164,26 @@ function TourArtwork({ step, icon: IconCmp }: { step: number; icon: LucideIcon }
 }
 
 /** Mounts on the dashboard; shows itself only on the first visit. */
-export function FirstRunTour() {
-  const [visible, setVisible] = useState(false);
+/**
+ * The welcome tour, held until there is something to welcome someone to.
+ *
+ * It used to open the instant onboarding finished, on an account with nothing
+ * in it — so it explained "your current balance, and where the month ends up"
+ * over a screen where every figure was ₺0,00. That is the least informative
+ * moment the app ever has, and the tour was spending its one appearance on it.
+ *
+ * `ready` is the caller's answer to "is there anything on this screen yet".
+ * A restored backup or an imported workbook satisfies it immediately; a new
+ * account satisfies it the moment its first entry is saved, which is also the
+ * moment the reader has a reason to care what the screen is showing.
+ */
+export function FirstRunTour({ ready }: { ready: boolean }) {
+  const [seen, setSeen] = useState<boolean | null>(null);
   useEffect(() => {
-    void kv.get(TOUR_KEY).then((v) => {
-      if (v !== "true") setVisible(true);
-    });
+    void kv.get(TOUR_KEY).then((v) => setSeen(v === "true"));
   }, []);
-  if (!visible) return null;
-  return <TourModal onClose={() => { setVisible(false); void kv.set(TOUR_KEY, "true"); }} />;
+  if (seen !== false || !ready) return null;
+  return <TourModal onClose={() => { setSeen(true); void kv.set(TOUR_KEY, "true"); }} />;
 }
 
 export function TourModal({ onClose }: { onClose: () => void }) {

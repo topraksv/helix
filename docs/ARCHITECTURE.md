@@ -94,6 +94,22 @@ cycle tool would widen the interface without changing Metro's bundle.
 RLS, not a client guard, is the authorization boundary. Details and accepted
 residual risks live in [`SECURITY.md`](SECURITY.md).
 
+### Diagnostics may name a location, never a value
+
+A restore rejects the whole bundle when one row breaks one rule, and the
+refusal used to be four words. Finding a real cause took five rounds of
+bisecting the file with the source open; the owner of a single backup has no
+such route, and "your only backup is invalid, no further information" is a
+data-loss outcome dressed as a validation message.
+
+The refusal now names the section, the 1-based row and the rule
+(`invalidBackupWhere`). It names **coordinates and a rule, never a stored
+value** — no amount, date, note or counterparty reaches a message, a log or a
+crash report. That line is what keeps a diagnostic from becoming a disclosure,
+and it is the same line `userMessage` already draws between an engine failure
+and something a person can act on: only text authored for the user is shown,
+and everything else collapses to a fallback.
+
 ## Interface contract
 
 Helix is a connected financial ledger, not a bank console or card dashboard.
@@ -229,6 +245,33 @@ merely to turn a failing run green.
 [`BASELINE.md`](BASELINE.md) is the frozen measurement transcript. Its numbers
 are deliberately not updated; it is the comparison point for later performance
 and coverage work.
+
+### How a performance claim is produced
+
+A performance change is not accepted on reasoning. Four rules, each of which
+this project has already been caught by:
+
+1. **Measure inside the page.** Timing a click through an automation harness
+   measures the harness. A first pass on Mali Tablo reported 532ms for an
+   interaction a CPU profile then showed to be 86% idle. Dispatch the event in
+   the page and time to the second `requestAnimationFrame`.
+2. **Profile before optimising.** Two plausible hypotheses about that same
+   screen — the amount-fit probe, then the ledger rebuild — were each
+   implemented and each moved the number by nothing. The observer-per-cell
+   finding came from the profile, not from reading the code.
+3. **Throttle the CPU.** A laptop hides everything a phone will show. 6x is
+   roughly a mid-range Android; scroll on this screen is 60fps with zero long
+   tasks at that rate, which is why "the table stutters" needed a different
+   answer than the obvious one.
+4. **Say what is left.** The year switch is 240ms to paint, down 29%, and the
+   218ms long task that remains is React reconciling 504 cells whose values all
+   changed. Cutting it further means virtualising the grid, which is a change
+   to the screen's core rather than a tuning pass. An unfinished number stated
+   plainly is worth more than a rounded one.
+
+Measured with a five-year, 40-column, 3.000-row workspace: that is the shape
+that makes the cost visible, and a smaller one will report that everything is
+fine.
 
 ### Simplifications already tried and reverted
 

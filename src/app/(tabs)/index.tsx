@@ -694,7 +694,12 @@ export default function DashboardScreen() {
       leading={<BrandMark size={40} />}
       width="workspace"
     >
-      <FirstRunTour />
+      {/* Held until the screen has something to explain. On a brand-new
+          account every figure the tour describes is ₺0,00, which is the least
+          informative moment the app ever has — and the tour spends its one
+          appearance there. The first saved entry, a restored backup or an
+          imported workbook all satisfy this. */}
+      <FirstRunTour ready={(bundle?.txLike.length ?? 0) > 0} />
       <DataStateNotice status={dataStatus} retry={retryData} />
       {previousLoginAt ? (
         <View style={{ marginBottom: spacing.sm, alignSelf: "flex-start" }}>

@@ -1,11 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import { isMarketFeedSocket } from "../e2e/helpers";
 import { FETCHED_FX_CURRENCIES, parseOpenExchangeRates, parseTcmbRates } from "../src/domain/fx-provider";
 import { MARKET_SYMBOLS } from "../src/domain/investment-catalog";
 import { normalizeLogoDomain, remoteFaviconUrl } from "../src/domain/logo-domain";
-import { freshMarketQuote, validMarketQuote } from "../src/domain/market";
+import { freshMarketQuote, liveMarketSymbol, MARKET_FEED_URL, validMarketQuote } from "../src/domain/market";
 import { boundedScheduledNotifications, createNotificationReplacementQueue, normalizeReminderDays, privateNotificationContent, uniqueNotifications } from "../src/domain/notifications";
 
 const kvStore = new Map<string, string>();
@@ -77,9 +75,18 @@ describe("external FX provider validation", () => {
    * yesterday's number as today's.
    */
   it("keeps the live market rate to the two pairs the socket actually carries", () => {
-    const source = readFileSync(join(process.cwd(), "src/services/markets.ts"), "utf8");
-    const mapped = [...source.matchAll(/currency === "([A-Z]{3})"/g)].map((match) => match[1]);
-    expect([...new Set(mapped)].sort()).toEqual(["EUR", "USD"]);
+    // Behaviour, not a grep over the service's own source. The old assertion
+    // matched `currency === "USD"` in `markets.ts`, which stops matching the
+    // moment that file is instrumented for mutation testing — so the rule had
+    // no proof during precisely the run meant to prove it, and the whole
+    // mutation gate failed in its dry run rather than reporting a score.
+    expect(liveMarketSymbol("USD")).toBe("USDTRY");
+    expect(liveMarketSymbol("EUR")).toBe("EURTRY");
+    for (const currency of FETCHED_FX_CURRENCIES) {
+      if (currency === "USD" || currency === "EUR") continue;
+      expect(liveMarketSymbol(currency), `${currency} has no live pair`).toBeNull();
+    }
+    expect(liveMarketSymbol("TRY")).toBeNull();
   });
 
   it("rejects undated or empty TCMB payloads instead of stamping today", () => {
@@ -188,6 +195,57 @@ describe("live market freshness", () => {
     // Unsupported currency or a future-stamped quote stays unusable.
     expect(marketLastKnownRateTry("GBP", now)).toBeNull();
     expect(marketLastKnownRateTry("USD", now - 1_000)).toBeNull();
+    useMarkets.setState({ prices: {}, status: "idle", lastEventAt: null });
+  });
+
+  /**
+   * The direction arrow is the one thing in a quote that is not a number, and
+   * it reaches the screen as a glyph and a colour. The feed sends "up",
+   * "down", something else, or nothing at all, and only the first two mean
+   * anything — a quote that arrives with `dir` missing must read as "no
+   * change", not as a fall.
+   */
+  it("reads the feed's direction as up, down, or nothing", () => {
+    const at = 2_000_000;
+    const quote = (dir?: string) => ({
+      ALTIN: { code: "ALTIN", alis: "4000", satis: "4010", tarih: "t", ...(dir ? { dir: { satis_dir: dir } } : {}) },
+    });
+    applyFeed(quote("up"), at);
+    expect(useMarkets.getState().prices.ALTIN?.direction).toBe("up");
+    applyFeed(quote("down"), at + 10_000);
+    expect(useMarkets.getState().prices.ALTIN?.direction).toBe("down");
+    applyFeed(quote("sideways"), at + 20_000);
+    expect(useMarkets.getState().prices.ALTIN?.direction).toBe("");
+    applyFeed(quote(), at + 30_000);
+    expect(useMarkets.getState().prices.ALTIN?.direction).toBe("");
+    useMarkets.setState({ prices: {}, status: "idle", lastEventAt: null });
+  });
+
+  /**
+   * A payload with nothing usable in it must not be allowed to declare the
+   * feed live, and one with a usable quote must.
+   */
+  it("only calls the feed live once it has a quote to show", () => {
+    useMarkets.setState({ prices: {}, status: "connecting", lastEventAt: null });
+    applyFeed({ ALTIN: { code: "ALTIN", alis: "0", satis: "0", tarih: "t" } }, 3_000_000);
+    expect(useMarkets.getState().status).toBe("connecting");
+    applyFeed({ ALTIN: { code: "ALTIN", alis: "4000", satis: "4010", tarih: "t" } }, 3_010_000);
+    expect(useMarkets.getState().status).toBe("live");
+    useMarkets.setState({ prices: {}, status: "idle", lastEventAt: null });
+  });
+
+  /**
+   * A conversion writes into the ledger, so it may only use a rate the app can
+   * still vouch for: the right symbol, a positive price, and freshness.
+   */
+  it("refuses a live rate that is missing, non-positive or stale", () => {
+    const at = 4_000_000;
+    applyFeed({ USDTRY: { code: "USDTRY", alis: "40", satis: "41", tarih: "t" } }, at);
+    expect(marketSellRateTry("USD", at)).toBe(41);
+    // A pair the feed does not carry has no live rate whatever is in the store.
+    expect(marketSellRateTry("GBP", at)).toBeNull();
+    // Past the staleness window the same quote stops counting as live.
+    expect(marketSellRateTry("USD", at + 10 * 60_000)).toBeNull();
     useMarkets.setState({ prices: {}, status: "idle", lastEventAt: null });
   });
 
@@ -462,9 +520,9 @@ describe("market feed isolation matches on host, not substring", () => {
   });
 
   it("keeps the blocked host in step with the feed the app actually opens", () => {
-    const markets = readFileSync(join(process.cwd(), "src/services/markets.ts"), "utf8");
-    const feed = markets.match(/const FEED_URL = "([^"]+)"/)?.[1];
-    expect(feed, "FEED_URL literal in src/services/markets.ts").toBeDefined();
-    expect(isMarketFeedSocket(new URL(feed!))).toBe(true);
+    // The URL itself, not a regex over the service's source. Grepping an
+    // instrumented file finds nothing, and this assertion took the whole
+    // mutation gate down with it in the dry run.
+    expect(isMarketFeedSocket(new URL(MARKET_FEED_URL))).toBe(true);
   });
 });
