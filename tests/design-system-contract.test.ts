@@ -1042,8 +1042,17 @@ describe("screen motion replays consistently", () => {
       components.indexOf("function ScreenEntrance("),
       components.indexOf("const SCREEN_ARRIVAL_RISE"),
     );
-    // The arrival replays per visit and never remounts what it wraps.
-    expect(entrance).toContain("screenVisit]");
+    // The arrival happens ONCE, on mount, and never remounts what it wraps.
+    //
+    // It used to replay per visit, and that was the whole of "girip çıkınca
+    // ekran tık diye yenileniyor": measured on the dashboard, every
+    // back-navigation and every tab switch moved the entire 758-node page to
+    // +14pt and sprang it back over 21 frames, while the node count stayed
+    // identical before, during and after — nothing remounted, nothing
+    // refetched, the page simply moved under the reader. A whole-page motion
+    // cannot say "alive" without also saying "reloaded".
+    expect(entrance).not.toContain("screenVisit");
+    expect(entrance).not.toContain("useScreenVisit");
     expect(entrance).not.toContain("key={");
     /**
      * The page must never animate its own opacity.

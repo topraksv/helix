@@ -1,51 +1,125 @@
 /**
- * Which favicon service the app asks for a given domain's mark.
+ * Which favicon service the app asks for a given domain's mark, and which
+ * marks are too small to enlarge.
  *
- * Two services index these sites and they disagree, domain by domain, by more
- * than a factor of three. Google returns 16x16 for `teb.com.tr` where
- * DuckDuckGo has the real 48x48 mark; DuckDuckGo has nothing at all for
- * `akbank.com.tr` where Google has 32x32; and DuckDuckGo's "never heard of
- * it" answer is a 48px grey tile that BEATS most genuine marks on size alone.
- * So neither service is a safe default and neither is a safe guess:
- * `scripts/audit-brand-marks.mjs` asks both once, records every measurement in
- * `brand-mark-audit.ts`, and the conclusion — the short list below — is the
- * only part of it the app carries.
+ * Three services index these sites and they disagree, domain by domain, by
+ * more than an order of magnitude in both directions: Google has 32px for
+ * Vodafone where icon.horse has 180, icon.horse has nothing for Akbank where
+ * Google has 32, and DuckDuckGo has the only real mark for ING. So no service
+ * is a safe default and none is a safe guess.
  *
- * Kept short deliberately. The full record is 180 rows of pixel widths and
- * hashes; shipping it would put 7KB of evidence into a web bundle that only
- * ever needs to know which handful of domains take the other route.
+ * The rule that matters more than any of that is A BIGGER PICTURE IS NOT A
+ * BETTER LOGO. Every one of these services answers "never heard of it" with an
+ * invented image rather than an error, and the invented ones are LARGER than
+ * most genuine marks — icon.horse generates a 256x256 letter avatar, which
+ * beats every real favicon in this catalogue on pixels alone. Scoring by size
+ * is therefore wrong on its own; `scripts/audit-brand-marks.mjs` asks each
+ * service for domains that cannot exist, one per letter, and treats anything
+ * matching those answers as nothing.
+ *
+ * `brand-mark-audit.ts` holds all 180 measurements. This file holds only the
+ * three conclusions the app acts on, because shipping the record would put 7KB
+ * of hashes into a web bundle no screen reads.
  */
 
 /** The favicon services this app is willing to name. */
-export type MarkProvider = "google" | "duckduckgo";
+export type MarkProvider = "google" | "duckduckgo" | "iconhorse";
 
-/**
- * The domains DuckDuckGo measured better than Google, and the only ones the
- * app asks it for. Everything else goes to Google, which indexes far more of
- * the web and is already in the page's `img-src`.
- */
+/** Domains icon.horse measured better than the others. */
+const ICONHORSE_MARKS = new Set<string>([
+  "alternatifbank.com.tr",
+  "burgan.com.tr",
+  "coursera.org",
+  "deezer.com",
+  "digiturk.com.tr",
+  "drive.google.com",
+  "ea.com",
+  "github.com",
+  "halkbank.com.tr",
+  "hepsiburada.com",
+  "maximiles.com.tr",
+  "migros.com.tr",
+  "notion.so",
+  "openai.com",
+  "podimo.com",
+  "puhutv.com",
+  "strava.com",
+  "todtv.com.tr",
+  "vercel.com",
+  "vodafone.com.tr",
+  "wetransfer.com",
+  "x.com",
+  "xbox.com",
+  "yemeksepeti.com",
+]);
+
+/** Domains DuckDuckGo measured better than the others. */
 const DUCKDUCKGO_MARKS = new Set<string>([
   "anadolubank.com.tr",
-  "drive.google.com",
   "gemini.google.com",
   "ing.com.tr",
   "sokmarket.com.tr",
+  "turkishbank.com",
 ]);
+
+/**
+ * Marks whose real pixel width is under the tile they are drawn in.
+ *
+ * These brands publish nothing larger — not at another service, and not on
+ * their own sites: `worldcard.com.tr` and `vakifbank.com.tr` serve a single
+ * 16x16 entry inside their `.ico`, `turktelekom.com.tr` serves a 16px PNG, and
+ * none of them links an apple-touch-icon or a manifest icon at all. So there
+ * is no better picture to fetch, and the softness the owner reported is not
+ * the service's doing: it is ours, from painting a 16px source across a 44pt
+ * tile, which is an eight-fold enlargement on a 3x screen.
+ *
+ * `logo.tsx` uses these to stop enlarging past what the source can carry. A
+ * small sharp logo is a better picture of a brand than a large soft one.
+ */
+export const SMALL_MARK_PX: Record<string, number> = {
+  "adabank.com.tr": 16,
+  "akbank.com.tr": 32,
+  "bkm.com.tr": 16,
+  "blinkist.com": 16,
+  "bonus.com.tr": 44,
+  "drive.google.com": 32,
+  "dropbox.com": 32,
+  "dsmart.com.tr": 16,
+  "evernote.com": 32,
+  "headspace.com": 32,
+  "icbc.com.tr": 16,
+  "ininal.com": 32,
+  "kaspersky.com": 16,
+  "kuveytturk.com.tr": 32,
+  "marti.tech": 32,
+  "odeabank.com.tr": 16,
+  "one.google.com": 32,
+  "param.com.tr": 32,
+  "qnb.com.tr": 16,
+  "sekerbank.com.tr": 16,
+  "slack.com": 35,
+  "superonline.net": 16,
+  "tbank.com.tr": 16,
+  "teb.com.tr": 16,
+  "turkcell.com.tr": 16,
+  "turktelekom.com.tr": 16,
+  "twitch.tv": 32,
+  "vakifbank.com.tr": 16,
+  "whatsapp.com": 23,
+  "worldcard.com.tr": 16,
+  "zoom.us": 32,
+};
 
 /** The service with the best mark for this domain. */
 export function markProvider(domain: string): MarkProvider {
-  return DUCKDUCKGO_MARKS.has(domain) ? "duckduckgo" : "google";
+  if (ICONHORSE_MARKS.has(domain)) return "iconhorse";
+  if (DUCKDUCKGO_MARKS.has(domain)) return "duckduckgo";
+  return "google";
 }
 
-/**
- * The URL that serves `domain`'s mark from the service that has the best one.
- *
- * `provider` is required rather than defaulting to Google. The default was
- * dead — every caller asks `markProvider` first — and a defaulted argument
- * nothing exercises is an untested branch that looks like a convenience.
- */
+/** The URL that serves `domain`'s mark from the service that has the best one. */
 export function markUrl(domain: string, provider: MarkProvider): string {
-  return provider === "duckduckgo"
-    ? `https://icons.duckduckgo.com/ip3/${encodeURIComponent(domain)}.ico`
-    : `https://www.google.com/s2/favicons?domain=${encodeURIComponent(domain)}&sz=256`;
+  if (provider === "duckduckgo") return `https://icons.duckduckgo.com/ip3/${encodeURIComponent(domain)}.ico`;
+  if (provider === "iconhorse") return `https://icon.horse/icon/${encodeURIComponent(domain)}`;
+  return `https://www.google.com/s2/favicons?domain=${encodeURIComponent(domain)}&sz=256`;
 }

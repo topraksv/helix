@@ -67,14 +67,6 @@ supabase/.temp/
 # Skills are committed rather than restored on demand so that an upstream
 # change is reviewable as a diff instead of arriving silently at install time.
 /.claude/*
-!/.claude/skills/
-!/.claude/skills/**
-/.ai/*
-!/.ai/scripts/
-!/.ai/scripts/*.mjs
-/.agents/*
-!/.agents/skills/
-!/.agents/skills/**
 
 # The code map graphify exports into the docs vault: ~3,250 generated notes,
 # rebuilt from the AST by `npm run graph:refresh` and never tracked.
@@ -87,3 +79,21 @@ supabase/.temp/
 # nothing here.
 /testsprite_tests/
 /.testsprite/
+
+# How this repository is worked on, rather than what it builds.
+#
+# The instruction files, the agent skill trees and their lock, and the design
+# and architecture notes are the owner's own working material. They stay on
+# disk — every one of them is still read while the app is being built — and out
+# of the published tree. Removing them here does not remove them from the
+# history that already carries them; the repository is public and older commits
+# still hold every one of these files.
+/.ai/
+/.agents/
+/.claude/
+/.codex/
+/AGENTS.md
+/CLAUDE.md
+/skills-lock.json
+/.graphifyignore
+/docs/

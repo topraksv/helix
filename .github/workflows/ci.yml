@@ -131,7 +131,6 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: npm run control:check
       - run: npm run typecheck
       - run: npx expo lint
       # On a full-gate push `test:coverage` runs this same suite under the

@@ -209,6 +209,35 @@ export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
   // bring the labels back.
   useEffect(() => setLabelWidth(0), [barWidth]);
 
+  /**
+   * One measuring callback per label, kept alive across renders.
+   *
+   * React re-invokes a ref callback — once with `null`, once with the node —
+   * every time its IDENTITY changes, and an inline arrow is a new identity on
+   * every render. The measurement below is a synchronous layout read, so the
+   * inline form ran `document.createRange()` and `getClientRects()` five times
+   * per bar render, and the bar re-renders on every tab change. Profiled at 6x
+   * CPU over three round trips, `getClientRects` was 233ms — the second
+   * largest item after Chrome's own accessibility walk.
+   *
+   * Cached by everything the callback closes over, so it stays stable while
+   * the geometry does and is rebuilt the moment the geometry moves.
+   */
+  const measurers = useRef(new Map<string, (node: unknown) => void>());
+  const measurerFor = (routeKey: string) => {
+    const cacheKey = `${routeKey}:${barWidth}:${slotWidth}`;
+    const known = measurers.current.get(cacheKey);
+    if (known) return known;
+    measurers.current.clear();
+    const measure = (node: unknown) => {
+      const measured = measureLabelText(node as HTMLElement | null);
+      if (measured.width <= 0) return;
+      setLabelWidth((seen) => Math.max(seen, measured.wrapped ? tooWide(slotWidth) : measured.width));
+    };
+    measurers.current.set(cacheKey, measure);
+    return measure;
+  };
+
   const destinations = state.routes.map((route, index) => {
     const options = descriptors[route.key]?.options ?? {};
     const focused = state.index === index;
@@ -301,11 +330,7 @@ export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
             // element: a react-native-web Text is a block box the column has
             // already sized, so every box-level answer is the column's width
             // rather than the label's.
-            ref={(node) => {
-              const measured = measureLabelText(node as unknown as HTMLElement | null);
-              if (measured.width <= 0) return;
-              setLabelWidth((known) => Math.max(known, measured.wrapped ? tooWide(slotWidth) : measured.width));
-            }}
+            ref={measurerFor(route.key)}
             style={{
               fontFamily: focused ? font.semibold : font.medium,
               fontSize: type.caption.fontSize,

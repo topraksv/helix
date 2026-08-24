@@ -8,7 +8,6 @@
     "dist/**",
     "dist-e2e/**",
     "docs/graph/**",
-    "graphify-out/**",
     "coverage/**",
     "playwright-report/**",
     "test-results/**",

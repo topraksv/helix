@@ -10,7 +10,7 @@
  */
 
 import React, { useState } from "react";
-import { Text, View } from "react-native";
+import { PixelRatio, Text, View } from "react-native";
 import { Image } from "expo-image";
 import Building2 from "lucide-react-native/icons/building-2";
 import Car from "lucide-react-native/icons/car";
@@ -29,6 +29,7 @@ import { paymentSourceIconComponent } from "./category-icon";
 import type { PaymentSourceType } from "../domain/types";
 import { font, useTheme } from "./theme";
 import { BRAND, brandPlate } from "./brand-colors";
+import { SMALL_MARK_PX } from "../domain/brand-marks";
 import { MIN_PREFIX_MATCH, foldForMatch, nameMentions, nameStartsWord, normalizeLogoDomain, remoteFaviconUrl } from "../domain/logo-domain";
 
 /** One shared frameless tile: near-square, rounded, no border — every variant
@@ -58,6 +59,48 @@ function tileStyle(size: number) {
  * being unevenly filled in the first place.
  */
 const FAVICON_FILL = 0.82;
+
+/**
+ * How far a mark may be enlarged past its own resolution.
+ *
+ * Thirty-one of the 180 domains in the catalogue publish a mark smaller than
+ * the tile it is drawn in, and nineteen of those publish only 16px. That is
+ * not a service picking badly: `worldcard.com.tr` and `vakifbank.com.tr` serve
+ * a single 16x16 entry inside their `.ico`, `turktelekom.com.tr` serves a 16px
+ * PNG, and none of them links an apple-touch-icon or a manifest icon. Three
+ * independent services were asked; none has anything larger, and there is no
+ * free logo API left that does.
+ *
+ * So the softness the owner reported is ours. Painting a 16px source across a
+ * 44pt tile on a 3x screen is an eightfold enlargement, which is a smear. This
+ * caps it at three, which is the point where a mark still reads as its own
+ * shape. A 16px logo then draws at about 16pt inside a 44pt tile: smaller than
+ * its neighbours, and sharp. A small sharp logo is a better picture of a brand
+ * than a large soft one, and the alternative — dropping the brand for its
+ * initials — is the one the owner already rejected.
+ *
+ * Marks at or above the tile's own resolution are untouched, which is 149 of
+ * the 180.
+ */
+const MAX_MARK_UPSCALE = 3;
+
+/**
+ * The floor a capped mark cannot go under, as a fraction of the tile.
+ *
+ * Sharpness is not worth a logo nobody can identify. At 0.45 a 16px mark on a
+ * 3x phone lands at about 20pt in a 44pt tile — a 3.7x enlargement rather than
+ * the 6.8x it was, and still unmistakably the brand.
+ */
+const MIN_MARK_FILL = 0.45;
+
+/** How large this domain's mark may be drawn in a tile of `size`. */
+function markFill(domain: string | null, size: number): number {
+  const full = Math.round(size * FAVICON_FILL);
+  const real = domain ? SMALL_MARK_PX[domain] : undefined;
+  if (real == null) return full;
+  const sharp = (real * MAX_MARK_UPSCALE) / PixelRatio.get();
+  return Math.round(Math.max(Math.min(full, sharp), size * MIN_MARK_FILL));
+}
 
 /** Utility/service keywords → icon + accent (checked before brand lookup). */
 /**
@@ -465,6 +508,7 @@ export function Logo({
   // domains load transparently and fall back locally on any network error.
   const faviconDomain = utility ? null : domainFor(name, domain);
   const faviconUrl = remoteFaviconUrl(faviconDomain);
+  const markSize = markFill(faviconDomain, size);
 
   if (faviconDomain && faviconUrl && failedDomain !== faviconDomain) {
     return (
@@ -483,7 +527,7 @@ export function Logo({
           alt=""
           source={{ uri: faviconUrl }}
           onError={() => setFailedDomain(faviconDomain)}
-          style={{ width: Math.round(size * FAVICON_FILL), height: Math.round(size * FAVICON_FILL) }}
+          style={{ width: markSize, height: markSize }}
           // `contain`, never `cover`: a favicon that is not square must fit
           // whole rather than lose part of the mark to a crop.
           contentFit="contain"

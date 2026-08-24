@@ -128,8 +128,8 @@ geldiğinde outbox Supabase'e gönderilir ve sunucunun normalize ettiği
 - **Hesapsız mod tam moddur.** Supabase yoksa uygulama eksiksiz çalışır, veri
   cihazdan çıkmaz.
 
-Kurallar [`docs/SPEC.md`](docs/SPEC.md), sınırlar ve gerekçeler
-[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) içinde.
+Eşitleme çalışırken uygulama beklemez: yazma önce cihaza gider, ekran anında
+güncellenir, gönderim arkada sırasını bekler.
 
 ---
 
@@ -163,14 +163,12 @@ Sıcak nötrler üzerinde tek bir vurgu rengi; üç palet, iki tema, hepsi ölç
 - **Kırpma yok.** Uzun bir kalem adı üç noktayla kesilmez; daralır, sarar ya da
   erişilebilir etikette tam adını korur.
 
-Yerleşim sözleşmesinin tamamı [`docs/UI.md`](docs/UI.md) içinde.
+Her ekran aynı iskeleti kullanır: bir başlık, kartlar hâlinde bölümler, ve
+satır anatomisi her listede aynı — mark, ad, değer, eylem.
 
 ---
 
 ## Gizlilik ve güvenlik
-
-Özet; ayrıntı [`docs/PRIVACY.md`](docs/PRIVACY.md) ve
-[`docs/SECURITY.md`](docs/SECURITY.md) içinde.
 
 - **Hesapsız mod:** bütün finansal veri cihazdaki SQLite dosyasında kalır.
 - **Hesaplı mod:** her tablo owner-only RLS ile korunur; yetki sınırı sunucudadır,
@@ -186,8 +184,7 @@ Yerleşim sözleşmesinin tamamı [`docs/UI.md`](docs/UI.md) içinde.
 
 ## Geliştirici kurulumu
 
-> **Node 22 zorunlu** (`.nvmrc`). Gerekçesi
-> [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) içinde.
+> **Node 22 zorunlu** (`.nvmrc`) — Expo SDK 54'ün derleyip test ettiği sürüm.
 
 ```bash
 git clone https://github.com/topraksv/helix.git
@@ -202,18 +199,16 @@ npx expo start --tunnel --clear  # Expo Go için QR
 ### Kalite kapısı
 
 ```bash
-npm run verify        # skill kontrolü + typecheck + kapsamlı Vitest + lint
+npm run verify        # typecheck + kapsamlı Vitest + lint
 npm run test:e2e      # Playwright: tarayıcı senaryolarının tamamı
 npm run verify:full   # + production export, bundle bütçesi, tüm Playwright
 ```
 
-`main`'e push, değişen yolları sınıflandırır ve yüksek riskli yollara mutasyon
-kapısını ekler: `src/{domain,data/repo,db,sync,auth,services}` altındaki bir
-dosya değiştiyse CI onu mutasyona uğratır ve `mutation-baseline.json` ile
-karşılaştırır. **Bir dosya eskiden yakaladığından azını yakalayamaz**; kaydı
-olmayan dosya, gelişigüzel bir skorla kabul edilmek yerine kapıyı düşürür.
-Skor kabul etmek bir karardır, build adımı değil — `npm run mutation:baseline`
-çalıştırmadan önce neyin hayatta kaldığı okunur.
+CI, bir push'un dokunduğu yolları okur ve testin ağırlığını ona göre seçer:
+ekran görüntüsü değiştiyse hızlı kontrol, para hesabına dokunulduysa
+tarayıcı senaryolarının tamamı ve mutasyon testi. Mutasyon testi kodu kasıtlı
+olarak bozar ve testlerin bunu fark edip etmediğini ölçer;
+`mutation-baseline.json` her dosyanın en son ne kadarını yakaladığını tutar.
 
 ### Kod haritası
 
@@ -227,28 +222,10 @@ Skor kabul etmek bir karardır, build adımı değil — `npm run mutation:basel
 | `src/services/` | Yan etkili entegrasyonlar: dosya, bildirim, piyasa, PDF, Excel |
 | `src/ui/` | Tasarım sistemi ilkelleri ve tokenlar |
 
-Bağımlılık yönü `app → data → db`, `app → domain`. Rotalar ve UI
-`src/data/repo/*` içine girmez; `src/domain/` React, ağ ve depolama içermez.
-Sözleşmeyi `tests/architecture-contract.test.ts` zorlar.
-
-Depoda `graphify` ile üretilmiş yerel bir kod indeksi kullanılabilir
-(`graphify query "…"`, `graphify explain "…"`, `graphify path "a" "b"` —
-`file:line` atıflarıyla yanıt verir). İndeks sürüme dâhil değildir, makinede
-üretilir; ipucu verir, otorite değildir — kaynağı açıp doğrula.
-
-### Belgeler
-
-| Belge | İçerik |
-|---|---|
-| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Sınırlar, güvenlik kontrolleri, test politikası, performans iddiası nasıl üretilir |
-| [`docs/UI.md`](docs/UI.md) | Yerleşim, etkileşim, erişilebilirlik tabanı, grafik ve yoğun yüzey kuralları |
-| [`docs/SPEC.md`](docs/SPEC.md) | Ürün davranışı ve eşitleme kuralları |
-| [`docs/SECURITY.md`](docs/SECURITY.md) | Güven sınırları ve kabul edilmiş artık riskler |
-| [`docs/PRIVACY.md`](docs/PRIVACY.md) | Hangi veri nerede durur, ne zaman çıkar |
-| [`docs/RELEASE.md`](docs/RELEASE.md) | Teslim yüzeyleri, migration sırası, rollback, kanıt |
-
-`AGENTS.md` her kodlama ajanının uyduğu paylaşılan sözleşmedir; `CLAUDE.md`
-Claude Code'a özgü mekanikleri ekler.
+Bağımlılık yönü `app → data → db` ve `app → domain`. Rotalar ve UI
+`src/data/repo/*` içine girmez; `src/domain/` React, ağ ve depolama içermez —
+bu yüzden hesap kısmı tarayıcısız, veritabanısız test edilebilir.
+`tests/architecture-contract.test.ts` bunu her çalıştırmada doğrular.
 
 ---
 

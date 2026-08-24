@@ -16,6 +16,23 @@ test.beforeEach(async ({ context }) => isolateExternalData(context));
  * zero is the shape of a reload, which is the thing the owner does not want to
  * see. Motion is read off the composited matrix instead of off opacity.
  */
+/**
+ * The largest distance a screen travels over `ms`, sampled as it goes.
+ *
+ * `expect.poll` can prove a value reaches something; it cannot prove a value
+ * never left where it was, which is what "the page does not move when you come
+ * back" needs.
+ */
+async function peakOffset(entrance: Locator, page: Page, ms = 900): Promise<number> {
+  let peak = 0;
+  const until = Date.now() + ms;
+  while (Date.now() < until) {
+    peak = Math.max(peak, await arrivalOffset(entrance));
+    await page.waitForTimeout(30);
+  }
+  return peak;
+}
+
 async function arrivalOffset(entrance: Locator): Promise<number> {
   return entrance.evaluate((element) => {
     const transform = getComputedStyle(element).transform;
@@ -217,7 +234,13 @@ test("mobile web recentres a focused form field without accumulating focus work"
   expect(calls).toHaveLength(2);
 });
 
-test("every tab replays its screen entrance on return", async ({ page }) => {
+test("a tab arrives once and then stays where it is", async ({ page }) => {
+  // The rule the owner asked for three times, in the words they used: the app
+  // must flow, not go "tık" on every return. Replaying a whole-page entrance
+  // per visit was the whole of that — measured on the dashboard, every
+  // back-navigation and every tab switch moved the entire 758-node page to
+  // +14pt and sprang it back, while the node count stayed identical before,
+  // during and after. Nothing was reloading; the page was just moving.
   await page.emulateMedia({ reducedMotion: "no-preference" });
   await onboard(page);
 
@@ -230,45 +253,63 @@ test("every tab replays its screen entrance on return", async ({ page }) => {
     const entrance = page.getByTestId("screen-entrance").filter({
       has: page.getByRole("heading", { name: heading, exact: true }),
     });
-    const offset = () => arrivalOffset(entrance);
-    await expect.poll(offset).toBeLessThan(0.5);
+    // Arriving for the first time still moves: the screen is new, and the
+    // motion is what says so.
+    await expect.poll(() => arrivalOffset(entrance)).toBeLessThan(0.5);
+
     await page.getByRole("tab", { name: "Durum", exact: true }).click();
     await expect(page.getByRole("tab", { name: "Durum", exact: true })).toHaveAttribute("aria-selected", "true");
-
     await page.getByRole("tab", { name: tab, exact: true }).click();
-    // It moves on the way in, and it is never invisible while it does.
-    await expect.poll(offset, { timeout: 1_000 }).toBeGreaterThan(1);
-    await expect.poll(offset).toBeLessThan(0.5);
+
+    // Coming back to a screen that never went away is not an arrival.
+    expect(await peakOffset(entrance, page), tab).toBeLessThan(0.5);
   }
 });
 
-test("the subscriptions tab replays its entrance after a root-level editor", async ({ page }) => {
-  // Half of the reported case: open Abonelikler, open the add form, come back
-  // — and see the arrival again. The subscription form is a ROOT-level route,
-  // so the whole tab navigator blurs rather than a nested stack, which is the
-  // arrival shape neither other motion test covers. The tab-switch half is
-  // covered by "every tab replays its screen entrance on return".
+test("a pushed screen still arrives with movement, and never blanks", async ({ page }) => {
+  // The other half of the same rule. Removing the per-visit replay must not
+  // remove the entrance itself: a screen you have not seen before is new, and
+  // it is the one place the movement means something.
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  await onboard(page);
+  await page.getByRole("tab", { name: "Abonelikler", exact: true }).click();
+  await page.getByRole("button", { name: "Abonelik Ekle", exact: true }).click();
+  await expect(page).toHaveURL(/subscription-form/);
+
+  // Located by a control only this form has: its title lives in the native
+  // header, outside the entrance wrapper this test is measuring.
+  const form = page.getByTestId("screen-entrance").filter({
+    has: page.getByRole("button", { name: "Vazgeç", exact: true }),
+  });
+  // It moves on the way in, and it is never invisible while it does — a full
+  // fade was tried and read as a reload, which is what started all of this.
+  expect(await peakOffset(form, page, 600)).toBeGreaterThan(1);
+  expect(await form.evaluate((element) => Number.parseFloat(getComputedStyle(element).opacity))).toBeGreaterThan(0.99);
+  await expect.poll(() => arrivalOffset(form)).toBeLessThan(0.5);
+});
+
+test("returning from a root-level editor leaves the tab beneath it still", async ({ page }) => {
+  // A root-level route blurs the whole tab navigator rather than a nested
+  // stack, so this is the arrival shape the tab-switch test cannot reach.
   await page.emulateMedia({ reducedMotion: "no-preference" });
   await onboard(page);
   await page.getByRole("tab", { name: "Abonelikler", exact: true }).click();
   const entrance = page.getByTestId("screen-entrance").filter({
     has: page.getByRole("heading", { name: "Abonelikler", exact: true }),
   });
-  const offset = () => arrivalOffset(entrance);
   const opacity = () => entrance.evaluate((element) => Number.parseFloat(getComputedStyle(element).opacity));
-  await expect.poll(offset).toBeLessThan(0.5);
+  await expect.poll(() => arrivalOffset(entrance)).toBeLessThan(0.5);
 
   await page.getByRole("button", { name: "Abonelik Ekle", exact: true }).click();
   await expect(page).toHaveURL(/subscription-form/);
   await page.getByRole("button", { name: "Vazgeç", exact: true }).click();
   await expect(page).toHaveURL(/subscriptions/);
-  await expect.poll(offset, { timeout: 1_000 }).toBeGreaterThan(1);
-  // The page is never blanked on the way in — that is what read as a reload.
+
+  expect(await peakOffset(entrance, page)).toBeLessThan(0.5);
   expect(await opacity()).toBeGreaterThan(0.99);
-  await expect.poll(offset).toBeLessThan(0.5);
 });
 
-test("returning from an investment editor replays the entrance without blanking the page", async ({ page }) => {
+test("returning from an investment editor leaves the page still and visible", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.emulateMedia({ reducedMotion: "no-preference" });
   await onboard(page);
@@ -280,9 +321,8 @@ test("returning from an investment editor replays the entrance without blanking 
   const entrance = page.getByTestId("screen-entrance").filter({
     has: page.getByRole("heading", { name: "Yatırımlar", exact: true }),
   });
-  const offset = () => arrivalOffset(entrance);
   const opacity = () => entrance.evaluate((element) => Number.parseFloat(getComputedStyle(element).opacity));
-  await expect.poll(offset).toBeLessThan(0.5);
+  await expect.poll(() => arrivalOffset(entrance)).toBeLessThan(0.5);
   await expect(page.getByTestId("investment-distribution-chart")).toBeVisible();
   await expect(page.getByTestId("donut-empty-state")).toBeVisible();
 
@@ -291,12 +331,11 @@ test("returning from an investment editor replays the entrance without blanking 
   await page.getByRole("button", { name: "Geri", exact: true }).click();
   await expect(page).toHaveURL(/investments\/?$/);
 
-  // A nested-stack pop is an arrival too: it moves, and it stays visible while
-  // it does. Two earlier designs failed one of those halves each — a full fade
-  // read as a reload, and a 0.92 fade could not be seen at all.
-  await expect.poll(offset, { timeout: 1_000 }).toBeGreaterThan(1);
+  // A nested-stack pop returns to a screen that was never unmounted, so it
+  // must not move — and it must stay visible, which is the half that a full
+  // fade got wrong.
+  expect(await peakOffset(entrance, page)).toBeLessThan(0.5);
   expect(await opacity()).toBeGreaterThan(0.99);
-  await expect.poll(offset).toBeLessThan(0.5);
   await expect(page.getByRole("tab", { name: "Yatırımlar", selected: true })).toBeVisible();
 });
 

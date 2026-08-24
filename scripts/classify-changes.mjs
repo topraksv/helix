@@ -42,7 +42,13 @@ const HIGH_RISK = [
   /^scripts\//,
 ];
 
-/** Repository material that cannot alter either delivered application. */
+/**
+ * Repository material that cannot alter either delivered application.
+ *
+ * `docs/` is untracked and cannot reach a diff from a clone, but the pattern
+ * stays: the notes still exist on the machine this is run from, and a stray
+ * `git add` of one must not be able to trigger a web deploy and an OTA update.
+ */
 const NO_APP_IMPACT = [
   /^README\.md$/,
   /^LICENSE$/,
@@ -52,9 +58,6 @@ const NO_APP_IMPACT = [
   /^docs\//,
   /^assets\/screenshots\//,
   /^assets\/brand\/horizontal-(?:light|dark)\.png$/,
-  /^\.(ai|agents|claude|codex)\//,
-  /^(AGENTS|CLAUDE)\.md$/,
-  /^skills-lock\.json$/,
 ];
 
 /** Checked here but never published as Pages or Expo Go application bytes. */

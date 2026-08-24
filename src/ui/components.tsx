@@ -50,7 +50,7 @@ import { shouldStackListActions, shouldStackPanelAction, shouldUseWideGutter } f
 import { useContentWidth, useNavigationSpace } from "./viewport";
 import { OperationFlow, type OperationFlowKind } from "./operation-flow";
 import { KeyboardSafeScrollView } from "./keyboard-safe";
-import { ScreenVisitContext, useScreenVisit, useScreenVisitController } from "./motion-primitives";
+import { ScreenVisitContext, useScreenVisitController } from "./motion-primitives";
 
 export {
   Amount,
@@ -79,31 +79,45 @@ export { Field, MoneyField, MonthStepper, Toggle } from "./fields";
 export { ChipPicker, ChoiceTile, Segmented, Select, SelectionGrid } from "./selection-controls";
 
 /**
- * A screen arriving, said with movement instead of with opacity.
+ * A screen arriving for the FIRST time, said with movement instead of opacity.
  *
- * Fading a whole page up from zero IS what reads as a refresh: for a few
+ * Fading a whole page up from zero is what reads as a refresh: for a few
  * frames the window is empty and then the entire document paints at once,
- * which is exactly the shape of a reload. Two earlier attempts moved along
- * the wrong axis — a full 0→1 fade looked like a reload, and starting it at
- * 0.92 instead made the replay invisible.
+ * which is exactly the shape of a reload. So the page never changes opacity;
+ * it rises into place, which is motion a reload cannot produce.
  *
- * The page never changes opacity now. It rises into place, which is motion a
- * reload cannot produce, and it is a transform, so it is composited rather
- * than repainted and costs nothing on a long list. The per-element replays
- * that make Durum and Yatırımlar feel alive — `useDrawIn` for charts,
- * `useCountUp` for figures — hang off the same visit counter and continue to
- * fire on every arrival, on top of this.
+ * It rises ONCE, on mount, and never again. Replaying it per visit is what
+ * three rounds of "girip çıkınca ekran tık diye yenileniyor" were about, and
+ * this was the whole of it: measured on the dashboard, every back-navigation
+ * AND every tab switch moved the entire 758-node page to +14pt and sprang it
+ * back over 21 frames. Nothing was remounting and nothing was refetching —
+ * the node count was identical before, during and after — so the only thing
+ * a reader could be reacting to was the page itself moving under them. A
+ * whole-page motion cannot say "this screen is alive" without also saying
+ * "this screen just reloaded", because those look the same.
+ *
+ * Arriving somewhere new still moves: a pushed screen mounts, so it animates.
+ * Coming back to a screen that never went away does not, because nothing
+ * about it is new. What replays instead is per-element and local — `useDrawIn`
+ * redraws a chart, `FadeIn` with a `replayToken` restages a list — and those
+ * still hang off the visit counter. Those are the animations the owner asked
+ * to keep; this was the one they asked to stop.
+ *
+ * It is also the cheapest frame on the web build: `useNativeDriver` is false
+ * there, so this was a JS-driven transform of a wrapper holding the entire
+ * page, recomputed every frame of every navigation.
  */
 function ScreenEntrance({ children, style }: { children: ReactNode; style?: StyleProp<ViewStyle> }) {
-  const screenVisit = useScreenVisit();
   const reducedMotion = useReducedMotion();
-  const [progress] = React.useState(() => new Animated.Value(1));
+  // Starts where it will be drawn, so the first painted frame is already
+  // correct. Seeding at rest and moving it in an effect showed one frame at
+  // the settled position before the offset applied, which is a flicker.
+  const [progress] = React.useState(() => new Animated.Value(reducedMotion ? 1 : 0));
   React.useEffect(() => {
     if (reducedMotion) {
       progress.setValue(1);
       return;
     }
-    progress.setValue(0);
     const animation = Animated.spring(progress, {
       toValue: 1,
       useNativeDriver: Platform.OS !== "web",
@@ -111,7 +125,7 @@ function ScreenEntrance({ children, style }: { children: ReactNode; style?: Styl
     });
     animation.start();
     return () => animation.stop();
-  }, [progress, reducedMotion, screenVisit]);
+  }, [progress, reducedMotion]);
   return (
     <Animated.View
       testID="screen-entrance"
