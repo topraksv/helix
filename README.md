@@ -2,158 +2,255 @@
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="assets/brand/horizontal-dark.png">
-  <img src="assets/brand/horizontal-light.png" alt="Helix" width="520">
+  <img src="assets/brand/horizontal-light.png" alt="Helix" width="460">
 </picture>
 
-### Paran bugün nerede, yarın ne olacak — tek bakışta.
+### Paran bugün nerede, ay sonunda nerede olacak — tek ekranda.
 
-**Nakit akışını, taksitlerini, aboneliklerini ve bütçelerini cihazında tutan,**
-**internetsiz de çalışan kişisel finans uygulaması.**
+**Nakit akışını, taksitlerini, aboneliklerini ve yatırımlarını cihazında tutan,**
+**internetsiz de tam çalışan kişisel finans uygulaması.**
 
 *An offline-first personal finance workspace for cash flow, installments,
-subscriptions and budgets — with a spreadsheet mind and a mobile heart.*
+subscriptions and investments — with a spreadsheet's mind and a phone's manners.*
 
-[![Helix'i aç](https://img.shields.io/badge/Helix'i_aç-BA5B38?style=for-the-badge&logo=expo&logoColor=white)](https://topraksv.github.io/helix/)
+<a href="https://topraksv.github.io/helix/"><img alt="Helix'i aç" src="https://img.shields.io/badge/Helix'i_aç-BA5B38?style=for-the-badge&logo=expo&logoColor=white"></a>
 
 [![ci](https://github.com/topraksv/helix/actions/workflows/ci.yml/badge.svg)](https://github.com/topraksv/helix/actions/workflows/ci.yml)
 [![Expo SDK 54](https://img.shields.io/badge/Expo-SDK%2054-0F0F0D?logo=expo&logoColor=white)](https://docs.expo.dev/versions/v54.0.0/)
-[![Node 22](https://img.shields.io/badge/Node-22-0F0F0D?logo=nodedotjs&logoColor=5FA04E)](#kurulum)
+[![Node 22](https://img.shields.io/badge/Node-22-0F0F0D?logo=nodedotjs&logoColor=5FA04E)](#geliştirici-kurulumu)
 [![Proprietary](https://img.shields.io/badge/license-proprietary-BA5B38)](LICENSE)
+
+<br>
+
+<p>
+  <picture><source media="(prefers-color-scheme: dark)" srcset="assets/screenshots/m-dashboard-dark.png"><img src="assets/screenshots/m-dashboard-light.png" alt="Durum ekranı: güncel bakiye, ay sonu tahmini ve ayın kategori dağılımı" width="228"></picture>
+  <picture><source media="(prefers-color-scheme: dark)" srcset="assets/screenshots/m-cashflow-dark.png"><img src="assets/screenshots/m-cashflow-light.png" alt="Mali Tablo: ay × kalem matrisi, ay başı ve ay sonu bakiyeleriyle" width="228"></picture>
+  <picture><source media="(prefers-color-scheme: dark)" srcset="assets/screenshots/m-subscriptions-dark.png"><img src="assets/screenshots/m-subscriptions-light.png" alt="Abonelikler: ödeme döngüsü, sıradaki duraklar ve aylık maliyet" width="228"></picture>
+</p>
+
+<sub>Ekran görüntüleri gerçek uygulamadan, tamamı sentetik iki yıllık bir veri kümesiyle alındı. Sistem temanıza göre açık/koyu görünür.</sub>
 
 </div>
 
-<p align="center">
-  <img src="assets/screenshots/dashboard-dark.png" alt="Helix Durum ekranı: güncel bakiye, ay sonu tahmini ve kategori dağılımı" width="680">
-  <img src="assets/screenshots/dashboard-mobile-dark.png" alt="Helix mobil Durum ekranı: aynı finans özeti küçük ekranda" width="190">
-</p>
+---
 
-## Neden Helix?
+## Helix ne yapar?
 
-Bir Excel tablosu para takibi için güçlüdür — ta ki formül bozulana, ileri
-tarihli bir harcama bugünkü bakiyeye karışana ya da bir taksidin kaçıncı ayda
-olduğunu unutana kadar. Helix, tablonun tanıdık **ay × kalem** düzenini korur;
-hesaplamayı, tekrarları ve veri güvenliğini senin yerine üstlenir.
+Excel para takibi için güçlüdür — formül bozulana, ileri tarihli bir harcama
+bugünkü bakiyeye karışana ya da bir taksidin kaçıncı ayda olduğunu unutana
+kadar. Helix o tablonun tanıdık **ay × kalem** düzenini korur, hesabı ve
+tekrarları üstlenir.
 
-- **Ekle:** Gelir, gider, taksit veya aboneliği tek formdan kaydet. Tutarı
-  "400+500" gibi bir toplam olarak bile yazabilirsin.
-- **Gör:** Güncel bakiye, ay sonu tahmini, yaklaşan ödeme takvimi ve kategori
-  bütçelerin tek özet ekranında birleşir.
-- **Rahat ol:** Her kayıt önce cihazına yazılır; internet yokken de her şey
-  çalışır. Bağlantı gelince yalnızca senin hesabına eşitlenir, silinenler tek
-  dokunuşla geri alınır.
+Üç cümlede:
 
-## Helix iş başında
+- **Bugünü söyler.** Güncel bakiye, bu ayın giriş-çıkışı, yaklaşan ödemeler.
+- **Yarını söyler.** Ay sonu tahmini; taksitler, abonelikler ve düzenli
+  gelirler aylara kendiliğinden dağılır.
+- **Yanlış söylemez.** Aynı rakam iki ekranda aynı çıkar; bir satır kendi
+  içinde toplanır. Hesaplanmayan bir şey boş bırakılmaz, sıfır da gizlenmez.
 
-| Mali Tablo | Analiz | İşlem yönetimi |
-|:---:|:---:|:---:|
-| <img src="assets/screenshots/cash-flow-dark.png" alt="Mali Tablo: 2026 yılı satır odaklı görünümünde Temmuz gelir ve gider kalemleri" width="280"> | <img src="assets/screenshots/analytics-dark.png" alt="Analiz: dönem, kategori ve işlem filtreleriyle harcama dağılımı" width="280"> | <img src="assets/screenshots/transactions-dark.png" alt="Temmuz 2026 işlem yönetimi: gelir, gider ve güncel bakiye özeti" width="280"> |
-| Satır, kolon veya ay odağında incele; hücreden ayrıntıya in. | Dönem, kategori ve ödeme yöntemiyle karşılaştır veya işlem ara. | Ayın gelir-gider hareketlerini toplu gör; kaleme dokunup düzenle. |
+Hesap açmak zorunlu değil. Supabase yapılandırılmazsa uygulama **hesapsız**
+açılır ve hiçbir finansal veri cihazdan çıkmaz.
 
-> Görseller, 15 Temmuz 2026'ya sabitlenmiş ve yalnızca sentetik veriler kullanan
-> deterministik demo senaryosundan üretildi. Gerçek kullanıcı verisi içermez.
+---
 
-## Neler yapabilirsin?
+## İş başında
 
-| İhtiyacın | Gideceğin yer | Yapabileceklerin |
+<table>
+<tr>
+<td align="center" width="33%"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/screenshots/m-month-dark.png"><img src="assets/screenshots/m-month-light.png" alt="Ay detayı: ay başı, ay sonu, gelir, gider ve bakiye düzeltmesi; altında kalem kalem döküm" width="215"></picture></td>
+<td align="center" width="33%"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/screenshots/m-analytics-dark.png"><img src="assets/screenshots/m-analytics-light.png" alt="Analiz: dönem ve kategori filtreleriyle harcama dağılımı halkası ve limit durumu" width="215"></picture></td>
+<td align="center" width="33%"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/screenshots/m-investments-dark.png"><img src="assets/screenshots/m-investments-light.png" alt="Yatırımlar: serbest bakiye, maliyet dağılımı ve aktif ürünler" width="215"></picture></td>
+</tr>
+<tr>
+<td align="center"><b>Ayın hikâyesi</b><br><sub>Ay başından ay sonuna ne olduğu, kalem kalem. Bakiye düzeltmesi ayrı satır — akışa karışmaz.</sub></td>
+<td align="center"><b>Nereye gitti?</b><br><sub>Dönem, kategori, ödeme yöntemi ve serbest metinle ara. Halkaya dokun: kategori kilitlenir.</sub></td>
+<td align="center"><b>Yatırım cüzdanı</b><br><sub>Serbest nakit, yatırılmış maliyet, gerçekleşen sonuç. Mali Tablo hareketleri burada tekrar sayılmaz.</sub></td>
+</tr>
+<tr>
+<td align="center"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/screenshots/m-transaction-dark.png"><img src="assets/screenshots/m-transaction-light.png" alt="Yeni İşlem formu: tutar, kategori, ödeme yöntemi, zamanlama ve not" width="215"></picture></td>
+<td align="center"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/screenshots/m-installments-dark.png"><img src="assets/screenshots/m-installments-light.png" alt="Taksitler ve krediler: bu ayki yükümlülük ve plan başına kaçıncı taksit" width="215"></picture></td>
+<td align="center"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/screenshots/m-calendar-dark.png"><img src="assets/screenshots/m-calendar-light.png" alt="Yaklaşan takvim: aylara göre gruplanmış ödeme ve gelir günleri" width="215"></picture></td>
+</tr>
+<tr>
+<td align="center"><b>Tek form</b><br><sub>Gider, gelir ya da yatırım. Tutar alanı toplama yapar: <code>400+500</code> yazabilirsin.</sub></td>
+<td align="center"><b>Taksit ve kredi</b><br><sub>Gerçek alışveriş günü ile ekstre dönemi ayrı; nakde etkisi son ödeme tarihinde.</sub></td>
+<td align="center"><b>Yaklaşanlar</b><br><sub>Abonelik, düzenli gelir ve kart ekstresi bir takvimde. Ödendi/Alındı tek dokunuş.</sub></td>
+</tr>
+</table>
+
+<details>
+<summary><b>Masaüstünde de aynı uygulama</b> — aynı kod, aynı veriler, geniş ekran düzeni</summary>
+<br>
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/screenshots/d-dashboard-dark.png">
+  <img src="assets/screenshots/d-dashboard-light.png" alt="Masaüstü Durum ekranı: bakiye bloğu ve kategori dağılımı yan yana" width="820">
+</picture>
+<br><br>
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/screenshots/d-cashflow-dark.png">
+  <img src="assets/screenshots/d-cashflow-light.png" alt="Masaüstü Mali Tablo: satır odaklı yıllık matris" width="820">
+</picture>
+</details>
+
+---
+
+## Nereye bakacaksın?
+
+| İhtiyacın | Gideceğin yer | Bulacakların |
 |---|---|---|
-| **Şu anki durumum ne?** | **Durum** | Güncel bakiye, ay sonu tahmini, yaklaşan ödemeler, aylık grafikler ve canlı altın–döviz fiyatları |
-| **Ay ay ayrıntı** | **Mali Tablo** | Satır/kolon/ay odaklı matris, hücre detayı ve notları, toplu geçmiş girişi |
-| **Tekrarlayan ödemeler** | **Abonelikler** | Aylık/yıllık maliyet, ödeme günü, deneme dönemi, otomatik ödeme |
-| **Maaş ve düzenli gelirler** | **Ayarlar → Düzenli Gelirler** | Aylık, haftalık veya iki haftalık gelir kuralları; günü gelince onayla, gerçek tutarıyla işlensin |
-| **Taksit ve kredi kartı** | **Mali Tablo → Taksitler** | Gerçek satın alma günü + ekstre dönemi; nakit etkisi son ödeme tarihinde |
-| **Bütçe hedefleri** | **Ayarlar → Bütçeler** | Kategori başına aylık hedef, kalan tutar ve aşım uyarısı |
-| **Hızlı hesap ve kur** | **Araçlar** | Hesap makinesi + canlı kurla TRY/USD/EUR/GBP dönüşümü |
+| **Şu an durum ne?** | **Durum** | Güncel bakiye, ay sonu tahmini, yaklaşan ödemeler, ayın dağılımı, canlı altın ve döviz |
+| **Ay ay ayrıntı** | **Mali Tablo** | Satır / kolon / ay odaklı matris; hücreye dokun, o ayın o kalemi açılır |
+| **Tekrarlayan ödemeler** | **Abonelikler** | Aylık ve yıllık maliyet, sıradaki duraklar, deneme dönemi, otomatik ödeme |
+| **Değişken faturalar** | **Abonelikler** | Tutarı bilinmeyen fatura sıfır sayılmaz; geçmişinden beklenen aralık gösterilir |
+| **Yatırımlar** | **Yatırımlar** | Serbest nakit, ürün bazında ortalama maliyet, gerçekleşen kâr/zarar, hedef ağırlık |
+| **Taksit ve kredi kartı** | **Mali Tablo → Taksitler** | Plan başına kaçıncı taksit, bu ayki toplam yükümlülük, kart bazında ayrım |
+| **Maaş ve düzenli gelir** | **Ayarlar → Düzenli Gelirler** | Aylık / haftalık / iki haftalık kurallar; günü gelince onayla, gerçek tutarıyla işlenir |
+| **Harcama sınırı** | **Ayarlar → Aylık Harcama Limiti** | Kalem başına aylık limit, kalan tutar ve aşım |
 | **Bir işlemi bulmak** | **Mali Tablo → Analiz** | Metin, tutar, tür, kategori ve ödeme yöntemiyle arama |
-| **Verini taşımak** | **Ayarlar** | JSON yedek/geri yükleme, CSV dışa aktarma, sihirbazlı Excel içe aktarma |
+| **Karar bekleyenler** | **Bekleyenler** | Onay bekleyen ödemeler, biten denemeler, bakiye kontrolü — bitince satır kaybolur |
+| **Hesap ve kur** | **Ayarlar → Hızlı Hesaplamalar** | Hesap makinesi ve 22 para birimi arasında çevirici |
+| **Verini taşımak** | **Ayarlar** | JSON yedek/geri yükleme, CSV çıktısı, sihirbazlı Excel/CSV içe aktarma, PDF ekstre okuma |
 
-## Local-first çalışma modeli
+---
 
-Her yazma önce cihazdaki SQLite veritabanına, veri ve outbox kaydı tek
-transaction olacak şekilde iner. Uygulama çevrimdışıyken tam işlevlidir; bağlantı
-geldiğinde outbox Supabase'e gönderilir ve sunucunun normalize ettiği `updated_at`
-cevabı beklenir. Silme işlemleri tombstone'dur, bu yüzden geri alınabilir ve
-cihazlar arasında tutarlı kalır. Bozuk veya yabancı satırlar cursor'ı ilerletmez;
-`sync_dead_letters` içine karantinaya alınır.
+## Neden cihazda?
 
-Supabase yapılandırılmazsa uygulama **hesapsız (local-only)** açılır ve hiçbir
-finansal veri dışarı çıkmaz.
+Her yazma önce cihazdaki SQLite veritabanına iner — veri satırı ve outbox kaydı
+**tek transaction** içinde. Uygulama çevrimdışıyken eksiksiz çalışır; bağlantı
+geldiğinde outbox Supabase'e gönderilir ve sunucunun normalize ettiği
+`updated_at` cevabı beklenir.
 
-Eşitleme kuralları [`docs/SPEC.md`](docs/SPEC.md), sınırlar ve gerekçeler
-[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) belgesindedir.
+- **Silme geri alınabilir.** Silmeler tombstone'dur, cihazlar arasında tutarlı
+  kalır, tek dokunuşla geri döner.
+- **Bozuk satır kuyruğu tıkamaz.** Reddedilen kayıt cursor'ı ilerletmez;
+  `sync_dead_letters` içinde karantinaya alınır ve ne olduğu ekranda yazılır.
+- **Hesapsız mod tam moddur.** Supabase yoksa uygulama eksiksiz çalışır, veri
+  cihazdan çıkmaz.
+
+Kurallar [`docs/SPEC.md`](docs/SPEC.md), sınırlar ve gerekçeler
+[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) içinde.
+
+---
 
 ## Platformlar
 
 | Platform | Durum |
 |---|---|
-| Web | GitHub Pages'teki [canlı sürüm](https://topraksv.github.io/helix/) yetkilendirilmiş bir `main` push'unda, risk sınıflandırıcı web yüzeyini seçtiğinde otomatik yayımlanır |
-| iOS / Android | Yetkilendirilmiş EAS `preview` update'i Expo Go ile açılır; fiziksel cihaz kabulü **henüz yapılmadı** |
+| **Web** | [Canlı sürüm](https://topraksv.github.io/helix/) — yetkilendirilmiş bir `main` push'unda risk sınıflandırıcı web yüzeyini seçtiğinde otomatik yayımlanır |
+| **iOS / Android** | Expo Go ile açılan EAS `preview` update'i. **Fiziksel cihaz kabulü henüz yapılmadı**; tarayıcı testleri native SQLite, Keychain, bildirim izni, biyometri ve app-switcher görüntüsünü kanıtlamaz |
 
-Mobil kullanım Expo Go'nun SDK 54 içinde sunduğu native kütüphanelerle sınırlıdır.
 EAS Build, development client, TestFlight ve store submission bu teslim yolunun
-parçası değildir; fiziksel cihazda açılış yapılmadan cihaz kabulü doğrulanmış
-sayılmaz.
+parçası **değil**. Mobil kullanım Expo Go'nun SDK 54 ile sunduğu native
+kütüphanelerle sınırlı.
+
+---
 
 ## Tasarım
 
-Sıcak kâğıt tonları üzerinde kil vurgusu: **Warm Organic Editorial**. IBM Plex
-Serif başlıklar, Inter gövde, botanik çift sarmal logosu. Gelirler yeşil, giderler
-kırmızı; light/dark tüm rol çiftleri otomatik kontrast sözleşmesinden geçer.
-Uzun Mali Tablo kalemleri yalnız dar hücrede tek satır kısalır ve erişilebilir
-etikette tam adı korur. Hareket sistemi Reduced Motion tercihine uyar; grafikler
-ekran okuyucu için tam değerli özet taşır. Arayüz sözleşmesinin tamamı
-[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) belgesindedir.
+Sıcak nötrler üzerinde tek bir vurgu rengi; üç palet, iki tema, hepsi ölçülmüş.
+
+- **Palet:** Amber (kil), Petrol (mineral mavi), Servi (taş ve koyu yeşil).
+  Ayarlar'dan anında değişir, seçim cihazda kalır.
+- **Renk anlam taşır, süs değil.** Gelir yeşil, gider kırmızı, uyarı amber —
+  tema ve palet değişse de aynı. Grafik kategorileri de açık ve koyu temada
+  aynı ton ailesinde kalır, akşam olunca renk değiştirmez.
+- **Tipografi:** yoğun içerik Inter, marka başlıkları ve büyük toplamlar IBM
+  Plex Serif. Türkçe büyük harf `tr-TR` kurallarıyla — `GÜNCEL BAKİYE`, `NİSAN`.
+- **Erişilebilirlik ölçülür.** Metin kontrastı iki temada da bileşik arka plana
+  karşı hesaplanır; hareket azaltma tercihi her animasyon ailesini kapatır;
+  Mali Tablo ok tuşlarıyla gezilir ve tek sekme durağıdır.
+- **Kırpma yok.** Uzun bir kalem adı üç noktayla kesilmez; daralır, sarar ya da
+  erişilebilir etikette tam adını korur.
+
+Yerleşim sözleşmesinin tamamı [`docs/UI.md`](docs/UI.md) içinde.
+
+---
 
 ## Gizlilik ve güvenlik
 
-Aşağısı özettir; veri işleme ayrıntıları [`docs/PRIVACY.md`](docs/PRIVACY.md),
-güven sınırları ve kabul edilmiş artık riskler
-[`docs/SECURITY.md`](docs/SECURITY.md) belgesindedir.
+Özet; ayrıntı [`docs/PRIVACY.md`](docs/PRIVACY.md) ve
+[`docs/SECURITY.md`](docs/SECURITY.md) içinde.
 
-- **Hesapsız mod:** Bütün finansal veri cihazındaki SQLite veritabanında kalır.
-- **Hesaplı mod:** Değişiklikler yalnızca senin hesabına eşitlenir. Her tablo
-  owner-only RLS ile korunur; başka bir hesap satırlarını okuyamaz.
-- **Anahtarlar:** Client yalnız publishable anon anahtarı taşır; service-role
-  anahtarı yalnızca GitHub Actions secret'ındadır.
-- **Bildirimler:** İzin yalnızca Ayarlar'dan istenir; kilit ekranında finansal
-  ayrıntı varsayılan olarak gizlidir.
-- **Dış istekler:** Kur, piyasa ve logo istekleri salt okunur; boyut, şekil,
+- **Hesapsız mod:** bütün finansal veri cihazdaki SQLite dosyasında kalır.
+- **Hesaplı mod:** her tablo owner-only RLS ile korunur; yetki sınırı sunucudadır,
+  istemci kontrolü değildir.
+- **Anahtarlar:** istemci yalnız publishable anon anahtarı taşır.
+- **Dış istekler:** kur, piyasa ve logo istekleri salt okunur; boyut, şekil,
   tarih ve host doğrulamasından geçer.
-- **Loglama:** Production'da token, tutar, not veya e-posta persist edilmez.
+- **Loglama:** production'da token, tutar, not veya e-posta persist edilmez.
+- **Hata mesajları** yer söyler, değer söylemez: reddedilen bir yedek hangi
+  bölümün kaçıncı kaydında hangi kurala takıldığını yazar; tutarı yazmaz.
 
-## Kurulum
+---
+
+## Geliştirici kurulumu
 
 > **Node 22 zorunlu** (`.nvmrc`). Gerekçesi
-> [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) içindedir.
+> [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) içinde.
 
 ```bash
 git clone https://github.com/topraksv/helix.git
 cd helix
 npm ci
-cp .env.example .env     # boş bırakılırsa uygulama local-only açılır
+cp .env.example .env             # boş bırakılırsa uygulama hesapsız açılır
 
-npm run web              # web development
-npx expo start --tunnel --clear  # Expo Go QR
+npm run web                      # tarayıcıda geliştirme
+npx expo start --tunnel --clear  # Expo Go için QR
 ```
 
-Kalite kapısı tek komuttur:
+### Kalite kapısı
 
 ```bash
-npm run verify           # skill kontrolü + typecheck + kapsamlı Vitest + lint
-npm run test:e2e:smoke   # kritik tarayıcı senaryoları
-npm run verify:full      # + production export, bundle bütçesi, tüm Playwright
+npm run verify        # skill kontrolü + typecheck + kapsamlı Vitest + lint
+npm run test:e2e      # Playwright: tarayıcı senaryolarının tamamı
+npm run verify:full   # + production export, bundle bütçesi, tüm Playwright
 ```
 
-GitHub Actions `main` push'unda kalite, web export/bütçe ve smoke E2E'yi koşar;
-tam browser paketi nightly veya tam kapı gerektiren push'ta üç shard'a bölünür.
+`main`'e push, değişen yolları sınıflandırır ve yüksek riskli yollara mutasyon
+kapısını ekler: `src/{domain,data/repo,db,sync,auth,services}` altındaki bir
+dosya değiştiyse CI onu mutasyona uğratır ve `mutation-baseline.json` ile
+karşılaştırır. **Bir dosya eskiden yakaladığından azını yakalayamaz**; kaydı
+olmayan dosya, gelişigüzel bir skorla kabul edilmek yerine kapıyı düşürür.
+Skor kabul etmek bir karardır, build adımı değil — `npm run mutation:baseline`
+çalıştırmadan önce neyin hayatta kaldığı okunur.
 
-## Teslim modeli
+### Kod haritası
 
-`main`'e push değişen yolları sınıflandırır, kapıyı koşar ve baytları değişmiş
-olabilecek her yüzeyi otomatik yayımlar: web GitHub Pages'e, mobil sabit EAS CLI
-ile `preview` branch'ine. `main`'e push yetkisi bu sınıflandırıcı-seçimli
-yayımları da kapsar. Manuel `workflow_dispatch` yalnızca isteğe bağlı bir
-geçersiz kılmadır. Hiçbir binary oluşturulmaz. Yetki sınırı, ayrıntı ve rollback
-tek kanonik kaynakta: [`docs/RELEASE.md`](docs/RELEASE.md).
+| Klasör | Sorumluluk |
+|---|---|
+| `src/app/` | Expo Router rotaları ve ekran orkestrasyonu — ham SQL değil. Yaprak katman: kimse rotaları import etmez |
+| `src/domain/` | Saf hesap ve kurallar — para, tarih, bakiye zinciri, tekrarlar. React'sız, testlenebilir |
+| `src/data/` | `repo.ts` kalıcılık cephesi + canlı sorgu hook'ları. Rotalar `repo/*` içine girmez |
+| `src/db/` | Şema, migration'lar, atomik yazma katmanı |
+| `src/sync/` | Outbox, merge politikası, oturum epoch'u, karantina |
+| `src/services/` | Yan etkili entegrasyonlar: dosya, bildirim, piyasa, PDF, Excel |
+| `src/ui/` | Tasarım sistemi ilkelleri ve tokenlar |
+
+Bağımlılık yönü `app → data → db`, `app → domain`. Rotalar ve UI
+`src/data/repo/*` içine girmez; `src/domain/` React, ağ ve depolama içermez.
+Sözleşmeyi `tests/architecture-contract.test.ts` zorlar.
+
+Depoda `graphify` ile üretilmiş yerel bir kod indeksi kullanılabilir
+(`graphify query "…"`, `graphify explain "…"`, `graphify path "a" "b"` —
+`file:line` atıflarıyla yanıt verir). İndeks sürüme dâhil değildir, makinede
+üretilir; ipucu verir, otorite değildir — kaynağı açıp doğrula.
+
+### Belgeler
+
+| Belge | İçerik |
+|---|---|
+| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Sınırlar, güvenlik kontrolleri, test politikası, performans iddiası nasıl üretilir |
+| [`docs/UI.md`](docs/UI.md) | Yerleşim, etkileşim, erişilebilirlik tabanı, grafik ve yoğun yüzey kuralları |
+| [`docs/SPEC.md`](docs/SPEC.md) | Ürün davranışı ve eşitleme kuralları |
+| [`docs/SECURITY.md`](docs/SECURITY.md) | Güven sınırları ve kabul edilmiş artık riskler |
+| [`docs/PRIVACY.md`](docs/PRIVACY.md) | Hangi veri nerede durur, ne zaman çıkar |
+| [`docs/RELEASE.md`](docs/RELEASE.md) | Teslim yüzeyleri, migration sırası, rollback, kanıt |
+
+`AGENTS.md` her kodlama ajanının uyduğu paylaşılan sözleşmedir; `CLAUDE.md`
+Claude Code'a özgü mekanikleri ekler.
+
+---
 
 ## Lisans / License
 
@@ -161,4 +258,4 @@ tek kanonik kaynakta: [`docs/RELEASE.md`](docs/RELEASE.md).
 
 Kaynak; şeffaflık ve inceleme için görünürdür, açık kaynak değildir. Yazılı izin
 olmadan çalıştırma, kopyalama, değiştirme, dağıtma veya ticari kullanım hakkı
-vermez. Tam koşullar [LICENSE](LICENSE) içindedir.
+vermez. Tam koşullar [LICENSE](LICENSE) içinde.
