@@ -6,6 +6,7 @@ import Svg, { Circle, ClipPath, Defs, Path, Rect, Line as SvgLine, Text as SvgTe
 import type { Distribution } from "../domain/analytics";
 import { compactMoneyScale, formatMinorCompact, formatMinorCompactAtScale, type CompactMoneyScale, usesCompactMoneyScale } from "../domain/money";
 import { tr, upperTR } from "../i18n/tr";
+import { chartFocusActive, chartFocusReducer, EMPTY_CHART_FOCUS } from "./chart-focus";
 import { resolveBarAxis } from "./chart-axis";
 import { Amount } from "./primitives";
 import { useDrawIn } from "./motion-primitives";
@@ -161,6 +162,36 @@ export function distributionDonutData(
 }
 
 /**
+ * The chart-focus rules, bound to React.
+ *
+ * The rules themselves live in `chart-focus.ts` so they can be tested without
+ * a renderer; this is only the wiring. The link runs both ways because a ring
+ * and its legend are two drawings of one list: locking an arc lights its
+ * legend row, and locking a legend row thickens its arc.
+ */
+export interface ChartFocus {
+  active: number | null;
+  locked: number | null;
+  /** A tap or click: lock this one, or release it if it is already locked. */
+  toggle: (index: number) => void;
+  /** A pointer arriving. Ignored while something is locked. */
+  preview: (index: number) => void;
+  /** A pointer leaving the element it previewed. */
+  endPreview: (index: number) => void;
+  /** Empty space in either half of the chart. */
+  clear: () => void;
+}
+
+export function useChartFocus(): ChartFocus {
+  const [state, dispatch] = React.useReducer(chartFocusReducer, EMPTY_CHART_FOCUS);
+  const toggle = React.useCallback((index: number) => { selectionTap(); dispatch({ type: "toggle", index }); }, []);
+  const preview = React.useCallback((index: number) => dispatch({ type: "preview", index }), []);
+  const endPreview = React.useCallback((index: number) => dispatch({ type: "endPreview", index }), []);
+  const clear = React.useCallback(() => dispatch({ type: "clear" }), []);
+  return { active: chartFocusActive(state), locked: state.locked, toggle, preview, endPreview, clear };
+}
+
+/**
  * Donut with 2px surface gaps and a paired legend. Supplemental rows share the
  * exact legend hierarchy but are excluded from the arcs, total and percentages
  * (for example signed refund rows that cannot form negative arc geometry).
@@ -220,14 +251,8 @@ export function Donut({
    * a READOUT, so it lives in state rather than in a shared value; it changes
    * when the finger crosses into a different arc, not once per frame.
    */
-  const [active, setActive] = React.useState<number | null>(null);
-  const select = (index: number | null) => {
-    setActive((current) => {
-      const next = current === index ? null : index;
-      if (next !== current) selectionTap();
-      return next;
-    });
-  };
+  const focus = useChartFocus();
+  const active = focus.active;
 
   // Each arc carries the index of the SLICE it draws, not its own position in
   // this list. A slice worth nothing gets no arc, so the two lists drift apart
@@ -264,8 +289,30 @@ export function Donut({
         flexWrap: "wrap",
       }}
     >
-      <View accessible accessibilityRole="image" accessibilityLabel={chartSummary}>
-        <Svg accessible={false} width={fittedSize} height={fittedSize}>
+      {/* The ring sits ON a release target rather than containing one. Anything
+          the arcs do not paint — the hole in the middle, the corners of the
+          box — is "none of them", so a lock can always be let go without
+          hunting for the slice that set it, which on a three-percent arc is a
+          target a few pixels wide. A backdrop rather than a transparent circle
+          inside the SVG: react-native-svg's web build does not deliver a press
+          on an unpainted fill, so the circle looked right and did nothing. */}
+      <View accessible accessibilityRole="image" accessibilityLabel={chartSummary} style={{ position: "relative" }}>
+        {/* `zIndex` is load-bearing, not decoration. An absolutely positioned
+            sibling paints ABOVE an in-flow one whatever the DOM order, so
+            without this the release surface covered the ring and swallowed
+            every press meant for an arc — the slices stopped responding
+            entirely. Measured with `elementFromPoint` on a real arc. */}
+        <Pressable
+          accessible={false}
+          importantForAccessibility="no-hide-descendants"
+          onPress={focus.clear}
+          style={[StyleSheet.absoluteFill, { zIndex: 0 }]}
+        />
+        <View style={{ zIndex: 1 }} pointerEvents="box-none">
+        {/* `box-none`: the SVG's own box is not a target, only the shapes it
+            paints are. Without it the square around the ring swallowed every
+            press — including the one in the hole that means "release". */}
+        <Svg accessible={false} pointerEvents="box-none" width={fittedSize} height={fittedSize}>
           <Circle
             cx={cx}
             cy={cy}
@@ -286,10 +333,13 @@ export function Donut({
                 ? strokeWidth + chart.donutLift
                 : strokeWidth - chart.donutThin;
             const press = {
-              onPress: () => select(a.sliceIndex),
+              // A press LOCKS the slice: it survives the finger lifting and the
+              // pointer moving away, and pressing it again releases it.
+              onPress: () => focus.toggle(a.sliceIndex),
               // Native `Path` has no hover; on web react-native-svg forwards
-              // these to the DOM element, which is where a pointer lives.
-              onPressIn: () => setActive(a.sliceIndex),
+              // these to the DOM element, which is where a pointer lives. A
+              // hover only previews, so it cannot displace a deliberate lock.
+              onPressIn: () => focus.preview(a.sliceIndex),
             };
             if (a.sweep >= 359.9) {
               // A ring that is one category is still a ring being drawn. This
@@ -355,6 +405,7 @@ export function Donut({
             fontFamily={font.semibold}
             fontSize={centreLabelSize}
             fill={activeSlice ? activeSlice.color : palette.textSecondary}
+            pointerEvents="none"
           >
             {activeSlice && arcTotal > 0
               ? `%${Math.round((activeSlice.valueMinor / arcTotal) * 100)}`
@@ -367,11 +418,13 @@ export function Donut({
             fontFamily={font.bold}
             fontSize={centreValueSize}
             fill={palette.text}
+            pointerEvents="none"
           >
             {formatMinorCompact(activeSlice ? activeSlice.valueMinor : displayTotal)}
           </SvgText>
 
         </Svg>
+        </View>
       </View>
       {/* Paired legend list: identity never color-alone (relief rule) */}
       <View
@@ -380,6 +433,13 @@ export function Donut({
           flexShrink: 1,
           flexBasis: LEGEND_BASIS,
           minWidth: 160,
+          position: "relative",
+          // Stretched to the ring's height so the space below the last row is
+          // part of the legend and can be pressed to release a lock. The rows
+          // stay vertically centred, so nothing moves — the box simply reaches
+          // as far as the picture it belongs to.
+          alignSelf: "stretch",
+          justifyContent: "center",
           // Beside the ring the legend takes the rest of the row: its rows are
           // a name on the left and a share on the right, which is the same
           // anatomy every list in the app uses at full width. Capped only when
@@ -389,8 +449,26 @@ export function Donut({
           gap: 6,
         }}
       >
+        {/* Empty space in the legend releases the lock, the same way the hole
+            in the ring does. Rendered FIRST and stretched behind the rows, so a
+            row always wins the touch and only the gaps between them reach this.
+            Without it the only way out of a selection was to re-find the row
+            that made it. */}
+        <Pressable
+          accessible={false}
+          // Not a control: it has no name, no role and nothing to announce. It
+          // exists so a stray tap means "none of them" instead of nothing.
+          importantForAccessibility="no-hide-descendants"
+          onPress={focus.clear}
+          style={[StyleSheet.absoluteFill, { zIndex: 0 }]}
+        />
         {largest ? (
           <View
+            // A read-only caption must not eat a press meant for the surface
+            // behind it: this chip sits over the legend's release area, so a
+            // tap on "the empty part of the legend" landed on the label and
+            // did nothing.
+            pointerEvents="none"
             style={{
               alignSelf: "stretch",
               paddingHorizontal: spacing.sm,
@@ -431,9 +509,9 @@ export function Donut({
             <Pressable
               key={`${s.label}-${i}`}
               disabled={!selectable}
-              onPress={selectable ? () => select(i) : undefined}
-              onHoverIn={selectable ? () => setActive(i) : undefined}
-              onHoverOut={selectable ? () => setActive((current) => (current === i ? null : current)) : undefined}
+              onPress={selectable ? () => focus.toggle(i) : undefined}
+              onHoverIn={selectable ? () => focus.preview(i) : undefined}
+              onHoverOut={selectable ? () => focus.endPreview(i) : undefined}
               accessibilityRole={selectable ? "button" : undefined}
               accessibilityState={selectable ? { selected: isActive } : undefined}
               accessibilityLabel={selectable
@@ -908,7 +986,8 @@ export function Bars({
    * column (or hovering it with a pointer) now names it and prints every series
    * in it, above the plot and without changing the chart's height.
    */
-  const [activeGroup, setActiveGroup] = React.useState<number | null>(null);
+  const focus = useChartFocus();
+  const activeGroup = focus.active;
   const axis = resolveBarAxis(groups.flatMap((g) => g.values));
   if (!axis || groups.length === 0) return null;
   const { min, max, ticks } = axis;
@@ -1115,9 +1194,20 @@ export function Bars({
           `onHoverIn` on web and the finger a press target on native, and
           `pointerEvents="box-none"` on the frame keeps the strips out of the
           way of anything drawn under them. */}
+      {/* Outside the plot is "no column". Rendered before the strips so a
+          column always wins the touch, and only the axis gutters and the space
+          above and below the bars reach this. Without it a locked column could
+          only be released by pressing that exact column again. */}
+      <Pressable
+        accessible={false}
+        tabIndex={-1}
+        importantForAccessibility="no-hide-descendants"
+        onPress={focus.clear}
+        style={[StyleSheet.absoluteFill, { zIndex: 0 }]}
+      />
       <View
         pointerEvents="box-none"
-        style={{ position: "absolute", left: pad.left, top: pad.top, width: plotW, height: plotH, flexDirection: "row" }}
+        style={{ position: "absolute", left: pad.left, top: pad.top, width: plotW, height: plotH, flexDirection: "row", zIndex: 1 }}
       >
         {groups.map((group, groupIndex) => (
           <Pressable
@@ -1129,15 +1219,13 @@ export function Bars({
             accessible={false}
             tabIndex={-1}
             importantForAccessibility="no-hide-descendants"
-            onPress={() => {
-              setActiveGroup((current) => {
-                const next = current === groupIndex ? null : groupIndex;
-                if (next !== current) selectionTap();
-                return next;
-              });
-            }}
-            onHoverIn={() => setActiveGroup(groupIndex)}
-            onHoverOut={() => setActiveGroup((current) => (current === groupIndex ? null : current))}
+            // Same two signals as the ring: a press LOCKS the column and
+            // survives the pointer leaving; a hover only previews and cannot
+            // displace a lock. Pressing the locked column releases it, and so
+            // does the area outside the plot.
+            onPress={() => focus.toggle(groupIndex)}
+            onHoverIn={() => focus.preview(groupIndex)}
+            onHoverOut={() => focus.endPreview(groupIndex)}
           />
         ))}
       </View>
