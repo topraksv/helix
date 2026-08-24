@@ -597,7 +597,7 @@ function MonthFocusTable({
       </View>
 
       {flows ? (
-        <Card style={{ padding: spacing.md }}>
+        <Card testID="month-focus-card" style={{ padding: spacing.md }}>
           <Spread style={{ alignItems: "center" }}>
             <View>
               <Text style={[type.small, { color: palette.textSecondary }]}>{tr.cashflow.closing}</Text>

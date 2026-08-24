@@ -52,7 +52,16 @@ test("a future month focus states the planned flows behind its own total", async
   await expect(page.getByRole("heading", { name: monthLabel(planned), exact: true })).toBeVisible();
   await expect(page.getByText("Gider", { exact: true })).toBeVisible();
   await expect(page.getByText("₺5.000,00", { exact: true })).toHaveCount(2);
-  await expect(page.getByText(/^-.*₺5\.000,00$/)).toBeVisible();
+  // Two places now carry the signed total, and that is the point: the month
+  // card states it, and the ledger's own "Ay Sonu" column states it too. The
+  // balance columns used to repeat the month's opening figure unchanged for
+  // every future month, so this locator matched exactly one element and the
+  // grid beside it silently disagreed. Scoped to the card, with the grid's
+  // copy asserted separately by its cell name.
+  await expect(page.getByTestId("month-focus-card").getByText(/^-.*₺5\.000,00$/)).toBeVisible();
+  await expect(
+    page.getByRole("group", { name: new RegExp(`${monthLabel(planned)}, Ay Sonu, -.*₺5\\.000,00`) }),
+  ).toBeVisible();
   await expect(page.getByRole("button", { name: /Market.*5\.000,00/ })).toBeVisible();
 });
 
