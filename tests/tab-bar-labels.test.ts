@@ -30,11 +30,11 @@ describe("tab bar labels", () => {
   it("keeps them while the widest one clears its column", () => {
     expect(tabLabelsFit(40, 60)).toBe(true);
     // Exactly the breathing room, and no more.
-    expect(tabLabelsFit(52, 60)).toBe(true);
+    expect(tabLabelsFit(54, 60)).toBe(true);
   });
 
   it("drops them the moment the widest one stops clearing it", () => {
-    expect(tabLabelsFit(53, 60)).toBe(false);
+    expect(tabLabelsFit(55, 60)).toBe(false);
     // The measured 200% case: "Ayarlar" at twice its size in a 60pt column.
     expect(tabLabelsFit(84, 60)).toBe(false);
   });
@@ -55,5 +55,19 @@ describe("a label that wrapped", () => {
     // width alone would read as a comfortable fit.
     expect(tabLabelsFit(tooWide(60), 60)).toBe(false);
     expect(tabLabelsFit(tooWide(120), 120)).toBe(false);
+  });
+
+  /**
+   * The two widths the shipped app actually renders, measured on the export.
+   * The rule could not fire at all until the measurement behind it was fixed,
+   * so these are the first real numbers it has ever been checked against.
+   */
+  it("matches the measured phone widths", () => {
+    // 320px: slot 58, widest label "Abonelikler" 60 — 1px between words.
+    expect(tabLabelsFit(60, 58)).toBe(false);
+    // 360px: slot 66, same label — 9px between words, tight but separate.
+    expect(tabLabelsFit(60, 66)).toBe(true);
+    // 375px and up have room to spare.
+    expect(tabLabelsFit(60, 69)).toBe(true);
   });
 });

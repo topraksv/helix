@@ -1,0 +1,203 @@
+/**
+ * What the favicon service actually returns for every domain the app asks it
+ * for, measured rather than assumed.
+ *
+ * `src/ui/logo.tsx` imports react-native and cannot be loaded by vitest, which
+ * is why this table lives on its own — the same reason `brand-colors.ts` does.
+ *
+ * The numbers are the mark's real pixel width, read from the image header of a
+ * live `sz=256` request on 2026-08-24. `sz=256` is not a resize instruction:
+ * measured, the service returns the best size the site publishes and never
+ * upscales, so asking for more than the site has costs nothing and asking for
+ * less would throw detail away.
+ *
+ * Re-run `scripts/audit-brand-marks.mjs` to refresh it. A domain that has since
+ * stopped publishing a usable mark shows up as a failing test rather than as a
+ * smear in someone's payment list.
+ */
+
+/**
+ * The smallest mark worth fetching.
+ *
+ * The app draws these in a 36-48pt tile, which is up to 144 device pixels at
+ * 3x. A 16px favicon blown up that far is a smear; the app's own initials
+ * badge is a better picture of the same institution. 48 is where a mark is at
+ * least the tile's logical size and only mildly upscaled on a dense screen.
+ */
+export const MIN_MARK_PX = 48;
+
+/**
+ * The 16x16, 726-byte PNG the service returns with HTTP 404 for a domain it
+ * has never indexed. A browser's `<img>` renders any valid image body whatever
+ * the status says, so this grey globe reaches the screen on web while native
+ * falls back correctly — one wrong picture, and two different ones.
+ */
+export const UNINDEXED_MARK_SHA = "59bfe9bc385a";
+
+/** Measured mark width in pixels, by domain. */
+export const BRAND_MARK_AUDIT: Record<string, number> = {
+  "1password.com": 180,
+  "a101.com.tr": 128,
+  "adobe.com": 180,
+  "aktifbank.com.tr": 152,
+  "albaraka.com.tr": 48,
+  "alternatifbank.com.tr": 80,
+  "amazon.com": 48,
+  "anthropic.com": 256,
+  "apple.com": 64,
+  "atlassian.com": 48,
+  "audible.com": 192,
+  "axess.com.tr": 48,
+  "bankkart.com.tr": 48,
+  "beinconnect.com.tr": 180,
+  "bim.com.tr": 256,
+  "bip.com": 16,
+  "bisu.com.tr": 16,
+  "bitwarden.com": 256,
+  "bkmexpress.com.tr": 192,
+  "blinkist.com": 16,
+  "blutv.com": 196,
+  "bolt.eu": 256,
+  "booking.com": 256,
+  "bumble.com": 180,
+  "burgan.com.tr": 180,
+  "calm.com": 256,
+  "canva.com": 180,
+  "cardfinans.com.tr": 256,
+  "carrefoursa.com": 48,
+  "claude.ai": 248,
+  "cloudflare.com": 99,
+  "colendi.com": 134,
+  "coursera.org": 180,
+  "crunchyroll.com": 120,
+  "cursor.com": 256,
+  "deezer.com": 72,
+  "digiturk.com.tr": 16,
+  "discord.com": 256,
+  "disneyplus.com": 180,
+  "drive.google.com": 20,
+  "dropbox.com": 32,
+  "dsmart.com.tr": 16,
+  "duolingo.com": 180,
+  "ea.com": 16,
+  "enpara.com": 32,
+  "epicgames.com": 48,
+  "evernote.com": 32,
+  "expressvpn.com": 152,
+  "exxen.com": 200,
+  "fibabanka.com.tr": 180,
+  "figma.com": 256,
+  "fizy.com": 180,
+  "gain.tv": 48,
+  "garantibbva.com.tr": 180,
+  "gemini.google.com": 256,
+  "getir.com": 180,
+  "getirfinans.com": 192,
+  "github.com": 32,
+  "google.com": 144,
+  "grammarly.com": 48,
+  "halkbank.com.tr": 72,
+  "headspace.com": 32,
+  "hepsiburada.com": 32,
+  "hsbc.com.tr": 196,
+  "icloud.com": 180,
+  "ininal.com": 32,
+  "instagram.com": 180,
+  "isbank.com.tr": 57,
+  "iyzico.com": 96,
+  "kaspersky.com": 16,
+  "lastpass.com": 64,
+  "linkedin.com": 64,
+  "macfit.com.tr": 192,
+  "malwarebytes.com": 192,
+  "mastercard.com.tr": 180,
+  "max.com": 196,
+  "maximiles.com.tr": 144,
+  "maximum.com.tr": 48,
+  "medium.com": 180,
+  "mega.nz": 256,
+  "meta.com": 180,
+  "microsoft.com": 128,
+  "microsoft365.com": 48,
+  "midjourney.com": 256,
+  "migros.com.tr": 48,
+  "millenicom.com.tr": 16,
+  "moka.com": 180,
+  "mubi.com": 180,
+  "music.apple.com": 180,
+  "muud.com.tr": 60,
+  "netflix.com": 64,
+  "nike.com": 152,
+  "nintendo.com": 180,
+  "nkolay.com.tr": 48,
+  "nordvpn.com": 180,
+  "norton.com": 144,
+  "notion.so": 256,
+  "office.com": 48,
+  "one.google.com": 32,
+  "openai.com": 180,
+  "papara.com": 256,
+  "paraf.com.tr": 256,
+  "paramountplus.com": 256,
+  "paratika.com.tr": 192,
+  "patreon.com": 256,
+  "paycell.com.tr": 256,
+  "perplexity.ai": 256,
+  "pinterest.com": 144,
+  "playstation.com": 256,
+  "podimo.com": 32,
+  "primevideo.com": 144,
+  "proton.me": 180,
+  "puhutv.com": 180,
+  "roblox.com": 180,
+  "scribd.com": 48,
+  "shazam.com": 180,
+  "sipay.com.tr": 256,
+  "skillshare.com": 256,
+  "slack.com": 35,
+  "sokmarket.com.tr": 16,
+  "soundcloud.com": 114,
+  "spotify.com": 48,
+  "ssportplus.com": 192,
+  "steampowered.com": 256,
+  "storytel.com": 180,
+  "strava.com": 48,
+  "substack.com": 64,
+  "superonline.net": 16,
+  "surfshark.com": 192,
+  "tabii.com": 256,
+  "tami.com.tr": 192,
+  "telegram.org": 180,
+  "tidal.com": 48,
+  "tinder.com": 180,
+  "tivibu.com.tr": 48,
+  "todoist.com": 48,
+  "todtv.com.tr": 167,
+  "trello.com": 256,
+  "trendyol.com": 167,
+  "troyodeme.com": 48,
+  "turk.net": 180,
+  "turkcell.com.tr": 16,
+  "turktelekom.com.tr": 16,
+  "tv.apple.com": 180,
+  "tvplus.com.tr": 256,
+  "twitch.tv": 32,
+  "uber.com": 180,
+  "ubisoft.com": 150,
+  "udemy.com": 180,
+  "vakifkatilim.com.tr": 180,
+  "vercel.com": 180,
+  "visa.com.tr": 48,
+  "vodafone.com.tr": 32,
+  "wetransfer.com": 152,
+  "whatsapp.com": 23,
+  "wings.com.tr": 50,
+  "x.com": 32,
+  "xbox.com": 256,
+  "yapikredi.com.tr": 180,
+  "yemeksepeti.com": 120,
+  "youtube.com": 144,
+  "ziraatbank.com.tr": 48,
+  "ziraatkatilim.com.tr": 96,
+  "zoom.us": 32,
+};

@@ -248,7 +248,16 @@ export function TourModal({ onClose }: { onClose: () => void }) {
               </Row>
             </Row>
 
+            {/* Seven steps and no way back. Skimming one and wanting to
+                re-read it meant closing the tour and starting again from the
+                first slide, and the dots that show the position are not
+                pressable. "Geri" appears only where it can do something. */}
             <Row gap={spacing.sm}>
+              {step > 0 ? (
+                <View style={{ flex: 0.42 }}>
+                  <Button label={tr.common.back} variant="ghost" onPress={() => setStep((s) => Math.max(0, s - 1))} />
+                </View>
+              ) : null}
               {!last ? (
                 <View style={{ flex: 0.42 }}>
                   <Button label={tr.tour.skip} variant="ghost" onPress={onClose} />

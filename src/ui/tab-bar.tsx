@@ -267,6 +267,15 @@ export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
         </View>
         {labelsFit ? (
           <Text
+            // Re-measured whenever the bar resizes. `labelWidth` is reset on a
+            // new bar width so a stale "too wide" sentinel cannot outlive the
+            // geometry that produced it — but a label that is already mounted
+            // does not change layout when that reset re-renders it, so
+            // `onLayout` never fired again and the width stayed 0 for ever.
+            // Zero reads as "not measured yet", which reads as fits: the rule
+            // that drops the labels could not fire once. Keying on the bar
+            // width makes the reset and the re-measure the same event.
+            key={`${route.key}:${barWidth}`}
             maxFontSizeMultiplier={maxFontScale.measuredBox}
             // A label that WRAPPED is the clearest evidence it does not fit,
             // and it is the only evidence available without clamping the label
@@ -278,23 +287,23 @@ export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
               const widest = Math.max(...lines.map((line) => line.width), 0);
               setLabelWidth((known) => Math.max(known, lines.length > 1 ? tooWide(slotWidth) : Math.ceil(widest)));
             }}
-            onLayout={(event) => {
-              // react-native-web does not dispatch `onTextLayout`, so the web
-              // half measures the DOM itself. It used to read `scrollWidth` and
-              // `getClientRects()` off the element, and both answers were the
-              // CONTAINER's: a react-native-web Text is a block box with
-              // `overflow: visible`, so `scrollWidth` never exceeds the column
-              // it is in and a block always reports exactly one rect. The bar
-              // therefore measured every label as "exactly fits" no matter how
-              // wide it really was — at 320px "Mali Tablo" and "Abonelikler"
-              // ended up 1px apart and read as one word, and the rule that
-              // exists to prevent that never fired once.
-              //
-              // A Range over the text CONTENT is not clipped by the box, so it
-              // reports the width the glyphs actually need and one rect per
-              // line box.
-              const node = event.target as unknown as HTMLElement | null;
-              const measured = measureLabelText(node);
+            // react-native-web does not dispatch `onTextLayout`, so the web half
+            // measures the DOM itself — through a ref, because that is the only
+            // handle it actually gets. This used to read `event.target` inside
+            // `onLayout`, and react-native-web synthesises that event from a
+            // ResizeObserver without a `target` at all: the probe read
+            // `undefined`, every label measured as 0, and 0 means "not measured
+            // yet", which means "fits". The rule that drops the labels when
+            // they no longer fit therefore never fired once — at 320px "Mali
+            // Tablo" and "Abonelikler" sat 1px apart and read as one word.
+            //
+            // A Range over the text CONTENT is what gets measured, not the
+            // element: a react-native-web Text is a block box the column has
+            // already sized, so every box-level answer is the column's width
+            // rather than the label's.
+            ref={(node) => {
+              const measured = measureLabelText(node as unknown as HTMLElement | null);
+              if (measured.width <= 0) return;
               setLabelWidth((known) => Math.max(known, measured.wrapped ? tooWide(slotWidth) : measured.width));
             }}
             style={{

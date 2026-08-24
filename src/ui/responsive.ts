@@ -207,8 +207,18 @@ export function fittedQuickDays<T>(boxWidth: number, days: readonly T[]): T[] {
   return days.filter((_, index) => kept.has(index));
 }
 
-/** How much of a tab's column must stay clear for its label to count as fitting. */
-const LABEL_BREATHING = 8;
+/**
+ * How much of a tab's column must stay clear for its label to count as fitting.
+ *
+ * 6px, not 8. The rule never actually fired until the measurement behind it
+ * was fixed, so the constant had never been tested against a real bar; on the
+ * first run that it did fire, 8 dropped the labels at 360px as well as at 320.
+ * Measured on the shipped export: at 360 the widest label ("Abonelikler", 60px)
+ * leaves 9-11px between adjacent words — tight but plainly separate — and at
+ * 320 it leaves 1px and 3px, which reads as one run of text. Six is the
+ * boundary between those two, so the labels go only where they were broken.
+ */
+const LABEL_BREATHING = 6;
 
 /**
  * Whether the bar should draw its labels at all.

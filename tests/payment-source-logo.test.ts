@@ -59,7 +59,11 @@ function resolve(name: string, table: Map<string, string> = catalogue): string |
 
 describe("the bank and card catalogue", () => {
   it("parses two real tables, so a passing run means something", () => {
-    expect(banks.size).toBeGreaterThanOrEqual(60);
+    // Both tables shrank when every mark in them was measured: sixty names
+    // pointed at a 16-44px favicon that the app was blowing up into a tile of
+    // up to 144 device pixels. See `tests/brand-domains.test.ts` for the rule
+    // and `src/ui/brand-marks.ts` for what each domain actually returns.
+    expect(banks.size).toBeGreaterThanOrEqual(35);
     expect(brands.size).toBeGreaterThanOrEqual(100);
   });
 
@@ -72,20 +76,38 @@ describe("the bank and card catalogue", () => {
       ["Garanti BBVA", "garantibbva.com.tr"],
       ["İş Bankası", "isbank.com.tr"],
       ["Tami", "tami.com.tr"],
-      ["Nays", "naysapp.com.tr"],
     ];
     for (const [name, domain] of asked) {
       expect(resolve(name), name).toBe(domain);
     }
   });
 
-  it("resolves a card programme to its own mark, not its bank's", () => {
+  /**
+   * Nays is İş Bankası's app, and `naysapp.com.tr` answers the favicon service
+   * with İş Bankası's own file — the same 921 bytes, byte for byte. Drawing it
+   * meant a person who picked Nays saw the bank's logo, which is a different
+   * institution's mark on their card. No Nays mark is published anywhere the
+   * service has indexed (`nays.com.tr` returns the not-indexed grey globe), so
+   * the honest answer is its own initials rather than someone else's logo.
+   */
+  it("never lends one institution's mark to another", () => {
+    expect(resolve("Nays")).toBeNull();
+    expect(resolve("Nays kart")).not.toBe("isbank.com.tr");
+    // Advantage is HSBC's programme and its favicon is HSBC's file exactly.
+    expect(resolve("Advantage")).toBeNull();
+    expect(resolve("Advantage")).not.toBe("hsbc.com.tr");
+  });
+
+  it("resolves a card programme to its own mark, never to its bank's", () => {
     // People name the source after whichever they think of, and the two are
-    // different pictures.
-    expect(resolve("World")).toBe("worldcard.com.tr");
-    expect(resolve("Bonus")).toBe("bonus.com.tr");
+    // different pictures. Where the programme publishes a mark worth drawing
+    // it is used; where it publishes only a 16px one (World) or a 44px one
+    // (Bonus), the app draws its own — but never the bank's, which is the
+    // guarantee this test has always been about.
     expect(resolve("Maximum")).toBe("maximum.com.tr");
     expect(resolve("Axess")).toBe("axess.com.tr");
+    expect(resolve("World")).not.toBe("yapikredi.com.tr");
+    expect(resolve("Bonus")).not.toBe("garantibbva.com.tr");
   });
 
   it("resolves a bank named inside a longer source name", () => {
@@ -101,16 +123,10 @@ describe("the bank and card catalogue", () => {
    */
   it("resolves a sub-brand written as one word with its programme", () => {
     const concatenated: [string, string][] = [
-      ["Worldeko", "worldcard.com.tr"],
-      ["WorldGold", "worldcard.com.tr"],
-      ["worldpuan", "worldcard.com.tr"],
-      ["Bonusplatinium", "bonus.com.tr"],
-      ["bonusflaş", "bonus.com.tr"],
       ["Axessplus", "axess.com.tr"],
       ["Parafpara", "paraf.com.tr"],
       ["Maximumgenç", "maximum.com.tr"],
       ["Bankkartcombo", "bankkart.com.tr"],
-      ["Enparakart", "enpara.com"],
       ["Ziraatkatılım", "ziraatkatilim.com.tr"],
     ];
     for (const [name, domain] of concatenated) {
@@ -128,9 +144,8 @@ describe("the bank and card catalogue", () => {
   });
 
   it("keeps short keys on the strict whole-word rule", () => {
-    // Three- and four-letter keys are ordinary words. `ing` begins
-    // "İngiltere", `teb` begins "tebrik", and `max` begins "maximum" — the
-    // collision the catalogue always had to get right.
+    // Three- and four-letter keys are ordinary words. `max` begins "maximum" —
+    // the collision the catalogue always had to get right.
     expect(resolve("Maximum")).toBe("maximum.com.tr");
     expect(resolve("İngiltere hesabı")).toBeNull();
     expect(resolve("Tebrik kartı")).toBeNull();
