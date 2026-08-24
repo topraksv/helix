@@ -106,13 +106,20 @@ const BRAND_DOMAIN: Record<string, string> = {
   icloud: "icloud.com",
   chatgpt: "openai.com",
   openai: "openai.com",
+  twitter: "x.com",
+  x: "x.com",
+  "google one": "one.google.com",
+  twitch: "twitch.tv",
   steam: "steampowered.com",
   playstation: "playstation.com",
   "playstation plus": "playstation.com",
   xbox: "xbox.com",
   "xbox game pass": "xbox.com",
   nintendo: "nintendo.com",
+  github: "github.com",
+  "github copilot": "github.com",
   notion: "notion.so",
+  dropbox: "dropbox.com",
   adobe: "adobe.com",
   canva: "canva.com",
   linkedin: "linkedin.com",
@@ -140,11 +147,15 @@ const BRAND_DOMAIN: Record<string, string> = {
   office: "office.com",
   onedrive: "microsoft365.com",
   google: "google.com",
+  "google drive": "drive.google.com",
   apple: "apple.com",
   discord: "discord.com",
   "discord nitro": "discord.com",
   telegram: "telegram.org",
+  zoom: "zoom.us",
+  slack: "slack.com",
   figma: "figma.com",
+  evernote: "evernote.com",
   todoist: "todoist.com",
   "1password": "1password.com",
   bitwarden: "bitwarden.com",
@@ -164,28 +175,43 @@ const BRAND_DOMAIN: Record<string, string> = {
   fizy: "fizy.com",
   muud: "muud.com.tr",
   soundcloud: "soundcloud.com",
+  podimo: "podimo.com",
+  turkcell: "turkcell.com.tr",
+  vodafone: "vodafone.com.tr",
+  "turk telekom": "turktelekom.com.tr",
+  turktelekom: "turktelekom.com.tr",
   strava: "strava.com",
   macfit: "macfit.com.tr",
   nike: "nike.com",
   medium: "medium.com",
   scribd: "scribd.com",
+  blinkist: "blinkist.com",
   roblox: "roblox.com",
   "epic games": "epicgames.com",
   epic: "epicgames.com",
   ubisoft: "ubisoft.com",
+  "ea play": "ea.com",
   tinder: "tinder.com",
   bumble: "bumble.com",
   trendyol: "trendyol.com",
+  hepsiburada: "hepsiburada.com",
   getir: "getir.com",
   yemeksepeti: "yemeksepeti.com",
   "puhutv": "puhutv.com",
+  "d-smart": "dsmart.com.tr",
+  "dsmart": "dsmart.com.tr",
+  "digiturk": "digiturk.com.tr",
   "tivibu": "tivibu.com.tr",
+  "superonline": "superonline.net",
   "turknet": "turk.net",
   "migros": "migros.com.tr",
   "a101": "a101.com.tr",
   "carrefoursa": "carrefoursa.com",
   "bim": "bim.com.tr",
+  "sok": "sokmarket.com.tr",
   "papara": "papara.com",
+  "ininal": "ininal.com",
+  "marti": "marti.tech",
   "spotify premium": "spotify.com",
   "apple one": "apple.com",
   "apple arcade": "apple.com",
@@ -198,12 +224,14 @@ const BRAND_DOMAIN: Record<string, string> = {
   "vercel": "vercel.com",
   "cloudflare": "cloudflare.com",
   "substack": "substack.com",
+  "headspace": "headspace.com",
   "calm": "calm.com",
   "proton": "proton.me",
   "protonmail": "proton.me",
   "mega": "mega.nz",
   "lastpass": "lastpass.com",
   "norton": "norton.com",
+  "kaspersky": "kaspersky.com",
   "malwarebytes": "malwarebytes.com",
   "wetransfer": "wetransfer.com",
   "kindle": "amazon.com",
@@ -211,6 +239,7 @@ const BRAND_DOMAIN: Record<string, string> = {
   "pinterest": "pinterest.com",
   "meta": "meta.com",
   "instagram": "instagram.com",
+  "whatsapp": "whatsapp.com",
   "uber": "uber.com",
   "bolt": "bolt.eu",
   "booking": "booking.com",
@@ -218,31 +247,17 @@ const BRAND_DOMAIN: Record<string, string> = {
 
 
 /**
- * Turkish banks, card programmes and wallets that publish a mark worth drawing.
+ * Turkish banks, card programmes and wallets.
  *
  * Same table and same resolution as the subscription brands above, because a
  * mark is a mark: a payment source called "Garanti" and a subscription called
- * "Garanti" should not be drawn by two different mechanisms.
+ * "Garanti" should not be drawn by two different mechanisms. Card programmes
+ * are listed beside their bank because people name the source after whichever
+ * one they think of — "Bonus" and "Garanti" are the same plastic.
  *
  * Keys are written FOLDED (plain lowercase ASCII, no Turkish diacritics),
  * because `catalogueKey` folds the name before it looks anything up. "Yapı
  * Kredi" arrives here as "yapi kredi".
- *
- * MEASURED, not assumed. Every domain below was fetched and its mark's real
- * pixel size read from the image header; `BRAND_MARK_AUDIT` records what came
- * back and `tests/brand-domains.test.ts` holds the two rules that follow from
- * it. Two things were wrong and are the reason the audit exists:
- *
- *   - Twenty-seven names pointed at a mark of 16-44px. The app draws these in
- *     a 36-48pt tile, which is up to 144 device pixels at 3x, so a 16px source
- *     was being blown up nine times: a smear of colour where a logo should be.
- *     A crisp local mark is a better picture than a ruined bitmap, so anything
- *     under `MIN_MARK_PX` is not fetched at all.
- *   - Two names drew ANOTHER brand's logo, byte for byte. "Nays" resolved to
- *     `naysapp.com.tr`, whose favicon is the same 921 bytes as
- *     `isbank.com.tr`; "Advantage" resolved to a file identical to HSBC's. A
- *     payment method has to be recognisable as itself, so a borrowed mark is
- *     no mark.
  */
 const BANK_DOMAIN: Record<string, string> = {
   // Deposit banks
@@ -253,17 +268,35 @@ const BANK_DOMAIN: Record<string, string> = {
   "is bankasi": "isbank.com.tr",
   isbank: "isbank.com.tr",
   isbankasi: "isbank.com.tr",
+  akbank: "akbank.com.tr",
   ziraat: "ziraatbank.com.tr",
   "ziraat bankasi": "ziraatbank.com.tr",
+  vakifbank: "vakifbank.com.tr",
+  "vakif bank": "vakifbank.com.tr",
   halkbank: "halkbank.com.tr",
+  qnb: "qnb.com.tr",
+  finansbank: "qnb.com.tr",
+  teb: "teb.com.tr",
+  ing: "ing.com.tr",
   hsbc: "hsbc.com.tr",
+  sekerbank: "sekerbank.com.tr",
+  odeabank: "odeabank.com.tr",
   fibabanka: "fibabanka.com.tr",
   "alternatif bank": "alternatifbank.com.tr",
   alternatifbank: "alternatifbank.com.tr",
   burgan: "burgan.com.tr",
+  anadolubank: "anadolubank.com.tr",
   aktifbank: "aktifbank.com.tr",
   "aktif bank": "aktifbank.com.tr",
+  adabank: "adabank.com.tr",
+  turkishbank: "turkishbank.com",
+  "turkish bank": "turkishbank.com",
+  turklandbank: "tbank.com.tr",
+  "turkland bank": "tbank.com.tr",
+  icbc: "icbc.com.tr",
   // Participation banks
+  "kuveyt turk": "kuveytturk.com.tr",
+  kuveytturk: "kuveytturk.com.tr",
   albaraka: "albaraka.com.tr",
   "ziraat katilim": "ziraatkatilim.com.tr",
   ziraatkatilim: "ziraatkatilim.com.tr",
@@ -275,6 +308,12 @@ const BANK_DOMAIN: Record<string, string> = {
   // one they think of — "Bonus" and "Garanti" are the same plastic — and
   // because the programme has its own mark, which is the one printed on the
   // card in the drawer.
+  world: "worldcard.com.tr",
+  worldcard: "worldcard.com.tr",
+  "world card": "worldcard.com.tr",
+  bonus: "bonus.com.tr",
+  bonuscard: "bonus.com.tr",
+  "bonus card": "bonus.com.tr",
   maximum: "maximum.com.tr",
   maximiles: "maximiles.com.tr",
   axess: "axess.com.tr",
@@ -284,25 +323,28 @@ const BANK_DOMAIN: Record<string, string> = {
   "card finans": "cardfinans.com.tr",
   bankkart: "bankkart.com.tr",
   "bank kart": "bankkart.com.tr",
+  advantage: "advantage.com.tr",
   // Digital banks, wallets and payment institutions
+  enpara: "enpara.com",
   "n kolay": "nkolay.com.tr",
   nkolay: "nkolay.com.tr",
   papara: "papara.com",
+  ininal: "ininal.com",
   paycell: "paycell.com.tr",
   colendi: "colendi.com",
   "getir finans": "getirfinans.com",
   getirfinans: "getirfinans.com",
+  param: "param.com.tr",
   sipay: "sipay.com.tr",
   iyzico: "iyzico.com",
   moka: "moka.com",
   paratika: "paratika.com.tr",
+  bkm: "bkm.com.tr",
   "bkm express": "bkmexpress.com.tr",
   bkmexpress: "bkmexpress.com.tr",
   // Garanti Ödeme ve Elektronik Para Hizmetleri A.Ş. — verified, and NOT
   // Ziraat's, which is the easy mistake to make with a bank-adjacent brand.
   tami: "tami.com.tr",
-  // Türkiye İş Bankası's app. The favicon service answers this domain with the
-  // bank's own mark, byte for byte, which is the right picture either way.
   // Card networks, for a source someone names after the scheme. `troy.com.tr`
   // is a promotional-gifts company, not the payment scheme — checked, because
   // the name makes it the obvious wrong guess.
@@ -312,103 +354,34 @@ const BANK_DOMAIN: Record<string, string> = {
 };
 
 /**
- * Names that belong to a real institution but have no mark worth drawing.
+ * Names that belong to a real brand but have no mark anyone publishes.
  *
- * Two reasons, both measured (see `brand-marks.ts`):
+ * Both favicon services answer an unknown domain with a picture rather than an
+ * error — Google a grey globe, DuckDuckGo a grey letter tile. `expo-image`
+ * treats the HTTP status as an error and falls back, but a browser's `<img>`
+ * draws any valid image body whatever the status said, so each of these names
+ * drew a placeholder on web and its own type glyph on iOS: a wrong picture,
+ * and two different wrong pictures on the two platforms.
  *
- *   - NOT INDEXED. The favicon service answers an unknown domain with HTTP 404
- *     and a grey globe in the body. `expo-image` treats the status as an error
- *     and falls back, but a browser's `<img>` renders any valid image body
- *     whatever the status says — so these drew a globe on web and the type
- *     glyph on iOS, which is both a wrong picture and two different ones.
- *     DenizBank, Türkiye Finans, Emlak Katılım and Tosla publish nothing the
- *     service has indexed.
- *   - TOO SMALL TO DRAW. Twenty-seven names resolved to a mark of 16-44px,
- *     which the app then blew up into a 36-48pt tile — up to nine times its
- *     real size. Akbank (32), VakıfBank (16), QNB (16), TEB (16), ING (33),
- *     Şekerbank (16), Kuveyt Türk (32), World (16), Bonus (44), BKM (16),
- *     ininal (32), Param (32) and the rest are listed here rather than fetched.
- *     Alternate hosts were checked for each of them — `akbank.com`,
- *     `qnbfinansbank.com`, `teb.com`, `ingbank.com.tr`, `kuveytturk.com`,
- *     `world.com.tr`, `bonuscard.com.tr`, `paramtr.com` — and none publishes a
- *     larger mark; several are not indexed at all.
+ * Listing them keeps the knowledge that they were checked rather than missed.
+ * `scripts/audit-brand-marks.mjs` is what checks; a name arrives here when it
+ * measures as unmarked on both services.
  *
- * A name here falls back to the app's own mark: initials for a subscription,
- * whose name IS its identity, and the payment type's glyph for a source, where
- * "Nakit" and "Ana Kart" are kinds of thing rather than brands. Both are drawn
- * from the palette at the exact tile size, so they are sharp at any density —
- * which a 16px bitmap in a 144px box is not.
- *
- * Nays and Advantage are here for a third reason: their marks are byte-for-byte
- * copies of İş Bankası's and HSBC's. A payment method that draws another
- * institution's logo is worse than one that draws none.
+ * Nays is the one that is here by judgement rather than by measurement. It has
+ * no mark of its own, and `naysapp.com.tr` resolves to İş Bankası's file byte
+ * for byte — so the catalogue was showing the bank's logo to someone who had
+ * chosen Nays. A neutral glyph is a smaller error than a confident picture of
+ * the wrong institution.
  */
 export const UNMARKED_INSTITUTIONS = [
-  // Not indexed at all.
   "denizbank",
   "turkiye finans",
   "emlak katilim",
   "tosla",
-  // Indexed, but too small to draw.
-  "akbank",
-  "vakifbank",
-  "qnb",
-  "finansbank",
-  "teb",
-  "ing",
-  "sekerbank",
-  "odeabank",
-  "anadolubank",
-  "adabank",
-  "turkishbank",
-  "turklandbank",
-  "icbc",
-  "kuveyt turk",
-  "world",
-  "worldcard",
-  "bonus",
-  "ininal",
-  "param",
-  "bkm",
-  // Indexed, high resolution, and the wrong institution's logo.
   "nays",
-  "advantage",
-  // Subscriptions whose site publishes only a 16-35px mark. Same measurement,
-  // same rule: the app's own brand chip or utility glyph is drawn at the exact
-  // tile size and stays sharp at any density, which an upscaled favicon does
-  // not. Twitch, X, GitHub and Google One keep their accent chips from
-  // `BRAND`; the rest fall back to a utility icon or their initials.
   "bip",
   "bisu",
-  "blinkist",
-  "digiturk",
-  "d-smart",
-  "dsmart",
-  "dropbox",
-  "ea play",
-  "enpara",
-  "evernote",
-  "github",
-  "google drive",
-  "google one",
-  "headspace",
-  "hepsiburada",
-  "ininal",
-  "kaspersky",
-  "marti",
   "millenicom",
-  "podimo",
-  "slack",
-  "sok",
-  "superonline",
-  "turkcell",
-  "turk telekom",
-  "twitch",
-  "twitter",
-  "vodafone",
-  "whatsapp",
-  "x",
-  "zoom",
 ] as const;
 
 /** Resolve the domain to fetch a favicon from (explicit override or a brand). */

@@ -1,5 +1,7 @@
 /** Strict URL construction for optional remote subscription favicons. */
 
+import { markProvider, markUrl } from "./brand-marks";
+
 const TURKISH_FOLD: Record<string, string> = {
   "ı": "i", "İ": "i", "ş": "s", "Ş": "s", "ğ": "g", "Ğ": "g",
   "ü": "u", "Ü": "u", "ö": "o", "Ö": "o", "ç": "c", "Ç": "c",
@@ -125,5 +127,9 @@ export function normalizeLogoDomain(value: string | null | undefined): string | 
  */
 export function remoteFaviconUrl(value: string | null | undefined): string | null {
   const domain = normalizeLogoDomain(value);
-  return domain ? `https://www.google.com/s2/favicons?domain=${encodeURIComponent(domain)}&sz=256` : null;
+  if (!domain) return null;
+  // Which service to ask is a measurement, not a preference: the two disagree
+  // per domain, and `markProvider` carries who won. An unaudited domain — a
+  // user's own override — gets Google, which indexes far more of the web.
+  return markUrl(domain, markProvider(domain));
 }

@@ -59,11 +59,9 @@ function resolve(name: string, table: Map<string, string> = catalogue): string |
 
 describe("the bank and card catalogue", () => {
   it("parses two real tables, so a passing run means something", () => {
-    // Both tables shrank when every mark in them was measured: sixty names
-    // pointed at a 16-44px favicon that the app was blowing up into a tile of
-    // up to 144 device pixels. See `tests/brand-domains.test.ts` for the rule
-    // and `src/ui/brand-marks.ts` for what each domain actually returns.
-    expect(banks.size).toBeGreaterThanOrEqual(35);
+    // See `tests/brand-domains.test.ts` for the rule every domain here obeys
+    // and `src/domain/brand-marks.ts` for what each one actually returns.
+    expect(banks.size).toBeGreaterThanOrEqual(75);
     expect(brands.size).toBeGreaterThanOrEqual(100);
   });
 
@@ -86,16 +84,46 @@ describe("the bank and card catalogue", () => {
    * Nays is İş Bankası's app, and `naysapp.com.tr` answers the favicon service
    * with İş Bankası's own file — the same 921 bytes, byte for byte. Drawing it
    * meant a person who picked Nays saw the bank's logo, which is a different
-   * institution's mark on their card. No Nays mark is published anywhere the
-   * service has indexed (`nays.com.tr` returns the not-indexed grey globe), so
-   * the honest answer is its own initials rather than someone else's logo.
+   * institution's mark on their card. Neither service publishes a Nays mark
+   * (Google returns its grey globe for `nays.com.tr`, DuckDuckGo its grey
+   * letter tile), so the honest answer is initials rather than someone else's
+   * logo.
+   *
+   * Advantage is the case that looks the same and is not: it shares HSBC's
+   * file because it IS HSBC's card programme, the way BluTV shares Max's. A
+   * shared mark between one owner's two names is correct and stays.
    */
   it("never lends one institution's mark to another", () => {
     expect(resolve("Nays")).toBeNull();
     expect(resolve("Nays kart")).not.toBe("isbank.com.tr");
-    // Advantage is HSBC's programme and its favicon is HSBC's file exactly.
-    expect(resolve("Advantage")).toBeNull();
-    expect(resolve("Advantage")).not.toBe("hsbc.com.tr");
+    expect(resolve("Advantage")).toBe("advantage.com.tr");
+  });
+
+  /**
+   * The names on a real card are sub-brands the catalogue does not list, and
+   * the owner types them as one word as often as two. Every one of these
+   * failed the exact, first-word and whole-word-mention passes; the prefix
+   * pass is what answers them, and this is the list it must keep answering.
+   */
+  it("resolves the sub-brand names printed on real cards", () => {
+    const cards: [string, string][] = [
+      ["World Gold", "worldcard.com.tr"],
+      ["WorldGold", "worldcard.com.tr"],
+      ["WorldEko", "worldcard.com.tr"],
+      ["Worldcard Platinum", "worldcard.com.tr"],
+      ["Akbank Platinum", "akbank.com.tr"],
+      // The issuer wins over the programme when a name carries both: longest
+      // key first makes "Akbank" beat "Axess", and an Akbank card showing
+      // Akbank is right. "Axess" alone still resolves to the programme.
+      ["Akbank Axess", "akbank.com.tr"],
+      ["Axess", "axess.com.tr"],
+      ["Bonus Platinium", "bonus.com.tr"],
+      ["Maximum Genç", "maximum.com.tr"],
+      ["Garanti Shop&Fly", "garantibbva.com.tr"],
+    ];
+    for (const [name, domain] of cards) {
+      expect(resolve(name), name).toBe(domain);
+    }
   });
 
   it("resolves a card programme to its own mark, never to its bank's", () => {

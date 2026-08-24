@@ -69,7 +69,7 @@ describe("cash-flow matrix model", () => {
       liveCategoryIds: new Set(["food"]),
       today: "2026-07-25",
       openingLabel: "Ay Başı",
-      closingLabel: "Ay Sonu",
+      closingLabel: "Güncel Bakiye",
     });
 
     const categoryCell = model.columns[0]?.values.get("2026-09");
@@ -79,7 +79,7 @@ describe("cash-flow matrix model", () => {
     // The row has to add up ON ITS OWN FACE. This assertion used to say the
     // balance columns "stay on the realized chain" — which is exactly the
     // defect: the Market cell one column to the left showed the planned
-    // 500,00 while Ay Sonu repeated Ay Başı unchanged, and the month card a
+    // 500,00 while the balance column repeated Ay Başı unchanged, and the month card a
     // tap away reported the difference. Opening + every cell = closing, in
     // every month, whatever the rows in it are waiting on.
     const opening = model.columns[2]?.values.get("2026-09");
@@ -116,7 +116,7 @@ describe("cash-flow matrix model", () => {
       liveCategoryIds: new Set(["food", "salary"]),
       today: "2026-08-23",
       openingLabel: "Ay Başı",
-      closingLabel: "Ay Sonu",
+      closingLabel: "Güncel Bakiye",
     });
 
     const opening = model.columns.find((c) => c.key === "opening");
@@ -156,7 +156,7 @@ describe("cash-flow matrix model", () => {
       liveCategoryIds: new Set(),
       today: "2026-08-23",
       openingLabel: "Ay Başı",
-      closingLabel: "Ay Sonu",
+      closingLabel: "Güncel Bakiye",
       startMonth: startMonth as never,
     });
 
@@ -184,7 +184,7 @@ describe("cash-flow matrix model", () => {
       liveCategoryIds: new Set(),
       today: "2026-08-23",
       openingLabel: "Ay Başı",
-      closingLabel: "Ay Sonu",
+      closingLabel: "Güncel Bakiye",
       startMonth: "2026-07" as never,
     });
     expect(model.months).toHaveLength(12);

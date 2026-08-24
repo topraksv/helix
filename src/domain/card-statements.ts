@@ -157,6 +157,22 @@ export function refusedCardCycleDays(
  * died; the probe was written to prove that before it was removed, and then
  * removed itself.
  */
+/**
+ * Days until this card's open statement closes.
+ *
+ * The fact the ring exists to carry. A statement day and a due day are two
+ * numbers on a calendar; what a person actually wants to know standing at a
+ * till is whether what they are about to buy lands on the statement about to
+ * close or the next one, and that is a countdown, not a pair of dates.
+ *
+ * Zero means it closes today — the last day a purchase still joins this
+ * period, since `statementForPurchase` puts a purchase ON the statement date
+ * into that date's own statement.
+ */
+export function daysUntilStatementClose(today: ISODate, cycle: CardCycle): number {
+  return Math.max(0, daysBetweenISO(today, statementForPurchase(today, cycle).statementDate));
+}
+
 export function cardCycleProgress(today: ISODate, cycle: CardCycle): number {
   const period = statementForPurchase(today, cycle);
   const previousClose = statementPeriod(addMonthsToKey(period.periodMonth, -1), cycle).statementDate;

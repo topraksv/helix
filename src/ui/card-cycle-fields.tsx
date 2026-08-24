@@ -10,7 +10,7 @@
  */
 
 import React from "react";
-import { View } from "react-native";
+import { Text, View } from "react-native";
 import Svg, { Circle } from "react-native-svg";
 import {
   CARD_CYCLE_GRACE,
@@ -19,12 +19,23 @@ import {
   isValidCardCycleGrace,
   refusedCardCycleDays,
   cardCycleProgress,
+  daysUntilStatementClose,
   isValidCardCycle,} from "../domain/card-statements";
 import { MONTH_END_DAY, todayISO } from "../domain/dates";
 import { tr } from "../i18n/tr";
 import { Body, Row } from "./components";
 import { MonthDayField } from "./month-day-field";
-import { spacing, useTheme } from "./theme";
+import { font, radius as badgeRadius, spacing, type, useTheme } from "./theme";
+
+/**
+ * When the countdown starts warning, in days.
+ *
+ * Three: a card statement closing inside three days is the window in which a
+ * purchase's statement — and so its due date, a month away — actually changes
+ * on the buyer. Outside it the number is information; inside it, it is a
+ * decision.
+ */
+const CYCLE_CLOSING_SOON = 3;
 
 /**
  * The days offered as shortcuts.
@@ -104,13 +115,19 @@ export function CardCycleFields({
 }
 
 /**
- * A card's cycle as a ring that fills, rather than two numbers to work out.
+ * How long this card's open statement has left, as a countdown the ring fills.
  *
- * The two days are already printed beside it and stay there — this does not
- * replace them, it answers the question they leave open: whether a purchase
- * made now lands on the statement about to close or the next one. Several
- * cards side by side become readable at a glance, which is the whole reason a
- * person keeps more than one.
+ * The two days are already printed beside it and stay there — this answers the
+ * question they leave open: whether a purchase made now lands on the statement
+ * about to close or the next one.
+ *
+ * It used to be the ring ALONE, 22px of bare arc in a row of worded badges. It
+ * was reported as confusing and distracting, and it was: a fraction with no
+ * number, no unit and no name, in the one place on the row where everything
+ * else says what it is. The idea was right and the drawing carried none of it.
+ * Now the arc is the mark on a chip that states the fact — "Ekstreye 6 gün" —
+ * so it reads at a glance, survives a screen reader, and is the same anatomy
+ * as the two badges beside it.
  *
  * Drawn, never animated. It moves once a day, and motion at that rate is a
  * flicker on mount rather than something anyone perceives as movement.
@@ -118,7 +135,7 @@ export function CardCycleFields({
 export function CardCycleRing({
   statementDay,
   dueDay,
-  size = 22,
+  size = 14,
 }: {
   statementDay: number | null;
   dueDay: number | null;
@@ -127,22 +144,43 @@ export function CardCycleRing({
   const { palette } = useTheme();
   const cycle = { statementDay, dueDay };
   if (!isValidCardCycle(cycle)) return null;
-  const progress = cardCycleProgress(todayISO(), cycle);
-  const stroke = 3;
+  const today = todayISO();
+  const progress = cardCycleProgress(today, cycle);
+  const daysLeft = daysUntilStatementClose(today, cycle);
+  // Amber in the last three days, and only then. A colour that is always on
+  // says nothing; this one is off on twenty-odd days of a cycle and on for the
+  // three when a purchase's statement is genuinely about to change.
+  const closing = daysLeft <= CYCLE_CLOSING_SOON;
+  const colors = closing
+    ? { bg: palette.warning + "1F", fg: palette.warningText }
+    : { bg: palette.surfaceAlt, fg: palette.textSecondary };
+  const stroke = 2.5;
   const radius = (size - stroke) / 2;
   const circumference = 2 * Math.PI * radius;
   return (
     <View
       accessible
-      accessibilityRole="image"
-      accessibilityLabel={tr.sources.cycleRingLabel(Math.round(progress * 100))}
+      accessibilityRole="text"
+      accessibilityLabel={tr.sources.cycleDaysLeft(daysLeft)}
+      // The Badge primitive's own box, token for token. It is not `Badge`
+      // itself because a Badge draws a Lucide glyph and this mark is an arc
+      // whose length is the datum — there is no icon to pass it.
+      style={{
+        backgroundColor: colors.bg,
+        borderRadius: badgeRadius.full,
+        paddingHorizontal: spacing.sm + 2,
+        paddingVertical: 3,
+        flexDirection: "row",
+        alignItems: "center",
+        gap: spacing.xs,
+      }}
     >
       <Svg width={size} height={size}>
         <Circle
           cx={size / 2}
           cy={size / 2}
           r={radius}
-          stroke={palette.border}
+          stroke={colors.fg + "40"}
           strokeWidth={stroke}
           fill="none"
         />
@@ -152,7 +190,7 @@ export function CardCycleRing({
           cx={size / 2}
           cy={size / 2}
           r={radius}
-          stroke={palette.primaryText}
+          stroke={colors.fg}
           strokeWidth={stroke}
           fill="none"
           strokeLinecap="round"
@@ -160,6 +198,9 @@ export function CardCycleRing({
           transform={`rotate(-90 ${size / 2} ${size / 2})`}
         />
       </Svg>
+      <Text style={[type.small, { color: colors.fg, fontFamily: font.medium, flexShrink: 1 }]}>
+        {tr.sources.cycleDaysLeft(daysLeft)}
+      </Text>
     </View>
   );
 }

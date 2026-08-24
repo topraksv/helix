@@ -140,8 +140,18 @@ without a scrim.
   reaches the card's edge; a card of rows never also sets vertical padding.
 - Status and provenance are `Badge`s in a `Row gap={spacing.sm}` above the
   record's title, wrapping rather than truncating.
-- A leading mark aligns with `useLedeAlignment`, so it centres against short
-  text and stops travelling past three lines.
+- A row centres on the taller of its text and its trailing control, through
+  `useLedeAlignment`. A leading mark centres against short text and stops
+  travelling past three lines; a one-line title carrying a 31pt switch centres
+  against the switch, because otherwise the row is 9pt taller than its own
+  words and every one of them sits UNDER them — which is what made the Face ID
+  row ride high and the gap below it read as a section break.
+- **A control is spaced by its ink, not by its target.** A `size="sm"` ghost
+  button is 44pt because that is the smallest a finger may be asked to hit, and
+  16pt of it is text: adding a `spacing.md` margin on top counts the transparent
+  half twice. `InlineDisclosure` gives it back, so the words sit the form's own
+  row gap from their neighbours. Measured: 26pt above and 34pt below became 10
+  and 18, with the target unchanged.
 - **Nothing truncates.** Labels wrap; `maxFontScale.measuredBox` is the only
   place a text size is capped, and only where the box is a measured constant.
 
@@ -280,20 +290,40 @@ the component is being written.
 
 ## 10. Brand marks
 
-A logo is fetched only when it is the right one and big enough to draw.
+A brand shows its own logo, at the best size anyone publishes, from whichever
+service actually has it.
 
-- **Minimum 48px** (`MIN_MARK_PX`). The app draws marks in a 36-48pt tile,
-  which is up to 144 device pixels at 3x; a 16px favicon blown up that far is a
-  smear. Below the bar the app's own mark — a brand chip, a utility glyph, or
-  initials — is the higher-quality picture, because it is drawn at the tile's
-  exact size and stays sharp at any density.
-- **No borrowed marks.** Two payment methods drew another institution's logo
-  byte for byte (Nays served İş Bankası's file, Advantage served HSBC's). A
-  method that cannot be recognised as itself is worse than one with no mark.
-- **The measurement is data, not a memory.** `src/ui/brand-marks.ts` records
-  every domain's real pixel size; `tests/brand-domains.test.ts` enforces the
-  two rules above; `scripts/audit-brand-marks.mjs` refreshes it. Run by hand —
-  it asks a third party once per domain, and this app is offline-first.
+- **The brand's own mark, or none.** Two payment methods drew another
+  institution's logo byte for byte — `naysapp.com.tr` served İş Bankası's file,
+  and choosing Nays therefore drew the bank. A method that cannot be recognised
+  as itself is worse than one with no mark, so Nays sits in
+  `UNMARKED_INSTITUTIONS` and gets a neutral glyph. Byte-identical marks that
+  belong to ONE owner under two names are correct and stay: Advantage is HSBC's
+  card programme, BluTV became Max, Microsoft 365 is Office.
+- **Size is whatever the brand publishes, never a bar to clear.** An earlier
+  rule dropped every name whose mark measured under 48px. It removed sixty
+  brands — Akbank, World, Vodafone, Türk Telekom — and the owner rejected it:
+  a real 16px World mark, soft in a 36pt tile, still says World. Only a mark
+  that does not exist is replaced by initials.
+- **Both services, measured, then one recorded.** Google and DuckDuckGo
+  disagree per domain by more than 3x, in both directions: Google has 16px for
+  TEB where DuckDuckGo has the real 48px, and DuckDuckGo has nothing for Akbank
+  where Google has 32px. Neither is a safe default.
+- **A placeholder is not a mark, and the bigger one is the trap.** Google
+  answers an unknown domain with a 16px grey globe, DuckDuckGo with a 48px grey
+  letter tile. Both are valid images, so a browser's `<img>` draws them while
+  native falls back — one wrong picture, and two different ones. Scored on
+  pixels alone the DuckDuckGo tile BEATS most genuine marks, and it briefly
+  won five domains here, Nays among them. Placeholders are matched by SHA and
+  scored as nothing.
+- **Evidence and conclusion are separate files.** `brand-mark-audit.ts` holds
+  all 180 measurements — width, service, hash — and is read only by the test
+  and the script. `brand-marks.ts` holds the one thing the app acts on: the
+  five domains that take the DuckDuckGo route. Shipping the record would put
+  7KB of hashes into the web bundle for no screen; the web budget refused it,
+  and `tests/brand-domains.test.ts` keeps the two from drifting.
+- `scripts/audit-brand-marks.mjs` refreshes the record. Run by hand — it asks
+  two third parties once per domain, and this app is offline-first.
 - `sz=256` is not a resize request. Measured: the service returns the best size
   a site publishes and never upscales.
 
@@ -309,6 +339,13 @@ A logo is fetched only when it is the right one and big enough to draw.
   pixels wide.
 - **The link runs both ways.** A ring and its legend are two drawings of one
   list; locking either lights the other.
+- **A rule written for the side-by-side layout must say so.** The legend
+  stretches to the ring's height and centres its rows, which is how the space
+  below the last row becomes part of the release target. Wrapped underneath on
+  a phone there is no ring height to reach: Yoga stretched the box anyway and
+  the rows sat in the middle of it, leaving a band between the ring and the
+  first category. It measured right on web and wrong on the phone, which is
+  the shape of every layout rule applied to a layout it was not written for.
 - **A category keeps its hue across themes.** The light and dark ramps pair
   index for index within 6°, enforced by `tests/theme-contrast.test.ts`. Six of
   eight once changed hue family between schemes, so every chart recoloured

@@ -4,6 +4,7 @@ import {
   CARD_CYCLE_GRACE,
   cardCycleGraceDays,
   cardCycleProgress,
+  daysUntilStatementClose,
   isCardCycleDayConflict,
   isValidCardCycle,
   isValidCardCycleGrace,
@@ -182,6 +183,42 @@ describe("how far apart a card's two days may sit", () => {
  * on the same ring would either run past the end or squash the part that
  * matters.
  */
+/**
+ * The number the card row actually prints, so it is measured rather than
+ * derived at a glance from the ring beside it.
+ */
+describe("days until a card's statement closes", () => {
+  const cycle = { statementDay: 15, dueDay: 5 };
+
+  it("counts down to this month's cut-off from inside the period", () => {
+    expect(daysUntilStatementClose("2026-08-09", cycle)).toBe(6);
+    expect(daysUntilStatementClose("2026-08-14", cycle)).toBe(1);
+  });
+
+  it("is zero on the cut-off day itself, which is still inside the period", () => {
+    // `statementForPurchase` puts a purchase made ON the statement date into
+    // that date's own statement, so the last day is nought days away and not
+    // a whole cycle away.
+    expect(daysUntilStatementClose("2026-08-15", cycle)).toBe(0);
+  });
+
+  it("jumps to the next cut-off the day after one closes", () => {
+    expect(daysUntilStatementClose("2026-08-16", cycle)).toBe(30);
+  });
+
+  it("crosses a year boundary without going negative", () => {
+    expect(daysUntilStatementClose("2026-12-20", cycle)).toBe(26);
+    expect(daysUntilStatementClose("2027-01-15", cycle)).toBe(0);
+  });
+
+  it("never reports a negative countdown on any day of a year", () => {
+    for (let day = 0; day < 365; day += 1) {
+      const today = addDaysISO("2026-01-01", day);
+      expect(daysUntilStatementClose(today, cycle), today).toBeGreaterThanOrEqual(0);
+    }
+  });
+});
+
 describe("where today sits in a card's cycle", () => {
   const cycle = { statementDay: 15, dueDay: 5 };
 

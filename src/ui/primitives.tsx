@@ -211,21 +211,43 @@ const LEDE_CENTRE_LINES = 3;
 export function useLedeAlignment(markHeight: number) {
   const [blockHeight, setBlockHeight] = useState(0);
   const [lineHeight, setLineHeight] = useState(0);
+  const [trailingHeight, setTrailingHeight] = useState(0);
   const cap = lineHeight > 0 ? lineHeight * LEDE_CENTRE_LINES : 0;
-  const effective = cap > 0 ? Math.min(blockHeight, cap) : blockHeight;
+  const textBand = cap > 0 ? Math.min(blockHeight, cap) : blockHeight;
+  /**
+   * The band everything in the row centres on.
+   *
+   * Usually the text is the tallest thing and this IS the text band, which is
+   * the case every rule above was written for. It is not the case when a
+   * one-line title carries a control: an iOS switch is 31pt against a 22pt
+   * title, so the row was 9pt taller than its own words and all nine sat
+   * UNDER them — "Face ID Kilidi" rode high against its toggle and the space
+   * before the next row read as a section break rather than a row gap. Taking
+   * the taller of the two puts that slack half above and half below, which is
+   * what every other row in the list already looks like.
+   */
+  const band = Math.max(textBand, trailingHeight);
   return {
     /** Spread onto the mark's own container. */
-    markStyle: { marginTop: Math.max(0, Math.round((effective - markHeight) / 2)) },
+    markStyle: { marginTop: Math.max(0, Math.round((band - markHeight) / 2)) },
     /**
      * For a trailing cluster whose height is its own business — a button, a
      * badge, a chevron. `markStyle` centres a KNOWN mark height; a 44pt action
      * given the 17pt icon's offset sat well above the text it belongs to.
      */
-    blockStyle: { minHeight: effective, justifyContent: "center" as const },
+    blockStyle: { minHeight: band, justifyContent: "center" as const },
+    /**
+     * For the text column itself. A no-op while the text is the tallest thing
+     * in the row — `minHeight` below its own height changes nothing — and the
+     * whole fix when it is not.
+     */
+    textStyle: { minHeight: band, justifyContent: "center" as const },
     /** `onLayout` for the whole text block. */
     onBlockLayout: (event: LayoutChangeEvent) => setBlockHeight(event.nativeEvent.layout.height),
     /** `onLayout` for the block's first line — its title. */
     onLineLayout: (event: LayoutChangeEvent) => setLineHeight(event.nativeEvent.layout.height),
+    /** `onLayout` for the trailing cluster, so the row can centre on it. */
+    onTrailingLayout: (event: LayoutChangeEvent) => setTrailingHeight(event.nativeEvent.layout.height),
   };
 }
 
@@ -766,6 +788,41 @@ export function Badge({
 }
 
 /** Shared width for matching status and action controls. */
+
+/**
+ * A ghost button that opens a section, laid out by its words rather than by
+ * its target.
+ *
+ * Measured on the transaction form: the box is 44pt because that is the
+ * smallest thing a finger may be asked to hit, and the label inside it is a
+ * 16pt line — 14pt of transparent target above the words and 14 below. Every
+ * call site then added its own `spacing.md` on top of that, so "Gider iadesi
+ * veya döviz" carried 26pt of air above the words and 34 below, against the
+ * 12pt every other pair of rows on the same form is separated by. It read as a
+ * section break rather than a link, which is what the owner reported.
+ *
+ * Giving the transparent half back to the layout is the whole fix: the target
+ * keeps all 44pt, and the neighbours space themselves from the ink. Nothing
+ * here buys a target with a prop the web ignores — that was the `hitSlop`
+ * mistake this button already carries a comment about.
+ */
+const DISCLOSURE_SLACK = Math.round((controlSize.minimumTarget - 16) / 2);
+
+export function InlineDisclosure(props: Parameters<typeof Button>[0]) {
+  return (
+    <View
+      style={{
+        alignSelf: "flex-start",
+        marginTop: -DISCLOSURE_SLACK,
+        // What is left after the slack is the form's own row gap, so the words
+        // sit `spacing.md` from whatever follows them.
+        marginBottom: spacing.md - DISCLOSURE_SLACK,
+      }}
+    >
+      <Button {...props} size="sm" variant="ghost" />
+    </View>
+  );
+}
 
 export function Divider() {
   const { palette } = useTheme();

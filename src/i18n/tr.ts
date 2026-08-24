@@ -520,7 +520,11 @@ export const tr = {
        the panel is called. Short: it sits in a wrapping badge cluster. */
     onTransaction: "Belge var",
     unsupported: "Bu tarayıcı yerel belge saklamayı desteklemiyor.",
-    kinds: { receipt: "Fiş", invoice: "Fatura", warranty: "Garanti", other: "Belge" },
+    /* `attachments.kind` exists in the schema and syncs, but nothing writes
+       anything except its "other" default — the picker asks for a file, not
+       for what kind of file it is. The panel was therefore printing the same
+       word, "Belge", on every document it had, under a heading that already
+       said Belgeler. The labels come back when something chooses a kind. */
     rejected: {
       unsupported_type: "Yalnızca PDF ve fotoğraf ekleyebilirsin.",
       extension_mismatch: "Dosyanın uzantısı türüyle uyuşmuyor.",
@@ -529,6 +533,10 @@ export const tr = {
       empty: "Dosya boş görünüyor.",
     },
     sizeLabel: (kb: number) => `${kb} KB`,
+    /* The same line the feedback screen shows under its pictures, so the two
+       lists read as one pattern. No cap here: an unbounded count says how many
+       there are rather than how many are left. */
+    count: (files: number, kb: number) => `${files} belge · ${kb} KB`,
 
   },
   statement: {
@@ -667,12 +675,14 @@ export const tr = {
   cashflow: {
     title: productTerms.financialTable,
     monthDetail: "Ay Detayı",
-    /* "Güncel Bakiye" is the DASHBOARD's label for the one balance that is
-       true right now (`dashboard.actualBalance`). Using the same words for a
-       per-month column meant Aralık had a "current balance" too, and the two
-       numbers were allowed to differ without anyone noticing. A month column
-       names a month boundary. */
-    opening: "Ay Başı", closing: "Ay Sonu",
+    /* Back to "Güncel Bakiye" at the owner's call. The audit renamed it to
+       "Ay Sonu" because the dashboard uses the same words for the one balance
+       that is true right now — but the column is not a month boundary in the
+       owner's model: it is the balance as it stands on that row's date, which
+       is exactly what "güncel" means there. The defect behind the rename was
+       never the word; it was that the two screens disagreed about the NUMBER,
+       and that is fixed in `cash-flow-matrix.ts`. */
+    opening: "Ay Başı", closing: "Güncel Bakiye",
     adjustedCell: (amount: string) => `Bu ay bakiye ${amount} düzeltildi`,
     income: "Gelir", expense: "Gider", transfer: "Yatırım", adjustment: "Bakiye Düzeltmesi",
     addTransaction: "İşlem Ekle",
@@ -770,7 +780,12 @@ export const tr = {
     monthOnly: "Sadece ay",
     specificDay: "Belirli gün",
     monthOnlyHint: (m: string) => `Tarihsiz — ${m} ayına işlenir, günü belirtmen gerekmez.`,
-    changeCurrency: "₺ TRY · Değiştir",
+    // The currency the form is actually on, not a hard-coded lira. It used to
+    // read "₺ TRY · Değiştir" whatever had been chosen, so a form in dollars
+    // said lira on the one line that names the currency. The caller supplies
+    // the flag with the code — see `CURRENCY_INFO` — because a flag is how
+    // this app names a currency everywhere else.
+    changeCurrency: (currency: string) => `${currency} · Değiştir`,
     futureNote: "İleri tarihli",
     installmentToggle: "Taksitli",
     installmentCount: "Taksit sayısı",
@@ -1085,7 +1100,7 @@ export const tr = {
     balanceAdjustmentsHint: "Her düzeltme ayrı bir hareket olarak görünür; gelir-gider istatistiklerine dahil edilmez ve buradan geri alınabilir.",
     noBalanceAdjustments: "Henüz bakiye düzeltmesi yok",
     noBalanceAdjustmentsHint: "Gerçek bakiye ile hesaplanan bakiye ayrıştığında yukarıdaki alan farkı bugüne kaydeder.",
-    balanceWillMark: "Bakiyeni düzeltirsen Mali Tablo'da o ayın Ay Sonu hücresinde renkli bir nokta belirir; hücreye dokunarak buraya dönebilirsin.",
+    balanceWillMark: "Bakiyeni düzeltirsen Mali Tablo'da o ayın Güncel Bakiye hücresinde renkli bir nokta belirir; hücreye dokunarak buraya dönebilirsin.",
     balanceAdjustmentFallback: "Bakiye düzeltmesi",
     balanceAdjustmentDeleted: "Bakiye düzeltmesi silindi",
     historyOpeningTitle: "Geçmiş Başlangıç Noktası",
@@ -1615,7 +1630,12 @@ export const tr = {
     cycleGraceTaken: "Bu gün kesimle uyumlu bir ödeme tarihi vermiyor.",
     cycleGraceDays: (days: number) => `Kesimden ${days} gün sonra`,
     cycleHint: "Yeni harcamalar, gerçek ekstrelerinin son ödeme tarihinde bakiyene yansır.",
-    cycleRingLabel: (percent: number) => `Dönemin %${percent}'i doldu`,
+    /* The countdown, not the percentage. "Dönemin %62'si doldu" was a figure
+       nobody acts on; "Ekstreye 6 gün" answers the question a person actually
+       has at the till — does this purchase land on the statement about to
+       close, or the next one. */
+    cycleDaysLeft: (days: number) =>
+      days === 0 ? "Ekstre bugün kesiliyor" : `Ekstreye ${days} gün`,
     cycleMissing: "Ekstre tarihleri eksik",
     statementHistory: "Ekstre Dönemleri",
     statementHistoryHint: "Bu karta bağlı gerçek ekstrelerin kesim ve son ödeme tarihleri.",

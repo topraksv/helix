@@ -459,8 +459,11 @@ test("a receipt can be attached, opened and removed on the web", async ({ page }
   });
 
   await expect(panel).toContainText("fatura.pdf");
-  // Held on this device, so it offers to open it rather than explaining why it cannot.
-  await expect(panel.getByRole("button", { name: "Aç", exact: true })).toBeVisible();
+  // Held on this device, so it offers to open it rather than explaining why it
+  // cannot. The tile itself is that control: a separate "Aç" button beside a
+  // picture of the thing it opens was one control too many, and on a device
+  // without the file it was a button that could only fail.
+  await expect(panel.getByRole("button", { name: /^Aç · fatura\.pdf/u })).toBeVisible();
   await expect(page.getByTestId("attachment-empty")).toHaveCount(0);
 
   // The row it belongs to says so, in the list, without opening anything: the
@@ -472,7 +475,7 @@ test("a receipt can be attached, opened and removed on the web", async ({ page }
   await expect(panel).toContainText("fatura.pdf");
 
   // Removing is undoable, because a receipt is not recoverable once gone.
-  await panel.getByRole("button", { name: "Sil", exact: true }).click();
+  await panel.getByRole("button", { name: /^Sil · fatura\.pdf$/u }).click();
   await expect(page.getByTestId("attachment-empty")).toBeVisible();
   await page.getByRole("alert").first().getByRole("button", { name: "Geri Al", exact: true }).click();
   await expect(panel).toContainText("fatura.pdf");

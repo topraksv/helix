@@ -6,29 +6,38 @@
  * desktop as a record with no file behind it, and says so, rather than
  * offering an open button that cannot work.
  *
- * Laid out as the app lays out every other list of records — one card of rows,
- * each row an icon, a name, what it is, and the same two controls in the same
- * order. It used to be one bordered card per file with the buttons stacked
- * underneath, so two receipts took more vertical space than the form they
- * belonged to.
+ * Laid out as the FEEDBACK screen lays out the pictures a reporter attaches,
+ * because it is the same act: pick files, see what you picked, drop one, add
+ * another. Two screens that do one thing must not draw it two ways, and these
+ * did — a card of full-width rows here, a grid of thumbnails there. The grid
+ * won because it shows the document instead of naming it: a person checking
+ * they attached the right receipt should not have to read "IMG_4821.PNG".
+ *
+ * What differs is only what a tile can honestly contain. A PDF has no
+ * thumbnail and gets its type mark; a document added on another device has no
+ * bytes here at all and says so on the tile rather than offering an open
+ * button that cannot work.
  */
 
 import React, { useEffect, useState } from "react";
-import { View } from "react-native";
+import { Pressable, View } from "react-native";
+import { Image } from "expo-image";
 import * as DocumentPicker from "expo-document-picker";
 import FileText from "lucide-react-native/icons/file-text";
 import ImageIcon from "lucide-react-native/icons/image";
 import Paperclip from "lucide-react-native/icons/paperclip";
+import X from "lucide-react-native/icons/x";
 import { addAttachment, AttachmentRejectedError, deleteAttachment, restoreAttachment, type AttachmentRow } from "../data/repo";
 import { ATTACHMENT_MIME_TYPES, type AttachmentRejection } from "../domain/attachments";
-import { attachmentsSupported, openAttachment, presentAttachments, storeAttachmentBytes } from "../services/attachment-store";
+import { attachmentThumbnail, attachmentsSupported, openAttachment, presentAttachments, storeAttachmentBytes } from "../services/attachment-store";
 import { devError } from "../services/logger";
 import { tr } from "../i18n/tr";
 import { scheduleSync } from "../sync/engine";
-import { Badge, Body, Button, Card, Divider, ListRow, Row, SectionHeader } from "./components";
+import { Badge, Body, Button, Card, IconButton, Row, SectionHeader } from "./components";
+import { interactionSurface } from "./interaction";
 import { appAlert } from "./dialog";
 import { useUndo } from "./undo";
-import { spacing } from "./theme";
+import { radius, spacing, type, useTheme } from "./theme";
 
 function rejectionMessage(reason: string): string {
   const known = tr.attachments.rejected as Record<string, string | undefined>;
@@ -38,6 +47,54 @@ function rejectionMessage(reason: string): string {
 /** A page or a picture: the two things a receipt is ever stored as. */
 function attachmentIcon(mimeType: string) {
   return mimeType.startsWith("image/") ? ImageIcon : FileText;
+}
+
+/**
+ * The tile's edge, in points — the same 84 the feedback screen uses.
+ *
+ * The number is duplicated rather than shared because the two screens are
+ * agreeing on a look, not depending on each other; a change to one is a
+ * decision about that screen, and `tests/design-system-contract.test.ts` is
+ * what keeps them from drifting apart by accident.
+ */
+const THUMBNAIL = 84;
+
+/**
+ * Object URLs for the images in this list, released when the list changes.
+ *
+ * The browser store hands back a URL that pins its blob in memory until it is
+ * revoked, so an edit form opened and closed a few times would hold every
+ * receipt it had ever drawn. Native has nothing to release and says so.
+ */
+function useThumbnails(attachments: readonly AttachmentRow[], present: ReadonlySet<string>): Record<string, string> {
+  const [uris, setUris] = useState<Record<string, string>>({});
+  const key = attachments.map((a) => `${a.storedName}:${present.has(a.storedName) ? 1 : 0}`).join("|");
+  useEffect(() => {
+    let cancelled = false;
+    const releases: (() => void)[] = [];
+    void Promise.all(
+      attachments
+        .filter((attachment) => present.has(attachment.storedName))
+        .map(async (attachment) => {
+          const drawn = await attachmentThumbnail(attachment.storedName, attachment.mimeType);
+          if (!drawn) return null;
+          releases.push(drawn.release);
+          return [attachment.id, drawn.uri] as const;
+        }),
+    )
+      .then((pairs) => {
+        const found = Object.fromEntries(pairs.filter((pair): pair is readonly [string, string] => pair != null));
+        if (cancelled) return;
+        setUris(found);
+      })
+      .catch((error) => devError("attachment.thumbnail", error));
+    return () => {
+      cancelled = true;
+      for (const release of releases) release();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `key` is the list's identity; the array itself is rebuilt every render.
+  }, [key]);
+  return uris;
 }
 
 export function AttachmentPanel({
@@ -50,6 +107,7 @@ export function AttachmentPanel({
   attachments: AttachmentRow[];
 }) {
   const undo = useUndo();
+  const { palette } = useTheme();
   const [busy, setBusy] = useState(false);
   const supported = attachmentsSupported();
   /**
@@ -61,6 +119,8 @@ export function AttachmentPanel({
    * that appears a moment late.
    */
   const [present, setPresent] = useState<ReadonlySet<string>>(new Set());
+  const thumbnails = useThumbnails(attachments, present);
+  const totalBytes = attachments.reduce((sum, attachment) => sum + attachment.byteSize, 0);
   const storedNames = attachments.map((attachment) => attachment.storedName).join("|");
   useEffect(() => {
     let cancelled = false;
@@ -136,69 +196,106 @@ export function AttachmentPanel({
   };
 
   return (
-    <View testID="attachment-panel">
+    <View testID="attachment-panel" style={{ marginBottom: spacing.md }}>
       <SectionHeader description={tr.attachments.hint}>{tr.attachments.title}</SectionHeader>
 
-      {attachments.length === 0 ? (
-        <Card>
-          <Body muted testID="attachment-empty">{tr.attachments.empty}</Body>
-        </Card>
-      ) : (
-        <Card rows>
-          {attachments.map((attachment, index) => {
-            const held = present.has(attachment.storedName);
-            return (
-              <React.Fragment key={attachment.id}>
-                {index > 0 ? <Divider /> : null}
-                <ListRow
-                  icon={attachmentIcon(attachment.mimeType)}
-                  title={attachment.fileName}
-                  stackRightOnNarrow
-                  subtitle={(
-                    <Row gap={spacing.sm} style={{ flexWrap: "wrap", marginTop: spacing.xs }}>
-                      <Badge text={tr.attachments.kinds[attachment.kind]} tone="muted" />
-                      <Badge text={tr.attachments.sizeLabel(Math.max(1, Math.round(attachment.byteSize / 1024)))} tone="muted" />
-                      {/* A device that did not add the file does not have it,
-                          and the row says so rather than offering a dead
-                          button. */}
-                      {held ? null : (
-                        <Badge testID={`attachment-missing-${attachment.id}`} text={tr.attachments.otherDevice} tone="warning" />
-                      )}
-                    </Row>
-                  )}
-                  right={(
-                    <Row gap={spacing.sm}>
-                      {held ? (
-                        <Button size="sm" variant="secondary" label={tr.attachments.open} onPress={() => void open(attachment)} />
-                      ) : null}
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        label={tr.attachments.remove}
-                        disabled={busy}
-                        onPress={() => void remove(attachment)}
-                      />
-                    </Row>
-                  )}
-                />
-              </React.Fragment>
-            );
-          })}
-        </Card>
-      )}
+      <Card>
+        {attachments.length === 0 ? (
+          <Body muted testID="attachment-empty" style={{ marginBottom: spacing.md }}>{tr.attachments.empty}</Body>
+        ) : (
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.sm, marginBottom: spacing.md }}>
+            {attachments.map((attachment) => {
+              const held = present.has(attachment.storedName);
+              const TypeIcon = attachmentIcon(attachment.mimeType);
+              const uri = thumbnails[attachment.id];
+              return (
+                <View key={attachment.id} style={{ width: THUMBNAIL }}>
+                  {/* The tile IS the open control when there is something to
+                      open. A separate "Aç" button beside a picture of the
+                      thing it opens is one control too many, and on a device
+                      that does not hold the file it was a button that could
+                      only fail. */}
+                  <Pressable
+                    accessibilityRole={held ? "button" : undefined}
+                    accessibilityLabel={[
+                      held ? `${tr.attachments.open} · ${attachment.fileName}` : attachment.fileName,
+                      tr.attachments.sizeLabel(Math.max(1, Math.round(attachment.byteSize / 1024))),
+                      held ? null : tr.attachments.otherDevice,
+                    ].filter(Boolean).join(" · ")}
+                    disabled={!held}
+                    onPress={() => void open(attachment)}
+                    style={(state) => ({
+                      ...interactionSurface(palette, state, { base: palette.surfaceAlt, enabled: held }),
+                      width: THUMBNAIL,
+                      height: THUMBNAIL,
+                      borderRadius: radius.sm,
+                      overflow: "hidden",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: spacing.xs,
+                    })}
+                  >
+                    {uri ? (
+                      <Image alt="" source={{ uri }} style={{ width: "100%", height: "100%" }} contentFit="cover" />
+                    ) : (
+                      <TypeIcon accessible={false} size={24} color={palette.textSecondary} strokeWidth={1.8} />
+                    )}
+                    {/* A document added on another device: said on the tile,
+                        where the picture would otherwise be, rather than in a
+                        badge under a tile that looks the same as the ones
+                        that work. */}
+                    {held ? null : (
+                      <Badge testID={`attachment-missing-${attachment.id}`} text={tr.attachments.otherDevice} tone="warning" />
+                    )}
+                  </Pressable>
+                  <Row style={{ alignItems: "center", justifyContent: "space-between", marginTop: 2 }}>
+                    <Body muted style={{ fontSize: type.small.fontSize, flex: 1, minWidth: 0 }}>
+                      {tr.attachments.sizeLabel(Math.max(1, Math.round(attachment.byteSize / 1024)))}
+                    </Body>
+                    <IconButton
+                      icon={X}
+                      tone="danger"
+                      label={`${tr.attachments.remove} · ${attachment.fileName}`}
+                      disabled={busy}
+                      onPress={() => void remove(attachment)}
+                    />
+                  </Row>
+                  {/* The name, on its own line under the row the feedback
+                      screen ends at. The one thing this list needs that that
+                      one does not: a screenshot identifies itself from its own
+                      thumbnail, and a PDF cannot — two invoices are two
+                      identical page marks. It cannot share the line above,
+                      because next to the remove button the column is about
+                      40px and "fatura-agustos.pdf" broke one letter per line.
+                      Full tile width, wrapping at word boundaries; this app
+                      does not truncate a name. */}
+                  <Body muted style={{ fontSize: type.small.fontSize }}>
+                    {attachment.fileName}
+                  </Body>
+                </View>
+              );
+            })}
+          </View>
+        )}
 
-      {supported ? (
-        <Button
-          testID="attachment-add"
-          icon={Paperclip}
-          variant="secondary"
-          label={tr.attachments.add}
-          disabled={busy}
-          onPress={() => void pick()}
-        />
-      ) : (
-        <Body muted testID="attachment-unsupported">{tr.attachments.unsupported}</Body>
-      )}
+        {supported ? (
+          <Button
+            testID="attachment-add"
+            icon={Paperclip}
+            variant="secondary"
+            label={tr.attachments.add}
+            disabled={busy}
+            onPress={() => void pick()}
+          />
+        ) : (
+          <Body muted testID="attachment-unsupported">{tr.attachments.unsupported}</Body>
+        )}
+        {attachments.length > 0 ? (
+          <Body muted style={{ marginTop: spacing.xs, fontSize: type.small.fontSize }}>
+            {tr.attachments.count(attachments.length, Math.max(1, Math.round(totalBytes / 1024)))}
+          </Body>
+        ) : null}
+      </Card>
     </View>
   );
 }

@@ -7,7 +7,7 @@ import React, { useState } from "react";
 import { Pressable, Text, View } from "react-native";
 import { PaymentSourceLogo } from "../../../ui/logo";
 import { useContentWidth } from "../../../ui/viewport";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import ChevronRight from "lucide-react-native/icons/chevron-right";
 import CreditCard from "lucide-react-native/icons/credit-card";
 import Landmark from "lucide-react-native/icons/landmark";
@@ -43,7 +43,18 @@ export default function InstallmentsScreen() {
   const { palette } = useTheme();
   const compact = useContentWidth() < 560;
   const [viewMonth, setViewMonth] = useState(monthKeyOf(todayISO()));
-  const [cardFilter, setCardFilter] = useState<string | null>(null);
+  /**
+   * Arriving with a card already chosen.
+   *
+   * "Yaklaşan Ödemeler" lists a card statement as one row with one amount, and
+   * the question it raises is which installments make it up. That question is
+   * this screen filtered to that card, so the row hands the card over rather
+   * than dropping the reader into an unfiltered list to find it again. A seed,
+   * not a binding: the picker is still the thing that decides, and clearing it
+   * here does not send the reader back through the row.
+   */
+  const { card } = useLocalSearchParams<{ card?: string }>();
+  const [cardFilter, setCardFilter] = useState<string | null>(card ?? null);
   const { status: dataStatus, ready: dataReady, retry: retryData } = combineLiveStates([plansState, sourcesState, personsState, transactionsState]);
 
   const selfIds = new Set(persons.filter((p) => p.isSelf).map((p) => p.id));

@@ -20,7 +20,7 @@ import React from "react";
 import { Pressable, Text, View } from "react-native";
 import { Select } from "./components";
 import { SUPPORTED_CURRENCIES, type Currency } from "../services/fx-fetch";
-import { CURRENCY_INFO } from "../domain/fx-provider";
+import { CURRENCY_INFO, currencyLabel } from "../domain/fx-provider";
 import { tr } from "../i18n/tr";
 import { controlSize, font, radius, spacing, stateOpacity, type, useTheme } from "./theme";
 
@@ -85,7 +85,7 @@ export function CurrencyPicker({
 
   return (
     <View style={{ flexDirection: "row", gap: spacing.sm, marginBottom: spacing.md }}>
-      {PRIMARY.map((code) => chip(`${CURRENCY_INFO[code].flag} ${code}`, value === code, () => onChange(code), CURRENCY_INFO[code].name))}
+      {PRIMARY.map((code) => chip(currencyLabel(code), value === code, () => onChange(code), CURRENCY_INFO[code].name))}
       {/* `Select` renders its trigger inside a wrapper of its own, so the
           fourth column has to be claimed out here or the chip's own `flex`
           would only divide that intrinsic wrapper. */}
@@ -104,7 +104,7 @@ export function CurrencyPicker({
         onChange={onChange}
         trigger={(open) =>
           chip(
-            isPrimary ? `••• ${tr.common.other}` : `${CURRENCY_INFO[value as Currency]?.flag ?? ""} ${value}`.trim(),
+            isPrimary ? `••• ${tr.common.other}` : currencyLabel(value),
             !isPrimary,
             open,
             tr.common.otherCurrencies,

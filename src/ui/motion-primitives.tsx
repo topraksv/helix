@@ -199,10 +199,21 @@ export function useValueFlash(value: number, enabled = true): Animated.Value {
  * a table of six hundred cells neither runs this hook nor subscribes to
  * navigation to feed it.
  *
- * It runs on every ARRIVAL, not once per mount: Expo Router keeps a tab's
- * screen alive, so a figure that counted only when it first appeared spent the
- * rest of the session static. Arriving counts up from zero; a value that
- * changes while you are watching counts from what it was.
+ * It counts when the FIGURE changes, not when the screen is looked at again.
+ *
+ * It used to restart from zero on every arrival, and that is what made coming
+ * back to a tab feel like a page reload: measured on the dashboard, returning
+ * to Durum put ₺18.971,07 on screen and spent 1.6 s climbing back to the
+ * ₺81.580,95 that had never changed. A number that animates says "this moved";
+ * a balance that moves every time you glance at it says the app is still
+ * loading, which is the one thing an offline-first ledger should never
+ * suggest. It is also the app's own rule — motion carries meaning — applied to
+ * the figure it matters most on.
+ *
+ * So: the first sight of a figure counts up from zero, a real change counts
+ * from the old value, and a return with nothing new shows the settled number
+ * at once. The screen's entrance still replays around it; only the digits
+ * stop pretending.
  *
  * The animation is on a plain number, not on a native driver, because the text
  * content itself changes; `format` is called on every frame, so it must stay
@@ -210,14 +221,13 @@ export function useValueFlash(value: number, enabled = true): Animated.Value {
  */
 export function useCountUp(value: number, duration = motion.figure): number {
   const reducedMotion = useReducedMotion();
-  const visit = useScreenVisit();
   const [shown, setShown] = useState(value);
-  const previous = useRef(value);
-  const lastVisit = useRef(0);
+  // Nothing has been shown yet, so the first pass counts up from zero. After
+  // that this holds whatever the reader last saw, which is what a change
+  // should be measured from.
+  const previous = useRef(0);
   useEffect(() => {
-    const arriving = visit !== lastVisit.current;
-    lastVisit.current = visit;
-    const from = arriving ? 0 : previous.current;
+    const from = previous.current;
     previous.current = value;
     if (reducedMotion || from === value) {
       setShown(value);
@@ -241,7 +251,7 @@ export function useCountUp(value: number, duration = motion.figure): number {
       driver.removeListener(listener);
       setShown(value);
     };
-  }, [value, visit, duration, reducedMotion]);
+  }, [value, duration, reducedMotion]);
   return shown;
 }
 

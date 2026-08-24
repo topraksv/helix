@@ -434,12 +434,16 @@ export function Donut({
           flexBasis: LEGEND_BASIS,
           minWidth: 160,
           position: "relative",
-          // Stretched to the ring's height so the space below the last row is
-          // part of the legend and can be pressed to release a lock. The rows
-          // stay vertically centred, so nothing moves — the box simply reaches
-          // as far as the picture it belongs to.
-          alignSelf: "stretch",
-          justifyContent: "center",
+          // Stretched to the ring's height ONLY beside it, so the space below
+          // the last row is part of the legend and can be pressed to release a
+          // lock. Wrapped underneath there is no ring height to reach and
+          // nothing to centre against: Yoga still stretched the box, and the
+          // rows sat in the middle of it — a band of empty space between the
+          // ring and the first category, with every category pushed down. It
+          // measured right on web and wrong on the phone, which is the shape
+          // of a rule written for one layout and applied to both.
+          alignSelf: sideBySide ? "stretch" : "flex-start",
+          justifyContent: sideBySide ? "center" : "flex-start",
           // Beside the ring the legend takes the rest of the row: its rows are
           // a name on the left and a share on the right, which is the same
           // anatomy every list in the app uses at full width. Capped only when

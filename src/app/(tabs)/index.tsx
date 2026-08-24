@@ -1051,8 +1051,17 @@ export default function DashboardScreen() {
                 // it has no button. It used to have nothing at all: half the
                 // rows in this list were actionable and half were inert, drawn
                 // identically, and the largest amount on screen was always one
-                // of the inert ones. It opens the card's own month instead.
-                onPress={u.kind === "card_statement" ? () => router.push("/cash-flow/installments" as Href) : undefined}
+                // of the inert ones.
+                //
+                // It opens Taksitler filtered to that card. The path needs the
+                // group: this tab is not inside the cash-flow stack, so the
+                // bare `/cash-flow/installments` matched no route from here —
+                // and the `as Href` cast was what let a path that does not
+                // exist compile. This one is uncast, so a wrong path here is a
+                // type error rather than a screen nobody asked for.
+                onPress={u.kind === "card_statement"
+                  ? () => router.push({ pathname: "/(tabs)/cash-flow/installments", params: { card: u.refId } })
+                  : undefined}
                 chevron={u.kind === "card_statement"}
                 right={u.kind === "expected" && u.expectedId ? (
                   <View style={{ width: STATUS_W }}>

@@ -32,6 +32,7 @@ import { previewTryMinor, resolveTransactionSave } from "../domain/transaction-d
 import { assertISODate, isISODate, lastDayOf, monthKeyOf, todayISO, type MonthKey } from "../domain/dates";
 import { isValidCardCycle, statementForPurchase } from "../domain/card-statements";
 import { formatMinorCompact, formatMinorInput } from "../domain/money";
+import { currencyLabel } from "../domain/fx-provider";
 import { deriveStartMonth, isValidInstallmentCount } from "../domain/installments";
 import { lookupRate, useFxRates } from "../services/fx-fetch";
 import { categoryIconComponent,  } from "../ui/category-icon";
@@ -39,7 +40,7 @@ import { PaymentSourceLogo } from "../ui/logo";
 import { CurrencyPicker } from "../ui/currency-picker";
 import { scheduleSync } from "../sync/engine";
 import { dateLabel, monthLabel, tr } from "../i18n/tr";
-import { Amount, Badge, Body, Button, Card, ChipPicker, ChoiceTile, DataStateNotice, Divider, Field, FieldNote, HeroCard, Label, MoneyField, MonthStepper, PanelHeader, Row, Screen, SectionHeader, Select, Toggle } from "../ui/components";
+import { Amount, Badge, Body, Button, Card, ChipPicker, ChoiceTile, DataStateNotice, Divider, Field, FieldNote, HeroCard, InlineDisclosure, Label, MoneyField, MonthStepper, PanelHeader, Row, Screen, SectionHeader, Select, Toggle } from "../ui/components";
 import { useSubmitOnEnter } from "../ui/keyboard";
 import { appAlert } from "../ui/dialog";
 import { DateField } from "../ui/calendar";
@@ -661,6 +662,11 @@ function TransactionForm({ existing, investmentRefund = false }: { existing?: Ex
 
       <MoneyField
         testID="transaction-amount"
+        // The code alone, no flag. A flag belongs where a currency is being
+        // chosen or shown as itself — the picker chips, the disclosure above
+        // them. Here it would join the field's ACCESSIBLE NAME, so a screen
+        // reader would announce "Tutar, Türkiye bayrağı, TRY" before the
+        // person could type a number.
         label={`${tr.tx.amount} · ${currency}`}
         value={amountRaw}
         expression={entryType !== "transfer"}
@@ -672,16 +678,12 @@ function TransactionForm({ existing, investmentRefund = false }: { existing?: Ex
         }}
       />
       {!showAmountOptions ? (
-        <View style={{ alignSelf: "flex-start", marginBottom: spacing.md }}>
-          <Button
-            icon={SlidersHorizontal}
-            size="sm"
-            variant="ghost"
-            label={tr.tx.amountOptions(entryType, currency)}
-            expanded={showAmountOptions}
-            onPress={() => setShowAmountOptions(true)}
-          />
-        </View>
+        <InlineDisclosure
+          icon={SlidersHorizontal}
+          label={tr.tx.amountOptions(entryType, currency)}
+          expanded={showAmountOptions}
+          onPress={() => setShowAmountOptions(true)}
+        />
       ) : (
       <>
       {entryType !== "transfer" || (isEdit && isReversal) ? (
@@ -721,9 +723,11 @@ function TransactionForm({ existing, investmentRefund = false }: { existing?: Ex
           <CurrencyPicker value={currency} onChange={setCurrency} />
         </>
       ) : (
-        <View style={{ alignSelf: "flex-start", marginBottom: spacing.md }}>
-          <Button size="sm" variant="ghost" label={tr.tx.changeCurrency} onPress={() => setShowCurrency(true)} />
-        </View>
+        <InlineDisclosure
+          label={tr.tx.changeCurrency(currencyLabel(currency))}
+          expanded={showCurrency}
+          onPress={() => setShowCurrency(true)}
+        />
       )}
       {currency !== "TRY" ? (
         <View style={{ marginBottom: spacing.md, alignItems: "flex-start" }}>

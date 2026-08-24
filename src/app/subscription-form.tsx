@@ -13,6 +13,7 @@ import { combineLiveStates } from "../data/live-state";
 import { classifyRecordId } from "../domain/route-params";
 import { advanceDueDate, dueDateInMonth, nextDueAfter } from "../domain/recurrence";
 import { normalizedMonthlyLoadMinor } from "../domain/analytics";
+import { currencyLabel } from "../domain/fx-provider";
 import { isMonthDay, monthKeyOf, todayISO, type ISODate } from "../domain/dates";
 import { formatMinorCompact, formatMinorInput } from "../domain/money";
 import { dateLabel, shortDateLabel, tr } from "../i18n/tr";
@@ -20,7 +21,7 @@ import { scheduleSync } from "../sync/engine";
 import { categoryIconComponent } from "../ui/category-icon";
 import { Logo, PaymentSourceLogo } from "../ui/logo";
 import { CurrencyPicker } from "../ui/currency-picker";
-import { Amount, Body, Button, Card, ChipPicker, DataStateNotice, FadeIn, Field, FieldNote, Label, MoneyField, PanelHeader, Row, Screen, Select, Spread, Toggle } from "../ui/components";
+import { Amount, Body, Button, Card, ChipPicker, DataStateNotice, FadeIn, Field, FieldNote, InlineDisclosure, Label, MoneyField, PanelHeader, Row, Screen, Select, Spread, Toggle } from "../ui/components";
 import { useSubmitOnEnter } from "../ui/keyboard";
 import { appAlert } from "../ui/dialog";
 import { DateField } from "../ui/calendar";
@@ -440,9 +441,11 @@ function SubscriptionForm({ existing }: { existing?: ReturnType<typeof useSubscr
                 <CurrencyPicker value={currency} onChange={setCurrency} />
               </>
             ) : (
-              <View style={{ alignSelf: "flex-start" }}>
-                <Button size="sm" variant="ghost" label={tr.tx.changeCurrency} onPress={() => setShowCurrency(true)} />
-              </View>
+              <InlineDisclosure
+                label={tr.tx.changeCurrency(currencyLabel(currency))}
+                expanded={showCurrency}
+                onPress={() => setShowCurrency(true)}
+              />
             )}
           </Card>
         )}

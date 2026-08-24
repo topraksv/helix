@@ -27,6 +27,7 @@ import { Button, Card, CardList, DataStateNotice, EmptyState, FadeIn, MetricStri
 import { RuleRow, type RuleBadge } from "../../ui/rule-row";
 import { Logo } from "../../ui/logo";
 import { useUndo } from "../../ui/undo";
+import { useScreenVisit } from "../../ui/motion-primitives";
 import { circle, font, radius, spacing, type, useTheme } from "../../ui/theme";
 import { appAlert } from "../../ui/dialog";
 import { WorkspaceGrid } from "../../ui/workspace-layout";
@@ -41,6 +42,7 @@ function SubscriptionScheduleOverview({
   today: ISODate;
 }) {
   const { palette } = useTheme();
+  const visit = useScreenVisit();
   const compact = useContentWidth() < 560;
   const horizonDays = 31;
   const horizonEnd = addDaysISO(today, horizonDays - 1);
@@ -223,8 +225,15 @@ function SubscriptionScheduleOverview({
             <View style={{ marginTop: spacing.lg }}>
               <Text style={[type.small, { color: palette.textSecondary, marginBottom: spacing.sm }]}>{tr.subs.paymentPath}</Text>
               <View accessible={false} style={{ flexDirection: "row", alignItems: "flex-start" }}>
+                {/* `replayToken={visit}` replays these on return, like the
+                    charts beside them. `FadeIn` is mount-only by default and
+                    must stay that way — making every one of them visit-aware
+                    would re-animate whole screens on every glance back, which
+                    is the reload feeling `useCountUp` was just cured of. Only
+                    the stops opt in, because they are this card's one piece of
+                    motion and the thing the eye came back for. */}
                 {visibleStops.map((stop, index) => (
-                  <FadeIn key={stop.date} delay={index * 90} style={{ flex: 1, minWidth: 0 }}>
+                  <FadeIn key={stop.date} replayToken={visit} delay={index * 90} style={{ flex: 1, minWidth: 0 }}>
                     <View style={{ height: 18, flexDirection: "row", alignItems: "center" }}>
                       <View style={{ flex: 1, height: 2, backgroundColor: index === 0 ? "transparent" : palette.primary + "55" }} />
                       <View style={{ width: 12, height: 12, borderRadius: circle(12), borderWidth: 3, borderColor: palette.primary, backgroundColor: palette.surface }} />

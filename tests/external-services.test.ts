@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { isMarketFeedSocket } from "../e2e/helpers";
-import { FETCHED_FX_CURRENCIES, parseOpenExchangeRates, parseTcmbRates } from "../src/domain/fx-provider";
+import { CURRENCY_INFO, FETCHED_FX_CURRENCIES, currencyLabel, parseOpenExchangeRates, parseTcmbRates } from "../src/domain/fx-provider";
 import { MARKET_SYMBOLS } from "../src/domain/investment-catalog";
 import { normalizeLogoDomain, remoteFaviconUrl } from "../src/domain/logo-domain";
 import { freshMarketQuote, liveMarketSymbol, MARKET_FEED_URL, validMarketQuote } from "../src/domain/market";
@@ -110,6 +110,26 @@ describe("external FX provider validation", () => {
     expect(() => parseOpenExchangeRates({ result: "error", time_last_update_unix: published, rates: { USD: 0.025 } })).toThrow();
     expect(() => parseOpenExchangeRates({ result: "success", rates: { USD: 0.025 } })).toThrow();
     expect(() => parseOpenExchangeRates({ result: "success", time_last_update_unix: published, rates: { USD: 0 } })).toThrow();
+  });
+});
+
+/**
+ * A currency is named the same way everywhere, which is the rule the
+ * transaction form broke: flags on its picker chips, "₺ TRY" hard-coded on the
+ * row above them.
+ */
+describe("how a currency names itself", () => {
+  it("puts the flag in front of the code for every currency it offers", () => {
+    for (const code of [...FETCHED_FX_CURRENCIES, "TRY"] as const) {
+      expect(currencyLabel(code), code).toBe(`${CURRENCY_INFO[code].flag} ${code}`);
+    }
+  });
+
+  it("falls back to the bare code rather than to a blank", () => {
+    // A code the table has not met still has to name itself: a leading space
+    // or an empty chip would be worse than no flag.
+    expect(currencyLabel("XDR")).toBe("XDR");
+    expect(currencyLabel("")).toBe("");
   });
 });
 

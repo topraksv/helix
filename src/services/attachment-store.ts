@@ -73,6 +73,27 @@ export async function openAttachment(storedName: string, mimeType: string): Prom
 }
 
 /**
+ * A URL that can be drawn as a picture, for a document this device holds.
+ *
+ * Only for images: a PDF has no thumbnail, and asking `expo-image` to draw one
+ * gets a blank box rather than a page. `null` means "draw the type mark
+ * instead", which is also the answer for a file that lives on another device.
+ *
+ * Native has nothing to release — the sandbox path is stable — so `release` is
+ * a no-op here and real work in the browser. Both are returned so the caller
+ * does not have to know which platform it is on.
+ */
+export async function attachmentThumbnail(
+  storedName: string,
+  mimeType: string,
+): Promise<{ uri: string; release: () => void } | null> {
+  if (!mimeType.startsWith("image/")) return null;
+  const file = resolve(storedName);
+  if (!file?.exists) return null;
+  return { uri: file.uri, release: () => {} };
+}
+
+/**
  * Delete stored files that no live row names any more.
  *
  * Files can outlive their rows: an add interrupted after the copy, a delete

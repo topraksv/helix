@@ -96,6 +96,13 @@ export default function UpcomingScreen() {
     if (item.kind === "transaction") return router.push({ pathname: "/transaction", params: { id: item.refId } });
     if (item.sourceType === "subscription") return router.push({ pathname: "/subscription-form", params: { id: item.refId } });
     if (item.sourceType === "recurring_income") return router.push("/incomes");
+    // A card statement asks "what is on this card?", and the answer is
+    // Taksitler filtered to it. It used to fall through to the catch-all below
+    // and open the payment-source list — the screen for ADDING a card — which
+    // answers a question nobody on this row was asking.
+    if (item.sourceType === "card_statement") {
+      return router.push({ pathname: "/(tabs)/cash-flow/installments", params: { card: item.refId } });
+    }
     return router.push("/payment-sources");
   };
   const sourceLabel = (item: UpcomingTimelineItem) => ({

@@ -101,6 +101,25 @@ export async function openAttachment(storedName: string, mimeType: string): Prom
   setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
 
+/**
+ * A URL that can be drawn as a picture, for a document this device holds.
+ *
+ * Only for images — see the native file for why — and the caller MUST call
+ * `release` when the picture leaves the screen. An object URL pins its blob in
+ * memory for the life of the document, so a transaction list that opened and
+ * closed a few edit forms would hold every receipt it had ever drawn.
+ */
+export async function attachmentThumbnail(
+  storedName: string,
+  mimeType: string,
+): Promise<{ uri: string; release: () => void } | null> {
+  if (!mimeType.startsWith("image/")) return null;
+  const blob = await transact<Blob | undefined>("readonly", (store) => store.get(storedName));
+  if (!blob) return null;
+  const uri = URL.createObjectURL(new Blob([blob], { type: mimeType }));
+  return { uri, release: () => URL.revokeObjectURL(uri) };
+}
+
 export async function pruneOrphanAttachmentFiles(liveNames: ReadonlySet<string>): Promise<number> {
   try {
     const keys = await transact<IDBValidKey[]>("readonly", (store) => store.getAllKeys());

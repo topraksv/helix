@@ -159,6 +159,22 @@ export const CURRENCY_INFO: Record<(typeof FETCHED_FX_CURRENCIES)[number] | "TRY
   GEL: { flag: "🇬🇪", name: "Gürcistan Larisi" },
 };
 
+/**
+ * How a currency is named wherever it is shown: flag then code.
+ *
+ * One helper rather than five call sites building the same template, because
+ * the rule is "a currency is a place, and a place has a flag" and it has to
+ * hold everywhere or it reads as an accident. The transaction form was the
+ * proof: its picker chips carried flags while the collapsed row above them
+ * said "₺ TRY" — a currency symbol, hard-coded to lira, on a form that might
+ * be in dollars. An unknown code falls back to the bare code rather than to a
+ * blank, so a currency the table has not met still names itself.
+ */
+export function currencyLabel(code: string): string {
+  const flag = CURRENCY_INFO[code as keyof typeof CURRENCY_INFO]?.flag;
+  return flag ? `${flag} ${code}` : code;
+}
+
 /** Runtime currency boundary shared by forms, restore and sync. */
 export function isSupportedCurrency(value: unknown): value is keyof typeof CURRENCY_INFO {
   return typeof value === "string" && Object.prototype.hasOwnProperty.call(CURRENCY_INFO, value);

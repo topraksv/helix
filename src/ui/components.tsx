@@ -65,6 +65,7 @@ export {
   Heading,
   IconButton,
   InitialsBadge,
+  InlineDisclosure,
   Label,
   Row,
   SegmentBar,
@@ -865,7 +866,7 @@ export function ListRow({
           <IconCmp accessible={false} size={iconSize.control} color={iconColor ?? palette.accentText} strokeWidth={2} />
         </View>
       ) : null}
-      <View style={{ flex: 1, minWidth: 0 }} onLayout={lede.onBlockLayout}>
+      <View style={{ flex: 1, minWidth: 0, ...lede.textStyle }} onLayout={lede.onBlockLayout}>
         <Text onLayout={lede.onLineLayout} style={[type.body, { color: palette.text, fontFamily: font.medium, flexShrink: 1 }]}>
           {title}
         </Text>
@@ -877,7 +878,7 @@ export function ListRow({
           <View style={{ marginTop: 1 }}>{subtitle}</View>
         ) : null}
       </View>
-      {stackRight ? null : <View style={lede.blockStyle}>{right}</View>}
+      {stackRight ? null : <View onLayout={lede.onTrailingLayout} style={lede.blockStyle}>{right}</View>}
       {chevron ? (
         <View style={lede.blockStyle}>
           <ChevronRight accessible={false} size={iconSize.control} color={palette.textSecondary} />

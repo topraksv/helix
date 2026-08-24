@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { selectMutationScope } from "../stryker.ci.config.mjs";
+import { isMutationScoped, selectMutationScope } from "../stryker.ci.config.mjs";
 
 const read = (path: string) => readFileSync(resolve(process.cwd(), path), "utf8");
 
@@ -122,6 +122,32 @@ describe("CI mutation contract", () => {
     expect(scope).toContain("src/db/ids.ts");
     expect(scope).toContain("src/db/relations.ts");
     expect(scope).toContain("src/domain/statement-import.ts");
+  });
+
+  /**
+   * Asked of the rule rather than of a diff.
+   *
+   * `selectMutationScope` can only answer about files that are already
+   * committed, so the exclusion for a file the current change ADDS is
+   * unassertable until after it has shipped — exactly when the assertion
+   * would have been worth having.
+   */
+  it("excludes generated evidence outside src/db, and only the evidence", () => {
+    // 180 generated rows of what two favicon services returned on the day
+    // someone asked, with no function in the file. A mutated `px: 180` tests
+    // nothing: the number is not a decision the app makes, and the file is
+    // rewritten wholesale by `scripts/audit-brand-marks.mjs` rather than
+    // edited. Same argument as `schema.ts`, outside `src/db`.
+    expect(isMutationScoped("src/domain/brand-mark-audit.ts")).toBe(false);
+    // The CONCLUSION drawn from that record does carry logic — which five
+    // domains take the DuckDuckGo route, and the two URL shapes — so it is
+    // mutated like any other domain file.
+    expect(isMutationScoped("src/domain/brand-marks.ts")).toBe(true);
+    expect(isMutationScoped("src/db/schema.ts")).toBe(false);
+    expect(isMutationScoped("src/db/migrations/migrations.js")).toBe(false);
+    expect(isMutationScoped("src/db/ids.ts")).toBe(true);
+    // Outside the high-risk directories entirely: never mutated, never was.
+    expect(isMutationScoped("src/ui/charts.tsx")).toBe(false);
   });
 
   it("allows a ref-free sentinel only for an explicit manual dispatch", () => {

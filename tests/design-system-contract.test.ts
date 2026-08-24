@@ -1080,10 +1080,21 @@ describe("screen motion replays consistently", () => {
     expect(visit).toContain("createScreenVisitStore");
     expect(visit).toContain("useSyncExternalStore(store.subscribe");
     expect(visit).not.toContain("unsubscribes.push");
-    for (const hook of ["useDrawIn", "useCountUp"]) {
-      const body = motionPrimitives.slice(motionPrimitives.indexOf(`export function ${hook}(`));
-      expect(body.slice(0, 1_400), `${hook} replays per visit`).toContain("const visit = useScreenVisit();");
-    }
+    // A drawing replays on every visit; a figure does not.
+    //
+    // They look like one rule and are two. `useDrawIn` reveals a shape that is
+    // already correct, so replaying it costs nothing and reads as the screen
+    // arriving. `useCountUp` replaces the number on screen: counting from zero
+    // on return meant a returning reader saw ₺18.971,07 climb to ₺81.580,95
+    // over 1.6s, and a balance that is briefly wrong is the single strongest
+    // cue that the app reloaded — reported as "girip çıkınca yenileniyor".
+    // The figure now animates from what the reader last saw, so an unchanged
+    // balance does not move at all and a changed one shows the change.
+    const drawIn = motionPrimitives.slice(motionPrimitives.indexOf("export function useDrawIn("));
+    expect(drawIn.slice(0, 1_400), "a drawing replays per visit").toContain("const visit = useScreenVisit();");
+    const countUp = motionPrimitives.slice(motionPrimitives.indexOf("export function useCountUp("));
+    expect(countUp.slice(0, 1_400), "a figure must not restart on arrival").not.toContain("useScreenVisit()");
+    expect(countUp.slice(0, 1_400), "a figure counts from what was last shown").toContain("const from = previous.current;");
     // The focus right after mount is the first entrance, not a return; only a
     // focus that follows a real blur increments the counter.
     expect(visit).toContain("if (blurredSinceMount) store.increment()");
