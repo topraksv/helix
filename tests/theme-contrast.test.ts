@@ -560,6 +560,29 @@ describe("semantic theme contrast", () => {
     expect(worstDimmed).toBeLessThan(3);
   });
 
+  /**
+   * A category's colour has to survive a theme change.
+   *
+   * The dark ramp was measured for separation and never for identity, and six
+   * of its eight entries changed hue family outright — crimson to peach, gold
+   * to green, olive to pink. Someone on the "Sistem" theme watched every
+   * category in every chart change colour at sunset. This app already holds
+   * that line for semantic colour (income stays green, spending stays red);
+   * a categorical colour is an encoding too.
+   */
+  it("draws the same category in the same hue in both themes", () => {
+    const light = chartSeriesColors("light");
+    const dark = chartSeriesColors("dark");
+    expect(dark).toHaveLength(light.length);
+    for (let i = 0; i < light.length; i += 1) {
+      const gap = Math.abs(lchHue(light[i]!) - lchHue(dark[i]!));
+      expect(
+        Math.min(gap, 360 - gap),
+        `series ${i}: ${light[i]} (light) vs ${dark[i]} (dark)`,
+      ).toBeLessThanOrEqual(6);
+    }
+  });
+
   it("keeps purple and magenta out of the ramp, as everywhere else", () => {
     for (const scheme of ["light", "dark"] as const) {
       for (const colour of chartSeriesColors(scheme)) {

@@ -1046,6 +1046,14 @@ export default function DashboardScreen() {
                 iconColor={u.direction === "in" ? palette.positive : undefined}
                 title={u.name ?? u.categoryName ?? tr.common.paymentFallback}
                 subtitle={`${timelineTypeLabel(u.sourceType)} · ${tr.dashboard.inDays(daysBetweenISO(today, u.date))} · ${amountFragment(u)}`}
+                // A card statement is not an expected payment you confirm — it
+                // is a due date derived from the transactions on the card — so
+                // it has no button. It used to have nothing at all: half the
+                // rows in this list were actionable and half were inert, drawn
+                // identically, and the largest amount on screen was always one
+                // of the inert ones. It opens the card's own month instead.
+                onPress={u.kind === "card_statement" ? () => router.push("/cash-flow/installments" as Href) : undefined}
+                chevron={u.kind === "card_statement"}
                 right={u.kind === "expected" && u.expectedId ? (
                   <View style={{ width: STATUS_W }}>
                     <Button

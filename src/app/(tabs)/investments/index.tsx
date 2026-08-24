@@ -113,9 +113,21 @@ function TransferMetric({
   stacked?: boolean;
 }) {
   const { palette } = useTheme();
+  // The glyphs are container-relative on purpose — `ArrowDownToLine` and
+  // `ArrowUpFromLine` say "into this wallet" and "out of this wallet", which is
+  // a different question from the dashboard's `ArrowDownLeft`/`ArrowUpRight`,
+  // where the container is your balance. Two metaphors, two glyph families, no
+  // collision.
+  //
+  // The COLOUR was the collision. Money moving into the investment wallet
+  // leaves the spendable balance, and it was painted with `positive` — the
+  // token this app reserves for income — so the figure that reduces what you
+  // can spend was the green one. A transfer is neither income nor expense, and
+  // the app already has that idea (`isTransfer`), so both directions take
+  // neutral ink and let the label carry the direction.
   const Icon = direction === "in" ? ArrowDownToLine : ArrowUpFromLine;
-  const iconColor = direction === "in" ? palette.positiveText : palette.secondaryText;
-  const iconBackground = direction === "in" ? palette.success + "20" : palette.secondarySoft;
+  const iconColor = palette.textSecondary;
+  const iconBackground = palette.surfaceAlt;
   return (
     <View style={{ flex: stacked ? undefined : 1, width: stacked ? "100%" : undefined, minWidth: 0, flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
       <View
