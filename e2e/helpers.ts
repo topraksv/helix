@@ -2,16 +2,45 @@ import { expect, type BrowserContext, type Locator, type Page, type TestInfo } f
 
 const APP_PATH = "/helix/";
 
-export function currentMonthKey(): string {
+/**
+ * Today as the APP sees it, never as this file does.
+ *
+ * The browser is pinned to Europe/Istanbul (`playwright.config.ts`); this file
+ * runs in the runner's timezone, which is UTC on CI. Between 21:00 UTC and
+ * midnight those are different DATES, and every value derived from a bare
+ * `new Date()` here is then a day ahead of the app under test.
+ */
+function todayInIstanbul(): { year: string; month: string; day: string } {
   const parts = new Intl.DateTimeFormat("en-CA", {
     timeZone: "Europe/Istanbul",
     year: "numeric",
     month: "2-digit",
+    day: "2-digit",
   }).formatToParts(new Date());
-  const year = parts.find((part) => part.type === "year")?.value;
-  const month = parts.find((part) => part.type === "month")?.value;
-  if (!year || !month) throw new Error("Could not derive the current Istanbul month");
+  const value = (type: string) => parts.find((part) => part.type === type)?.value;
+  const [year, month, day] = [value("year"), value("month"), value("day")];
+  if (!year || !month || !day) throw new Error("Could not derive today in Istanbul");
+  return { year, month, day };
+}
+
+export function currentMonthKey(): string {
+  const { year, month } = todayInIstanbul();
   return `${year}-${month}`;
+}
+
+/**
+ * The day of the month to type into a form the app reads against its own clock.
+ *
+ * A bare `new Date().getDate()` scheduled a subscription for the wrong day
+ * whenever the run crossed the Istanbul midnight: nothing was then due today,
+ * the attention inbox had no "Bugün" group, and the release gate failed on a
+ * push that had nothing to do with it. Measured on the 21:34 UTC run of
+ * 2026-08-31, which typed 31 while the app had already turned 1 September.
+ *
+ * Unpadded, because the field takes a number and not a calendar string.
+ */
+export function currentIstanbulDay(): string {
+  return String(Number(todayInIstanbul().day));
 }
 
 export async function isolateExternalData(context: BrowserContext): Promise<void> {

@@ -4,6 +4,7 @@ import {
   addMarketExpense,
   assertNoRuntimeErrors,
   collectRuntimeErrors,
+  currentIstanbulDay,
   currentMonthKey,
   isolateExternalData,
   onboard,
@@ -276,7 +277,7 @@ test("the attention inbox groups what is waiting and lets it be deferred or fini
   await page.getByRole("button", { name: "Abonelik Ekle", exact: true }).click();
   await page.getByRole("textbox", { name: "Ad", exact: true }).fill("Netflix");
   await page.getByRole("textbox", { name: "Tutar · TRY", exact: true }).fill("229,99");
-  await page.getByRole("textbox", { name: "Ödeme günü", exact: true }).fill(String(new Date().getDate()));
+  await page.getByRole("textbox", { name: "Ödeme günü", exact: true }).fill(currentIstanbulDay());
   await page.getByRole("button", { name: "Kaydet", exact: true }).click();
   const categoryOffer = page.getByRole("button", { name: "Oluştur ve Kaydet", exact: true });
   if (await categoryOffer.count()) await categoryOffer.click();
