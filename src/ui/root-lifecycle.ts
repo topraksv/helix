@@ -16,21 +16,104 @@ import { runSyncSessionTask, syncNow } from "../sync/engine";
 import { useSyncStatus } from "../sync/status";
 import { tr } from "../i18n/tr";
 
+/**
+ * How long a resumed app settles before the authentication sheet is presented.
+ *
+ * The app-switcher cover is a real modal view controller and it is dismissed on
+ * the same resume; presenting into that dismissal is how a prompt goes missing
+ * while its promise stays pending. Short enough that the lock screen does not
+ * read as stalled.
+ */
+const PROMPT_SETTLE_MS = 400;
+
+/**
+ * How long an unanswered prompt is given after a resume before it is written
+ * off.
+ *
+ * Deliberately generous, because the two mistakes are not symmetric. Too long
+ * only delays a retry the owner never asked for; too short interrupts a prompt
+ * that WAS answered and asks a second time — the "it asked me twice" report
+ * this hook has already been fixed for once. The device-passcode fallback
+ * settles its promise as its screen dismisses, which is the same moment the
+ * resume arrives, so the margin has to cover that overlap.
+ */
+const PROMPT_RECOVERY_MS = 2_500;
+
+/**
+ * Whether the OS has a window to present a system prompt into.
+ *
+ * `inactive` is also what iOS reports while its own sheet is up, so refusing
+ * there doubles as a guard against stacking one prompt on another. Everything
+ * else passes, deliberately including `unknown` — what Android reports before
+ * its first lifecycle event, a cold start included, where refusing would leave
+ * the lock screen showing a button that does nothing.
+ */
+function canPresentPrompt(): boolean {
+  const state = AppState.currentState;
+  return state !== "background" && state !== "inactive";
+}
+
+/**
+ * The lock, and the two ways the app used to get stuck behind it.
+ *
+ * Backgrounding the app flips the lock on, and the effect watching that flag
+ * called the system prompt IMMEDIATELY — from a process with no foreground
+ * window. iOS cannot present its sheet there and the promise it hands back may
+ * never settle, so the "one prompt at a time" guard stayed armed for the life
+ * of the process: the lock screen's own button returned at its first line, on
+ * every tap, until the app was force-quit. And nothing ever asked again by
+ * itself, because `locked` does not change across the background transition, so
+ * no effect depending on it re-runs.
+ *
+ * So: a prompt is only ever asked of a foregrounded app, the resume is what
+ * asks, and the guard is an identity rather than a flag — one that can be
+ * abandoned without a promise settling.
+ */
 export function useBiometricLock(ready: boolean, userId: string | null) {
   const [locked, setLocked] = useState<boolean | null>(null);
-  /** One prompt at a time: iOS queues a second and asks the owner twice. */
-  const authenticating = useRef(false);
+  /**
+   * The lock state the lifecycle listener reads.
+   *
+   * The listener is registered once per session, so one that closed over
+   * `locked` would answer a resume with whatever the value was when the app
+   * left — and leaving is exactly when it changes. Written with the state,
+   * never behind it in an effect.
+   */
+  const lockedRef = useRef<boolean | null>(null);
+  /**
+   * Which prompt is awaiting an answer, or null when none is.
+   *
+   * An identity rather than a flag, so a prompt this hook has given up on
+   * cannot answer for the one that replaced it — and, more to the point, so
+   * giving up is possible at all. The flag this replaced could only be cleared
+   * by a promise settling, which is precisely what a prompt the system never
+   * presented does not do.
+   */
+  const prompt = useRef<number | null>(null);
+  const promptSeq = useRef(0);
+  /**
+   * The last preference this session actually managed to read.
+   *
+   * iOS seals app storage under `NSFileProtectionComplete`, so the SecureStore
+   * read issued as the app leaves — the worst possible moment for it — can
+   * reject. Without this the failure left the app OPEN behind an owner who had
+   * asked for it to be locked.
+   */
+  const preference = useRef<boolean | null>(null);
+
+  const applyLocked = useCallback((value: boolean) => {
+    lockedRef.current = value;
+    setLocked(value);
+  }, []);
 
   /**
    * Resolve the lock preference, and NEVER leave it unresolved.
    *
    * The root renders a bare background while `locked` is null, so a read that
-   * neither resolves nor rejects visibly is the whole app going blank. This
-   * read can genuinely fail: iOS seals app storage under
-   * `NSFileProtectionComplete`, so a SecureStore get issued around a resume can
-   * reject. It used to run in an async IIFE with no `catch`, and because the
-   * effect's deps do not change afterwards nothing ever retried — the app
-   * stayed blank on every screen until it was force-quit.
+   * neither resolves nor rejects visibly is the whole app going blank. It used
+   * to run in an async IIFE with no `catch`, and because the effect's deps do
+   * not change afterwards nothing ever retried — the app stayed blank on every
+   * screen until it was force-quit.
    *
    * On failure it keeps a value it already had, and locks if it had none.
    * **That default is only safe because `unlock` keeps the device passcode as a
@@ -41,17 +124,18 @@ export function useBiometricLock(ready: boolean, userId: string | null) {
    */
   const resolveLock = useCallback(async () => {
     if (!userId) {
-      setLocked(false);
+      applyLocked(false);
       return;
     }
     try {
       const enabled = (await kv.get("helix.biometric")) === "true";
-      setLocked(enabled && Platform.OS !== "web");
+      preference.current = enabled;
+      applyLocked(enabled && Platform.OS !== "web");
     } catch (error) {
       devWarning("lock.read", String(error));
-      setLocked((current) => current ?? Platform.OS !== "web");
+      applyLocked(lockedRef.current ?? Platform.OS !== "web");
     }
-  }, [userId]);
+  }, [userId, applyLocked]);
 
   useEffect(() => {
     if (!ready) return;
@@ -59,8 +143,13 @@ export function useBiometricLock(ready: boolean, userId: string | null) {
   }, [ready, resolveLock]);
 
   const unlock = useCallback(async () => {
-    if (authenticating.current) return;
-    authenticating.current = true;
+    if (prompt.current !== null) return;
+    // A prompt asked of a backgrounded app is the wedge itself: iOS has no
+    // window to present it into and the promise may never settle. The resume
+    // handler below asks instead, once there is a screen to ask on.
+    if (!canPresentPrompt()) return;
+    const id = (promptSeq.current += 1);
+    prompt.current = id;
     try {
       // Plain iOS behaviour: the face first, the device passcode when the face
       // does not open it, and it keeps asking until one of them does.
@@ -73,36 +162,72 @@ export function useBiometricLock(ready: boolean, userId: string | null) {
       const result = await LocalAuthentication.authenticateAsync({
         promptMessage: tr.lock.prompt,
       });
-      if (result.success) setLocked(false);
+      // An abandoned prompt does not get to speak. A late answer from one is a
+      // race against the prompt now on screen, and "success" from it would open
+      // the app underneath a sheet the owner is still looking at.
+      if (prompt.current !== id) return;
+      if (result.success) applyLocked(false);
     } catch (error) {
       devWarning("lock.auth", String(error));
     } finally {
-      authenticating.current = false;
+      if (prompt.current === id) prompt.current = null;
     }
-  }, []);
+  }, [applyLocked]);
 
   useEffect(() => {
     if (Platform.OS === "web" || !userId) return;
+    let resume: ReturnType<typeof setTimeout> | null = null;
+    const cancelResume = () => {
+      if (resume !== null) clearTimeout(resume);
+      resume = null;
+    };
     const subscription = AppState.addEventListener("change", (state) => {
       if (state === "active") {
         // A resume is also the moment the earlier read is most likely to have
         // failed, so this doubles as the retry that the deps cannot provide.
-        if (locked === null) void resolveLock();
+        if (lockedRef.current === null) {
+          void resolveLock();
+          return;
+        }
+        if (lockedRef.current === false) return;
+        cancelResume();
+        // A prompt still unanswered here was never presented, and needs the
+        // longer margin so an answer already on its way is not cut off.
+        const delay = prompt.current === null ? PROMPT_SETTLE_MS : PROMPT_RECOVERY_MS;
+        resume = setTimeout(() => {
+          resume = null;
+          // Re-read at the last moment: the answer may have arrived, or the app
+          // may have left again, in the time this waited.
+          if (!canPresentPrompt() || lockedRef.current !== true) return;
+          // Anything still unanswered in a foregrounded app was never presented
+          // — the system holds the app inactive while its sheet is up. Drop it,
+          // so the guard cannot outlive the prompt it was guarding.
+          prompt.current = null;
+          void unlock();
+        }, delay);
         return;
       }
       if (state !== "background") return;
-      // The auth prompt itself backgrounds the app, so re-locking here answered
-      // a successful unlock by immediately asking again — the second prompt the
-      // owner kept seeing after entering the right passcode.
-      if (authenticating.current) return;
+      cancelResume();
+      const prompting = prompt.current !== null;
       void kv.get("helix.biometric")
         .then((value) => {
-          if (value === "true") setLocked(true);
+          preference.current = value === "true";
         })
-        .catch((error) => devWarning("lock.read", String(error)));
+        .catch((error) => devWarning("lock.read", String(error)))
+        .finally(() => {
+          // `prompting` is the exception that has to stay: the authentication
+          // sheet backgrounds the app itself (iOS passcode fallback, Android
+          // device credentials), so locking on that event answered a successful
+          // unlock by immediately asking again.
+          if (preference.current === true && !prompting) applyLocked(true);
+        });
     });
-    return () => subscription.remove();
-  }, [userId, locked, resolveLock]);
+    return () => {
+      cancelResume();
+      subscription.remove();
+    };
+  }, [userId, resolveLock, unlock, applyLocked]);
 
   useEffect(() => {
     if (locked === true) void unlock();
