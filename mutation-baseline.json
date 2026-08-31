@@ -135,6 +135,15 @@
       "measuredOn": "a4394d5ebe1055ee856167dd23e77c801b72b071",
       "measuredDate": "2026-08-21"
     },
+    "src/data/repo/reset.ts": {
+      "score": 91.96,
+      "killed": 285,
+      "timeout": 1,
+      "survived": 25,
+      "noCoverage": 0,
+      "measuredOn": "2797805dc91c8fdac3b7032b676790cdd21405ab",
+      "measuredDate": "2026-08-31"
+    },
     "src/data/repo/rule-validation.ts": {
       "score": 100,
       "killed": 13,
@@ -299,12 +308,12 @@
     },
     "src/domain/market.ts": {
       "score": 100,
-      "killed": 49,
+      "killed": 199,
       "timeout": 0,
       "survived": 0,
       "noCoverage": 0,
-      "measuredOn": "c74ef5673070c2c16a3f021e5a8d6d9296f1ca63",
-      "measuredDate": "2026-08-24"
+      "measuredOn": "2797805dc91c8fdac3b7032b676790cdd21405ab",
+      "measuredDate": "2026-08-31"
     },
     "src/domain/matrix-colors.ts": {
       "score": 88.31,
@@ -415,13 +424,13 @@
       "measuredDate": "2026-08-23"
     },
     "src/services/markets.ts": {
-      "score": 56.94,
-      "killed": 123,
+      "score": 64.29,
+      "killed": 144,
       "timeout": 0,
-      "survived": 60,
-      "noCoverage": 33,
-      "measuredOn": "c74ef5673070c2c16a3f021e5a8d6d9296f1ca63",
-      "measuredDate": "2026-08-24"
+      "survived": 73,
+      "noCoverage": 7,
+      "measuredOn": "2797805dc91c8fdac3b7032b676790cdd21405ab",
+      "measuredDate": "2026-08-31"
     },
     "src/services/pdf-text.ts": {
       "score": 27.85,

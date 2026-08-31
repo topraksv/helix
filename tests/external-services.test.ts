@@ -1,9 +1,23 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { isMarketFeedSocket } from "../e2e/helpers";
 import { CURRENCY_INFO, FETCHED_FX_CURRENCIES, currencyLabel, parseOpenExchangeRates, parseTcmbRates } from "../src/domain/fx-provider";
 import { MARKET_SYMBOLS } from "../src/domain/investment-catalog";
 import { normalizeLogoDomain, remoteFaviconUrl } from "../src/domain/logo-domain";
-import { freshMarketQuote, liveMarketSymbol, MARKET_FEED_URL, validMarketQuote } from "../src/domain/market";
+import {
+  buildHistorySeries,
+  COIN_FINE_GRAMS,
+  deriveMarketQuotes,
+  freshMarketQuote,
+  historyChange,
+  liveMarketSymbol,
+  MARKET_DATA_HOST,
+  MARKET_PAIRS,
+  MARKET_RANGES,
+  marketHistorySource,
+  parseKlineCloses,
+  parseMarketBooks,
+  validBook,
+  validMarketQuote,
+} from "../src/domain/market";
 import { boundedScheduledNotifications, createNotificationReplacementQueue, normalizeReminderDays, privateNotificationContent, uniqueNotifications } from "../src/domain/notifications";
 
 const kvStore = new Map<string, string>();
@@ -16,12 +30,18 @@ vi.mock("../src/services/kv", () => ({
 }));
 
 import {
-  applyFeed,
+  applyQuotes,
+  connectMarkets,
   disconnectMarkets,
+  fetchMarketHistory,
   hydrateSnapshot,
   markMarketConnectionInterrupted,
   marketLastKnownRateTry,
   marketSellRateTry,
+  marketKlineUrl,
+  MARKET_TICKER_URL,
+  pollMarkets,
+  retryMarkets,
   suspendMarkets,
   useMarkets,
 } from "../src/services/markets";
@@ -181,6 +201,349 @@ describe("live market freshness", () => {
     expect(freshMarketQuote(1_000, 1_601, 600)).toBe(false);
     expect(freshMarketQuote(2_000, 1_500, 600)).toBe(false);
   });
+});
+
+/**
+ * The prices are DERIVED now, not read off a dealer's socket, so the
+ * arithmetic is the contract. Everything below is what stands between three
+ * public order books and the six numbers on the Summary card.
+ */
+describe("deriving market prices from order books", () => {
+  const books = {
+    goldTry: { bid: 311_035, ask: 311_346.035 },
+    usdTry: { bid: 40, ask: 40.5 },
+    eurUsd: { bid: 1.1, ask: 1.2 },
+  };
+  const bySymbol = (payload: unknown) => parseMarketBooks(payload);
+
+  it("refuses a book whose ask sits below its bid", () => {
+    // A crossed book is not a tight spread, it is a broken read — and it would
+    // print a selling price below the buying price next to it.
+    expect(validBook({ bid: 40, ask: 41 })).toBe(true);
+    expect(validBook({ bid: 40, ask: 40 })).toBe(true);
+    expect(validBook({ bid: 41, ask: 40 })).toBe(false);
+    expect(validBook({ bid: 0, ask: 41 })).toBe(false);
+    expect(validBook({ bid: Number.NaN, ask: 41 })).toBe(false);
+    expect(validBook({ bid: 40, ask: Number.POSITIVE_INFINITY })).toBe(false);
+  });
+
+  it("leaves an ounce the room its own unit needs", () => {
+    // A book quotes a TROY OUNCE. Gold stood at 213_855 lira an ounce when this
+    // was written, so a ceiling sized for a GRAM would have gone dark on a
+    // price that was merely high — a currency that has halved more than once in
+    // a decade reaches a million.
+    expect(validBook({ bid: 213_855, ask: 213_900 })).toBe(true);
+    expect(validBook({ bid: 5_000_000, ask: 5_000_100 })).toBe(true);
+    expect(validBook({ bid: 100_000_000, ask: 100_000_000 })).toBe(true);
+    expect(validBook({ bid: 100_000_000, ask: 100_000_001 })).toBe(false);
+  });
+
+  it("still refuses a gram, a coin or a rate that has left the plausible", () => {
+    // The per-quote ceiling is the narrow one, and it is what the card shows.
+    const absurd = { ...books, goldTry: { bid: 40_000_000, ask: 40_000_100 } };
+    const codes = deriveMarketQuotes(absurd).map((quote) => quote.code);
+    expect(codes).not.toContain("ALTIN");
+    expect(codes).toContain("USDTRY");
+  });
+
+  it("reads the three books it needs out of the exchange response", () => {
+    const parsed = bySymbol([
+      { symbol: "USDTTRY", bidPrice: "40", askPrice: "40.5" },
+      { symbol: "EURUSDT", bidPrice: "1.1", askPrice: "1.2" },
+      { symbol: "PAXGTRY", bidPrice: "311035", askPrice: "311346.035" },
+    ]);
+    expect(parsed).toEqual(books);
+  });
+
+  it("returns nothing at all when any one of them is missing", () => {
+    // Half a card of live prices beside half a card of silently stale ones is
+    // worse than a card that says it has nothing.
+    const gold = { symbol: "PAXGTRY", bidPrice: "311035", askPrice: "311346.035" };
+    const usd = { symbol: "USDTTRY", bidPrice: "40", askPrice: "40.5" };
+    const eur = { symbol: "EURUSDT", bidPrice: "1.1", askPrice: "1.2" };
+    expect(bySymbol([usd, eur])).toBeNull();
+    expect(bySymbol([gold, eur])).toBeNull();
+    expect(bySymbol([gold, usd])).toBeNull();
+    expect(bySymbol([gold, usd, eur])).not.toBeNull();
+  });
+
+  it("refuses anything that is not a list of quoted symbols", () => {
+    expect(bySymbol(null)).toBeNull();
+    expect(bySymbol({ PAXGTRY: { bidPrice: "1", askPrice: "2" } })).toBeNull();
+    expect(bySymbol("[]")).toBeNull();
+    expect(bySymbol([])).toBeNull();
+  });
+
+  it("skips entries it cannot read instead of failing on them", () => {
+    const good = [
+      { symbol: "PAXGTRY", bidPrice: "311035", askPrice: "311346.035" },
+      { symbol: "USDTTRY", bidPrice: "40", askPrice: "40.5" },
+      { symbol: "EURUSDT", bidPrice: "1.1", askPrice: "1.2" },
+    ];
+    // A null entry is the one that would throw if it reached a property read,
+    // and a response is a stranger's JSON: it can hold anything.
+    expect(bySymbol(["nonsense", null, undefined, 7, { bidPrice: "1", askPrice: "2" }, ...good])).toEqual(books);
+    // A crossed or unreadable book for a symbol we need is the same as no book.
+    expect(bySymbol([{ symbol: "PAXGTRY", bidPrice: "9", askPrice: "1" }, good[1], good[2]])).toBeNull();
+  });
+
+  it("turns one troy ounce in lira into one gram in lira", () => {
+    const quotes = deriveMarketQuotes(books);
+    const gram = quotes.find((quote) => quote.code === "ALTIN");
+    expect(gram?.buyTry).toBeCloseTo(10_000, 6);
+    expect(gram?.sellTry).toBeCloseTo(10_010, 6);
+  });
+
+  it("prices each coin at the fine gold it legally contains", () => {
+    const quotes = deriveMarketQuotes(books);
+    const at = (code: string) => quotes.find((quote) => quote.code === code);
+    expect(at("CEYREK_YENI")?.sellTry).toBeCloseTo(10_010 * COIN_FINE_GRAMS.CEYREK_YENI!, 6);
+    expect(at("TEK_YENI")?.sellTry).toBeCloseTo(10_010 * COIN_FINE_GRAMS.TEK_YENI!, 6);
+    expect(at("ATA_YENI")?.sellTry).toBeCloseTo(10_010 * COIN_FINE_GRAMS.ATA_YENI!, 6);
+    expect(at("CEYREK_YENI")?.buyTry).toBeCloseTo(10_000 * COIN_FINE_GRAMS.CEYREK_YENI!, 6);
+    // Smaller coin, less gold: the ordering is the specification, not a detail.
+    expect(COIN_FINE_GRAMS.CEYREK_YENI!).toBeLessThan(COIN_FINE_GRAMS.TEK_YENI!);
+    expect(COIN_FINE_GRAMS.TEK_YENI!).toBeLessThan(COIN_FINE_GRAMS.ATA_YENI!);
+  });
+
+  it("crosses the euro through both legs on the same side", () => {
+    // Buying euros with lira crosses two asks; selling crosses two bids.
+    // Averaging the pair first would quote a rate nobody could trade at.
+    const quotes = deriveMarketQuotes(books);
+    const eur = quotes.find((quote) => quote.code === "EURTRY");
+    expect(eur?.buyTry).toBeCloseTo(1.1 * 40, 9);
+    expect(eur?.sellTry).toBeCloseTo(1.2 * 40.5, 9);
+    const usd = quotes.find((quote) => quote.code === "USDTRY");
+    expect(usd).toEqual({ code: "USDTRY", buyTry: 40, sellTry: 40.5 });
+  });
+
+  it("produces exactly the symbols the card is built to show", () => {
+    // The catalog decides which tiles exist and this decides which have prices.
+    // They are two lists in two files, so they are checked against each other.
+    const derived = deriveMarketQuotes(books).map((quote) => quote.code).sort();
+    expect(derived).toEqual(MARKET_SYMBOLS.map(({ code }) => code).sort());
+  });
+
+  it("drops a derived price that lands outside what a quote may be", () => {
+    // An ounce priced in the tens of millions makes a gram that still passes,
+    // but a coin made of it does not. Whatever survives the arithmetic is
+    // checked again, because the arithmetic is what can carry a bad book past
+    // the first check.
+    const absurd = { ...books, goldTry: { bid: 4_000_000, ask: 5_000_000 } };
+    const codes = deriveMarketQuotes(absurd).map((quote) => quote.code);
+    expect(codes).not.toContain("TEK_YENI");
+    expect(codes).toContain("USDTRY");
+  });
+});
+
+describe("the past of one instrument", () => {
+  it("builds every tile's history from the same books as its price", () => {
+    expect(marketHistorySource("USDTRY")).toEqual({ symbols: ["USDTTRY"], factor: 1 });
+    // The euro has no lira book of its own, so it is one book times the other.
+    expect(marketHistorySource("EURTRY")).toEqual({ symbols: ["EURUSDT", "USDTTRY"], factor: 1 });
+    expect(marketHistorySource("ALTIN")).toEqual({ symbols: ["PAXGTRY"], factor: 1 / 31.1035 });
+    expect(marketHistorySource("ATA_YENI")).toEqual({
+      symbols: ["PAXGTRY"],
+      factor: COIN_FINE_GRAMS.ATA_YENI! / 31.1035,
+    });
+    expect(marketHistorySource("BITCOIN")).toBeNull();
+  });
+
+  it("covers every tile the card can open", () => {
+    // A tile that routes to a chart with no source behind it is a dead end.
+    for (const { code } of MARKET_SYMBOLS) expect(marketHistorySource(code)).not.toBeNull();
+  });
+
+  it("offers four ranges, each bounded by its own request", () => {
+    const ranges = Object.values(MARKET_RANGES);
+    expect(Object.keys(MARKET_RANGES)).toEqual(["day", "week", "month", "year"]);
+    // The count IS the request bound: nothing here can ask for the exchange's
+    // thousand-candle maximum by accident.
+    for (const range of ranges) expect(range.limit).toBeLessThanOrEqual(60);
+    // The candle sizes themselves, because they are what the request asks for:
+    // an empty interval is a rejected request, and a wrong one is a chart that
+    // silently covers a different span than its own label claims.
+    expect(ranges.map((range) => range.interval)).toEqual(["1h", "4h", "1d", "1w"]);
+  });
+
+  it("reads candle closes and refuses anything that is not one", () => {
+    const closes = parseKlineCloses([
+      [1_000, "1", "2", "0.5", "1.5"],
+      [2_000, "1", "2", "0.5", "1.75"],
+    ]);
+    expect(closes && [...closes.entries()]).toEqual([[1_000, 1.5], [2_000, 1.75]]);
+    expect(parseKlineCloses("nope")).toBeNull();
+    expect(parseKlineCloses(null)).toBeNull();
+    expect(parseKlineCloses({ candles: [] })).toBeNull();
+    expect(parseKlineCloses([])).toBeNull();
+    // A string is indexable, so without the shape check "12345" would read as a
+    // candle opening at 1 and closing at 5.
+    expect(parseKlineCloses(["12345"])).toBeNull();
+    // Every unusable candle drops out; a response of nothing but rubbish is
+    // no history at all rather than an empty chart claiming to be one.
+    expect(parseKlineCloses(["x", [null, "1", "2", "3", "4"], [1_000, "1", "2", "3", "0"]])).toBeNull();
+    const partial = parseKlineCloses([[0, "1", "2", "3", "4"], [3_000, "1", "2", "3", "9"]]);
+    expect(partial && [...partial.keys()]).toEqual([3_000]);
+  });
+
+  it("scales one series and crosses two, keeping only paired moments", () => {
+    const ounce = new Map([[2_000, 62.207], [1_000, 31.1035]]);
+    const single = buildHistorySeries([ounce], 1 / 31.1035);
+    // Sorted by time whatever order the exchange sent them in.
+    expect(single.map((point) => point.at)).toEqual([1_000, 2_000]);
+    expect(single[0]!.valueTry).toBeCloseTo(1, 9);
+    expect(single[1]!.valueTry).toBeCloseTo(2, 9);
+
+    const eurUsd = new Map([[1_000, 1.1], [2_000, 1.2]]);
+    const usdTry = new Map([[1_000, 40], [3_000, 41]]);
+    const crossed = buildHistorySeries([eurUsd, usdTry], 1);
+    // 2_000 has no dollar candle to cross against, so it is dropped rather than
+    // paired with a price from another hour — a number that was never true.
+    expect(crossed).toEqual([{ at: 1_000, valueTry: 44 }]);
+    expect(buildHistorySeries([], 1)).toEqual([]);
+  });
+
+  it("measures the move from the first point to the last", () => {
+    expect(historyChange([{ at: 1, valueTry: 100 }, { at: 2, valueTry: 110 }])).toBeCloseTo(0.1, 9);
+    expect(historyChange([{ at: 1, valueTry: 100 }, { at: 2, valueTry: 90 }])).toBeCloseTo(-0.1, 9);
+    // One point is a price, not a change; a zero start has no percentage.
+    expect(historyChange([{ at: 1, valueTry: 100 }])).toBeNull();
+    expect(historyChange([])).toBeNull();
+    expect(historyChange([{ at: 1, valueTry: 0 }, { at: 2, valueTry: 90 }])).toBeNull();
+  });
+
+  it("asks the exchange for one symbol's candles over the chosen range", () => {
+    const url = new URL(marketKlineUrl("PAXGTRY", "1d", 30));
+    expect(url.hostname).toBe(MARKET_DATA_HOST);
+    expect(url.pathname).toBe("/api/v3/klines");
+    expect(url.searchParams.get("symbol")).toBe("PAXGTRY");
+    expect(url.searchParams.get("interval")).toBe("1d");
+    expect(url.searchParams.get("limit")).toBe("30");
+  });
+});
+
+describe("reading the books over the network", () => {
+  const bookTicker = [
+    { symbol: "PAXGTRY", bidPrice: "311035", askPrice: "311346.035" },
+    { symbol: "USDTTRY", bidPrice: "40", askPrice: "40.5" },
+    { symbol: "EURUSDT", bidPrice: "1.1", askPrice: "1.2" },
+  ];
+  const respond = (body: unknown, ok = true) =>
+    vi.fn(async () => ({ ok, status: ok ? 200 : 503, json: async () => body }) as unknown as Response);
+
+  const withFetch = (impl: ReturnType<typeof respond>) => {
+    vi.stubGlobal("fetch", impl);
+    return impl;
+  };
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("turns one response into the whole card", async () => {
+    withFetch(respond(bookTicker));
+    useMarkets.setState({ prices: {}, status: "connecting", lastEventAt: null });
+    await pollMarkets();
+    const state = useMarkets.getState();
+    expect(state.status).toBe("live");
+    expect(Object.keys(state.prices).sort()).toEqual(MARKET_SYMBOLS.map(({ code }) => code).sort());
+    expect(state.prices.ALTIN?.sellTry).toBeCloseTo(10_010, 6);
+  });
+
+  it("treats a refusal, a broken payload and a dead network the same way", async () => {
+    // All three mean the same thing to the card: the last known prices stay up
+    // and stop being called live. Telling them apart would be a distinction
+    // with nothing behind it.
+    for (const failing of [respond(bookTicker, false), respond([{ symbol: "PAXGTRY", bidPrice: "1", askPrice: "2" }]), vi.fn(async () => { throw new Error("offline"); })]) {
+      useMarkets.setState({
+        status: "live",
+        prices: { ALTIN: { code: "ALTIN", buyTry: 1, sellTry: 2, direction: "", at: "", receivedAt: 1 } },
+        lastEventAt: 1,
+      });
+      withFetch(failing as ReturnType<typeof respond>);
+      await pollMarkets();
+      expect(useMarkets.getState().status).toBe("stale");
+      expect(useMarkets.getState().prices.ALTIN?.sellTry).toBe(2);
+    }
+  });
+
+  it("throws away a response that outlived the feed it was asked for", async () => {
+    // Sign out mid-request and the reply still arrives. Applying it would put
+    // prices back on a card the app has already torn down.
+    let release!: (value: unknown) => void;
+    const gate = new Promise((resolve) => { release = resolve; });
+    withFetch(vi.fn(async () => {
+      await gate;
+      return { ok: true, status: 200, json: async () => bookTicker } as unknown as Response;
+    }) as ReturnType<typeof respond>);
+    useMarkets.setState({ prices: {}, status: "connecting", lastEventAt: null });
+    const inFlight = pollMarkets();
+    disconnectMarkets();
+    release(null);
+    await inFlight;
+    expect(useMarkets.getState()).toMatchObject({ prices: {}, status: "idle" });
+  });
+
+  it("starts one poll loop and keeps reading on the interval", async () => {
+    vi.useFakeTimers();
+    const fetcher = withFetch(respond(bookTicker));
+    connectMarkets();
+    connectMarkets(); // idempotent: a second caller must not start a second loop
+    await vi.advanceTimersByTimeAsync(0);
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    disconnectMarkets();
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(fetcher).toHaveBeenCalledTimes(2);
+  });
+
+  it("reads again on request without starting a second loop", async () => {
+    vi.useFakeTimers();
+    const fetcher = withFetch(respond(bookTicker));
+    // Nothing running yet: the request has to start the loop.
+    retryMarkets();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    // Already running: read now, but do not stack a second interval on top.
+    retryMarkets();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(fetcher).toHaveBeenCalledTimes(3);
+  });
+
+  it("fetches a chart from one book, or from two crossed together", async () => {
+    const candles = (closes: [number, string][]) => closes.map(([at, close]) => [at, "0", "0", "0", close]);
+    const gold = withFetch(respond(candles([[1_000, "31103.5"], [2_000, "62207"]])));
+    const gram = await fetchMarketHistory("ALTIN", "month");
+    expect(gold).toHaveBeenCalledTimes(1);
+    expect(gram?.map((point) => Math.round(point.valueTry))).toEqual([1_000, 2_000]);
+
+    // The euro needs both books, so it makes both requests and pairs them.
+    const both = vi.fn(async (url: string) => ({
+      ok: true,
+      status: 200,
+      json: async () => candles(url.includes("EURUSDT") ? [[1_000, "1.1"]] : [[1_000, "40"]]),
+    }) as unknown as Response);
+    vi.stubGlobal("fetch", both);
+    expect(await fetchMarketHistory("EURTRY", "day")).toEqual([{ at: 1_000, valueTry: 44 }]);
+    expect(both).toHaveBeenCalledTimes(2);
+  });
+
+  it("has no chart to offer rather than an empty one", async () => {
+    withFetch(respond([]));
+    // An instrument with no book behind it never reaches the network at all.
+    expect(await fetchMarketHistory("BITCOIN", "day")).toBeNull();
+    // A response with nothing usable in it is no history, not a flat line.
+    expect(await fetchMarketHistory("ALTIN", "day")).toBeNull();
+    withFetch(respond([], false));
+    expect(await fetchMarketHistory("ALTIN", "week")).toBeNull();
+  });
+});
+
+describe("live market store", () => {
+  const quotes = (sellTry: number) => [{ code: "ALTIN", buyTry: sellTry - 10, sellTry }];
 
   it("reuses only fresh USD/EUR quotes for conversion", () => {
     const now = 10_000;
@@ -195,7 +558,6 @@ describe("live market freshness", () => {
     expect(marketSellRateTry("USD", now)).toBe(40.5);
     expect(marketSellRateTry("EUR", now)).toBeNull();
     expect(marketSellRateTry("GBP", now)).toBeNull();
-    useMarkets.setState({ prices: {}, status: "idle", lastEventAt: null });
   });
 
   it("exposes the card's last-known rate with an honest live flag for the converter", () => {
@@ -215,43 +577,33 @@ describe("live market freshness", () => {
     // Unsupported currency or a future-stamped quote stays unusable.
     expect(marketLastKnownRateTry("GBP", now)).toBeNull();
     expect(marketLastKnownRateTry("USD", now - 1_000)).toBeNull();
-    useMarkets.setState({ prices: {}, status: "idle", lastEventAt: null });
   });
 
   /**
-   * The direction arrow is the one thing in a quote that is not a number, and
-   * it reaches the screen as a glyph and a colour. The feed sends "up",
-   * "down", something else, or nothing at all, and only the first two mean
-   * anything — a quote that arrives with `dir` missing must read as "no
-   * change", not as a fall.
+   * An order book states a price, not a trend. The only honest source of "up"
+   * is the previous price this session actually saw, so the arrow is computed
+   * here rather than believed.
    */
-  it("reads the feed's direction as up, down, or nothing", () => {
-    const at = 2_000_000;
-    const quote = (dir?: string) => ({
-      ALTIN: { code: "ALTIN", alis: "4000", satis: "4010", tarih: "t", ...(dir ? { dir: { satis_dir: dir } } : {}) },
-    });
-    applyFeed(quote("up"), at);
+  it("reads the arrow off its own previous price, and shows none for the first", () => {
+    applyQuotes(quotes(4_010), 2_000_000);
+    expect(useMarkets.getState().prices.ALTIN?.direction).toBe("");
+    applyQuotes(quotes(4_020), 2_010_000);
     expect(useMarkets.getState().prices.ALTIN?.direction).toBe("up");
-    applyFeed(quote("down"), at + 10_000);
+    applyQuotes(quotes(4_015), 2_020_000);
     expect(useMarkets.getState().prices.ALTIN?.direction).toBe("down");
-    applyFeed(quote("sideways"), at + 20_000);
+    applyQuotes(quotes(4_015), 2_030_000);
     expect(useMarkets.getState().prices.ALTIN?.direction).toBe("");
-    applyFeed(quote(), at + 30_000);
-    expect(useMarkets.getState().prices.ALTIN?.direction).toBe("");
-    useMarkets.setState({ prices: {}, status: "idle", lastEventAt: null });
   });
 
-  /**
-   * A payload with nothing usable in it must not be allowed to declare the
-   * feed live, and one with a usable quote must.
-   */
-  it("only calls the feed live once it has a quote to show", () => {
+  it("ignores symbols the card does not show and quotes it cannot use", () => {
     useMarkets.setState({ prices: {}, status: "connecting", lastEventAt: null });
-    applyFeed({ ALTIN: { code: "ALTIN", alis: "0", satis: "0", tarih: "t" } }, 3_000_000);
+    applyQuotes([{ code: "DOGECOIN", buyTry: 1, sellTry: 2 }], 3_000_000);
     expect(useMarkets.getState().status).toBe("connecting");
-    applyFeed({ ALTIN: { code: "ALTIN", alis: "4000", satis: "4010", tarih: "t" } }, 3_010_000);
+    applyQuotes([{ code: "ALTIN", buyTry: 0, sellTry: 0 }], 3_005_000);
+    expect(useMarkets.getState().status).toBe("connecting");
+    applyQuotes(quotes(4_010), 3_010_000);
     expect(useMarkets.getState().status).toBe("live");
-    useMarkets.setState({ prices: {}, status: "idle", lastEventAt: null });
+    expect(useMarkets.getState().prices.DOGECOIN).toBeUndefined();
   });
 
   /**
@@ -260,29 +612,15 @@ describe("live market freshness", () => {
    */
   it("refuses a live rate that is missing, non-positive or stale", () => {
     const at = 4_000_000;
-    applyFeed({ USDTRY: { code: "USDTRY", alis: "40", satis: "41", tarih: "t" } }, at);
+    applyQuotes([{ code: "USDTRY", buyTry: 40, sellTry: 41 }], at);
     expect(marketSellRateTry("USD", at)).toBe(41);
     // A pair the feed does not carry has no live rate whatever is in the store.
     expect(marketSellRateTry("GBP", at)).toBeNull();
     // Past the staleness window the same quote stops counting as live.
     expect(marketSellRateTry("USD", at + 10 * 60_000)).toBeNull();
-    useMarkets.setState({ prices: {}, status: "idle", lastEventAt: null });
   });
 
-  it("defers a burst's newest quote to the trailing edge instead of dropping it", () => {
-    vi.useFakeTimers();
-    applyFeed({ ALTIN: { code: "ALTIN", alis: "4000", satis: "4010", tarih: "t1" } }, 1_000_000);
-    expect(useMarkets.getState().prices.ALTIN?.sellTry).toBe(4_010);
-
-    // Inside the 3 s window: must not apply yet, must not be lost either.
-    applyFeed({ ALTIN: { code: "ALTIN", alis: "4005", satis: "4020", tarih: "t2" } }, 1_001_000);
-    expect(useMarkets.getState().prices.ALTIN?.sellTry).toBe(4_010);
-
-    vi.advanceTimersByTime(2_000); // window closes 3 s after the first apply
-    expect(useMarkets.getState().prices.ALTIN?.sellTry).toBe(4_020);
-  });
-
-  it("keeps showing last-known prices after silence while conversion freshness expires", () => {
+  it("keeps showing last-known prices after a failed poll while conversion freshness expires", () => {
     vi.useFakeTimers();
     useMarkets.setState({
       status: "live",
@@ -303,41 +641,6 @@ describe("live market freshness", () => {
     expect(useMarkets.getState().lastEventAt).toBe(1_000);
     // …but the conversion path refuses the expired quote.
     expect(marketSellRateTry("USD", 1_000 + 60_001)).toBeNull();
-  });
-
-  it("never re-stamps an expired quote as fresh when another symbol ticks", () => {
-    vi.useFakeTimers();
-    useMarkets.setState({
-      status: "stale",
-      prices: {
-        USDTRY: { code: "USDTRY", buyTry: 40, sellTry: 40.5, direction: "", at: "", receivedAt: 1_000 },
-      },
-      lastEventAt: 1_000,
-    });
-    const now = 1_000 + 120_000; // USDTRY expired long ago
-    applyFeed({ ALTIN: { code: "ALTIN", alis: "4000", satis: "4010", tarih: "t" } }, now);
-    const state = useMarkets.getState();
-    expect(state.prices.ALTIN?.sellTry).toBe(4_010);
-    // The old quote keeps DISPLAYING with its original receipt time…
-    expect(state.prices.USDTRY?.receivedAt).toBe(1_000);
-    // …and conversion still refuses it: another symbol's tick must never
-    // resurrect an expired rate as live.
-    expect(marketSellRateTry("USD", now)).toBeNull();
-  });
-
-  it("extends a still-fresh unchanged quote while the feed stays alive", () => {
-    vi.useFakeTimers();
-    useMarkets.setState({
-      status: "live",
-      prices: {
-        USDTRY: { code: "USDTRY", buyTry: 40, sellTry: 40.5, direction: "", at: "", receivedAt: 1_000 },
-      },
-      lastEventAt: 1_000,
-    });
-    const now = 31_000; // USDTRY is 30 s old — still within the 60 s contract
-    applyFeed({ ALTIN: { code: "ALTIN", alis: "4000", satis: "4010", tarih: "t" } }, now);
-    expect(useMarkets.getState().prices.USDTRY?.receivedAt).toBe(now);
-    expect(marketSellRateTry("USD", now)).toBe(40.5);
   });
 
   it("reports a hard error after silence only when there is nothing to show", () => {
@@ -369,52 +672,24 @@ describe("live market freshness", () => {
     expect(marketSellRateTry("USD", 5_000 + 60_001)).toBeNull();
   });
 
-  it("never promotes a hydrated snapshot to live because another symbol ticks", async () => {
-    // The app was closed and reopened: the persisted USD quote is 30 s old, so
-    // it is still inside the 60 s contract by its OWN receipt time. Nothing has
-    // confirmed it since the restart, though — while the app was closed the feed
-    // could not tell us the price moved, because the provider only re-sends a
-    // symbol when it CHANGES and we were not connected to hear it. Live
-    // continuity may extend a quote this session actually saw; it must never
-    // vouch for one that only came off the disk.
+  it("shows no arrow on the first live price after a restart", async () => {
+    // A hydrated quote is not a price this session watched move; it came off
+    // the disk across a gap where the app was not looking. Comparing against it
+    // would draw a trend out of two unrelated moments.
     kvStore.set(
       "helix.markets.snapshot",
       JSON.stringify({
         lastEventAt: 5_000,
-        prices: { USDTRY: { code: "USDTRY", buyTry: 40, sellTry: 40.5, direction: "", at: "dün", receivedAt: 5_000 } },
+        prices: { ALTIN: { code: "ALTIN", buyTry: 3_000, sellTry: 3_010, direction: "", at: "dün", receivedAt: 5_000 } },
       }),
     );
     useMarkets.setState({ status: "connecting", prices: {}, lastEventAt: null });
     await hydrateSnapshot();
 
-    applyFeed({ ALTIN: { code: "ALTIN", alis: "4000", satis: "4010", tarih: "t" } }, 35_000);
-    expect(useMarkets.getState().prices.USDTRY?.receivedAt).toBe(5_000);
-    // Its own 60 s window still applies, and it ends when the quote was really
-    // received — not 60 s after some other symbol happened to tick.
-    expect(marketSellRateTry("USD", 35_000)).toBe(40.5);
-    expect(marketSellRateTry("USD", 66_000)).toBeNull();
-    // …and the converter mirrors that instead of showing an unbadged rate.
-    expect(marketLastKnownRateTry("USD", 66_000)?.live).toBe(false);
-  });
-
-  it("resumes live continuity for a hydrated symbol once its own quote arrives", async () => {
-    kvStore.set(
-      "helix.markets.snapshot",
-      JSON.stringify({
-        lastEventAt: 5_000,
-        prices: { USDTRY: { code: "USDTRY", buyTry: 40, sellTry: 40.5, direction: "", at: "dün", receivedAt: 5_000 } },
-      }),
-    );
-    useMarkets.setState({ status: "connecting", prices: {}, lastEventAt: null });
-    await hydrateSnapshot();
-
-    // The feed confirms USDTRY itself, so this session has now seen it live.
-    applyFeed({ USDTRY: { code: "USDTRY", alis: "41", satis: "41.5", tarih: "t" } }, 10_000);
-    expect(useMarkets.getState().prices.USDTRY?.receivedAt).toBe(10_000);
-    // From here the ordinary unchanged-quote rule applies again.
-    applyFeed({ ALTIN: { code: "ALTIN", alis: "4000", satis: "4010", tarih: "t" } }, 40_000);
-    expect(useMarkets.getState().prices.USDTRY?.receivedAt).toBe(40_000);
-    expect(marketSellRateTry("USD", 40_000)).toBe(41.5);
+    applyQuotes(quotes(4_010), 35_000);
+    expect(useMarkets.getState().prices.ALTIN?.direction).toBe("");
+    applyQuotes(quotes(4_020), 45_000);
+    expect(useMarkets.getState().prices.ALTIN?.direction).toBe("up");
   });
 
   it("never lets a snapshot overwrite live quotes that already arrived", async () => {
@@ -435,7 +710,7 @@ describe("live market freshness", () => {
     expect(useMarkets.getState().lastEventAt).toBe(9_000);
   });
 
-  it("keeps one socket lifecycle alive through a transient app-state change", () => {
+  it("keeps one polling lifecycle alive through a transient app-state change", () => {
     vi.useFakeTimers();
     useMarkets.setState({
       status: "live",
@@ -450,6 +725,16 @@ describe("live market freshness", () => {
     expect(useMarkets.getState().status).toBe("live");
     vi.advanceTimersByTime(1);
     expect(useMarkets.getState()).toMatchObject({ prices: {}, status: "idle" });
+  });
+
+  it("asks the exchange only for the pairs the card is built from", () => {
+    // The URL itself, not a regex over the service's source: grepping an
+    // instrumented file finds nothing, and an assertion like that once took the
+    // whole mutation gate down in its dry run.
+    const url = new URL(MARKET_TICKER_URL);
+    expect(url.protocol).toBe("https:");
+    expect(url.hostname).toBe(MARKET_DATA_HOST);
+    expect(JSON.parse(url.searchParams.get("symbols") ?? "null")).toEqual([...MARKET_PAIRS]);
   });
 });
 
@@ -513,36 +798,5 @@ describe("notification planning guards", () => {
     expect(limited).toHaveLength(60);
     expect(limited[0]?.fireAt.getTime()).toBe(1);
     expect(limited.at(-1)?.fireAt.getTime()).toBe(60);
-  });
-});
-
-// The E2E suite cuts the live market socket so a rate-limited third party
-// cannot fail an unrelated test. The matcher used to be an unanchored regex,
-// which is a substring test on the whole URL rather than a host comparison.
-describe("market feed isolation matches on host, not substring", () => {
-  const matches = (url: string) => isMarketFeedSocket(new URL(url));
-
-  it("blocks the real feed and its subdomains", () => {
-    expect(matches("wss://hrmsocketonly.haremaltin.com")).toBe(true);
-    expect(matches("wss://haremaltin.com/socket.io/?EIO=4")).toBe(true);
-    expect(matches("https://api.haremaltin.com/live")).toBe(true);
-  });
-
-  it("does not match hosts that merely end in the same letters", () => {
-    expect(matches("wss://notharemaltin.com")).toBe(false);
-    expect(matches("wss://evil-haremaltin.com")).toBe(false);
-  });
-
-  it("does not match a foreign host that only mentions the feed", () => {
-    expect(matches("wss://evil.example/?next=haremaltin.com")).toBe(false);
-    expect(matches("wss://haremaltin.com.evil.example/socket")).toBe(false);
-    expect(matches("https://example.test/haremaltin.com")).toBe(false);
-  });
-
-  it("keeps the blocked host in step with the feed the app actually opens", () => {
-    // The URL itself, not a regex over the service's source. Grepping an
-    // instrumented file finds nothing, and this assertion took the whole
-    // mutation gate down with it in the dry run.
-    expect(isMarketFeedSocket(new URL(MARKET_FEED_URL))).toBe(true);
   });
 });

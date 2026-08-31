@@ -112,6 +112,14 @@ export type { ImportRequest } from "./repo/imports";
 
 export { runMaintenance } from "./repo/maintenance";
 
+export {
+  performDataReset,
+  previewDataReset,
+  RESET_SCOPES,
+  UNDATED_SCOPES,
+} from "./repo/reset";
+export type { ResetPreview, ResetRange, ResetScope, ResetSelection } from "./repo/reset";
+
 export { saveCellNote } from "./repo/cell-notes";
 
 export {

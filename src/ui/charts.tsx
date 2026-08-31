@@ -648,11 +648,21 @@ export function Lines({
   xLabels,
   height = 200,
   width = 320,
+  baseline = "zero",
 }: {
   series: LineSeries[];
   xLabels: string[];
   height?: number;
   width?: number;
+  /**
+   * Where the vertical axis starts.
+   *
+   * `zero` for money moving over time: a spending line that did not start at
+   * zero would exaggerate every wobble into a cliff. `range` for a PRICE,
+   * where the opposite is true — gram gold sits near seven thousand lira and a
+   * zero-anchored axis flattens a whole year of it into one horizontal line.
+   */
+  baseline?: "zero" | "range";
 }) {
   const { palette } = useTheme();
   // No right gutter: the only caller draws one series whose name is already the
@@ -671,8 +681,12 @@ export function Lines({
   const [scrubIndex, setScrubIndex] = React.useState<number | null>(null);
   const values = series.flatMap((s) => s.points.filter((p): p is number => p != null));
   if (values.length === 0) return null;
-  const min = Math.min(0, ...values);
-  const max = Math.max(...values, 1);
+  const lowest = Math.min(...values);
+  const highest = Math.max(...values);
+  const min = baseline === "zero" ? Math.min(0, lowest) : lowest;
+  // The `+ 1` is not cosmetic: `y()` divides by `max - min`, so a series whose
+  // values never move (a pegged rate, an all-zero month) would divide by zero.
+  const max = baseline === "zero" ? Math.max(highest, 1) : (highest > min ? highest : min + 1);
   // One chart is one ruler. Including the rounded ticks prevents a value just
   // below the compact threshold from producing a rounded million tick in the
   // long exact format.
@@ -695,6 +709,17 @@ export function Lines({
       .join(", ");
     return `${item.label}: ${itemValues}`;
   }).join(". "));
+
+  /**
+   * Which x positions get a tick — one rule for the gridlines and the labels.
+   *
+   * They used to disagree: a label every sixth slot, but a gridline on EVERY
+   * one. At twelve months that reads as a grid; at the fifty-three weekly
+   * candles a price chart draws it is a line every six pixels, which is a grey
+   * wash with a chart somewhere behind it.
+   */
+  const labelledIndex = (index: number): boolean =>
+    xLabels.length <= 6 || index % Math.ceil(xLabels.length / 6) === 0;
 
   const lastIndex = Math.max(0, xLabels.length - 1);
   const indexAt = (locationX: number): number => {
@@ -770,7 +795,7 @@ export function Lines({
             </SvgText>
           </React.Fragment>
         ))}
-        {xLabels.map((_, i) => (
+        {xLabels.map((_, i) => labelledIndex(i) ? (
           <SvgLine
             key={`v${i}`}
             x1={x(i)}
@@ -781,7 +806,7 @@ export function Lines({
             strokeWidth={1}
             opacity={chart.gridOpacity - 0.06}
           />
-        ))}
+        ) : null)}
         {series.map((s) => {
           const runs = segmentsOf(s.points);
           const lastIdx = s.points.reduce<number>((acc, p, i) => (p != null ? i : acc), -1);
@@ -817,7 +842,7 @@ export function Lines({
           );
         })}
         {xLabels.map((l, i) =>
-          xLabels.length <= 6 || i % Math.ceil(xLabels.length / 6) === 0 ? (
+          labelledIndex(i) ? (
             <SvgText key={`x${i}`} x={x(i)} y={height - 6} fontFamily={font.medium} fontSize={axisFontSize} fill={palette.textSecondary} textAnchor="middle">
               {l}
             </SvgText>

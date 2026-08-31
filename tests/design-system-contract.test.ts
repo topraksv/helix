@@ -777,7 +777,13 @@ describe("product copy keeps one casing rule per role", () => {
     const offenders: string[] = [];
     for (const path of sourceFiles("src", { atLeast: 150 }).filter((file) => file.endsWith(".tsx"))) {
       const file = readFileSync(join(root, path), "utf8");
-      for (const match of file.matchAll(/\berror=\{[^}]*?tr\.[a-zA-Z0-9_.]*?(\w+)[^}]*?\}/g)) {
+      // The LAST segment, which is the message. A lazy `[a-zA-Z0-9_.]*?` used
+      // to stop at the first one, so `tr.incomes.dayError` was looked up as
+      // `incomes` — a namespace, which almost never has a string of its own.
+      // Measured when a new `incomes:` string finally collided with it: four of
+      // the five error props reaching this check resolved to nothing at all,
+      // and the fifth matched a hint that never goes near a field.
+      for (const match of file.matchAll(/\berror=\{[^}]*?tr\.(?:[a-zA-Z0-9_]+\.)*([a-zA-Z0-9_]+)[^}]*?\}/g)) {
         const message = strings.get(match[1]!);
         if (message && message.length > 90) offenders.push(`${match[1]} (${message.length})`);
       }

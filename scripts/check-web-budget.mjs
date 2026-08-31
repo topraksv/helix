@@ -99,13 +99,40 @@ const root = process.argv[2] ?? "dist";
 // carries. Total export moves to measured plus ~1.5% rather than the ~3% the
 // note below it describes: fonts are the coarse part of that figure and they
 // did not change, so the looser step is not earned here.
+//
+// Then the data reset shipped: one route under Hesap Güvenliği that empties a
+// chosen part of the workspace by scope and date range, the repository module
+// that plans and performs it, and the Turkish copy in which each scope says
+// what it takes and what it leaves.
+//
+// Measured HEAD first, because the ceiling above had drifted to within 1_908
+// bytes of the tree it was guarding and an unattributed rise would have been
+// billed to this feature: HEAD 3_553_092 entry / 4_182_857 total / 7_660_024
+// export. With the reset, 3_572_068 / 4_201_833 / 7_700_044 — so the feature
+// itself is +18_976 on both JavaScript figures and +40_020 on the export,
+// which is that one route's HTML on top of its share of the JavaScript.
+//
+// Total export moves as well this time. It still cleared by 16_956 bytes, but
+// that is 0.22% — the next route would trip a ceiling nobody had reason to
+// re-read, which is the failure the note above already warned about once.
+//
+// Then the market feed stopped being a socket. The dealer stream it read is
+// gone, and with it `socket.io-client`: prices are now polled from a public
+// exchange's market-data host and derived by arithmetic. The ceilings come DOWN
+// with the dependency, or it could come back in one convenient import and
+// nothing would say so — the same rule the icon-barrel note above set.
+//
+// That removal outweighed a whole new route: an instrument-history screen with
+// its own chart, its four ranges and the candle model behind them. Measured
+// 3_527_386 entry / 4_157_151 total / 7_676_406 export — 44_682 bytes BELOW the
+// line above it on both JavaScript figures, feature included.
 const limits = {
-  entryJavaScript: 3_555_000,
-  totalJavaScript: 4_191_000,
+  entryJavaScript: 3_562_000,
+  totalJavaScript: 4_198_000,
   // Fonts are 1_534_728 of this and the rest is one HTML file per route, so it
   // grows in coarser steps than the JavaScript above it — measured 8_037_112
   // with ~3% of slack rather than the ~1% the JS ceilings carry.
-  totalExport: 7_717_000,
+  totalExport: 7_791_000,
   fontFiles: 6,
   fontBytes: 800_000,
   // Pages is public. Symbolication maps belong only in a private crash service,

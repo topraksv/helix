@@ -8,6 +8,7 @@ import { View } from "react-native";
 import { Redirect, useRouter } from "expo-router";
 import KeyRound from "lucide-react-native/icons/key-round";
 import Mail from "lucide-react-native/icons/mail";
+import Eraser from "lucide-react-native/icons/eraser";
 import RotateCcw from "lucide-react-native/icons/rotate-ccw";
 import Snowflake from "lucide-react-native/icons/snowflake";
 import Trash2 from "lucide-react-native/icons/trash-2";
@@ -305,6 +306,22 @@ function CloudAccountSecurityScreen() {
           loading={resetBusy}
           disabled={!email || resetBusy}
         />
+      </Card>
+
+      {/* Erasing records, above the two ways an account ends: the same kind of
+          decision at a smaller scale, and the one a person reaches for first
+          when what they actually want is a clean table rather than no account.
+          Keeping it here means every irreversible choice is on one screen. */}
+      <Card>
+        <View testID="account-data-reset-action">
+          <ListRow
+            icon={Eraser}
+            title={tr.dataReset.title}
+            subtitle={tr.dataReset.entryDescription}
+            chevron
+            onPress={() => router.push("/data-reset")}
+          />
+        </View>
       </Card>
 
       {/* The two ways an account ends, in order of severity and in one place.

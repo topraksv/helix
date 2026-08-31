@@ -59,7 +59,7 @@ import { marketTileColumns, shouldPairDashboardPanels, shouldSplitDashboardHero,
 import { useContentWidth, useMeasuredWidth } from "../../ui/viewport";
 import { interactionSurface } from "../../ui/interaction";
 import { useWarmRoute } from "../../ui/route-warmup";
-import { circle, controlSize, font, heroSurface, iconSize, radius, spacing, type, useTheme } from "../../ui/theme";
+import { circle, controlSize, font, heroSurface, iconSize, radius, spacing, stateOpacity, type, useTheme } from "../../ui/theme";
 import { devError } from "../../services/logger";
 import { useOperationGuard } from "../../ui/operation-guard";
 
@@ -174,6 +174,7 @@ function QuoteTile({
   live: boolean;
 }) {
   const { palette } = useTheme();
+  const router = useRouter();
   const flash = useValueFlash(price.sellTry, live);
   const priceText = (v: number) =>
     new Intl.NumberFormat("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v);
@@ -184,11 +185,13 @@ function QuoteTile({
       : tr.markets.unchanged;
   const size = cramped ? 40 : 44;
   return (
-    <View
-      accessible
-      role="group"
+    <Pressable
+      accessibilityRole="button"
       accessibilityLabel={tr.markets.quote(label, priceText(price.buyTry), `${priceText(price.sellTry)}\u00A0₺`, direction)}
-      style={{
+      accessibilityHint={tr.markets.openDetail(label)}
+      onPress={() => router.push({ pathname: "/market-detail", params: { code } })}
+      style={({ pressed }) => ({
+        opacity: pressed ? stateOpacity.pressed : 1,
         flexGrow: 1,
         flexBasis: columns === 3 ? "29%" : columns === 2 ? "46%" : "100%",
         minWidth: 0,
@@ -200,7 +203,7 @@ function QuoteTile({
         borderWidth: StyleSheet.hairlineWidth,
         borderColor: palette.border + "70",
         overflow: "hidden",
-      }}
+      })}
     >
       {price.direction !== "" ? (
         <Animated.View
@@ -255,7 +258,7 @@ function QuoteTile({
           </Text>
         </Spread>
       </View>
-    </View>
+    </Pressable>
   );
 }
 

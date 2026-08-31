@@ -1,6 +1,7 @@
 import { ScrollViewStyleReset } from "expo-router/html";
 import { type PropsWithChildren } from "react";
 import { tr } from "../i18n/tr";
+import { MARKET_DATA_HOST } from "../domain/market";
 import { trustedSupabaseOrigin } from "../domain/web-security";
 
 const supabaseOrigin = trustedSupabaseOrigin(process.env.EXPO_PUBLIC_SUPABASE_URL);
@@ -38,7 +39,12 @@ export default function Root({ children }: PropsWithChildren) {
             // redirect to a fourth host.
             "img-src 'self' data: blob: https://www.google.com https://*.gstatic.com https://icons.duckduckgo.com https://icon.horse",
             "font-src 'self' data:",
-            `connect-src 'self'${supabaseOrigin ? ` ${supabaseOrigin}` : ""} https://open.er-api.com wss://hrmsocketonly.haremaltin.com`,
+            // The market host is READ from the feed's own module, never spelled
+            // again here. It was a literal until the feed moved: the app then
+            // asked a host the policy did not allow, the browser refused every
+            // request, and the card went permanently empty in the web build
+            // with the reason only visible in a console nobody had open.
+            `connect-src 'self'${supabaseOrigin ? ` ${supabaseOrigin}` : ""} https://open.er-api.com https://${MARKET_DATA_HOST}`,
             "worker-src 'self' blob:",
             "frame-src 'none'",
             "object-src 'none'",

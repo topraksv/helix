@@ -15,6 +15,7 @@ export default {
     "src/data/repo/maintenance.ts",
     "src/data/repo/onboarding.ts",
     "src/data/repo/rule-validation.ts",
+    "src/data/repo/reset.ts",
     "src/data/repo/rules.ts",
     "src/data/repo/settings.ts",
     "src/data/repo/transactions.ts",

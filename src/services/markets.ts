@@ -1,22 +1,61 @@
 /**
- * Live gold and currency prices from a public, read-only socket feed. No API
- * key is used; updates are validated and throttled into the store. The UI
- * keeps an explicit unavailable state instead of silently hiding the feed.
+ * Live gold and currency prices, derived from public exchange order books.
+ *
+ * No API key, no account, no scraping: one keyless request to the exchange's
+ * public market-data host returns three order books, and `domain/market.ts`
+ * turns them into the six prices the card shows. See that file for why the
+ * prices are computed rather than read, and what was measured against the
+ * dealer feed this replaced.
+ *
+ * Polled rather than streamed. The dealer socket pushed on every tick and the
+ * service spent most of its length taming that — a three-second throttle with a
+ * trailing edge, a merge buffer for payloads it had deferred, and a rule for
+ * re-stamping symbols that had stopped ticking because their price had not
+ * moved. A poll has none of those problems: every response carries every
+ * symbol, so there is nothing to merge, nothing to defer and nothing to
+ * re-stamp. The UI keeps an explicit unavailable state instead of silently
+ * hiding the feed.
  */
 
 import { create } from "zustand";
-import { io, type Socket } from "socket.io-client";
-import { freshMarketQuote, liveMarketSymbol, MARKET_FEED_URL, validMarketQuote } from "../domain/market";
+import {
+  buildHistorySeries,
+  deriveMarketQuotes,
+  freshMarketQuote,
+  liveMarketSymbol,
+  MARKET_DATA_HOST,
+  MARKET_PAIRS,
+  MARKET_RANGES,
+  marketHistorySource,
+  parseKlineCloses,
+  parseMarketBooks,
+  validMarketQuote,
+  type DerivedQuote,
+  type MarketHistoryPoint,
+  type MarketRange,
+} from "../domain/market";
 import { kv } from "./kv";
 import { MARKET_SYMBOLS } from "../domain/investment-catalog";
 
-
-const THROTTLE_MS = 3000;
+/**
+ * How often the books are re-read.
+ *
+ * Six requests a minute against an endpoint whose published budget is in the
+ * thousands, for 372 bytes a time. Well inside the staleness deadline below, so
+ * a single dropped response never ages a quote out of the conversion contract.
+ */
+const POLL_MS = 10_000;
 const MARKET_STALE_MS = 60_000;
 const LIFECYCLE_GRACE_MS = 5000;
+const FETCH_TIMEOUT_MS = 8_000;
 /** Device-local last-known public quotes (no user data), for instant display. */
 const SNAPSHOT_KEY = "helix.markets.snapshot";
 const SNAPSHOT_PERSIST_MS = 30_000;
+
+export const MARKET_TICKER_URL =
+  `https://${MARKET_DATA_HOST}/api/v3/ticker/bookTicker?symbols=${
+    encodeURIComponent(JSON.stringify(MARKET_PAIRS))
+  }`;
 
 interface MarketPrice {
   code: string;
@@ -24,16 +63,16 @@ interface MarketPrice {
   sellTry: number;
   direction: "up" | "down" | "";
   at: string;
-  /** Local receipt time; provider text is display-only and not trusted for age. */
+  /** Local receipt time; nothing in the response is trusted for age. */
   receivedAt: number;
   /** Restored from disk and not confirmed by the feed since. Such a quote may
-   *  be DISPLAYED, but live continuity must not vouch for it — see `applyFeed`. */
+   *  be DISPLAYED, but live continuity must not vouch for it. */
   fromSnapshot?: boolean;
 }
 
 interface MarketsState {
   prices: Record<string, MarketPrice>;
-  /** `stale` keeps showing the last-known quotes (feed silent/disconnected);
+  /** `stale` keeps showing the last-known quotes (feed silent/unreachable);
    *  `error` means there is nothing to show at all. Conversion freshness is
    *  separate: `marketSellRateTry` checks each quote's own `receivedAt`. */
   status: "idle" | "connecting" | "live" | "stale" | "error";
@@ -42,24 +81,11 @@ interface MarketsState {
 
 export const useMarkets = create<MarketsState>(() => ({ prices: {}, status: "idle", lastEventAt: null }));
 
-let socket: Socket | null = null;
-let lastApplied = 0;
+let pollTimer: ReturnType<typeof setInterval> | null = null;
 let staleTimer: ReturnType<typeof setTimeout> | null = null;
-let pendingFeed: Record<string, FeedEntry> | null = null;
-let throttleTimer: ReturnType<typeof setTimeout> | null = null;
 let disconnectTimer: ReturnType<typeof setTimeout> | null = null;
-
-interface FeedEntry {
-  code: string;
-  alis: string | number;
-  satis: string | number;
-  tarih: string;
-  dir?: { satis_dir?: string };
-}
-
-function validEntry(entry: FeedEntry | undefined): entry is FeedEntry {
-  return Boolean(entry && validMarketQuote(entry.alis, entry.satis));
-}
+/** Ignores a response that arrives after the feed was torn down or restarted. */
+let generation = 0;
 
 /** Persist the last verified quotes so the card is never empty on reopen. */
 let lastPersistAt = 0;
@@ -72,7 +98,7 @@ function persistSnapshot(prices: Record<string, MarketPrice>, lastEventAt: numbe
 /** Show the previous session's quotes (dated, trend cleared) while connecting.
  *  Their original `receivedAt` is kept: conversion freshness keeps following
  *  each quote's own receipt time, so anything older than the 60 s contract can
- *  never convert, and `applyFeed` never re-stamps an expired quote as fresh.
+ *  never convert, and a later poll never re-stamps an expired quote as fresh.
  *  Exported for tests; the production caller is `connectMarkets`. */
 export async function hydrateSnapshot(): Promise<void> {
   try {
@@ -118,11 +144,12 @@ function markStaleAfterSilence(): void {
 }
 
 /**
- * Keep the last verified quotes through a short socket reconnect. Socket.io
- * reconnects automatically; clearing immediately made otherwise healthy
- * symbols disappear during momentary mobile-network changes. The existing
- * silence deadline is deliberately not extended, so genuinely stale quotes
- * are still removed after one minute.
+ * Keep the last verified quotes through a failed poll.
+ *
+ * One refused request is a hiccup, not an outage, and clearing on it made
+ * otherwise healthy symbols disappear during momentary mobile-network changes.
+ * The existing silence deadline is deliberately not extended, so genuinely
+ * stale quotes are still removed after one minute.
  */
 export function markMarketConnectionInterrupted(): void {
   const { prices } = useMarkets.getState();
@@ -134,74 +161,69 @@ export function markMarketConnectionInterrupted(): void {
   if (!staleTimer) markStaleAfterSilence();
 }
 
-/** Exported for tests (like `markMarketConnectionInterrupted`); production
- *  callers are the socket handler and the trailing-throttle timer below. */
-export function applyFeed(data: Record<string, FeedEntry>, now = Date.now()) {
-  if (!MARKET_SYMBOLS.some(({ code }) => validEntry(data[code]))) return;
+/**
+ * Apply one poll's worth of derived quotes.
+ *
+ * The direction arrow is computed here rather than read: an order book states a
+ * price, not a trend, so the only honest source of "up" is the previous price
+ * this session actually saw. A quote restored from disk is not that — it was
+ * read across a gap where the app heard nothing — so the first live poll after
+ * a hydrate sets a baseline and shows no arrow.
+ *
+ * Exported for tests; the production caller is `pollMarkets`.
+ */
+export function applyQuotes(quotes: readonly DerivedQuote[], now = Date.now()): void {
+  const known = new Set(MARKET_SYMBOLS.map(({ code }) => code));
+  const accepted = quotes.filter((quote) => known.has(quote.code) && validMarketQuote(quote.buyTry, quote.sellTry));
+  if (accepted.length === 0) return;
   markStaleAfterSilence();
-  if (now - lastApplied < THROTTLE_MS) {
-    // Trailing edge, never a drop: the provider re-sends a symbol only when
-    // its price CHANGES, so a payload discarded inside the window would leave
-    // that symbol stale until its next move (minutes for slow symbols).
-    // Merge deferred payloads (later entries win) and apply once the window
-    // closes — the visible update rate stays throttled.
-    pendingFeed = { ...pendingFeed, ...data };
-    if (!throttleTimer) {
-      throttleTimer = setTimeout(() => {
-        throttleTimer = null;
-        const deferred = pendingFeed;
-        pendingFeed = null;
-        if (deferred) applyFeed(deferred);
-      }, THROTTLE_MS - (now - lastApplied));
-    }
-    return;
-  }
-  lastApplied = now;
-  // The provider only re-sends a symbol whose price CHANGED, so a stable quote
-  // (e.g. gold overnight while USD keeps ticking) stops arriving even though it
-  // is still the current price. Keep every known quote, and extend the receipt
-  // time ONLY for quotes this session actually received live and that are
-  // themselves still fresh. Two exclusions, one reason each:
-  //  - an already expired quote (>60 s silence gap) must not be resurrected, or
-  //    the converter would treat yesterday's rate as a fresh live rate;
-  //  - a quote restored from the snapshot must not be vouched for at all. The
-  //    "still the current price" argument rests on having been CONNECTED
-  //    throughout, and a hydrated quote was read off the disk across a gap where
-  //    the app heard nothing. It keeps displaying with its real receipt time and
-  //    expires on it, until its own symbol ticks and proves it live again.
-  const prices: Record<string, MarketPrice> = Object.fromEntries(
-    Object.entries(useMarkets.getState().prices).map(([code, price]) => [
-      code,
-      !price.fromSnapshot && freshMarketQuote(price.receivedAt, now, MARKET_STALE_MS)
-        ? { ...price, receivedAt: now }
-        : price,
-    ]),
-  );
-  for (const { code } of MARKET_SYMBOLS) {
-    const entry = data[code];
-    if (!validEntry(entry)) continue;
-    const buyTry = Number(entry.alis);
-    const sellTry = Number(entry.satis);
-    prices[code] = {
-      code,
-      buyTry,
-      sellTry,
-      direction: entry.dir?.satis_dir === "up" ? "up" : entry.dir?.satis_dir === "down" ? "down" : "",
-      at: entry.tarih,
+  const previous = useMarkets.getState().prices;
+  const prices: Record<string, MarketPrice> = { ...previous };
+  for (const quote of accepted) {
+    const before = previous[quote.code];
+    const comparable = before && !before.fromSnapshot;
+    prices[quote.code] = {
+      code: quote.code,
+      buyTry: quote.buyTry,
+      sellTry: quote.sellTry,
+      direction: !comparable || before.sellTry === quote.sellTry
+        ? ""
+        : quote.sellTry > before.sellTry ? "up" : "down",
+      at: new Date(now).toISOString(),
       receivedAt: now,
     };
   }
-  useMarkets.setState({
-    prices,
-    status: Object.keys(prices).length > 0 ? "live" : "error",
-    lastEventAt: now,
-  });
-  if (Object.keys(prices).length > 0) persistSnapshot(prices, now);
+  useMarkets.setState({ prices, status: "live", lastEventAt: now });
+  persistSnapshot(prices, now);
+}
+
+/** Read the books once. Exported for tests and for the manual retry. */
+export async function pollMarkets(): Promise<void> {
+  const attempt = generation;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  try {
+    const response = await fetch(MARKET_TICKER_URL, { signal: controller.signal });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const books = parseMarketBooks(await response.json());
+    // A response that arrived after a teardown or a restart belongs to a feed
+    // that no longer exists; applying it would resurrect a disconnected card.
+    if (attempt !== generation) return;
+    if (!books) {
+      markMarketConnectionInterrupted();
+      return;
+    }
+    applyQuotes(deriveMarketQuotes(books));
+  } catch {
+    if (attempt === generation) markMarketConnectionInterrupted();
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 /** Fresh live sell ("satış") price in TRY, or null when unavailable.
- *  Used to convert a foreign-currency amount to TRY at confirm time (we already
- *  pull USDTRY/EURTRY from this feed — no separate FX call needed). */
+ *  Used to convert a foreign-currency amount to TRY at confirm time (the same
+ *  poll already carries USD/TRY and EUR/TRY — no separate FX call needed). */
 export function marketSellRateTry(currency: string, now = Date.now()): number | null {
   const code = liveMarketSymbol(currency);
   if (!code) return null;
@@ -231,56 +253,38 @@ export function marketLastKnownRateTry(
   };
 }
 
-/** Idempotent: first caller opens the socket; it lives for the app session. */
+/** Idempotent: first caller starts polling; it runs for the app session. */
 export function connectMarkets(): void {
   if (disconnectTimer) {
     clearTimeout(disconnectTimer);
     disconnectTimer = null;
   }
-  if (socket) return;
+  if (pollTimer) return;
   useMarkets.setState({ status: "connecting" });
   void hydrateSnapshot();
-  socket = io(MARKET_FEED_URL, {
-    transports: ["websocket"],
-    reconnectionDelay: 5_000,
-    reconnectionDelayMax: 60_000,
-    randomizationFactor: 0.5,
-    timeout: 10_000,
-  });
-  socket.on("price_changed", (payload: { data?: Record<string, FeedEntry> }) => {
-    if (payload?.data) applyFeed(payload.data);
-  });
-  socket.on("connect_error", () => {
-    markMarketConnectionInterrupted();
-  });
-  socket.on("disconnect", () => {
-    markMarketConnectionInterrupted();
-  });
+  void pollMarkets();
+  pollTimer = setInterval(() => void pollMarkets(), POLL_MS);
 }
 
 /**
- * Reconnect now, at the user's request.
+ * Read the books now, at the user's request.
  *
- * The socket already retries on its own with a growing backoff, so the empty
- * card was not stuck — but after a long offline stretch the next automatic
- * attempt can be a minute away, and the card gave a person nothing to do about
- * it but wait without knowing that. Dropping the socket first is what makes
- * this different from `connectMarkets`, which returns immediately when one
- * already exists.
+ * The interval already retries on its own, so the empty card was never stuck —
+ * but after a long offline stretch the next attempt can be ten seconds away,
+ * and the card gave a person nothing to do about it but wait without knowing
+ * that.
  */
 export function retryMarkets(): void {
-  if (socket) {
-    socket.removeAllListeners();
-    socket.disconnect();
-    socket = null;
+  if (!pollTimer) {
+    connectMarkets();
+    return;
   }
-  connectMarkets();
+  void pollMarkets();
 }
 
 /**
- * Pause after a short grace instead of closing during transient React/iOS
- * lifecycle changes. An immediate close+open can make the provider rate-limit
- * the replacement socket; a real background/sign-out still tears down soon.
+ * Pause after a short grace instead of stopping during transient React/iOS
+ * lifecycle changes. A real background/sign-out still tears down soon.
  */
 export function suspendMarkets(delayMs = LIFECYCLE_GRACE_MS): void {
   if (disconnectTimer) return;
@@ -291,11 +295,12 @@ export function suspendMarkets(delayMs = LIFECYCLE_GRACE_MS): void {
 }
 
 /**
- * Tear down the feed (close socket, drop listeners, reset state). Called on
- * sign-out so a signed-out session never keeps a live financial-data stream
- * open (battery/data), and so the next sign-in starts clean.
+ * Tear the feed down (stop polling, reset state). Called on sign-out so a
+ * signed-out session never keeps polling financial data (battery/data), and so
+ * the next sign-in starts clean.
  */
 export function disconnectMarkets(): void {
+  generation += 1;
   if (disconnectTimer) {
     clearTimeout(disconnectTimer);
     disconnectTimer = null;
@@ -304,16 +309,55 @@ export function disconnectMarkets(): void {
     clearTimeout(staleTimer);
     staleTimer = null;
   }
-  if (throttleTimer) {
-    clearTimeout(throttleTimer);
-    throttleTimer = null;
+  if (pollTimer) {
+    clearInterval(pollTimer);
+    pollTimer = null;
   }
-  pendingFeed = null;
-  if (socket) {
-    socket.removeAllListeners();
-    socket.disconnect();
-    socket = null;
-  }
-  lastApplied = 0;
   useMarkets.setState({ prices: {}, status: "idle", lastEventAt: null });
+}
+
+/** One symbol's candles, on the same keyless host the live prices come from. */
+export function marketKlineUrl(symbol: string, interval: string, limit: number): string {
+  return `https://${MARKET_DATA_HOST}/api/v3/klines?symbol=${encodeURIComponent(symbol)}` +
+    `&interval=${encodeURIComponent(interval)}&limit=${limit}`;
+}
+
+/**
+ * The past of one tile, over one range.
+ *
+ * Null covers every way this can fail — an unknown code, a refused request, a
+ * response that will not parse — because the screen does the same thing with
+ * all of them: it says it has no history, and offers the range picker again.
+ * There is nothing here worth telling apart, and a thrown error would only make
+ * the caller re-flatten it.
+ *
+ * Not cached and not persisted: it is public, it is a screen away, and a stale
+ * chart is worse than a second request.
+ */
+export async function fetchMarketHistory(
+  code: string,
+  range: MarketRange,
+): Promise<MarketHistoryPoint[] | null> {
+  const source = marketHistorySource(code);
+  if (!source) return null;
+  const spec = MARKET_RANGES[range];
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  try {
+    const closes = await Promise.all(source.symbols.map(async (symbol) => {
+      const response = await fetch(marketKlineUrl(symbol, spec.interval, spec.limit), {
+        signal: controller.signal,
+      });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      return parseKlineCloses(await response.json());
+    }));
+    const usable = closes.filter((series): series is Map<number, number> => series !== null);
+    if (usable.length !== source.symbols.length) return null;
+    const points = buildHistorySeries(usable, source.factor);
+    return points.length > 0 ? points : null;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
 }

@@ -523,6 +523,7 @@ function RootLayoutInner() {
           <Stack.Screen name="workspace-template" options={{ ...cardScreenOptions(theme.palette), title: tr.template.title, headerLeft: () => <HeaderBackButton fallback="/(tabs)/settings/categories" /> }} />
           <Stack.Screen name="opening-balance" options={{ ...cardScreenOptions(theme.palette), title: tr.settings.opening, headerLeft: () => <HeaderBackButton fallback="/(tabs)/cash-flow" /> }} />
           <Stack.Screen name="account-security" options={{ ...cardScreenOptions(theme.palette), title: tr.account.security, headerLeft: () => <HeaderBackButton fallback="/(tabs)/settings" /> }} />
+          <Stack.Screen name="data-reset" options={{ ...cardScreenOptions(theme.palette), title: tr.dataReset.title, headerLeft: () => <HeaderBackButton fallback="/account-security" /> }} />
           {/* Keep the shared column editor in a normal stack card. An iOS sheet
               owns the same vertical pan used by the reorder grip, even when
               swipe-to-dismiss is disabled; the Settings entry point works
@@ -535,6 +536,7 @@ function RootLayoutInner() {
           <Stack.Screen name="reconciliation" options={{ title: tr.catchup.title, headerLeft: () => <HeaderBackButton fallback="/(tabs)" /> }} />
           <Stack.Screen name="upcoming" options={{ title: tr.upcoming.title, headerLeft: () => <HeaderBackButton fallback="/(tabs)" /> }} />
           <Stack.Screen name="analytics" options={{ title: tr.analysis.title, headerLeft: () => <HeaderBackButton fallback="/(tabs)" /> }} />
+          <Stack.Screen name="market-detail" options={{ ...cardScreenOptions(theme.palette), title: tr.markets.title, headerLeft: () => <HeaderBackButton fallback="/(tabs)" /> }} />
           <Stack.Screen name="payment-sources" options={{ title: tr.settings.sources, headerLeft: () => <HeaderBackButton fallback="/(tabs)/settings" /> }} />
           <Stack.Screen name="incomes" options={{ title: tr.settings.incomeRules, headerLeft: () => <HeaderBackButton fallback="/(tabs)/settings" /> }} />
           <Stack.Screen name="budgets" options={{ title: tr.budgets.title, headerLeft: () => <HeaderBackButton fallback="/(tabs)/settings" /> }} />
