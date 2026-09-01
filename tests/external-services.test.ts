@@ -650,6 +650,44 @@ describe("live market store", () => {
     expect(useMarkets.getState().status).toBe("error");
   });
 
+  // A poll reports the same interruption every ten seconds for as long as the
+  // network is away, where the socket it replaced reported one per
+  // disconnection. Both states have to settle, or the markets card re-renders
+  // six times a minute to say exactly what it already said.
+  it("stops notifying once an empty-feed interruption has been reported", () => {
+    vi.useFakeTimers();
+    useMarkets.setState({ status: "connecting", prices: {}, lastEventAt: null });
+    const seen: string[] = [];
+    const stop = useMarkets.subscribe((state) => seen.push(state.status));
+
+    markMarketConnectionInterrupted();
+    markMarketConnectionInterrupted();
+    markMarketConnectionInterrupted();
+    stop();
+
+    expect(seen).toEqual(["error"]);
+    expect(useMarkets.getState().status).toBe("error");
+  });
+
+  it("stops notifying once a stale-feed interruption has been reported", () => {
+    vi.useFakeTimers();
+    useMarkets.setState({
+      status: "live",
+      prices: { USDTRY: { code: "USDTRY", buyTry: 40, sellTry: 40.5, direction: "", at: "", receivedAt: 1_000 } },
+      lastEventAt: 1_000,
+    });
+    const seen: string[] = [];
+    const stop = useMarkets.subscribe((state) => seen.push(state.status));
+
+    markMarketConnectionInterrupted();
+    markMarketConnectionInterrupted();
+    markMarketConnectionInterrupted();
+    stop();
+
+    expect(seen).toEqual(["stale"]);
+    expect(useMarkets.getState().status).toBe("stale");
+  });
+
   it("hydrates the persisted snapshot as dated display data, never as live rates", async () => {
     kvStore.set(
       "helix.markets.snapshot",

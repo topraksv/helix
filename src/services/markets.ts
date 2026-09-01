@@ -152,12 +152,16 @@ function markStaleAfterSilence(): void {
  * stale quotes are still removed after one minute.
  */
 export function markMarketConnectionInterrupted(): void {
-  const { prices } = useMarkets.getState();
+  // Written only when it actually changes. A socket reported an interruption
+  // once, per disconnection; the poll reports one every ten seconds for as long
+  // as the network is away, and an unconditional `setState` re-rendered the
+  // whole markets card on each of them to say exactly what it already said.
+  const { prices, status } = useMarkets.getState();
   if (Object.keys(prices).length === 0) {
-    useMarkets.setState({ status: "error" });
+    if (status !== "error") useMarkets.setState({ status: "error" });
     return;
   }
-  useMarkets.setState({ status: "stale" });
+  if (status !== "stale") useMarkets.setState({ status: "stale" });
   if (!staleTimer) markStaleAfterSilence();
 }
 
