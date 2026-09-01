@@ -254,8 +254,15 @@ test("a tab arrives once and then stays where it is", async ({ page }) => {
       has: page.getByRole("heading", { name: heading, exact: true }),
     });
     // Arriving for the first time still moves: the screen is new, and the
-    // motion is what says so.
-    await expect.poll(() => arrivalOffset(entrance)).toBeLessThan(0.5);
+    // motion is what says so. Wait for it to be at REST, not merely passing
+    // through the threshold: the entrance spring is underdamped (damping 18,
+    // stiffness 170, so zeta 0.69) and its first overshoot of a 14pt rise is
+    // 14*exp(-pi*zeta/sqrt(1-zeta^2)) = 0.70pt. A single sample taken at the
+    // zero crossing therefore passes while the spring is still ringing, and
+    // the rebound is then measured below as a second arrival — 5 failures in 5
+    // runs at 0.682, on a machine fast enough to click away before the ring
+    // decayed. A window that stays quiet cannot be caught mid-flight.
+    await expect.poll(() => peakOffset(entrance, page, 250)).toBeLessThan(0.5);
 
     await page.getByRole("tab", { name: "Durum", exact: true }).click();
     await expect(page.getByRole("tab", { name: "Durum", exact: true })).toHaveAttribute("aria-selected", "true");

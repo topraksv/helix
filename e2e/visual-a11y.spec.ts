@@ -99,6 +99,11 @@ const LOCAL_STATIC_ROUTES = [
   "/helix/transaction", "/helix/installment-new", "/helix/subscription-form", "/helix/bulk-entry",
   "/helix/columns-editor", "/helix/import-wizard", "/helix/opening-balance",
   "/helix/reconciliation", "/helix/upcoming", "/helix/workspace-template", "/helix/account-security",
+  // Carries its instrument in the query string: without one it is the "unknown
+  // instrument" card, which audits a screen nobody reaches. The feed is refused
+  // for every browser test, so this is the empty state of the real layout — the
+  // quote card, the range switch and the offer to fetch the history again.
+  "/helix/market-detail?code=ALTIN",
 ];
 
 async function localReachableRoutes(page: Page): Promise<string[]> {
