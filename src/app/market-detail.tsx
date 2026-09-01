@@ -14,15 +14,15 @@
  */
 
 import React, { useCallback, useEffect, useState } from "react";
-import { View } from "react-native";
+import { Text, View } from "react-native";
 import { useLocalSearchParams } from "expo-router";
 import TrendingDown from "lucide-react-native/icons/trending-down";
 import TrendingUp from "lucide-react-native/icons/trending-up";
 import { INVESTMENT_MARKET_TITLES } from "../domain/investment-catalog";
 import { historyChange, type MarketHistoryPoint, type MarketRange } from "../domain/market";
 import { fetchMarketHistory, useMarkets } from "../services/markets";
-import { clockOrDateTimeLabel, dateLabel, tr } from "../i18n/tr";
-import { Body, Button, Card, Label, Screen, Segmented, Spread, Title } from "../ui/components";
+import { clockOrDateTimeLabel, marketRateLabel, tr } from "../i18n/tr";
+import { Body, Button, Card, Label, Row, Screen, Segmented, Spread, Title } from "../ui/components";
 import { ChartFrame, Lines, useSeriesColors } from "../ui/charts";
 import { DelayedLoadingIndicator } from "../ui/loading-indicator";
 import { spacing, type, useTheme } from "../ui/theme";
@@ -30,13 +30,24 @@ import { WorkspaceGrid } from "../ui/workspace-layout";
 
 const RANGES: readonly MarketRange[] = ["day", "week", "month", "year"];
 
-function priceText(value: number): string {
-  return new Intl.NumberFormat("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value);
-}
+const CLOCK_FORMAT = new Intl.DateTimeFormat("tr-TR", { hour: "2-digit", minute: "2-digit" });
 
-/** A point's own moment, said the way its range makes sense of it. */
+/**
+ * A point's own moment, said the way its range makes sense of it — and short
+ * enough that six of them fit across a phone.
+ *
+ * The full forms were tried first and measured: "31 Ağustos 2026 22:00" on the
+ * day range and "1 Eylül 2026" on the others, six to a 200px plot, printed one
+ * unreadable run of overlapping text. A day already knows its date from the
+ * range picker, and a year does not need the day of the month.
+ */
 function pointLabel(at: number, range: MarketRange): string {
-  return range === "day" ? clockOrDateTimeLabel(at) : dateLabel(new Date(at).toISOString().slice(0, 10));
+  const when = new Date(at);
+  if (range === "day") return CLOCK_FORMAT.format(when);
+  const month = tr.months[when.getMonth()]?.slice(0, 3) ?? "";
+  return range === "year"
+    ? `${month} ${String(when.getFullYear()).slice(2)}`
+    : `${when.getDate()} ${month}`;
 }
 
 export default function MarketDetailScreen() {
@@ -89,19 +100,25 @@ export default function MarketDetailScreen() {
   return (
     <Screen width="workspace">
       <WorkspaceGrid testID="market-detail-grid" layout="stack">
+        {/* The live price is what this screen is for, so it is the figure and
+            not a row in a list. It used to be two label/value lines at body
+            size, which put the number the screen exists to show at the same
+            weight as the word "Satış" beside it. */}
         <Card>
           <Label>{title.label}</Label>
           {price ? (
             <>
-              <Spread style={{ marginTop: spacing.sm }}>
-                <Body muted>{tr.markets.buy}</Body>
-                <Body style={type.amountSm}>{priceText(price.buyTry)}</Body>
+              <Text selectable style={[type.amountMd, { color: palette.text, marginTop: spacing.xs }]}>
+                {`${marketRateLabel(price.sellTry)} ₺`}
+              </Text>
+              <Body muted style={{ fontSize: type.small.fontSize }}>{tr.markets.sell}</Body>
+              <Spread style={{ marginTop: spacing.md, alignItems: "baseline" }}>
+                <Body muted style={{ fontSize: type.small.fontSize }}>{tr.markets.buy}</Body>
+                <Text style={[type.amount, { color: palette.textSecondary }]}>
+                  {marketRateLabel(price.buyTry)}
+                </Text>
               </Spread>
-              <Spread style={{ marginTop: spacing.xs }}>
-                <Body muted>{tr.markets.sell}</Body>
-                <Body style={type.amount}>{`${priceText(price.sellTry)} ₺`}</Body>
-              </Spread>
-              <Body muted style={{ fontSize: type.small.fontSize, marginTop: spacing.sm }}>
+              <Body muted style={{ fontSize: type.small.fontSize, marginTop: spacing.xs }}>
                 {tr.markets.updatedAt(clockOrDateTimeLabel(price.receivedAt))}
               </Body>
             </>
@@ -132,12 +149,12 @@ export default function MarketDetailScreen() {
                 <Body muted style={{ fontSize: type.small.fontSize }}>
                   {tr.markets.rangeChange(tr.markets.range[range])}
                 </Body>
-                <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.xs }}>
+                <Row gap={spacing.xs} style={{ alignItems: "center" }}>
                   {ChangeIcon ? <ChangeIcon accessible={false} size={14} color={changeColor} /> : null}
                   <Body style={{ color: changeColor }}>
-                    {change == null ? tr.markets.unchanged : `%${priceText(change * 100)}`}
+                    {change == null ? tr.markets.unchanged : `%${marketRateLabel(change * 100)}`}
                   </Body>
-                </View>
+                </Row>
               </Spread>
               <ChartFrame>
                 {(chartWidth) => (

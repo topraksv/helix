@@ -1851,6 +1851,25 @@ export function dateLabel(iso: string): string {
   return name && y && d ? `${Number(d)} ${name} ${y}` : iso;
 }
 
+/**
+ * A market rate, to the kuruş, with no currency mark.
+ *
+ * Market prices are the one figure the app does not put through
+ * `formatMinorCompact`: that formatter rounds a large amount to "₺3,8M", which
+ * is a fine way to read a balance and a useless way to read the price of a
+ * Cumhuriyet altını. The mark is left to the caller because a tile prints it
+ * once for a pair of prices rather than once each.
+ *
+ * The formatter is built once. This ran inside three separate render-time
+ * helpers — two of them in one file — each constructing a fresh
+ * `Intl.NumberFormat` per call, on a card that redraws six tiles every poll.
+ */
+const RATE_FORMAT = new Intl.NumberFormat("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+export function marketRateLabel(value: number): string {
+  return RATE_FORMAT.format(value);
+}
+
 /** Compact "1 Ağu 2026" form for badges and other tight layouts. */
 export function shortDateLabel(iso: string): string {
   const [y, m, d] = iso.split("-");

@@ -717,9 +717,36 @@ export function Lines({
    * one. At twelve months that reads as a grid; at the fifty-three weekly
    * candles a price chart draws it is a line every six pixels, which is a grey
    * wash with a chart somewhere behind it.
+   *
+   * Six was then a fixed answer to a question that depends on two things it
+   * never looked at: how wide the plot is, and how long the labels are. Three
+   * short month names have room to spare where six dates do not — measured on
+   * a 390pt phone, the price chart's plot is about 200px and its six date
+   * labels overlapped into one unreadable run of text.
+   *
+   * 0.66em, where the value gutter below reserves 0.72em. That gutter is
+   * guarding against a CLIP — a label wider than its reserve starts outside the
+   * viewBox and loses glyphs — so it takes the ceiling of Inter's numeric
+   * advance. These are mixed-case Turkish words whose real average is lower,
+   * they are inside the plot either way, and the ceiling costs a whole label:
+   * at 0.72 a thirty-day range drops from four dates to three.
    */
-  const labelledIndex = (index: number): boolean =>
-    xLabels.length <= 6 || index % Math.ceil(xLabels.length / 6) === 0;
+  const widestLabel = xLabels.reduce((widest, label) => Math.max(widest, label.length), 0);
+  // The two end labels are anchored to the plot edges rather than centred, so
+  // the gap either side of them has to carry one and a half labels between
+  // midpoints rather than one.
+  const minLabelGap = widestLabel * axisFontSize * 0.66 * 1.5 + spacing.md;
+  const labelStep = Math.max(
+    1,
+    // Never more than the six a wide chart was already drawing…
+    Math.ceil(xLabels.length / 6),
+    // …and never so many that two of them touch. Slots are counted between
+    // LABELLED indices, not across the whole plot: the last labelled slot is
+    // rarely the last point, so the labels span a fraction of the width and a
+    // count fitted to the full plot overflows that fraction.
+    Math.ceil(minLabelGap * Math.max(1, xLabels.length - 1) / Math.max(1, plotW)),
+  );
+  const labelledIndex = (index: number): boolean => index % labelStep === 0;
 
   const lastIndex = Math.max(0, xLabels.length - 1);
   const indexAt = (locationX: number): number => {
@@ -815,9 +842,15 @@ export function Lines({
               {runs.map((run) => {
                 const pts = run.map((i) => ({ x: x(i), y: y(s.points[i]!) }));
                 const line = smoothPath(pts);
-                // The fill closes the same curve down to the zero rule, so the
+                // The fill closes the same curve down to the axis floor, so the
                 // area and the line can never disagree about where a month sat.
-                const area = `${line} L${pts.at(-1)!.x},${y(0)} L${pts[0]!.x},${y(0)} Z`;
+                //
+                // The floor is the axis's own start, not always zero. On a
+                // price axis zero sits thousands of lira below the plot, and
+                // closing there sent the fill straight through the bottom edge
+                // and washed a translucent band over the x labels.
+                const floor = y(baseline === "zero" ? 0 : min);
+                const area = `${line} L${pts.at(-1)!.x},${floor} L${pts[0]!.x},${floor} Z`;
                 const length = polylineLength(pts);
                 return (
                   <React.Fragment key={run[0]}>
@@ -843,7 +876,18 @@ export function Lines({
         })}
         {xLabels.map((l, i) =>
           labelledIndex(i) ? (
-            <SvgText key={`x${i}`} x={x(i)} y={height - 6} fontFamily={font.medium} fontSize={axisFontSize} fill={palette.textSecondary} textAnchor="middle">
+            <SvgText
+              key={`x${i}`}
+              x={x(i)}
+              y={height - 6}
+              fontFamily={font.medium}
+              fontSize={axisFontSize}
+              fill={palette.textSecondary}
+              // Centred everywhere but the two ends, which have nothing to
+              // spread into: half of a centred first label lay across the value
+              // gutter, and half of a centred last one outside the SVG.
+              textAnchor={i === 0 ? "start" : i === lastIndex ? "end" : "middle"}
+            >
               {l}
             </SvgText>
           ) : null,

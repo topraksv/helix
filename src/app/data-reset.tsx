@@ -16,9 +16,15 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { View } from "react-native";
 import { Redirect, useRouter } from "expo-router";
+import Banknote from "lucide-react-native/icons/banknote";
 import CalendarRange from "lucide-react-native/icons/calendar-range";
+import CreditCard from "lucide-react-native/icons/credit-card";
 import Eraser from "lucide-react-native/icons/eraser";
+import Landmark from "lucide-react-native/icons/landmark";
+import RefreshCw from "lucide-react-native/icons/refresh-cw";
+import Target from "lucide-react-native/icons/target";
 import TriangleAlert from "lucide-react-native/icons/triangle-alert";
+import WalletCards from "lucide-react-native/icons/wallet-cards";
 import { useSession } from "../auth/session";
 import { useUserId } from "../data/hooks";
 import {
@@ -31,7 +37,7 @@ import {
   type ResetScope,
 } from "../data/repo";
 import { tr } from "../i18n/tr";
-import { Body, Button, Card, Divider, Label, ListRow, PanelHeader, Screen, Toggle } from "../ui/components";
+import { Body, Button, Card, Divider, Label, ListRow, PanelHeader, Screen, Spread, Toggle } from "../ui/components";
 import { DateField } from "../ui/calendar";
 import { appAlert, appConfirm, appPrompt } from "../ui/dialog";
 import { spacing, type, useTheme } from "../ui/theme";
@@ -45,6 +51,22 @@ import { scheduleSync } from "../sync/engine";
 import { devWarning } from "../services/logger";
 
 const EMPTY_RANGE: ResetRange = { from: null, to: null };
+
+/**
+ * Each scope wears the mark the rest of the app already gives it — the two tab
+ * icons for the financial table and investments, the subscription screen's own
+ * repeat mark, and so on. A checklist of six irreversible choices is the last
+ * place to invent a seventh vocabulary, and every one of these is already in
+ * the bundle.
+ */
+const SCOPE_ICONS: Record<ResetScope, typeof WalletCards> = {
+  ledger: WalletCards,
+  installments: CreditCard,
+  subscriptions: RefreshCw,
+  incomes: Banknote,
+  budgets: Target,
+  investments: Landmark,
+};
 
 export default function DataResetScreen() {
   // Same gate as the screen this is reached from: the password re-check below
@@ -165,9 +187,9 @@ function CloudDataResetScreen() {
             <View key={scope}>
               {index > 0 ? <Divider /> : null}
               <ListRow
+                icon={SCOPE_ICONS[scope]}
                 title={tr.dataReset.scope[scope]}
                 subtitle={tr.dataReset.scopeHint[scope]}
-                stackRightOnNarrow
                 right={
                   <Toggle
                     label={tr.dataReset.scope[scope]}
@@ -215,10 +237,10 @@ function CloudDataResetScreen() {
           ) : (
             <>
               {RESET_SCOPES.filter((scope) => preview.counts[scope] > 0).map((scope) => (
-                <View key={scope} style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: spacing.xs }}>
-                  <Body>{tr.dataReset.scope[scope]}</Body>
-                  <Body>{preview.counts[scope]}</Body>
-                </View>
+                <Spread key={scope} style={{ marginBottom: spacing.xs, alignItems: "baseline" }}>
+                  <Body style={{ flexShrink: 1 }}>{tr.dataReset.scope[scope]}</Body>
+                  <Body style={type.amount}>{preview.counts[scope]}</Body>
+                </Spread>
               ))}
               <Divider />
               <Label>{tr.dataReset.summaryTotal(preview.total)}</Label>

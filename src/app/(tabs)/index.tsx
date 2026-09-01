@@ -22,7 +22,7 @@ import { daysBetweenISO, firstDayOf, lastDayOf, monthKeyOf, todayISO, yearOf, ty
 import { formatMinorCompact } from "../../domain/money";
 import { AMOUNT_LABELS, needsVariableAmountEntry, occurrenceAmountText } from "../../domain/subscriptions";
 import { buildUpcomingTimeline } from "../../domain/upcoming";
-import { clockOrDateTimeLabel, dateLabel, dateTimeLabel, monthName, tr } from "../../i18n/tr";
+import { clockOrDateTimeLabel, dateLabel, dateTimeLabel, marketRateLabel, monthName, tr } from "../../i18n/tr";
 import { useSession } from "../../auth/session";
 import { kv } from "../../services/kv";
 import {
@@ -176,8 +176,6 @@ function QuoteTile({
   const { palette } = useTheme();
   const router = useRouter();
   const flash = useValueFlash(price.sellTry, live);
-  const priceText = (v: number) =>
-    new Intl.NumberFormat("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v);
   const direction = price.direction === "up"
     ? tr.markets.rising
     : price.direction === "down"
@@ -187,7 +185,7 @@ function QuoteTile({
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={tr.markets.quote(label, priceText(price.buyTry), `${priceText(price.sellTry)}\u00A0₺`, direction)}
+      accessibilityLabel={tr.markets.quote(label, marketRateLabel(price.buyTry), `${marketRateLabel(price.sellTry)}\u00A0₺`, direction)}
       accessibilityHint={tr.markets.openDetail(label)}
       onPress={() => router.push({ pathname: "/market-detail", params: { code } })}
       style={({ pressed }) => ({
@@ -249,12 +247,12 @@ function QuoteTile({
       <View style={{ marginTop: spacing.sm, gap: 3 }}>
         <Spread>
           <Text style={[type.small, { color: palette.textSecondary }]}>{tr.markets.buy}</Text>
-          <Text style={[type.amountSm, { color: palette.textSecondary, textAlign: "right" }]}>{priceText(price.buyTry)}</Text>
+          <Text style={[type.amountSm, { color: palette.textSecondary, textAlign: "right" }]}>{marketRateLabel(price.buyTry)}</Text>
         </Spread>
         <Spread>
           <Text style={[type.small, { color: palette.textSecondary }]}>{tr.markets.sell}</Text>
           <Text style={[type.amount, { color: palette.text, textAlign: "right" }]}>
-            {`${priceText(price.sellTry)}\u00A0₺`}
+            {`${marketRateLabel(price.sellTry)}\u00A0₺`}
           </Text>
         </Spread>
       </View>
@@ -274,9 +272,6 @@ function MarketsCard({ fill = false, desktopColumns = 2 }: { fill?: boolean; des
   const focused = useScreenFocus();
   useFxRates();
   if (status === "idle") return null;
-
-  const priceText = (v: number) =>
-    new Intl.NumberFormat("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v);
 
   // Display hierarchy: live/last-known quotes → dated FX reference rates →
   // an explanatory fallback. The card never renders empty values or "—".
@@ -337,14 +332,14 @@ function MarketsCard({ fill = false, desktopColumns = 2 }: { fill?: boolean; des
                 key={label}
                 accessible
                 role="group"
-                accessibilityLabel={`${label}. ${tr.markets.referenceRate(dateLabel(rate.rate.rateDate))}. ${priceText(rate.rate.rateTry)} ₺`}
+                accessibilityLabel={`${label}. ${tr.markets.referenceRate(dateLabel(rate.rate.rateDate))}. ${marketRateLabel(rate.rate.rateTry)} ₺`}
                 style={{ paddingVertical: spacing.sm - 2 }}
               >
                 <View style={{ flexShrink: 1 }}>
                   <Body>{label}</Body>
                   <Text style={[type.small, { color: palette.textSecondary }]}>{tr.markets.referenceRate(dateLabel(rate.rate.rateDate))}</Text>
                 </View>
-                <Text style={[type.amount, { color: palette.text }]}>{`${priceText(rate.rate.rateTry)} ₺`}</Text>
+                <Text style={[type.amount, { color: palette.text }]}>{`${marketRateLabel(rate.rate.rateTry)} ₺`}</Text>
               </Spread>
             ))}
             <Body muted style={{ marginTop: spacing.sm, fontSize: type.small.fontSize }}>{tr.markets.offlineHint}</Body>
