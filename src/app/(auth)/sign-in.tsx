@@ -8,6 +8,7 @@ import Table2 from "lucide-react-native/icons/table-2";
 import WalletCards from "lucide-react-native/icons/wallet-cards";
 import { useSession } from "../../auth/session";
 import { isSupabaseConfigured } from "../../sync/supabase";
+import { useRouter, type Href } from "expo-router";
 import { Body, Button, Card, Field, Screen } from "../../ui/components";
 import { useSubmitOnEnter } from "../../ui/keyboard";
 import { clearLifecycleIntent } from "../../ui/lifecycle-intent";
@@ -136,6 +137,7 @@ function AuthJourneyArtwork({ compact }: { compact: boolean }) {
 }
 
 export default function SignInScreen() {
+  const router = useRouter();
   const [mode, setMode] = useState<"signIn" | "signUp" | "forgot">("signIn");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -358,11 +360,29 @@ export default function SignInScreen() {
               />
             </View>
           ) : null}
+          {/* Before the account exists, not after. Creating one is the moment
+              an e-mail address and every later record starts being processed on
+              servers in another country, and that is the one fact a person
+              cannot undo by reading the notice afterwards. The link is here in
+              every mode, because the address is typed in every mode. */}
+          {mode === "signUp" ? (
+            <Body muted style={{ marginBottom: spacing.sm, fontSize: type.small.fontSize }}>
+              {tr.legal.signUpNotice}
+            </Body>
+          ) : null}
           <Button
             label={primaryLabel}
             onPress={() => void submit()}
             disabled={!canSubmit}
           />
+          <View style={{ marginTop: spacing.sm }}>
+            <Button
+              label={tr.legal.readNotice}
+              variant="ghost"
+              size="sm"
+              onPress={() => router.push("/privacy" as Href)}
+            />
+          </View>
           {resetSent ? (
             <View style={{ marginTop: spacing.sm }}>
               <Button label={tr.auth.backToSignIn} variant="ghost" onPress={switchMode} disabled={busy} />

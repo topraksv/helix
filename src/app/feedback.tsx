@@ -20,7 +20,7 @@
 
 import React, { useState } from "react";
 import { View } from "react-native";
-import { useRouter } from "expo-router";
+import { useRouter, type Href } from "expo-router";
 import { Image } from "expo-image";
 import * as DocumentPicker from "expo-document-picker";
 import ImageIcon from "lucide-react-native/icons/image";
@@ -201,7 +201,17 @@ export default function FeedbackScreen() {
 
   return (
     <Screen width="form">
-      <Body muted style={{ marginBottom: spacing.lg }}>{tr.feedback.intro}</Body>
+      <Body muted style={{ marginBottom: spacing.sm }}>{tr.feedback.intro}</Body>
+      {/* This form is a collection point: the message, the category and any
+          screenshot leave the device and travel through a third country. */}
+      <View style={{ marginBottom: spacing.lg, alignItems: "flex-start" }}>
+        <Button
+          label={tr.legal.readNotice}
+          variant="ghost"
+          size="sm"
+          onPress={() => router.push("/privacy" as Href)}
+        />
+      </View>
 
       <SectionHeader>{tr.feedback.categoryLabel}</SectionHeader>
       <View

@@ -55,7 +55,10 @@ test("a navigated static asset cannot poison the offline app shell @smoke", asyn
   await page.goto(entry!);
   await context.setOffline(true);
   await page.goto("/helix/");
-  await expect(page).toHaveTitle("Helix");
+  // The descriptive title, not the bare product name: this is the string a
+  // search result and a shared link show, and it is served statically so a
+  // crawler that runs no JavaScript still gets it.
+  await expect(page).toHaveTitle("Helix: Bütçe, Abonelikler ve Yatırımlar");
   await expect(page.locator("#root")).toBeVisible();
   await context.setOffline(false);
 });
@@ -72,8 +75,10 @@ test("a navigated static asset cannot poison the offline app shell @smoke", asyn
  * "Invalid VFS state" for as long as it lives, so re-running the migration in
  * the same page returned the identical error forever — "Tekrar dene" looked like
  * an action and was incapable of ever succeeding, while a plain browser refresh
- * recovered instantly. The button now reloads on web, which is the only thing
- * that actually works, so the remedy is not something the user has to guess.
+ * recovered instantly. The button reloads on web, which is the only thing that
+ * works; and since `useDatabaseHandoff` the tab does it without being asked,
+ * so this asserts the recovery rather than the button — closing the owning tab
+ * and coming back is the entire remedy a person has to know.
  */
 test("a second tab fails safely and its retry really recovers", async ({ page, context }, testInfo) => {
   const errors = collectRuntimeErrors(page);
@@ -82,16 +87,24 @@ test("a second tab fails safely and its retry really recovers", async ({ page, c
 
   const second = await context.newPage();
   await second.goto("/helix/");
-  await expect(second.getByText("Veritabanı hatası")).toBeVisible();
+  // The screen names what happened, not the layer that failed. "Veritabanı
+  // hatası" sent someone looking for corrupted data over a tab they had open.
+  await expect(second.getByText("Helix başka bir sekmede açık")).toBeVisible();
+  // While the first tab still holds the database, reloading provably cannot
+  // work — so the control says which tab has it instead of offering an action
+  // that lands back on this screen.
+  await expect(second.getByRole("button", { name: "Diğer Sekmede Açık" })).toBeDisabled();
 
   // The owning tab is untouched by the blocked one.
   await page.bringToFront();
   await page.goto(`/helix/cash-flow/${currentMonthKey()}`);
   await expect(page.getByRole("button", { name: /Market.*410,00/ })).toBeVisible();
 
+  // No click. Closing the tab that held the database and returning to this one
+  // is the whole remedy now — the waiting tab asks who has it, hears nothing,
+  // and reloads itself. The button is still there for a closure it cannot hear.
   await page.close();
   await second.bringToFront();
-  await second.getByRole("button", { name: "Tekrar dene" }).click();
   await expect(second.getByRole("tab", { name: "Durum", selected: true })).toBeVisible({ timeout: 20_000 });
   await second.goto(`/helix/cash-flow/${currentMonthKey()}`);
   await expect(second.getByRole("button", { name: /Market.*410,00/ })).toBeVisible();

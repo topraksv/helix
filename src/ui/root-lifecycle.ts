@@ -431,3 +431,132 @@ export function useNotificationTapRouting(
     return () => subscription.remove();
   }, [ready, userId, unlocked]);
 }
+
+/**
+ * The second tab, and how it stops being a dead end.
+ *
+ * Web keeps the SQLite file in OPFS behind an exclusive sync access handle, so
+ * only one document can hold it. A second tab therefore boots into
+ * `classifyBootFailure` returning "busy", and — because wa-sqlite's VFS stays
+ * broken for that document once it has failed — nothing but a reload can
+ * recover it. The person was left to work that out and press refresh.
+ *
+ * So the waiting tab asks, on a slow interval, who has the database; the tab
+ * that has it answers; and silence means it is gone, so this one reloads
+ * itself. Close the other tab and this one opens on its own.
+ *
+ * Two designs were tried first and both were wrong, which is worth keeping.
+ *
+ * The holder announcing its own departure on `pagehide` looks obviously right.
+ * It fires on ordinary same-tab navigation too, so the owning tab following a
+ * link handed the database to a blocked tab, which took the OPFS handle before
+ * the owner's next document could — leaving the tab the person was actually
+ * using on the failure screen. The browser suite caught exactly that.
+ *
+ * Asking only on `focus` and `visibilitychange` avoids polling and is the
+ * behaviour a person would describe. Neither event is dependable: a background
+ * page can keep `visibilityState: "visible"`, and bringing a tab forward when
+ * it is already the only one raises no focus. The recovery then never happened,
+ * and the browser suite caught that too.
+ *
+ * So: an interval, and a hard ceiling on how many times it may reload. The
+ * ceiling is what makes the interval safe — a holder that has been FROZEN by
+ * the browser cannot answer, and without a bound this would reload for ever in
+ * front of someone whose app already would not start.
+ */
+const DATABASE_HOLDER_CHANNEL = "helix.database.holder";
+/** Long enough for a live holder in another tab to answer, short enough that a
+ *  person who closed it does not sit looking at a screen that is already stale. */
+const HOLDER_REPLY_GRACE_MS = 500;
+/** Slow enough to be invisible next to a person reaching for the other tab. */
+const HOLDER_PROBE_MS = 2000;
+/**
+ * A hard ceiling on reloading ourselves, per tab.
+ *
+ * The reasoning above says a loop cannot form, because a reload produces no
+ * focus or visibility event of its own. That is an argument, and this is the
+ * screen where being wrong about it means a tab reloading for ever in front of
+ * someone whose app already would not start. The counter costs five lines and
+ * makes the argument unnecessary.
+ */
+const MAX_AUTO_RELOADS = 2;
+const AUTO_RELOAD_KEY = "helix.database.autoreload";
+
+function autoReloadsSpent(): number {
+  try {
+    return Number(sessionStorage.getItem(AUTO_RELOAD_KEY) ?? 0) || 0;
+  } catch {
+    // A browser refusing session storage gets the button, not a loop.
+    return MAX_AUTO_RELOADS;
+  }
+}
+
+function spendAutoReload(): void {
+  try {
+    sessionStorage.setItem(AUTO_RELOAD_KEY, String(autoReloadsSpent() + 1));
+  } catch {
+    // Nothing to do: the read above already refuses when this would fail.
+  }
+}
+
+export function useDatabaseHandoff(dbReady: boolean, blocked: boolean): { heldElsewhere: boolean } {
+  // Whether another tab answered the last time this one asked. It is what the
+  // screen needs in order to stop offering an action that cannot work: while
+  // somebody else holds the database, reloading lands on this same screen, and
+  // a button that does that is the button this whole mechanism replaced.
+  const [heldElsewhere, setHeldElsewhere] = useState(false);
+
+  useEffect(() => {
+    if (Platform.OS !== "web" || typeof BroadcastChannel === "undefined") return;
+    if (!dbReady && !blocked) return;
+    const channel = new BroadcastChannel(DATABASE_HOLDER_CHANNEL);
+
+    if (dbReady) {
+      channel.onmessage = (event) => {
+        if (event.data === "who-has-it") channel.postMessage("i-do");
+      };
+      return () => channel.close();
+    }
+
+    let grace: ReturnType<typeof setTimeout> | null = null;
+    const stopWaiting = () => {
+      if (grace) clearTimeout(grace);
+      grace = null;
+    };
+    // Somebody still holds it, so this tab has nothing to reload into.
+    channel.onmessage = (event) => {
+      if (event.data !== "i-do") return;
+      stopWaiting();
+      setHeldElsewhere(true);
+    };
+    const askWhoHasIt = (mayReload: boolean) => {
+      if (grace) return;
+      channel.postMessage("who-has-it");
+      // The ceiling stops the RELOAD, never the question. Asking is what tells
+      // the screen another tab has the database, and that is most worth saying
+      // precisely when reloading has already been tried and given up on.
+      if (!mayReload || autoReloadsSpent() >= MAX_AUTO_RELOADS) return;
+      grace = setTimeout(() => {
+        grace = null;
+        // Nobody answered, so the holder is gone and a reload will now work.
+        setHeldElsewhere(false);
+        spendAutoReload();
+        window.location.reload();
+      }, HOLDER_REPLY_GRACE_MS);
+    };
+    // The first ask only wants an answer, and deliberately arms no reload. Its
+    // job is to tell the screen straight away that another tab has the
+    // database, so the control stops offering to reload. Letting it reload
+    // would mean a holder that is merely slow to answer — a background tab
+    // under throttling — costs a page load before anything is even on screen.
+    askWhoHasIt(false);
+    const probe = setInterval(() => askWhoHasIt(true), HOLDER_PROBE_MS);
+    return () => {
+      stopWaiting();
+      clearInterval(probe);
+      channel.close();
+    };
+  }, [dbReady, blocked]);
+
+  return { heldElsewhere };
+}

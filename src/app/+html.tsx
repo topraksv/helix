@@ -6,6 +6,41 @@ import { trustedSupabaseOrigin } from "../domain/web-security";
 
 const supabaseOrigin = trustedSupabaseOrigin(process.env.EXPO_PUBLIC_SUPABASE_URL);
 
+/** Where the built app actually lives. The trailing slash is part of it: every
+ *  absolute asset URL below is this plus a path, and the deployed base is
+ *  `/helix/` — the same base the service worker registration checks for. */
+const SITE_URL = "https://topraksv.github.io/helix/";
+/** Relative to `SITE_URL`. Expo copies `assets/` into the export under its own
+ *  hashed path, so the card image is served from `public/` instead, where the
+ *  name it is published under is the name written here.
+ *
+ *  JPEG rather than PNG: the card is a wordmark on one flat colour, which PNG
+ *  stores at 99 kB and JPEG at 37 kB with nothing visible between them. Those
+ *  bytes are deployed and counted by the release budget even though no user of
+ *  the app ever downloads them — only a crawler does — so the cheapest honest
+ *  encoding is the right one. */
+const OG_IMAGE = "og-cover.jpg";
+
+/** The splash colours from `app.json`, which are the app's own first frame. */
+const LIGHT_BACKGROUND = "#E7ECEB";
+const DARK_BACKGROUND = "#101315";
+
+const STRUCTURED_DATA = {
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  name: tr.app.name,
+  applicationCategory: "FinanceApplication",
+  operatingSystem: "Web, iOS, Android",
+  url: SITE_URL,
+  image: `${SITE_URL}${OG_IMAGE}`,
+  description: tr.meta.social,
+  inLanguage: "tr-TR",
+  // Stated rather than left out: "no price given" and "free" are different
+  // claims, and a finance app that says nothing about cost invites the worse
+  // assumption.
+  offers: { "@type": "Offer", price: "0", priceCurrency: "TRY" },
+};
+
 /**
  * Root HTML shell for web (dev + static export).
  * `children` already contains the root <div id="root" />.
@@ -70,10 +105,66 @@ export default function Root({ children }: PropsWithChildren) {
           name="viewport"
           content="width=device-width, initial-scale=1, shrink-to-fit=no, viewport-fit=cover"
         />
-        {/* Tab title comes from expo-router <Head> in _layout.tsx. */}
+        {/* The title is set here AND by expo-router's <Head> in `_layout.tsx`,
+            which replaces it on hydration with the same string. It is here as
+            well because the export ships one static document, and a crawler
+            that does not run JavaScript — which is most link-preview bots —
+            saw a page with no title at all. */}
+        <title>{tr.meta.title}</title>
         <meta
           name="description"
           content={tr.meta.description}
+        />
+
+        {/* Everything below describes the page to something that is not a
+            browser: a search index, and the card a link turns into when it is
+            pasted into a message. None of it changes what the app does, and all
+            of it is static — the export is one document, so there is no route
+            whose values would differ.
+
+            `SITE_URL` is written once here and asserted against the link in
+            `README.md` by `tests/release-config.test.ts`, because a canonical
+            URL that has quietly stopped matching where the app lives is worse
+            than none: it tells an index to attribute this page to somewhere
+            else. */}
+        <link rel="canonical" href={SITE_URL} />
+        <meta property="og:type" content="website" />
+        <meta property="og:site_name" content={tr.app.name} />
+        <meta property="og:locale" content="tr_TR" />
+        <meta property="og:title" content={tr.meta.title} />
+        <meta property="og:description" content={tr.meta.social} />
+        <meta property="og:url" content={SITE_URL} />
+        <meta property="og:image" content={`${SITE_URL}${OG_IMAGE}`} />
+        <meta property="og:image:type" content="image/jpeg" />
+        <meta property="og:image:width" content="1200" />
+        <meta property="og:image:height" content="630" />
+        <meta property="og:image:alt" content={tr.app.name} />
+        {/* `summary_large_image` rather than `summary`: the cover is a 1200x630
+            wordmark, and the small card would crop it to a square that shows
+            about a third of it. */}
+        <meta name="twitter:card" content="summary_large_image" />
+        <meta name="twitter:title" content={tr.meta.title} />
+        <meta name="twitter:description" content={tr.meta.social} />
+        <meta name="twitter:image" content={`${SITE_URL}${OG_IMAGE}`} />
+
+        {/* Two, one per scheme, so the browser chrome is already the right
+            colour on the first paint instead of after hydration. The app
+            overwrites both through `syncThemeColorMeta` once it knows whether
+            the owner has chosen a theme explicitly — it has to overwrite rather
+            than add, because the HTML spec takes the FIRST matching
+            `theme-color` and a tag appended later would never be read. */}
+        <meta name="theme-color" media="(prefers-color-scheme: light)" content={LIGHT_BACKGROUND} />
+        <meta name="theme-color" media="(prefers-color-scheme: dark)" content={DARK_BACKGROUND} />
+
+        {/* One SoftwareApplication, in the category that says what it is for.
+            Serialised from an object rather than written as a string so a typo
+            cannot produce JSON that parses as nothing — an invalid block is
+            skipped in silence, which is the failure mode structured data is
+            famous for. `JSON.stringify` also escapes the content, so no value
+            here can close the script element. */}
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(STRUCTURED_DATA) }}
         />
         <ScrollViewStyleReset />
         {/* Lock the page frame: the app scrolls inside its own ScrollViews, so

@@ -535,7 +535,7 @@ export const chart = {
  *
  * `tests/theme-contrast.test.ts` re-measures all of it from these values.
  */
-export const chartSeries = {
+const chartSeries = {
   light: ["#9c3548", "#008a99", "#997026", "#005fa4", "#535f06", "#006853", "#007ec4", "#a56758"],
   /**
    * The SAME eight hues, lifted for a dark ground.

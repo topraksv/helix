@@ -59,3 +59,31 @@ export function resolveRootGuard(input: RootGuardInput): RootGuardDecision {
   }
   return { view: "wait", redirect: "/(tabs)" };
 }
+
+/**
+ * Why the workspace would not open.
+ *
+ * There are two endings a person can act on and they need opposite advice, so
+ * the boot screen has to tell them apart rather than saying "database error"
+ * and leaving the guessing to whoever is holding the phone.
+ *
+ * `busy` is the app already being open somewhere else. On web the SQLite file
+ * lives in OPFS behind an exclusive sync access handle: a second tab cannot
+ * take it, and wa-sqlite's VFS then stays broken FOR THAT DOCUMENT, so no
+ * amount of retrying in the page recovers — only a reload, once the other tab
+ * is gone. Native hits the same shape when a second process holds the file.
+ * Nothing is wrong with the data, which is the first thing to say.
+ *
+ * The strings are matched rather than a code because none of the layers
+ * involved — OPFS, wa-sqlite, expo-sqlite — surfaces one. They are matched
+ * loosely and on purpose: a miss falls through to `unknown`, whose screen is
+ * correct for every failure including this one, just less specific.
+ */
+export type BootFailure = "busy" | "unknown";
+
+const BUSY_DATABASE = /invalid vfs state|nomodificationallowed|access handle|already locked|database is locked|being used by another/i;
+
+export function classifyBootFailure(error: unknown): BootFailure {
+  const text = error instanceof Error ? `${error.name} ${error.message}` : String(error ?? "");
+  return BUSY_DATABASE.test(text) ? "busy" : "unknown";
+}

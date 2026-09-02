@@ -11,6 +11,7 @@ import MessageSquare from "lucide-react-native/icons/message-square";
 import Banknote from "lucide-react-native/icons/banknote";
 import Bell from "lucide-react-native/icons/bell";
 import BookOpen from "lucide-react-native/icons/book-open";
+import ShieldCheck from "lucide-react-native/icons/shield-check";
 import Calculator from "lucide-react-native/icons/calculator";
 import CalendarClock from "lucide-react-native/icons/calendar-clock";
 import Check from "lucide-react-native/icons/check";
@@ -828,6 +829,17 @@ export default function SettingsScreen() {
 
       <Card rows>
         <ListRow icon={BookOpen} title={tr.tour.replay} subtitle={tr.tour.replayDesc} chevron onPress={() => setTourOpen(true)} />
+        {/* Reachable from the app itself, not only from the sign-up screen a
+            person passes through once. Someone who wants to know what is held
+            about them looks in Settings, and finding nothing there is what
+            makes a notice feel like a formality. */}
+        <ListRow
+          icon={ShieldCheck}
+          title={tr.legal.title}
+          subtitle={tr.legal.subtitle}
+          chevron
+          onPress={() => router.push("/privacy" as Href)}
+        />
       </Card>
 
       <SectionHeader>{tr.account.section}</SectionHeader>

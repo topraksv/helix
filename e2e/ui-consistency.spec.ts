@@ -2378,7 +2378,21 @@ test("theme preference keeps browser chrome and native controls in the active sc
   const light = page.getByRole("radio", { name: "Açık", exact: true });
   const dark = page.getByRole("radio", { name: "Koyu", exact: true });
   const hex = /^#[\dA-F]{6}$/i;
-  const chrome = () => page.locator('meta[name="theme-color"]').getAttribute("content");
+  /**
+   * Every `theme-color` in the document, as one value.
+   *
+   * The shell declares two — one per `prefers-color-scheme` — so the chrome is
+   * right before the app mounts, and `syncThemeColorMeta` then writes the
+   * chosen palette over both. Reading only the first would pass while the
+   * second still said something else, and the browser takes whichever comes
+   * first that matches: agreeing is the property, not the first one's value.
+   */
+  const chrome = async () => {
+    const colours = await page.locator('meta[name="theme-color"]').evaluateAll(
+      (metas) => [...new Set(metas.map((meta) => meta.getAttribute("content")))],
+    );
+    return colours.length === 1 ? colours[0] : `disagreed: ${colours.join(", ")}`;
+  };
   const rootScheme = () => page.evaluate(() => getComputedStyle(document.documentElement).colorScheme);
 
   // Two different things settle here, at their own pace: the root's

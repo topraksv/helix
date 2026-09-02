@@ -254,12 +254,12 @@ export function OperationSignature({
   const SupportIcon = operationSupportIcon(kind);
   const support = detail ?? (
     kind === "freeze"
-      ? "Geçici bir durum; yeniden girişle devam edebilirsin."
+      ? tr.common.operationSupportFreezeDetail
       : kind === "delete"
-        ? "Bu işlem geri alınamaz."
+        ? tr.common.operationSupportDeleteDetail
         : kind === "sign-out" || kind === "local-sign-out"
-          ? "Oturum kapanır; hesabın silinmez."
-          : "Çalışma alanına güvenle dön."
+          ? tr.common.operationSupportSignOutDetail
+          : tr.common.operationSupportDefaultDetail
   );
 
   return (

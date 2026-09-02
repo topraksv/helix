@@ -78,3 +78,24 @@ export function crossFadesNatively(): boolean {
   const doc = viewTransitionDocument();
   return Boolean(doc && typeof doc.startViewTransition === "function");
 }
+
+/**
+ * Point every `theme-color` in the document at the palette actually in use.
+ *
+ * The static shell declares a pair of them — one per `prefers-color-scheme` —
+ * so the browser chrome is right on the very first paint, before any of this
+ * has mounted. That pair cannot know about an explicit in-app theme choice,
+ * and it cannot simply be overridden by rendering another tag either: the HTML
+ * spec takes the FIRST `theme-color` whose media matches, so a tag appended
+ * later is dead. Hence writing over the existing ones, and dropping their
+ * `media` so both then agree whatever the system says.
+ *
+ * A no-op off web, and on a web build before the head exists.
+ */
+export function syncThemeColorMeta(color: string): void {
+  if (typeof document === "undefined") return;
+  document.querySelectorAll('meta[name="theme-color"]').forEach((meta) => {
+    meta.setAttribute("content", color);
+    meta.removeAttribute("media");
+  });
+}

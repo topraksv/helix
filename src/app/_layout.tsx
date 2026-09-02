@@ -7,6 +7,8 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Platform, Pressable, Text, useColorScheme, View } from "react-native";
 import { Stack, useRouter, useSegments } from "expo-router";
+import AppWindow from "lucide-react-native/icons/app-window";
+import DatabaseZap from "lucide-react-native/icons/database-zap";
 import Head from "expo-router/head";
 import { StatusBar } from "expo-status-bar";
 import * as SplashScreen from "expo-splash-screen";
@@ -20,13 +22,14 @@ import {
 import { useSession } from "../auth/session";
 import { useSyncStatus } from "../sync/status";
 import { useAccountFrozenState, useOnboardedState } from "../data/hooks";
-import { classifyRootRoute, resolveRootGuard } from "../domain/app-guard";
+import { classifyBootFailure, classifyRootRoute, resolveRootGuard, type BootFailure } from "../domain/app-guard";
 import { kv } from "../services/kv";
 import {
   controlSize,
   darkPalette,
   font,
   radius,
+  contentWidth,
   spacing,
   stateOpacity,
   resolvePaletteId,
@@ -38,7 +41,7 @@ import {
   type PaletteId,
   type ThemePreference,
 } from "../ui/theme";
-import { Button, Screen, Title, WaitingNotice } from "../ui/components";
+import { Button, EmptyState, Screen, Title, WaitingNotice } from "../ui/components";
 import { useLifecycleIntent, type LifecycleIntent } from "../ui/lifecycle-intent";
 import type { OperationFlowKind } from "../ui/operation-flow";
 
@@ -46,7 +49,7 @@ import { DialogHost, PromptHost } from "../ui/dialog";
 import { ErrorBoundary } from "../ui/error-boundary";
 import { FrozenGate } from "../ui/frozen-gate";
 import { ThemeDissolve } from "../ui/motion-primitives";
-import { applyThemeChange } from "../ui/theme-transition";
+import { applyThemeChange, syncThemeColorMeta } from "../ui/theme-transition";
 import { UndoSnackbar, useUndo } from "../ui/undo";
 import { tr } from "../i18n/tr";
 import { loadDevicePreferences } from "../services/device-preferences";
@@ -54,7 +57,7 @@ import { DelayedLoadingIndicator } from "../ui/loading-indicator";
 import { HeaderBackButton, TransactionBackButton } from "../ui/header-back";
 import { cardScreenOptions, pageScreenOptions } from "../ui/header-bar";
 
-import { devError } from "../services/logger";
+import { devError, installCrashHandlers } from "../services/logger";
 import { KeyboardSafeRoot } from "../ui/keyboard-safe";
 import { PrivacyCover } from "../ui/privacy-cover";
 import {
@@ -62,6 +65,7 @@ import {
   useFirstPullGrace,
   useForegroundSync,
   useMarketLifecycle,
+  useDatabaseHandoff,
   useNotificationTapRouting,
   useWorkspaceMaintenance,
 } from "../ui/root-lifecycle";
@@ -103,7 +107,58 @@ function waitingState(
   }
 }
 
+/**
+ * The two endings the boot screen can reach, side by side.
+ *
+ * A table rather than four `bootFailure === "busy" ?` ternaries in the render:
+ * the same question asked four times is four places for the answers to drift
+ * apart, and here the whole difference between the two endings is four lines
+ * that can be read against each other.
+ */
+const BOOT_ENDINGS = {
+  // Another tab MIGHT have it — nothing has answered yet, so a reload is still
+  // worth offering.
+  busy: {
+    icon: AppWindow,
+    title: tr.errors.bootBusyTitle,
+    hint: tr.errors.bootBusyHint,
+    action: tr.errors.bootBusyAction,
+    blocked: false,
+  },
+  // Another tab has ANSWERED. Reloading provably lands back on this screen, so
+  // the control states which tab has the database instead of offering to do
+  // something it cannot do — the behaviour the owner reported as "basınca
+  // açılmıyor, yine aynı ekran geliyor". Nothing is lost by disabling it: the
+  // page reloads itself within about two seconds of that tab closing.
+  busyHeld: {
+    icon: AppWindow,
+    title: tr.errors.bootBusyTitle,
+    hint: tr.errors.bootBusyHintHeld,
+    action: tr.errors.bootBusyBlocked,
+    blocked: true,
+  },
+  unknown: {
+    icon: DatabaseZap,
+    title: tr.errors.bootFailedTitle,
+    hint: tr.errors.bootFailedHint,
+    action: tr.common.retry,
+    blocked: false,
+  },
+} as const;
+
+/** Which of the three endings this failure is, once the other tabs have had
+ *  their say. Out here rather than inline so the render stays a lookup. */
+function bootEndingFor(failure: BootFailure | null, heldElsewhere: boolean) {
+  if (failure !== "busy") return BOOT_ENDINGS.unknown;
+  return heldElsewhere ? BOOT_ENDINGS.busyHeld : BOOT_ENDINGS.busy;
+}
+
 SplashScreen.preventAutoHideAsync().catch(() => {});
+
+// At module scope, and as early as this file runs: a crash during the first
+// render or the first migration is exactly the one worth recording, and a
+// handler installed inside an effect would not be there yet to catch it.
+installCrashHandlers();
 
 /** Allows the settings screen to switch theme at runtime (device-local pref). */
 const themePrefListeners = new Set<(p: ThemePreference) => void>();
@@ -130,6 +185,11 @@ export default function RootLayout() {
   const [dbError, setDbError] = useState<string | null>(null);
   const [databaseRecovery, setDatabaseRecovery] = useState<DatabaseRecoveryNotice | null>(null);
   const [attempt, setAttempt] = useState(0);
+  const bootFailure = dbError == null ? null : classifyBootFailure(dbError);
+  // A second tab is a wait, not a failure: it ends by itself when the tab
+  // holding the database goes away.
+  const { heldElsewhere } = useDatabaseHandoff(dbReady, bootFailure === "busy");
+  const bootEnding = bootEndingFor(bootFailure, heldElsewhere);
   // Fonts are cosmetic: never let a slow/flaky web font fetch hold the whole
   // app on a blank screen — after a short grace we render with the system
   // fallback (this was the mobile-web "white screen" culprit).
@@ -195,7 +255,11 @@ export default function RootLayout() {
       <>
       {Platform.OS === "web" && (
         <Head>
-          <title>{tr.app.name}</title>
+          {/* Not "Helix" alone. This string is the browser tab, the search
+              result, and the headline of every shared link — the one line
+              somebody who has never used the app reads first, where a bare
+              product name says nothing about what it is for. */}
+          <title>{tr.meta.title}</title>
         </Head>
       )}
       {dbReady && fontsReady ? (
@@ -238,43 +302,70 @@ export default function RootLayout() {
         )
       ) : (
         <ThemeContext.Provider value={bootTheme}>
-        <View
-          style={{ flex: 1, backgroundColor: background, justifyContent: "center", alignItems: "center", padding: 24, gap: 16 }}
-        >
+        <View style={{ flex: 1, backgroundColor: background, alignItems: "center", justifyContent: "center" }}>
           {dbError ? (
-            <>
-              <Text accessibilityRole="alert" accessibilityLiveRegion="assertive" style={{ color: foreground, textAlign: "center" }}>{tr.errors.database}</Text>
-              {/* The shared control, not a hand-rolled one.
-                  This screen runs BEFORE the real theme provider is mounted,
-                  which is why it used to draw its own button — and that button
-                  was the app's only `fontWeight`, asking iOS to synthesise a
-                  bold rather than naming a loaded face, in the one screen a
-                  person sees when something has already gone wrong. A boot
-                  theme derived from the system scheme mounts the same context
-                  every other surface reads, so this ending and the render-crash
-                  ending are now the same product. */}
-              <Button
-                label={tr.common.retry}
-                onPress={() => {
-                  // On web the usual cause is another tab holding the exclusive
-                  // OPFS access handle, which leaves wa-sqlite's VFS permanently
-                  // "Invalid VFS state" FOR THIS DOCUMENT: re-running the
-                  // migration in the same page fails identically forever, while
-                  // a reload (new realm, new worker) succeeds the moment the
-                  // other tab is gone. Retrying in place made the button look
-                  // like it did something and never recovered, so the user had
-                  // to guess that refreshing was the real remedy. Native has no
-                  // such realm-scoped VFS — its failures are a locked or corrupt
-                  // file, which re-opening genuinely retries.
-                  if (Platform.OS === "web" && typeof window !== "undefined") {
-                    window.location.reload();
-                    return;
-                  }
-                  setDbReady(false);
-                  setAttempt((a) => a + 1);
-                }}
+            /* The one screen a person reaches when the app could not start.
+               It used to be a bare centred `Text` carrying only a colour — no
+               type style at all, so it rendered at the platform's default size
+               in the app's own font-controlled product — with a `Button`
+               floating under it and nothing holding the two together. And it
+               said "Veritabanı hatası", which names the layer that failed
+               rather than what happened or what to do about it.
+
+               `EmptyState` is what every other "nothing here, here is why, here
+               is the way out" surface in this app already uses, and it works
+               here for the same reason the retry button does: the boot theme
+               mounts the same context. The role is moved to the wrapper because
+               `EmptyState`'s title is a heading, and this needs to be announced
+               as an alert. */
+            <View
+              accessibilityRole="alert"
+              accessibilityLiveRegion="assertive"
+              // `contentWidth.form` is the same bound every other screen puts on
+              // a line of prose. Without it this sentence runs the full width
+              // of a desktop window, which is the one place a boot failure is
+              // most likely to be read.
+              //
+              // No `alignSelf: "stretch"`: it overrides the parent's
+              // `alignItems: "center"`, and a stretched box with a maxWidth
+              // resolves to the START of the axis rather than the middle — the
+              // block sat against the left edge of a desktop window while
+              // everything inside it was centred within that block.
+              style={{ flex: 1, width: "100%", maxWidth: contentWidth.form }}
+            >
+              <EmptyState
+                icon={bootEnding.icon}
+                title={bootEnding.title}
+                hint={bootEnding.hint}
+                action={
+                  <Button
+                    disabled={bootEnding.blocked}
+                    label={bootEnding.action}
+                    onPress={() => {
+                      // On web the usual cause is another tab holding the
+                      // exclusive OPFS access handle, which leaves wa-sqlite's
+                      // VFS permanently "Invalid VFS state" FOR THIS DOCUMENT:
+                      // re-running the migration in the same page fails
+                      // identically forever, while a reload (new realm, new
+                      // worker) succeeds the moment the other tab is gone.
+                      // Retrying in place made the button look like it did
+                      // something and never recovered. `useDatabaseHandoff`
+                      // now does this without being asked when the other tab
+                      // closes; this stays for the closures it cannot hear —
+                      // a crash, a force-quit. Native has no such realm-scoped
+                      // VFS: its failures are a locked or corrupt file, which
+                      // re-opening genuinely retries.
+                      if (Platform.OS === "web" && typeof window !== "undefined") {
+                        window.location.reload();
+                        return;
+                      }
+                      setDbReady(false);
+                      setAttempt((a) => a + 1);
+                    }}
+                  />
+                }
               />
-            </>
+            </View>
           ) : (
             <DelayedLoadingIndicator />
           )}
@@ -330,6 +421,12 @@ function RootLayoutInner() {
     }),
     [paletteId, scheme],
   );
+  // The shell declares one `theme-color` per scheme so the browser chrome is
+  // right before any of this mounts. This is what an explicit in-app theme
+  // choice changes; it overwrites those tags rather than adding another,
+  // because only the first matching one is ever read.
+  useEffect(() => syncThemeColorMeta(theme.palette.background), [theme.palette.background]);
+
 
   useEffect(() => {
     if (Platform.OS !== "web" || typeof document === "undefined") return;
@@ -472,14 +569,31 @@ function RootLayoutInner() {
           style={{ flex: 1, backgroundColor: theme.palette.background, justifyContent: "center", alignItems: "center" }}
         >
           {guardQueryFailed ? (
-            <View style={{ width: "100%", maxWidth: 420, padding: 24, gap: 16 }}>
-              <Title>{tr.errors.database}</Title>
-              <Button
-                label={tr.common.retry}
-                onPress={() => {
-                  onboardedState.retry();
-                  frozenState.retry();
-                }}
+            /* The boot screen's sibling: the database opened, and then the two
+               queries that decide which screen to show would not answer. It
+               said "Veritabanı hatası" and drew a title over a loose button,
+               which is the same shape of message and the same missing design as
+               the failure before it — so it is now the same `EmptyState`, with
+               copy that says what a person can do rather than which layer
+               broke. */
+            <View
+              accessibilityRole="alert"
+              accessibilityLiveRegion="assertive"
+              style={{ flex: 1, alignSelf: "stretch", maxWidth: contentWidth.form, width: "100%" }}
+            >
+              <EmptyState
+                icon={DatabaseZap}
+                title={tr.errors.bootFailedTitle}
+                hint={tr.errors.bootFailedHint}
+                action={
+                  <Button
+                    label={tr.common.retry}
+                    onPress={() => {
+                      onboardedState.retry();
+                      frozenState.retry();
+                    }}
+                  />
+                }
               />
             </View>
           ) : awaitingFirstPull ? (
@@ -497,11 +611,7 @@ function RootLayoutInner() {
 
   return (
     <ThemeContext.Provider value={theme}>
-      {Platform.OS === "web" ? (
-        <Head>
-          <meta name="theme-color" content={theme.palette.background} />
-        </Head>
-      ) : null}
+
       <StatusBar style={scheme === "dark" ? "light" : "dark"} />
       <View style={{ flex: 1, backgroundColor: theme.palette.background }}>
         <ErrorBoundary>
@@ -531,6 +641,10 @@ function RootLayoutInner() {
           <Stack.Screen name="columns-editor" options={{ ...cardScreenOptions(theme.palette), title: tr.cashflow.editColumns, headerLeft: () => <HeaderBackButton fallback="/(tabs)/cash-flow" /> }} />
           <Stack.Screen name="statement-import" options={{ title: tr.statement.title, headerLeft: () => <HeaderBackButton fallback="/(tabs)/settings" /> }} />
           <Stack.Screen name="feedback" options={{ title: tr.feedback.title, headerLeft: () => <HeaderBackButton fallback="/(tabs)/settings" /> }} />
+          {/* Outside the protected group on purpose: the notice has to be
+              readable before an account exists, because the screen that asks
+              for an e-mail address links to it. */}
+          <Stack.Screen name="privacy" options={{ title: tr.legal.title, headerLeft: () => <HeaderBackButton fallback="/(tabs)/settings" /> }} />
           <Stack.Screen name="sync-issues" options={{ title: tr.settings.syncQuarantineTitle, headerLeft: () => <HeaderBackButton fallback="/(tabs)/settings" /> }} />
           <Stack.Screen name="attention" options={{ title: tr.attention.title, headerLeft: () => <HeaderBackButton fallback="/(tabs)" /> }} />
           <Stack.Screen name="reconciliation" options={{ title: tr.catchup.title, headerLeft: () => <HeaderBackButton fallback="/(tabs)" /> }} />

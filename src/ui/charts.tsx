@@ -105,7 +105,7 @@ const LEGEND_BASIS = 220;
 const MIN_PAIRED_RING = 140;
 
 /** Sentinel colour for a legend row that is not a slice of the ring. */
-export const SUPPLEMENTAL_MARK = "supplemental";
+const SUPPLEMENTAL_MARK = "supplemental";
 
 export function distributionDonutData(
   distribution: Distribution,
@@ -182,7 +182,7 @@ export interface ChartFocus {
   clear: () => void;
 }
 
-export function useChartFocus(): ChartFocus {
+function useChartFocus(): ChartFocus {
   const [state, dispatch] = React.useReducer(chartFocusReducer, EMPTY_CHART_FOCUS);
   const toggle = React.useCallback((index: number) => { selectionTap(); dispatch({ type: "toggle", index }); }, []);
   const preview = React.useCallback((index: number) => dispatch({ type: "preview", index }), []);

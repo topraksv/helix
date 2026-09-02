@@ -185,7 +185,8 @@ export default function SyncIssuesScreen() {
         // `tableName` is a raw DB string, not the finite `SyncedTableName`
         // union — a dead letter can carry a table name from a newer build than
         // this client's i18n map, so the lookup can still miss at runtime.
-        const typeLabel = (tr.settings.syncQuarantineTypes as Record<string, string>)[deadLetter.tableName] ?? "kayıt";
+        const typeLabel = (tr.settings.syncQuarantineTypes as Record<string, string>)[deadLetter.tableName]
+          ?? tr.settings.syncQuarantineTypeFallback;
         const reason = tr.settings.syncQuarantineReason[deadLetter.reason as keyof typeof tr.settings.syncQuarantineReason]
           ?? tr.settings.syncQuarantineReason.invalid_row;
         const title = tr.settings.syncQuarantineType(typeLabel);

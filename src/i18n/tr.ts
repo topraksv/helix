@@ -47,7 +47,138 @@ export const productTerms = {
 
 export const tr = {
   app: { name: productTerms.appName, tagline: "Nakit akışın, taksitlerin ve aboneliklerin tek yerde." },
-  meta: { description: "Aylık nakit akışı, taksitler ve abonelikler için çevrimdışı çalışabilen kişisel finans uygulaması." },
+  /**
+   * The KVKK notice: the disclosure Article 10 of Law 6698 requires a data
+   * controller to make before it processes anything.
+   *
+   * It lives here and is rendered by `src/app/privacy.tsx` rather than sitting
+   * in `docs/`, for a reason that is easy to get backwards: `docs/` is
+   * Git-ignored, so a notice written there is published nowhere and reachable
+   * by nobody — which is the one thing a notice must not be. It is also
+   * reachable BEFORE sign-up, because the screen that collects an e-mail
+   * address is the screen that has to disclose what happens to it.
+   *
+   * Its sections are the ones Article 10 enumerates, in that order, so a
+   * reader (or a regulator) can check the notice against the article item by
+   * item: who the controller is, what is processed and how it is collected,
+   * why, on what legal basis, to whom it is transferred, for how long it is
+   * kept, and what the data subject may demand. Numbered, because a legal text
+   * is cited by section.
+   *
+   * An article number belongs in the sentence that relies on it, never in a
+   * heading. "Haklarınız (KVKK m. 11)" asks the reader to decode a citation
+   * before they have been told anything, and the citation does no work there —
+   * it does real work inside the paragraph that says which article grants
+   * what.
+   *
+   * ADDRESSED FORMALLY, unlike every other screen in this app. The product
+   * speaks to its owner as "sen"; this document speaks to an "ilgili kişi" as
+   * "siz", because that is what a Turkish notice of rights reads like and the
+   * register is part of what makes it legible as one. The plainness is kept in
+   * the sentences rather than the pronouns: statutory terms are used exactly,
+   * and everything else is written the way it would be explained out loud.
+   *
+   * `controllerName` and `contactEmail` are the single source for who is
+   * answerable. `tests/legal-notice.test.ts` asserts the feedback function's
+   * own recipient matches `contactEmail`, so the address a person is told to
+   * write to is the address that is actually read.
+   *
+   * Every factual claim below was checked against the migrations and the code
+   * that writes each store. It is not legal advice.
+   */
+  legal: {
+    title: "Aydınlatma Metni",
+    subtitle: "Kişisel verilerinizin nasıl işlendiğine ilişkin bilgilendirme",
+    updated: "Son güncelleme: 3 Eylül 2026",
+    controllerName: "Ömer Toprak Şavlı",
+    contactEmail: "topraksavli@hotmail.com",
+    intro: "Bu metin, 6698 sayılı Kişisel Verilerin Korunması Kanunu'nun 10. maddesi uyarınca hazırlanmıştır. Helix'i kullandığınızda hangi kişisel verilerinizin işlendiğini, bunların hangi amaçla ve hangi hukuki sebebe dayanarak işlendiğini, kimlere aktarıldığını, ne kadar süreyle saklandığını ve Kanunun size tanıdığı hakları açıklar.",
+
+    controllerTitle: "1. Veri sorumlusunun kimliği",
+    controllerBody: (name: string, email: string) =>
+      `Kanun anlamında veri sorumlusu, Helix'i geliştiren gerçek kişi ${name}'dir. Helix bir şirket tüzel kişiliği bünyesinde yürütülmemektedir; bu nedenle veri sorumlusu temsilcisi ve irtibat kişisi bulunmamaktadır. Her türlü talep ve başvurunuz için: ${email}`,
+
+    collectedTitle: "2. İşlenen kişisel verileriniz",
+    collectedIntro: "Aşağıdaki veriler dışında hiçbir kişisel veri işlenmemektedir. Uygulamada reklam, analitik, davranışsal takip veya profilleme amacıyla veri toplayan hiçbir bileşen bulunmamaktadır.",
+    collected: [
+      "**Kimlik ve iletişim verisi:** Yalnızca e-posta adresiniz ve şifrenizin doğrulama özeti (parolanın kendisi hiçbir yerde saklanmaz). Bunlar kimlik doğrulama hizmetinde tutulur. Hesap oluşturmadan kullandığınızda bu veriler hiç oluşmaz.",
+      "**Finansal veriler:** Kaydettiğiniz işlemler, kategoriler, bütçeler, taksitler, abonelikler, düzenli gelirler, yatırımlar, hücre notları ve döviz kuru anlık görüntüleri. Bunlar sizin girdiğiniz verilerdir; hiçbir banka, kart veya ödeme kuruluşuna bağlanılmaz ve hiçbir hesap hareketi otomatik olarak çekilmez.",
+      "**Belge verisi:** İşlemlerinize eklediğiniz fiş, fatura ve garanti belgeleri.",
+      "**İşlem güvenliği ve hata kaydı verisi:** Bir hata oluştuğunda; hatanın zamanı, uygulamanın hangi bölümünde oluştuğu, önem derecesi, altı sabit hata sınıfından biri, cihaz platformu, uygulama sürümü, hatanın teknik sınıf adı, hata mesajının yalnızca harflerden oluşan izi ve en çok sekiz satırlık kırpılmış yığın izi. Hata mesajının kendisi, tutar, tarih, isim, not veya herhangi bir tanımlayıcı bu kayda giremez; içinde adres, dosya yolu veya Türkçe karakter geçen bir mesaj kırpılmadan bütünüyle atılır.",
+      "**Talep ve şikâyet verisi:** Uygulama içindeki geri bildirim formuyla ilettiğiniz mesaj, seçtiğiniz kategori ve varsa eklediğiniz ekran görüntüsü.",
+    ],
+
+    methodTitle: "3. Kişisel verilerin toplanma yöntemi",
+    methodBody: "Kişisel verileriniz, tamamen otomatik olmayan yollarla ve doğrudan sizden toplanır: uygulamaya kendiniz girdiğiniz kayıtlar, kendiniz eklediğiniz belgeler ve kendiniz gönderdiğiniz geri bildirim mesajları. Yalnızca hata kayıtları, uygulamanın çalışması sırasında otomatik olarak oluşturulur. Üçüncü kişilerden veri temin edilmez, satın alınmaz ve herhangi bir veri tabanıyla eşleştirme yapılmaz.",
+
+    purposeTitle: "4. İşleme amaçları ve hukuki sebepler",
+    purposeIntro: "Her veri kategorisi yalnızca karşısında yazan amaçla ve yalnızca karşısında gösterilen hukuki sebebe dayanılarak işlenir.",
+    purposes: [
+      "**Hizmetin sunulması ve cihazlarınız arasında eşitlenmesi** — kimlik, iletişim, finansal ve belge verileri. Hukuki sebep: KVKK m. 5/2-c, bir sözleşmenin kurulması veya ifasıyla doğrudan doğruya ilgili olması.",
+      "**Hataların teşhis edilmesi ve bir güncellemenin uygulamayı bozup bozmadığının görülmesi** — işlem güvenliği ve hata kaydı verisi. Hukuki sebep: KVKK m. 5/2-f, veri sorumlusunun meşru menfaati. Bu veri, amaç için gereken en dar biçime indirgenmiş olup ilgili kişinin temel hak ve özgürlüklerine zarar vermeyecek şekilde işlenmektedir.",
+      "**Talebinizin karşılanması ve size dönüş yapılması** — talep ve şikâyet verisi. Hukuki sebep: KVKK m. 5/1, açık rızanız. Formu göndermediğiniz sürece bu veri hiç oluşmaz; gönderdikten sonra rızanızı geri almak için aynı adrese yazmanız yeterlidir.",
+    ],
+
+    transferTitle: "5. Aktarım ve yurt dışına aktarım",
+    transferIntro: "Hesap açarak kullandığınızda verileriniz, hizmetin sunulabilmesi için Türkiye dışında yerleşik hizmet sağlayıcıların sunucularında işlenir. Aktarılan alıcı grupları ve her birine aktarılan veri şunlardır:",
+    transfers: [
+      "**Supabase** — barındırma altyapısı Amazon Web Services, **Frankfurt / Almanya**. Aktarılan veri: kimlik ve iletişim, finansal veriler, belgeler ve hata kayıtları. Verilerinizin bulunduğu asıl yer burasıdır.",
+      "**Resend** — Amerika Birleşik Devletleri. Aktarılan veri: yalnızca geri bildirim mesajınız ve varsa ekran görüntünüz, e-posta olarak iletilirken.",
+      "**GitHub Pages** — Amerika Birleşik Devletleri. Aktarılan veri: web sürümünü açtığınızda oluşan bağlantı bilgisi (IP adresi, tarayıcı bilgisi). Finansal veri aktarılmaz.",
+      "**Expo (EAS)** — Amerika Birleşik Devletleri. Aktarılan veri: mobil uygulamanın güncelleme sorgusu. Finansal veri aktarılmaz.",
+    ],
+    transferNote: "Bu aktarımlar KVKK m. 9 kapsamındaki yurt dışına aktarım hükümlerine tabidir. Aktarımı istemiyorsanız uygulamayı hesap açmadan kullanabilirsiniz; bu durumda hiçbir veriniz cihazınızdan çıkmaz ve yukarıdaki alıcıların hiçbirine aktarım gerçekleşmez.",
+
+    retentionTitle: "6. Saklama ve imha",
+    retention: [
+      "**Cihazınızdaki veriler**, uygulamayı kaldırana veya çalışma alanını sıfırlayana kadar saklanır.",
+      "**Buluttaki finansal veriler ve belgeler**, hesabınızı silene kadar saklanır. Hesabınızı sildiğinizde kimliğiniz, kayıtlarınız ve belgeleriniz aynı işlemde silinir.",
+      "**Hata kayıtları en fazla 180 gün saklanır.** Bu süre bir taahhütten ibaret değildir; veritabanı tarafından uygulanır ve uygulama her eşitlemede süresi dolmuş kayıtları siler.",
+      "**Geri bildirim e-postaları**, talebiniz sonuçlandıktan sonra e-posta kutusunda kalır; silinmesini talep etmeniz hâlinde silinir.",
+    ],
+
+    rightsTitle: "7. İlgili kişi olarak haklarınız",
+    rightsIntro: "Kanunun 11. maddesi uyarınca, veri sorumlusuna başvurarak aşağıdaki taleplerde bulunma hakkına sahipsiniz:",
+    rights: [
+      "Kişisel verinizin işlenip işlenmediğini öğrenme; işlenmişse buna ilişkin bilgi talep etme.",
+      "Kişisel verinizin işlenme amacını ve bunların amacına uygun kullanılıp kullanılmadığını öğrenme.",
+      "Yurt içinde veya yurt dışında kişisel verinizin aktarıldığı üçüncü kişileri bilme.",
+      "Kişisel verinizin eksik veya yanlış işlenmiş olması hâlinde bunların düzeltilmesini isteme.",
+      "Kanunun 7. maddesinde öngörülen şartlar çerçevesinde kişisel verinizin silinmesini veya yok edilmesini isteme.",
+      "Düzeltme, silme ve yok etme işlemlerinin, kişisel verinizin aktarıldığı üçüncü kişilere bildirilmesini isteme.",
+      "İşlenen verinizin münhasıran otomatik sistemler vasıtasıyla analiz edilmesi suretiyle aleyhinize bir sonucun ortaya çıkmasına itiraz etme.",
+      "Kişisel verinizin kanuna aykırı olarak işlenmesi sebebiyle zarara uğramanız hâlinde zararın giderilmesini talep etme.",
+    ],
+
+    selfServiceTitle: "8. Başvuru beklemeden kullanabileceğiniz araçlar",
+    selfService: [
+      "**Verilerinizi indirmek için:** Ayarlar → Dışa Aktar. Tüm kayıtlarınızı okunabilir bir dosya olarak verir.",
+      "**Hesabınızı ve buluttaki verilerinizi silmek için:** Ayarlar → Hesap Güvenliği → Hesabı Sil. Kimliğiniz, kayıtlarınız ve belgeleriniz aynı işlemde silinir.",
+      "**Yalnızca bu cihazı temizlemek için:** Ayarlar → Verileri Sıfırla.",
+    ],
+
+    contactTitle: "9. Başvuru usulü",
+    contactBody: (email: string) =>
+      `Kanunun 13. maddesi uyarınca, yukarıdaki haklarınıza ilişkin taleplerinizi kimliğinizi tespit edici bilgilerle birlikte ${email} adresine iletebilirsiniz. Başvurunuz, niteliğine göre en kısa sürede ve her hâlde en geç otuz gün içinde ücretsiz olarak sonuçlandırılır. Talebiniz reddedilirse gerekçesi bildirilir. Başvurunuzun reddedilmesi, verilen cevabı yetersiz bulmanız veya süresinde cevap verilmemesi hâlinde Kişisel Verileri Koruma Kurulu'na şikâyette bulunma hakkınız saklıdır. Helix'in tek bir geliştiricisi bulunmaktadır; bu nedenle sabit bir yanıt süresi taahhüt edilmemekte, ancak kanuni süreye uyulmaya çalışılmaktadır.`,
+
+    disclaimer: "Bu metin, uygulamanın kaynak kodunda gerçekte ne yaptığını anlatır ve kodla birlikte güncellenir. Hukuki danışmanlık niteliği taşımaz.",
+
+    /* The one-line version, shown where an account is about to be created. It
+       has to carry the one fact a person cannot undo by reading the notice
+       afterwards: creating an account is what starts the transfer abroad. */
+    signUpNotice: "Hesap oluşturduğunuzda e-posta adresiniz ve kayıtlarınız Almanya'daki sunucularda işlenir.",
+    readNotice: "Aydınlatma Metnini Oku",
+  },
+  meta: {
+    /* The document title, which is also the search result and the shared-link
+       headline. It was "Helix" alone: a word that says nothing to anyone who
+       has not already used the app, in the one line a stranger reads first. */
+    title: "Helix: Bütçe, Abonelikler ve Yatırımlar",
+    description: "Aylık nakit akışı, taksitler ve abonelikler için çevrimdışı çalışabilen kişisel finans uygulaması.",
+    /* Longer than `description` has room for, because a link preview card is
+       read on its own with none of the page around it. */
+    social: "Paranın bu ay nerede olduğunu ve ay sonunda nerede olacağını tek ekranda gösterir. Taksitler, abonelikler, düzenli gelirler ve yatırımlar bir arada; çevrimdışı çalışır, cihazların arasında eşitlenir.",
+  },
   // `tabs` is the accessible/screen name of each tab, `tabBar` its short footer
   // label. They stay in step: the footer says "Durum", so the tab announces
   // "Durum" too — a screen reader must not name a screen the UI never calls it.
@@ -60,6 +191,16 @@ export const tr = {
     total: "Toplam", note: "Not", none: "Kategorisiz", retry: "Tekrar dene",
     confirm: "Onayla", skip: "Atla", all: "Tümü", active: "Aktif", inactive: "Pasif",
     operationSummary: "Bu adımda ne olur", operationPlan: "İşlem planı",
+    /** `OperationSignature`'s default support line, per operation kind. A
+     *  caller that passes its own `detail` overrides these.
+     *
+     *  The `…Detail` suffix is load-bearing: `design-system-contract` looks a
+     *  label up by its LEAF key across the whole file, so a sentence keyed
+     *  `delete` here would be read as the casing of the "Sil" button. */
+    operationSupportFreezeDetail: "Geçici bir durum; yeniden girişle devam edebilirsin.",
+    operationSupportDeleteDetail: "Bu işlem geri alınamaz.",
+    operationSupportSignOutDetail: "Oturum kapanır; hesabın silinmez.",
+    operationSupportDefaultDetail: "Çalışma alanına güvenle dön.",
     selectAll: "Tümünü seç", clearAll: "Tümünü bırak",
     amountLimit: "Bu tutar desteklenen sınırı aşıyor. En fazla ₺999.999.999.999,99 girebilirsin.",
     optionalHint: "Opsiyonel",
@@ -149,7 +290,22 @@ export const tr = {
   } as Record<string, string>,
   errors: {
     title: "Hata",
-    database: "Veritabanı hatası",
+    /* The boot screen, which is the one surface a person reaches when the app
+       could not start at all. It used to say `database: "Veritabanı hatası"`,
+       which named the layer that failed instead of what happened, and left the
+       only two useful actions — close the other tab, or try again — for the
+       reader to guess between. Both surfaces that showed it now say which of
+       the two happened, so the key itself is gone rather than left orphaned. */
+    bootBusyTitle: "Helix başka bir sekmede açık",
+    bootBusyHint: "Verilerinde bir sorun yok. Helix aynı anda tek sekmede çalışabilir. Diğer sekmeyi kapat; bu sayfa kendiliğinden açılır.",
+    /* Shown once another tab has actually ANSWERED, which is the state where
+       reloading provably cannot help. "Burada Aç" was here and was a promise
+       the button could not keep: pressing it reloaded into this same screen. */
+    bootBusyHintHeld: "Helix şu anda başka bir sekmede açık ve veritabanını orası tutuyor. Bu sayfanın açılabilmesi için önce o sekmeyi kapatman gerekiyor — kapattığın anda burası kendiliğinden açılır, bir şeye basmana gerek yok.",
+    bootBusyBlocked: "Diğer Sekmede Açık",
+    bootBusyAction: "Yeniden Dene",
+    bootFailedTitle: "Çalışma alanı açılamadı",
+    bootFailedHint: "Kayıtların cihazında duruyor. Tekrar denemek çoğu zaman yeterli olur; sürerse uygulamayı kapatıp açmayı dene.",
     supabaseNotConfigured: "Supabase yapılandırılmadı",
     signUpFailed: "Kayıt oluşturulamadı",
     invalidBackupFile: "Geçersiz yedek dosyası",
@@ -563,14 +719,21 @@ export const tr = {
   },
   attachments: {
     title: "Belgeler",
-    hint: "Fiş, fatura veya garanti belgesini bu işlemin yanında sakla. Dosyalar yalnızca bu cihazda durur; eşitlenmez.",
+    hint: "Fiş, fatura veya garanti belgesini bu işlemin yanında sakla. Dosyalar hesabına eşitlenir; diğer cihazlarında da açabilirsin.",
+    hintLocal: "Fiş, fatura veya garanti belgesini bu işlemin yanında sakla. Bulut eşitlemesi kapalı olduğu için dosyalar yalnızca bu cihazda kalır.",
     add: "Belge Ekle",
     empty: "Bu işleme bağlı belge yok.",
     open: "Aç",
     remove: "Sil",
     removed: "Belge silindi.",
-    unavailable: "Bu belge başka bir cihazda eklendi; dosyanın kendisi burada yok.",
-    otherDevice: "Başka cihazda",
+    /* Two readings of the same tile, because the cause differs and so does
+       what the owner can do about it. With a project, the file is on its way
+       and waiting is the answer. Without one, nothing will ever bring it and
+       saying "not downloaded yet" would be a promise the app cannot keep. */
+    unavailable: "Bu belge henüz bu cihaza inmedi. İnternete bağlandığında kendiliğinden iner.",
+    unavailableLocal: "Bu belge başka bir cihazda eklendi. Bulut eşitlemesi kapalı olduğu için dosya buraya gelmez.",
+    otherDevice: "İnmedi",
+    otherDeviceLocal: "Başka cihazda",
     /* Shown beside a ledger row, so it says what the row HAS rather than what
        the panel is called. Short: it sits in a wrapping badge cluster. */
     onTransaction: "Belge var",
@@ -1243,6 +1406,9 @@ export const tr = {
     syncQuarantineEmptyHint: "Bekleyen her kayıt buluta gönderildi.",
     syncQuarantineEmptyLocal: "Bulut senkronu kapalı; kayıtların yalnızca bu cihazda tutuluyor.",
     syncQuarantineTypes,
+    /** What a quarantined row is called when `syncQuarantineTypes` has no
+     *  entry for it — a dead letter can name a table a newer build added. */
+    syncQuarantineTypeFallback: "kayıt",
     columnVisible: "Mali Tablo'da göster",
     deleteCategoryTitle: "Kalemi sil",
     deleteCategoryBody: (count: number) =>
@@ -1569,7 +1735,11 @@ export const tr = {
     s6Title: "Yatırımlar",
     s6Body: "Altın, döviz, fon, hisse ve BES'i tek yerde topla. Önce ürününü tanımlarsın — bu adımda para hareket etmez. Zaten sahip olduğun bir yatırımı eklersen serbest bakiyenden düşmez; alış yaparsan düşer, satarsan geri döner. Ortalama maliyetini ve gerçekleşen kârını Helix hesaplar; serbest bakiyeni istediğinde Mali Tablo'ya aktarırsın.",
     s7Title: "Her Cihazda, Çevrimdışı da",
-    s7Body: "Her şey önce cihazına kaydedilir; internet olmasa da çalışır. Aynı hesapla girdiğin telefon ve bilgisayarında otomatik senkronlanır. Eski Excel'ini içe aktarabilir, verini istediğinde yedekleyebilirsin. Bakiyen hesabınla tutmuyorsa Bakiye Düzeltme ile tek adımda eşitlersin.",
+    /* The slide that promises "it syncs" is where the shape of that promise
+       belongs. Documents follow the ledger now (spec 3.1c), but the backup
+       file still carries only their record — someone who reads this slide and
+       then relies on a backup to move devices would find the receipts gone. */
+    s7Body: "Her şey önce cihazına kaydedilir; internet olmasa da çalışır. Aynı hesapla girdiğin telefon ve bilgisayarında otomatik senkronlanır. İşlemlere eklediğin fiş ve faturalar da eşitlenir; onları da her cihazından açabilirsin. Yalnız yedek dosyası belgelerin kaydını taşır, içeriğini taşımaz. Eski Excel'ini içe aktarabilir, verini istediğinde yedekleyebilirsin. Bakiyen hesabınla tutmuyorsa Bakiye Düzeltme ile tek adımda eşitlersin.",
     next: "Devam",
     start: "Başlayalım",
     skip: "Geç",

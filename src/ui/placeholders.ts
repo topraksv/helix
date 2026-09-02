@@ -25,7 +25,7 @@
  *    picked once and held — the feature still works, it simply stops moving.
  */
 
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useState, useSyncExternalStore } from "react";
 import { tr } from "../i18n/tr";
 import { useReducedMotion } from "./motion";
 
@@ -77,14 +77,6 @@ function getTick(): number {
   return tick;
 }
 
-/** Test seam: stop the shared clock and forget its subscribers. */
-export function resetPlaceholderTicker(): void {
-  if (timer != null) clearInterval(timer);
-  timer = null;
-  tickListeners.clear();
-  tick = 0;
-}
-
 function useTick(active: boolean): number {
   const subscribe = active ? subscribeTick : () => () => {};
   return useSyncExternalStore(subscribe, getTick, getTick);
@@ -110,25 +102,4 @@ export function useRotatingPlaceholder(
   const offset = useTick(rotating);
   const sample = pool[(start + offset) % pool.length] ?? "";
   return opts?.prefix === false ? sample : tr.placeholders.example(sample);
-}
-
-/**
- * Hold the shared clock while the user is on this screen but not looking at
- * examples — a screen that has scrolled its forms out of view, or one that is
- * behind a modal. Callers pass `false` and every field on the page stops.
- */
-export function usePlaceholderRotationPaused(paused: boolean): void {
-  useEffect(() => {
-    if (!paused || timer == null) return;
-    clearInterval(timer);
-    timer = null;
-    return () => {
-      if (timer == null && tickListeners.size > 0) {
-        timer = setInterval(() => {
-          tick += 1;
-          for (const notify of tickListeners) notify();
-        }, ROTATE_MS);
-      }
-    };
-  }, [paused]);
 }
