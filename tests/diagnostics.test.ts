@@ -17,13 +17,21 @@ describe("diagnostic redaction categories", () => {
       new Date("2026-07-18T10:00:00.000Z"),
     );
 
-    expect(event).toEqual({
+    expect(event).toMatchObject({
       at: "2026-07-18T10:00:00.000Z",
       scope: "app",
       severity: "error",
       code: "network",
+      name: "Error",
+      // The message carries an address, so it is refused whole rather than
+      // trimmed to the part that looks safe.
+      fingerprint: null,
     });
-    expect(Object.keys(event).sort()).toEqual(["at", "code", "scope", "severity"]);
+    // Migration 33's columns and nothing else. `frames` is left out of the
+    // comparison because its value is this test file's own call stack.
+    expect(Object.keys(event).sort()).toEqual(
+      ["at", "code", "fingerprint", "frames", "name", "scope", "severity"],
+    );
     expect(JSON.stringify(event)).not.toMatch(/125000|private|failed to fetch|user-example-com/i);
   });
 });

@@ -40,7 +40,7 @@ const EVENTS_KEY = "helix.diagnostic_events.v1";
 const UPLOADED_KEY = "helix.diagnostic_events.uploaded.v1";
 
 const event = (at: string, scope = "sync.push", code = "network") =>
-  ({ at, scope, severity: "error" as const, code: code as "network" });
+  ({ at, scope, severity: "error" as const, code: code as "network", name: null, fingerprint: null, frames: null });
 
 function observeNextSet(): Promise<{ key: string; value: string }> {
   return new Promise((resolve) => { nextSetObserver = resolve; });
@@ -93,9 +93,10 @@ describe("uploadDiagnostics", () => {
     const batches: DiagnosticUpload[][] = [];
     const count = await uploadDiagnostics(port(batches), "user-1", "ios", "1.0.0");
     expect(count).toBe(2);
+    const row = { scope: "sync.push", severity: "error", code: "network", platform: "ios", app_version: "1.0.0", error_name: null, fingerprint: null, frames: null };
     expect(batches[0]).toEqual([
-      { user_id: "user-1", occurred_at: "2026-08-01T00:00:00.000Z", scope: "sync.push", severity: "error", code: "network", platform: "ios", app_version: "1.0.0" },
-      { user_id: "user-1", occurred_at: "2026-08-02T00:00:00.000Z", scope: "sync.push", severity: "error", code: "network", platform: "ios", app_version: "1.0.0" },
+      { user_id: "user-1", occurred_at: "2026-08-01T00:00:00.000Z", ...row },
+      { user_id: "user-1", occurred_at: "2026-08-02T00:00:00.000Z", ...row },
     ]);
   });
 
@@ -156,10 +157,153 @@ describe("uploadDiagnostics", () => {
     expect(row.scope).toBe("sync.push");
     expect(row.code).toBe("network");
     expect(row.platform).toBe("android");
-    // No message, no stack, nowhere.
+    // The exact column set this path may write. It is asserted rather than
+    // sampled because the point of the list is that nothing joins it quietly:
+    // migration 33 widened it once, deliberately, and the CHECK constraints on
+    // the three new columns are the database's half of the same argument.
     expect(Object.keys(row).sort()).toEqual(
-      ["app_version", "code", "occurred_at", "platform", "scope", "severity", "user_id"],
+      ["app_version", "code", "error_name", "fingerprint", "frames", "occurred_at", "platform", "scope", "severity", "user_id"],
     );
-    expect(JSON.stringify(row)).not.toContain("offline");
+    // The message survives only as its letter runs, which is what makes one
+    // network failure tellable from another. `Error` is the constructor name.
+    expect(row.error_name).toBe("Error");
+    expect(row.fingerprint).toBe("fetch failed offline");
+  });
+});
+
+/**
+ * The two ways this path meets a version of itself that it does not match:
+ * a ring written before migration 33's fields existed, and a project that has
+ * not taken migration 33 yet. Both have to keep the incident.
+ */
+describe("uploadDiagnostics across a schema change", () => {
+  it("uploads a ring recorded before the error fields existed", async () => {
+    // Exactly what `recordDiagnostic` wrote until migration 33: four keys, no
+    // name, no fingerprint, no frames. Dropping it on upgrade would throw away
+    // the twelve incidents most likely to explain the upgrade.
+    store.set(EVENTS_KEY, JSON.stringify([
+      { at: "2026-08-01T00:00:00.000Z", scope: "sync.push", severity: "error", code: "network" },
+    ]));
+    const batches: DiagnosticUpload[][] = [];
+
+    expect(await uploadDiagnostics(port(batches), "user-1", "ios", "1.0.0")).toBe(1);
+    expect(batches[0]![0]).toMatchObject({ error_name: null, fingerprint: null, frames: null });
+  });
+
+  it("retries without the new columns when the project has not taken migration 33", async () => {
+    store.set(EVENTS_KEY, JSON.stringify([
+      { at: "2026-08-01T00:00:00.000Z", scope: "sync.push", severity: "error", code: "network",
+        name: "TypeError", fingerprint: "cannot read", frames: "run@engine.ts:1:2" },
+    ]));
+    const batches: DiagnosticUpload[][] = [];
+    const rejectOnce = {
+      async upload(batch: DiagnosticUpload[]) {
+        if (batches.length === 0) {
+          batches.push(batch);
+          throw Object.assign(new Error("Could not find the 'frames' column"), { code: "PGRST204" });
+        }
+        batches.push(batch);
+      },
+    };
+
+    expect(await uploadDiagnostics(rejectOnce, "user-1", "ios", "1.0.0")).toBe(1);
+    expect(batches).toHaveLength(2);
+    expect(batches[0]![0]).toHaveProperty("frames", "run@engine.ts:1:2");
+    // The narrowed retry sends the row the pre-33 table will accept, and the
+    // watermark advances, so the incident is recorded once and not re-sent.
+    expect(Object.keys(batches[1]![0]!)).not.toContain("frames");
+    expect(store.get(UPLOADED_KEY)).toBe("2026-08-01T00:00:00.000Z");
+  });
+
+  it("does not narrow the row for a failure that is not a missing column", async () => {
+    store.set(EVENTS_KEY, JSON.stringify([
+      { at: "2026-08-01T00:00:00.000Z", scope: "sync.push", severity: "error", code: "network" },
+    ]));
+    let attempts = 0;
+    const offline = {
+      async upload() {
+        attempts += 1;
+        throw new Error("network request failed");
+      },
+    };
+
+    expect(await uploadDiagnostics(offline, "user-1", "ios", "1.0.0")).toBe(0);
+    expect(attempts).toBe(1);
+    expect(store.get(UPLOADED_KEY)).toBeUndefined();
+  });
+});
+
+/**
+ * What migration 33 is allowed to have widened.
+ *
+ * These run through `recordDiagnostic` rather than the pure redactors so they
+ * assert the shipping path: the ring, the guard that reads it back, and the row
+ * the port is handed. A redactor that is correct in isolation and bypassed here
+ * would leave the same record behind.
+ */
+describe("what reaches the server after migration 33", () => {
+  const uploadOf = async (error: unknown): Promise<DiagnosticUpload> => {
+    store.clear();
+    const recorded = observeNextSet();
+    recordDiagnostic("sync.push", "error", error);
+    await recorded;
+    const batches: DiagnosticUpload[][] = [];
+    await uploadDiagnostics(port(batches), "user-1", "ios", "1.0.0");
+    return batches[0]![0]!;
+  };
+
+  it("carries no amount, because digits cannot survive the tokenizer", async () => {
+    const row = await uploadOf(new Error("insert failed: amount_minor=125000 exceeds 9007199254740991"));
+    expect(row.fingerprint).toBe("insert failed amount minor exceeds");
+    expect(JSON.stringify(row)).not.toMatch(/125000|9007199254740991/);
+  });
+
+  it("refuses the whole message when it carries an address", async () => {
+    const row = await uploadOf(new Error("sign-in rejected for owner@example.com"));
+    expect(row.fingerprint).toBeNull();
+    expect(JSON.stringify(row)).not.toMatch(/owner|example/);
+  });
+
+  it("refuses the whole message when it carries this app's own Turkish content", async () => {
+    const row = await uploadOf(new Error("kategori bulunamadı: Market Alışverişi"));
+    expect(row.fingerprint).toBeNull();
+    expect(JSON.stringify(row)).not.toMatch(/Market|kategori/);
+  });
+
+  it("refuses the whole message when it carries a path", async () => {
+    const row = await uploadOf(new Error("cannot open /Users/someone/helix/db.sqlite"));
+    expect(row.fingerprint).toBeNull();
+    expect(JSON.stringify(row)).not.toContain("someone");
+  });
+
+  it("keeps stack frames as file and position, never the directories above", async () => {
+    const error = new Error("boom");
+    error.stack = [
+      "Error: boom",
+      "    at pullAndMerge (/Users/someone/helix/src/sync/engine.ts:291:17)",
+      "    at /Users/someone/helix/src/sync/engine.ts:401:11",
+      "    at Object.<anonymous> (address at /var/containers/Bundle/main.jsbundle:1:284713)",
+    ].join("\n");
+    const row = await uploadOf(error);
+
+    expect(row.frames).toBe(
+      "pullAndMerge@engine.ts:291:17|engine.ts:401:11|Object.<anonymous>@main.jsbundle:1:284713",
+    );
+    expect(row.frames).not.toContain("someone");
+    expect(row.frames).not.toContain("Users");
+  });
+
+  it("holds every column inside the shape its CHECK constraint accepts", async () => {
+    const error = new Error("a".repeat(400));
+    error.stack = ["Error", ...Array.from({ length: 40 }, (_, i) => `    at fn${i} (/x/file${i}.ts:${i}:1)`)].join("\n");
+    const row = await uploadOf(error);
+
+    expect(row.error_name).toMatch(/^[A-Za-z][A-Za-z0-9_]{0,39}$/);
+    expect(row.fingerprint!.length).toBeLessThanOrEqual(120);
+    expect(row.fingerprint).toMatch(/^[A-Za-z]+( [A-Za-z]+)*$/);
+    expect(row.frames!.length).toBeLessThanOrEqual(600);
+    expect(row.frames).toMatch(/^[A-Za-z0-9_.$<>@:|-]+$/);
+    // Eight frames, so a deep stack cannot become the whole row.
+    expect(row.frames!.split("|")).toHaveLength(8);
   });
 });

@@ -5,9 +5,10 @@
  * The ring stayed device-local for a long time, which meant a crash on the
  * owner's phone produced exactly one signal: the owner noticing. A failure that
  * only happens on iOS, or only offline, or only after a migration, left nothing
- * anyone could read. `uploadDiagnostics` closes that without changing what is
- * recorded: the same four fields, the same redaction, into a table whose CHECK
- * constraints refuse anything wider (`supabase/migrations/…_diagnostic_events`).
+ * anyone could read. `uploadDiagnostics` closes that, into a table whose CHECK
+ * constraints refuse anything wider than the shape `src/domain/diagnostics.ts`
+ * builds (`supabase/migrations/…_diagnostic_events`, extended by migration 33
+ * with the error name, the message fingerprint and the redacted frames).
  *
  * Nothing here may record a diagnostic of its own. A failing upload that logged
  * its own failure would grow the ring on every attempt and then try to upload
@@ -53,6 +54,38 @@ export interface DiagnosticUpload {
   code: DiagnosticEvent["code"];
   platform: "ios" | "android" | "web";
   app_version: string;
+  error_name: string | null;
+  fingerprint: string | null;
+  frames: string | null;
+}
+
+/** The three columns migration 33 adds. Split out because a client can reach a
+ *  project that has not taken that migration yet, and then has to send the row
+ *  without them rather than lose the incident. */
+const EXTENDED_COLUMNS = ["error_name", "fingerprint", "frames"] as const;
+
+/**
+ * Whether PostgREST refused the row because a column is not there.
+ *
+ * `PGRST204` is "column not found in the schema cache". It is the one refusal
+ * worth retrying, and it is worth retrying because the alternative is silent:
+ * `uploadDiagnostics` swallows its failures by design, so a client that shipped
+ * ahead of migration 33 would simply stop recording incidents anywhere, which
+ * is the exact failure this table exists to prevent.
+ */
+function isUnknownColumnError(error: unknown): boolean {
+  const code = (error as { code?: unknown } | null)?.code;
+  if (code === "PGRST204") return true;
+  const message = error instanceof Error ? error.message : String(error ?? "");
+  return EXTENDED_COLUMNS.some((column) => message.includes(column)) && /column|schema cache/i.test(message);
+}
+
+function withoutExtendedColumns(rows: DiagnosticUpload[]): DiagnosticUpload[] {
+  return rows.map((row) => {
+    const narrowed = { ...row };
+    for (const column of EXTENDED_COLUMNS) delete (narrowed as Record<string, unknown>)[column];
+    return narrowed;
+  });
 }
 
 export interface DiagnosticUploadPort {
@@ -90,7 +123,7 @@ export async function uploadDiagnostics(
     const events = Array.isArray(parsed) ? parsed.filter(isDiagnosticEvent) : [];
     const pending = pendingDiagnostics(events, await kv.get(UPLOADED_KEY));
     if (pending.length === 0) return 0;
-    await port.upload(pending.map((event) => ({
+    const rows = pending.map((event) => ({
       user_id: userId,
       occurred_at: event.at,
       scope: event.scope,
@@ -98,7 +131,19 @@ export async function uploadDiagnostics(
       code: event.code,
       platform,
       app_version: appVersion,
-    })));
+      // `?? null` rather than a direct read: a ring written by a build from
+      // before these fields existed is still a valid ring, and losing twelve
+      // real incidents to a schema change would be the worse trade.
+      error_name: event.name ?? null,
+      fingerprint: event.fingerprint ?? null,
+      frames: event.frames ?? null,
+    }));
+    try {
+      await port.upload(rows);
+    } catch (error) {
+      if (!isUnknownColumnError(error)) throw error;
+      await port.upload(withoutExtendedColumns(rows));
+    }
     await kv.set(UPLOADED_KEY, pending[pending.length - 1]!.at);
     return pending.length;
   } catch {
@@ -118,6 +163,15 @@ export async function resetDiagnosticUploads(): Promise<void> {
   }
 }
 
+/** Absent, null, or a string no longer than the column will take.
+ *
+ *  Absent is the older ring; the length bound is why a corrupt entry cannot
+ *  become an insert the database refuses. A refused insert fails the whole
+ *  batch, so one bad entry would otherwise silence every incident behind it. */
+function isOptionalText(value: unknown, max: number): boolean {
+  return value == null || (typeof value === "string" && value.length <= max);
+}
+
 function isDiagnosticEvent(value: unknown): value is DiagnosticEvent {
   if (!value || typeof value !== "object") return false;
   const event = value as Partial<DiagnosticEvent>;
@@ -125,6 +179,9 @@ function isDiagnosticEvent(value: unknown): value is DiagnosticEvent {
     typeof event.at === "string" &&
     typeof event.scope === "string" &&
     (event.severity === "warning" || event.severity === "error") &&
-    ["network", "auth", "database", "validation", "cancelled", "unknown"].includes(event.code ?? "")
+    ["network", "auth", "database", "validation", "cancelled", "unknown"].includes(event.code ?? "") &&
+    isOptionalText(event.name, 40) &&
+    isOptionalText(event.fingerprint, 120) &&
+    isOptionalText(event.frames, 600)
   );
 }
