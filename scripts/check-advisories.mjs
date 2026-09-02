@@ -16,6 +16,7 @@
  * describes.
  */
 import { execFileSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 
 /**
  * Every field here is a claim someone checked, not a note someone copied.
@@ -40,6 +41,94 @@ const ACKNOWLEDGED = [
     recheckAfter: "2026-09-19",
     reason:
       "image-size@1.2.1 remains only in Metro's build chain: `npm ls image-size --all` resolves the single path expo -> @expo/metro -> metro, and the audit reports one install node (metro/node_modules/image-size). Re-verified 2026-08-19 that image-size is absent from the production web export. npm offers no fix other than downgrading expo a major version, and image-size@2.0.2 was tested earlier but rejected because Expo Metro failed on its unmatched.png asset path. Recheck the package and the export before expiry.",
+  },
+  {
+    id: "GHSA-c83g-rgw3-j3cx",
+    package: "browserslist",
+    checkedOn: "2026-09-02",
+    expectedPaths: [],
+    recheckAfter: "2026-10-02",
+    reason:
+      "browserslist@4.28.5 is build-time only: `npm ls browserslist --all` resolves it through babel-preset-expo (compilation targets) and expo -> @expo/metro-config, and both advisories need attacker-controlled input — a hostile browserslist-stats.json, or unbounded distinct queries — neither of which exists in a build whose only query source is this repository's own config. Verified 2026-09-02 that the string `browserslist` appears in no file of the shipped web bundle. A fix exists at 4.28.8, but `npm audit fix` reaches it only by moving 197 packages including expo 54.0.36 -> 54.0.37 and six @react-navigation packages, which `dependabot.yml` forbids outside a coordinated, compatibility-tested SDK upgrade. Take it in that upgrade, not here. The audit reports no direct root for this advisory, so expectedPaths is empty and the tree-moved check cannot help; re-read `npm ls` at the recheck.",
+  },
+  {
+    id: "GHSA-73wf-gq98-2v4g",
+    package: "browserslist",
+    checkedOn: "2026-09-02",
+    expectedPaths: [],
+    recheckAfter: "2026-10-02",
+    reason:
+      "browserslist@4.28.5 is build-time only: `npm ls browserslist --all` resolves it through babel-preset-expo (compilation targets) and expo -> @expo/metro-config, and both advisories need attacker-controlled input — a hostile browserslist-stats.json, or unbounded distinct queries — neither of which exists in a build whose only query source is this repository's own config. Verified 2026-09-02 that the string `browserslist` appears in no file of the shipped web bundle. A fix exists at 4.28.8, but `npm audit fix` reaches it only by moving 197 packages including expo 54.0.36 -> 54.0.37 and six @react-navigation packages, which `dependabot.yml` forbids outside a coordinated, compatibility-tested SDK upgrade. Take it in that upgrade, not here. The audit reports no direct root for this advisory, so expectedPaths is empty and the tree-moved check cannot help; re-read `npm ls` at the recheck.",
+  },
+  {
+    id: "GHSA-5jgf-p345-68v8",
+    package: "fast-uri",
+    checkedOn: "2026-09-02",
+    expectedPaths: [],
+    recheckAfter: "2026-10-02",
+    reason:
+      "fast-uri@3.1.5 reaches this repository through exactly one path: `npm ls fast-uri --all` gives @stryker-mutator/core -> ajv -> fast-uri. Stryker is a devDependency that runs mutation testing in CI and is never bundled, so all four advisories — SSRF and host confusion in URI normalisation — describe a parser that never sees a URI from anywhere but a JSON schema in the mutation config. Verified 2026-09-02 that the string `fast-uri` appears in no file of the shipped web bundle. The fixed line is 3.1.7, reachable only through the same 197-package `npm audit fix` that moves expo, which `dependabot.yml` forbids outside a coordinated SDK upgrade. The audit reports no direct root, so expectedPaths is empty and the tree-moved check cannot help; re-read `npm ls` at the recheck.",
+  },
+  {
+    id: "GHSA-f65p-4m7j-42xc",
+    package: "fast-uri",
+    checkedOn: "2026-09-02",
+    expectedPaths: [],
+    recheckAfter: "2026-10-02",
+    reason:
+      "fast-uri@3.1.5 reaches this repository through exactly one path: `npm ls fast-uri --all` gives @stryker-mutator/core -> ajv -> fast-uri. Stryker is a devDependency that runs mutation testing in CI and is never bundled, so all four advisories — SSRF and host confusion in URI normalisation — describe a parser that never sees a URI from anywhere but a JSON schema in the mutation config. Verified 2026-09-02 that the string `fast-uri` appears in no file of the shipped web bundle. The fixed line is 3.1.7, reachable only through the same 197-package `npm audit fix` that moves expo, which `dependabot.yml` forbids outside a coordinated SDK upgrade. The audit reports no direct root, so expectedPaths is empty and the tree-moved check cannot help; re-read `npm ls` at the recheck.",
+  },
+  {
+    id: "GHSA-fph4-wmhf-6fwf",
+    package: "fast-uri",
+    checkedOn: "2026-09-02",
+    expectedPaths: [],
+    recheckAfter: "2026-10-02",
+    reason:
+      "fast-uri@3.1.5 reaches this repository through exactly one path: `npm ls fast-uri --all` gives @stryker-mutator/core -> ajv -> fast-uri. Stryker is a devDependency that runs mutation testing in CI and is never bundled, so all four advisories — SSRF and host confusion in URI normalisation — describe a parser that never sees a URI from anywhere but a JSON schema in the mutation config. Verified 2026-09-02 that the string `fast-uri` appears in no file of the shipped web bundle. The fixed line is 3.1.7, reachable only through the same 197-package `npm audit fix` that moves expo, which `dependabot.yml` forbids outside a coordinated SDK upgrade. The audit reports no direct root, so expectedPaths is empty and the tree-moved check cannot help; re-read `npm ls` at the recheck.",
+  },
+  {
+    id: "GHSA-jqff-g426-hqxp",
+    package: "fast-uri",
+    checkedOn: "2026-09-02",
+    expectedPaths: [],
+    recheckAfter: "2026-10-02",
+    reason:
+      "fast-uri@3.1.5 reaches this repository through exactly one path: `npm ls fast-uri --all` gives @stryker-mutator/core -> ajv -> fast-uri. Stryker is a devDependency that runs mutation testing in CI and is never bundled, so all four advisories — SSRF and host confusion in URI normalisation — describe a parser that never sees a URI from anywhere but a JSON schema in the mutation config. Verified 2026-09-02 that the string `fast-uri` appears in no file of the shipped web bundle. The fixed line is 3.1.7, reachable only through the same 197-package `npm audit fix` that moves expo, which `dependabot.yml` forbids outside a coordinated SDK upgrade. The audit reports no direct root, so expectedPaths is empty and the tree-moved check cannot help; re-read `npm ls` at the recheck.",
+  },
+];
+
+/**
+ * Dependencies the registry audit cannot see, and the review that replaces it.
+ *
+ * `npm audit` and Dependabot both work from the npm registry. A dependency
+ * installed from a tarball URL has no registry record to match, so it is not
+ * that it comes back clean — it is that nobody asked. Measured on 2026-09-02:
+ * the audit reported 25 advisories across the tree and `xlsx` was not among
+ * them, which is the same answer it would give for a version with a known
+ * critical hole.
+ *
+ * SheetJS is the deliberate case. It left npm in 2023 and publishes from its
+ * own CDN, and the package is kept on that terms rather than swapped: the
+ * spreadsheet import is the feature this app was built around. What it costs
+ * is this list.
+ *
+ * Every entry is a claim someone checked, on the same terms as ACKNOWLEDGED
+ * above. `reviewed` is the set of advisories that were read and found not to
+ * apply to the pinned version — the CLI below fetches the publisher's own page
+ * and fails on anything that is not in it, so a newly published advisory
+ * reaches the owner the same week rather than whenever somebody thinks to look.
+ */
+const UNAUDITED = [
+  {
+    package: "xlsx",
+    version: "0.20.3",
+    advisories: "https://cdn.sheetjs.com/advisories/",
+    reviewed: ["CVE-2023-30533", "CVE-2024-22363"],
+    checkedOn: "2026-09-02",
+    recheckAfter: "2026-12-02",
+    reason:
+      "SheetJS publishes from its own CDN, so neither `npm audit` nor Dependabot has a registry record to match and neither will ever report it. Both advisories the publisher lists are fixed below the pinned version: CVE-2023-30533 (prototype pollution) in 0.19.3 and CVE-2024-22363 (ReDoS) in 0.20.2, against 0.20.3 here. The tarball is pinned by URL and by sha512 in package-lock.json, so the bytes cannot change under the pin. Re-read the publisher's advisory page and re-check the pinned version before expiry.",
   },
 ];
 
@@ -176,10 +265,157 @@ export function evaluate(report, acknowledgements = ACKNOWLEDGED, today = new Da
   return { advisories, accepted, problems };
 }
 
+/**
+ * Which installed packages came from somewhere other than the npm registry.
+ *
+ * Read from the lockfile rather than listed by hand, because the point is to
+ * notice a blind spot that GREW. A second tarball dependency added later is
+ * exactly the case a hand-written list cannot catch.
+ *
+ * @param {{ packages?: Record<string, { resolved?: string, version?: string }> }} lock
+ */
+export function unregisteredPackages(lock) {
+  const found = new Map();
+  for (const [path, entry] of Object.entries(lock.packages ?? {})) {
+    const resolved = entry?.resolved;
+    if (!path.startsWith("node_modules/") || typeof resolved !== "string") continue;
+    let host;
+    try {
+      host = new URL(resolved).host;
+    } catch {
+      continue;
+    }
+    if (host === "registry.npmjs.org") continue;
+    found.set(path.slice(path.lastIndexOf("node_modules/") + "node_modules/".length), {
+      host,
+      version: entry.version,
+      resolved,
+    });
+  }
+  return found;
+}
+
+/**
+ * The failure modes, again as data: a blind spot nobody has written down, an
+ * entry for a package that is no longer outside the registry, an entry that
+ * describes a version other than the installed one, and one past its date.
+ *
+ * @param {Map<string, { host: string, version?: string }>} unregistered
+ * @param {{ package: string, version: string, recheckAfter?: string }[]} [entries]
+ * @param {string} [today]
+ */
+export function evaluateUnaudited(unregistered, entries = UNAUDITED, today = new Date().toISOString().slice(0, 10)) {
+  const problems = [];
+  const tracked = new Map(entries.map((entry) => [entry.package, entry]));
+
+  for (const [name, installed] of unregistered) {
+    const entry = tracked.get(name);
+    if (!entry) {
+      problems.push(
+        `UNTRACKED ${name}@${installed.version} installs from ${installed.host}, not the npm registry.\n` +
+          `  Neither \`npm audit\` nor Dependabot can see it, so nothing is watching it.\n` +
+          `  Add it to UNAUDITED in this file with its advisory source and a review date.`,
+      );
+      continue;
+    }
+    if (installed.version !== entry.version) {
+      problems.push(
+        `VERSION MOVED ${name} is installed at ${installed.version}; the review covers ${entry.version}.\n` +
+          `  Read the publisher's advisories for the installed version, then update the entry.`,
+      );
+    }
+    if (entry.recheckAfter && today >= entry.recheckAfter) {
+      problems.push(
+        `EXPIRED ${name} was due for re-examination on ${entry.recheckAfter}.\n` +
+          `  Re-read the publisher's advisory page, confirm the pinned version, then move the dates forward.`,
+      );
+    }
+  }
+
+  for (const entry of entries) {
+    if (!unregistered.has(entry.package)) {
+      problems.push(
+        `STALE ${entry.package} is tracked here but no longer installs from outside the registry.\n` +
+          `  The ordinary audit covers it now. Delete the entry.`,
+      );
+    }
+  }
+
+  return problems;
+}
+
+/**
+ * Advisory identifiers on a publisher's page that nobody has read yet.
+ *
+ * Deliberately a plain scan of the fetched text for CVE identifiers rather
+ * than a parse of the page's markup: the shape of somebody else's HTML is not
+ * something this repository can hold stable, and a parser that silently
+ * matched nothing would report "no new advisories" for ever — the one answer
+ * this check must never give by accident. That is also why an empty result is
+ * treated as a failure by the caller.
+ *
+ * @param {string} pageText
+ * @param {readonly string[]} reviewed
+ */
+export function newAdvisories(pageText, reviewed) {
+  const seen = [...new Set(pageText.match(/CVE-\d{4}-\d{4,7}/g) ?? [])];
+  return { seen, unreviewed: seen.filter((id) => !reviewed.includes(id)) };
+}
+
+/**
+ * Read a publisher's advisory page and say what has appeared on it.
+ *
+ * Fails closed, in three directions. A page that will not load is not "no news"
+ * — it is no answer, and a security check that passes when it cannot reach its
+ * source is worse than not having it. A page that yields no identifiers at all
+ * means its shape changed under the scan, which reads identically to "nothing
+ * is wrong" and must not. And anything unreviewed fails by definition.
+ */
+async function reviewPublisherAdvisories(entry) {
+  let text;
+  try {
+    const response = await fetch(entry.advisories, { redirect: "follow" });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    text = await response.text();
+  } catch (error) {
+    return [
+      `UNREACHABLE ${entry.package}: could not read ${entry.advisories} (${error}).\n` +
+        `  Nothing is watching this dependency, so this cannot be treated as clean.`,
+    ];
+  }
+  const { seen, unreviewed } = newAdvisories(text, entry.reviewed);
+  if (seen.length === 0) {
+    return [
+      `UNREADABLE ${entry.package}: ${entry.advisories} listed no advisory identifiers.\n` +
+        `  The page's shape changed, and an empty scan reads exactly like a clean one.\n` +
+        `  Read it by hand and adjust the scan.`,
+    ];
+  }
+  if (unreviewed.length > 0) {
+    return [
+      `NEW ADVISORY ${entry.package}: ${unreviewed.join(", ")} appeared on ${entry.advisories}.\n` +
+        `  Read it, check whether ${entry.version} is affected, upgrade if it is,\n` +
+        `  then add the identifier to \`reviewed\` with the dates moved forward.`,
+    ];
+  }
+  return [];
+}
+
 // Only audit when run as a command; importing this file must not shell out.
 if (process.argv[1] && import.meta.url.endsWith(process.argv[1].split("/").pop())) {
   const report = audit();
   const { advisories, accepted, problems } = evaluate(report);
+
+  // The other half of the same question, from the source the registry cannot
+  // answer for. Same job, same report: "is anything unreviewed reaching this
+  // app" does not become two questions because the answers live in two places.
+  const unregistered = unregisteredPackages(JSON.parse(readFileSync("package-lock.json", "utf8")));
+  problems.push(...evaluateUnaudited(unregistered));
+  for (const entry of UNAUDITED) {
+    if (!unregistered.has(entry.package)) continue;
+    console.log(`tracked ${entry.package}@${entry.version} from ${new URL(entry.advisories).host}, last read ${entry.checkedOn}`);
+    problems.push(...(await reviewPublisherAdvisories(entry)));
+  }
 
   for (const entry of accepted) {
     console.log(`accepted ${entry.id} (${entry.package}), last checked ${entry.checkedOn}`);

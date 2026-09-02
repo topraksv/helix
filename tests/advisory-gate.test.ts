@@ -2,7 +2,13 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { blockingAdvisories, evaluate } from "../scripts/check-advisories.mjs";
+import {
+  blockingAdvisories,
+  evaluate,
+  evaluateUnaudited,
+  newAdvisories,
+  unregisteredPackages,
+} from "../scripts/check-advisories.mjs";
 
 const advisory = (id: string, severity: string, name = "pkg") => ({
   source: 1,
@@ -82,8 +88,22 @@ describe("advisory gate", () => {
   it("keeps the real acknowledgement list minimal and evidenced", () => {
     const source = readFileSync(resolve(process.cwd(), "scripts/check-advisories.mjs"), "utf8");
     const ids = [...source.matchAll(/id: "(GHSA-[^"]+)"/g)].map((match) => match[1]);
-    expect(ids.length, "every exemption is a decision; keep the list short").toBeLessThanOrEqual(3);
-    for (const id of ids) expect(source).toMatch(new RegExp(`${id}[\\s\\S]{0,400}checkedOn: "\\d{4}-\\d{2}-\\d{2}"`));
+    const packages = new Set([...source.matchAll(/id: "GHSA-[^"]+",\s*\n\s*package: "([^"]+)"/g)].map((m) => m[1]));
+
+    // Counted per PACKAGE, not per advisory. The pressure this applies is
+    // meant to be against accumulating judgements, and an upstream that
+    // publishes four advisories for one parser in one week adds four ids and
+    // no judgement at all. Three is the same ceiling it always was; it now
+    // measures the thing it was written to measure.
+    expect(packages.size, "every exemption is a decision; keep the list short").toBeLessThanOrEqual(3);
+
+    for (const id of ids) {
+      expect(source).toMatch(new RegExp(`${id}[\\s\\S]{0,400}checkedOn: "\\d{4}-\\d{2}-\\d{2}"`));
+      // Nothing is accepted for ever. Without this, "keep the list short" is
+      // satisfied by three entries that never expire.
+      expect(source, `${id} must carry a recheckAfter`)
+        .toMatch(new RegExp(`${id}[\\s\\S]{0,400}recheckAfter: "\\d{4}-\\d{2}-\\d{2}"`));
+    }
     // The threshold itself must never be quietly relaxed.
     expect(source).toContain('new Set(["high", "critical"])');
   });
@@ -178,5 +198,87 @@ describe("advisory gate: dependency paths and expiry", () => {
       expect(list, field).toContain(`${field}:`);
     }
     expect(list).toMatch(/recheckAfter: "\d{4}-\d{2}-\d{2}"/);
+  });
+});
+
+/**
+ * The dependency the registry audit cannot see.
+ *
+ * `npm audit` and Dependabot both resolve against the npm registry, so a
+ * package installed from a tarball URL is not reported clean — it is not
+ * reported at all. Measured on 2026-09-02: the audit named 25 advisories and
+ * `xlsx` was in none of them, which is the same answer it would give for a
+ * version with a known critical hole.
+ *
+ * The list that stands in for the audit is only worth anything if it cannot
+ * fall behind the lockfile, so the lockfile is what defines the set.
+ */
+describe("unaudited dependencies", () => {
+  const lock = (packages: Record<string, { resolved?: string; version?: string }>) => ({ packages });
+  const REGISTRY = "https://registry.npmjs.org/left-pad/-/left-pad-1.3.0.tgz";
+  const CDN = "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz";
+  const tracked = [{ package: "xlsx", version: "0.20.3", recheckAfter: "2027-01-01" }];
+
+  it("finds the packages that do not come from the registry", () => {
+    const found = unregisteredPackages(lock({
+      "": { version: "1.0.0" },
+      "node_modules/left-pad": { resolved: REGISTRY, version: "1.3.0" },
+      "node_modules/xlsx": { resolved: CDN, version: "0.20.3" },
+      // A workspace or link entry has no `resolved` and is not a download.
+      "node_modules/local": { version: "0.0.0" },
+    }));
+    expect([...found.keys()]).toEqual(["xlsx"]);
+    expect(found.get("xlsx")).toMatchObject({ host: "cdn.sheetjs.com", version: "0.20.3" });
+  });
+
+  it("reads a nested install under the name it is installed as", () => {
+    const found = unregisteredPackages(lock({
+      "node_modules/a/node_modules/xlsx": { resolved: CDN, version: "0.20.3" },
+    }));
+    expect([...found.keys()]).toEqual(["xlsx"]);
+  });
+
+  it("passes when every unregistered package is written down at its installed version", () => {
+    const found = unregisteredPackages(lock({ "node_modules/xlsx": { resolved: CDN, version: "0.20.3" } }));
+    expect(evaluateUnaudited(found, tracked, "2026-09-02")).toEqual([]);
+  });
+
+  it("fails on a blind spot nobody has written down", () => {
+    const found = unregisteredPackages(lock({
+      "node_modules/xlsx": { resolved: CDN, version: "0.20.3" },
+      "node_modules/other": { resolved: "https://example.com/other-1.0.0.tgz", version: "1.0.0" },
+    }));
+    const problems = evaluateUnaudited(found, tracked, "2026-09-02");
+    expect(problems).toHaveLength(1);
+    expect(problems[0]).toContain("UNTRACKED other@1.0.0");
+    expect(problems[0]).toContain("example.com");
+  });
+
+  it("fails when the installed version is not the one that was reviewed", () => {
+    const found = unregisteredPackages(lock({ "node_modules/xlsx": { resolved: CDN, version: "0.21.0" } }));
+    expect(evaluateUnaudited(found, tracked, "2026-09-02")[0]).toContain("VERSION MOVED");
+  });
+
+  it("fails once the review is due, so nothing is accepted for ever", () => {
+    const found = unregisteredPackages(lock({ "node_modules/xlsx": { resolved: CDN, version: "0.20.3" } }));
+    expect(evaluateUnaudited(found, tracked, "2027-01-01")[0]).toContain("EXPIRED");
+  });
+
+  it("fails on an entry for a package that has rejoined the registry", () => {
+    const found = unregisteredPackages(lock({ "node_modules/xlsx": { resolved: REGISTRY, version: "0.20.3" } }));
+    expect(evaluateUnaudited(found, tracked, "2026-09-02")[0]).toContain("STALE xlsx");
+  });
+
+  it("reports only the advisories on a publisher's page that nobody has read", () => {
+    const page = "Advisories: CVE-2023-30533 and CVE-2024-22363 and CVE-2027-11111";
+    const { seen, unreviewed } = newAdvisories(page, ["CVE-2023-30533", "CVE-2024-22363"]);
+    expect(seen).toHaveLength(3);
+    expect(unreviewed).toEqual(["CVE-2027-11111"]);
+  });
+
+  it("reports an unreadable page as finding nothing, not as finding nothing wrong", () => {
+    // The caller treats an empty scan as a failure. This is the distinction it
+    // depends on: a page whose shape changed reads exactly like a clean one.
+    expect(newAdvisories("<html>no identifiers here</html>", ["CVE-2023-30533"]).seen).toEqual([]);
   });
 });

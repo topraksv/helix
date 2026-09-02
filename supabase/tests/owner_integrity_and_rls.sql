@@ -11,7 +11,7 @@ set local role postgres;
 -- first for the assertion helpers.
 set local search_path = extensions, public, pg_catalog;
 
-select extensions.plan(138);
+select extensions.plan(149);
 
 -- A small invoker-rights helper lets tests assert SQLSTATE without coupling to
 -- PostgreSQL's localized/full error text. The dynamic statement still runs as
@@ -464,6 +464,128 @@ select extensions.ok(
   not has_function_privilege('anon', 'public.delete_own_account()', 'EXECUTE')
     and not has_function_privilege('service_role', 'public.delete_own_account()', 'EXECUTE'),
   'account deletion has no anonymous or service-role RPC surface'
+);
+
+-- migration 32: the sync change probe. Its whole safety argument is that it is
+-- SECURITY INVOKER, so the 21 reads it performs are subject to the same RLS
+-- policies asserted above. A future edit that made it DEFINER — the reflex
+-- when a function "needs" to read many tables — would turn one RPC into a
+-- read of every user's ledger, and nothing else in this suite would notice.
+select extensions.ok(
+  not (select prosecdef from pg_proc where oid = 'public.sync_cursors()'::regprocedure),
+  'the sync change probe is SECURITY INVOKER, so RLS still governs its reads'
+);
+
+select extensions.is(
+  (select proconfig from pg_proc
+    where oid = 'public.sync_cursors()'::regprocedure),
+  array['search_path=""']::text[],
+  'the sync change probe pins an empty search_path'
+);
+
+select extensions.ok(
+  has_function_privilege('authenticated', 'public.sync_cursors()', 'EXECUTE'),
+  'authenticated can execute the sync change probe'
+);
+
+select extensions.ok(
+  not has_function_privilege('anon', 'public.sync_cursors()', 'EXECUTE')
+    and not has_function_privilege('service_role', 'public.sync_cursors()', 'EXECUTE'),
+  'the sync change probe has no anonymous or service-role RPC surface'
+);
+
+-- migration 33: the incident log's error shape. `src/domain/diagnostics.ts`
+-- decides what may be written; these CHECKs are the second lock, and the whole
+-- argument for widening the table past migration 27's four fields was that the
+-- database would refuse a free-text message even if the client one day sent
+-- one. A dropped constraint would leave that promise with nothing behind it.
+select extensions.is(
+  (select count(*) from pg_constraint
+    where conrelid = 'public.diagnostic_events'::regclass
+      and contype = 'c'
+      and conname in (
+        'diagnostic_events_error_name',
+        'diagnostic_events_fingerprint',
+        'diagnostic_events_frames'
+      )),
+  3::bigint,
+  'the incident log constrains the error name, fingerprint and frames it accepts'
+);
+
+-- migration 34: the maintenance views. A Postgres view runs as its OWNER, and
+-- the owner is `postgres`, which row level security does not apply to. Without
+-- `security_invoker` these three read-only queries would hand every user's
+-- incidents to any caller allowed to select from them. That is a leak nobody
+-- would see in a diff, because the SQL that leaks looks exactly like the SQL
+-- that does not — which is why it is asserted here rather than reviewed.
+select extensions.is(
+  (select count(*)
+     from pg_class c
+     join pg_namespace n on n.oid = c.relnamespace
+    where n.nspname = 'public'
+      and c.relkind = 'v'
+      and c.relname = any (array['incident_recent', 'incident_summary', 'incident_by_release'])
+      and c.reloptions @> array['security_invoker=true']),
+  3::bigint,
+  'every maintenance view runs as its caller, so RLS still governs it'
+);
+
+select extensions.ok(
+  not has_table_privilege('anon', 'public.incident_recent', 'SELECT')
+    and not has_table_privilege('anon', 'public.incident_summary', 'SELECT')
+    and not has_table_privilege('anon', 'public.incident_by_release', 'SELECT'),
+  'the maintenance views have no anonymous surface'
+);
+
+-- migration 36: the retention purge. It is SECURITY DEFINER for the opposite
+-- of the usual reason — migration 27 gave clients no delete on this table on
+-- purpose, and granting one to enforce a retention window would hand back the
+-- power that decision withheld. The function is the narrow alternative: no
+-- argument, scoped to auth.uid(), and reaching only rows already past the
+-- window. Both properties are asserted because losing either turns a retention
+-- limit into an erase button for an incident log.
+select extensions.ok(
+  (select prosecdef from pg_proc where oid = 'public.purge_expired_diagnostics()'::regprocedure)
+    and (select proconfig from pg_proc where oid = 'public.purge_expired_diagnostics()'::regprocedure)
+        = array['search_path=""']::text[],
+  'the retention purge is SECURITY DEFINER with a pinned search_path'
+);
+
+select extensions.ok(
+  has_function_privilege('authenticated', 'public.purge_expired_diagnostics()', 'EXECUTE')
+    and not has_function_privilege('anon', 'public.purge_expired_diagnostics()', 'EXECUTE')
+    and not has_table_privilege('authenticated', 'public.diagnostic_events', 'DELETE'),
+  'clients enforce retention through the function and still cannot delete an incident'
+);
+
+-- migration 35: the attachment bucket. `public = true` would put every receipt
+-- behind a guessable unauthenticated URL, and it is one boolean away at all
+-- times — the Storage UI offers it as a toggle. The size and type bounds are
+-- asserted with it because they are the server's half of what the client
+-- checks, and a server that stopped checking would leave a bucket that accepts
+-- anything of any size from any signed-in caller.
+select extensions.ok(
+  (select not public
+          and file_size_limit = 26214400
+          and allowed_mime_types @> array['application/pdf', 'image/jpeg', 'image/png', 'image/heic', 'image/webp']
+     from storage.buckets where id = 'attachments'),
+  'the attachment bucket is private and bounded by size and type'
+);
+
+-- One policy per verb, and UPDATE needs both halves: with only `using`, a
+-- caller could move an object they own into another account's folder.
+select extensions.is(
+  (select count(*) from pg_policies
+    where schemaname = 'storage'
+      and tablename = 'objects'
+      and policyname in (
+        'attachments_read_own',
+        'attachments_insert_own',
+        'attachments_update_own',
+        'attachments_delete_own'
+      )),
+  4::bigint,
+  'the attachment bucket carries an owner policy for every verb'
 );
 
 select set_config('request.jwt.claim.sub', '10000000-0000-4000-8000-000000000001', true);

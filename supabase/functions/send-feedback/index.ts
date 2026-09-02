@@ -32,6 +32,16 @@ const OWNER_EMAIL = "topraksavli@hotmail.com";
  * Resend refuses an unverified `from` domain, and this project owns none — so
  * the report is sent from Resend's shared sandbox sender and carries the
  * reporter's address in `reply_to`, which is the field a reply actually uses.
+ *
+ * Checked 2026-09-02, so the next person does not repeat it: `helix.com.tr` is
+ * registered to somebody else (delegated to Vodafone Türkiye's nameservers), so
+ * the intended `destek@helix.com.tr` cannot be had. Until a domain is owned and
+ * verified, this stays as it is — and note what that costs: the shared sender
+ * may only deliver to the address that owns the Resend account, which is why
+ * `OWNER_EMAIL` below happens to work and would break quietly if it ever
+ * pointed somewhere else. `OWNER_EMAIL` is also the KVKK contact published in
+ * the app; `tests/legal-notice.test.ts` holds the two together, so changing it
+ * changes both or fails.
  */
 const FROM_ADDRESS = "Helix Geri Bildirim <onboarding@resend.dev>";
 
