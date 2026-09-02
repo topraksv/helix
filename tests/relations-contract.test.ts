@@ -110,11 +110,16 @@ describe("RLS suite coverage", () => {
 describe("sync change probe coverage", () => {
   it("names exactly the synced tables in sync_cursors()", () => {
     const sql = readFileSync(join(migrationsDir, "00000000000032_sync_change_probe.sql"), "utf8");
-    const array = /foreach\s+t\s+in\s+array\s+array\[([\s\S]*?)\]/i.exec(sql);
-    expect(array, "the table array literal must stay parseable").not.toBeNull();
+    // One `union all` branch per table, each reading one relation. Parsed from
+    // the relation the branch actually reads rather than from the label it
+    // returns, because a copy-paste that updates the label and not the table is
+    // exactly the mistake writing 21 branches out invites.
+    const read = [...sql.matchAll(/from public\.([a-z_]+) h\b/g)].map((match) => match[1]!);
+    const labelled = [...sql.matchAll(/select '([a-z_]+)'::text, k\.updated_at/g)].map((match) => match[1]!);
 
-    const named = [...array![1]!.matchAll(/'([a-z_]+)'/g)].map((match) => match[1]!);
-    expect(named.length).toBe(new Set(named).size);
-    expect(named.sort()).toEqual(Object.keys(SYNCED_TABLES).sort());
+    expect(read.length, "every branch must read a relation").toBe(labelled.length);
+    expect(read, "each branch must label itself with the table it reads").toEqual(labelled);
+    expect(read.length).toBe(new Set(read).size);
+    expect([...read].sort()).toEqual(Object.keys(SYNCED_TABLES).sort());
   });
 });

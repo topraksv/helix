@@ -24,10 +24,30 @@
 -- partition. Every one of the 21 tables carries that index — 5 created 15 of
 -- them, 7/15/16/30 the rest.
 --
--- Dynamic SQL rather than 21 hand-written UNION branches: the table list is a
--- literal in this body (never caller input), `format('%I')` quotes it, and
--- EXECUTE takes no PL/pgSQL variable substitution, so the OUT parameter names
--- below cannot capture a column reference the way they could in a static query.
+-- WRITTEN OUT rather than looped, and this is the second version. The first
+-- built each branch with `format('%I', t)` inside a `foreach` over a literal
+-- array, which runs correctly and does not survive review by a machine:
+-- `supabase db lint` runs `plpgsql_check`, which analyses a function without
+-- executing it, cannot fold the loop variable, and read the whole array as one
+-- relation name — `relation "public.{persons,categories,...}" does not exist`.
+-- The repository lints with `--fail-on warning`, so that is a failing gate.
+--
+-- Spelling the branches out is better than silencing the lint, because it buys
+-- the thing dynamic SQL costs: every table reference below is now checked when
+-- the function is created, so a name that is wrong or a table that has been
+-- dropped is an error at migration time instead of at the first sync. It is
+-- `language sql` for the same reason — no procedural body to be unable to
+-- check, and the planner sees the whole statement.
+--
+-- `tests/relations-contract.test.ts` holds this list equal to `SYNCED_TABLES`,
+-- which is what makes the repetition safe to maintain.
+--
+-- LEFT JOIN LATERAL, not a bare SELECT ... LIMIT 1: every table must come back
+-- as a row even when it holds nothing for this caller. The client reads an
+-- ABSENT table as "the probe does not cover this one, pull it" and a PRESENT
+-- row with a null head as "the server has nothing here, skip it". Collapsing
+-- those two would make a table added to SYNCED_TABLES but not to this function
+-- silently un-pullable forever, which is the one failure it must not cause.
 --
 -- NOT YET APPLIED to the linked project, on the same terms as migration 8:
 -- applying a migration to the live database is a separately authorized step.
@@ -37,42 +57,179 @@
 
 create or replace function public.sync_cursors()
 returns table (table_name text, max_updated_at timestamptz, max_id uuid)
-language plpgsql
+language sql
 security invoker
 stable
 set search_path = ''
 as $$
-declare
-  t text;
-begin
-  foreach t in array array[
-    'persons','categories','category_budgets','investment_profiles',
-    'investment_products','payment_sources','computed_columns',
-    'installment_plans','credit_card_statements','subscriptions',
-    'transactions','attachments','matrix_colors','investment_operations',
-    'price_history','recurring_incomes','expected_payments',
-    'balance_adjustments','cell_notes','settings','fx_rates'
-  ] loop
-    -- LEFT JOIN LATERAL, not a bare SELECT ... LIMIT 1: every table must come
-    -- back as a row even when it holds nothing for this caller. The client
-    -- reads an ABSENT table as "the probe does not cover this one, pull it"
-    -- and a PRESENT row with a null head as "the server has nothing here,
-    -- skip it". Collapsing those two would make a table added to
-    -- SYNCED_TABLES but not to the list above silently un-pullable forever,
-    -- which is the one failure this whole function must not be able to cause.
-    return query execute format(
-      'select %L::text, k.updated_at, k.id
-         from (select 1) probe
-         left join lateral (
-           select h.updated_at, h.id
-             from public.%I h
-            where h.user_id = auth.uid()
-            order by h.updated_at desc, h.id desc
-            limit 1
-         ) k on true',
-      t, t);
-  end loop;
-end $$;
+  select 'persons'::text, k.updated_at, k.id
+    from (select 1) probe
+    left join lateral (
+      select h.updated_at, h.id from public.persons h
+       where h.user_id = auth.uid()
+       order by h.updated_at desc, h.id desc limit 1
+    ) k on true
+  union all
+  select 'categories'::text, k.updated_at, k.id
+    from (select 1) probe
+    left join lateral (
+      select h.updated_at, h.id from public.categories h
+       where h.user_id = auth.uid()
+       order by h.updated_at desc, h.id desc limit 1
+    ) k on true
+  union all
+  select 'category_budgets'::text, k.updated_at, k.id
+    from (select 1) probe
+    left join lateral (
+      select h.updated_at, h.id from public.category_budgets h
+       where h.user_id = auth.uid()
+       order by h.updated_at desc, h.id desc limit 1
+    ) k on true
+  union all
+  select 'investment_profiles'::text, k.updated_at, k.id
+    from (select 1) probe
+    left join lateral (
+      select h.updated_at, h.id from public.investment_profiles h
+       where h.user_id = auth.uid()
+       order by h.updated_at desc, h.id desc limit 1
+    ) k on true
+  union all
+  select 'investment_products'::text, k.updated_at, k.id
+    from (select 1) probe
+    left join lateral (
+      select h.updated_at, h.id from public.investment_products h
+       where h.user_id = auth.uid()
+       order by h.updated_at desc, h.id desc limit 1
+    ) k on true
+  union all
+  select 'payment_sources'::text, k.updated_at, k.id
+    from (select 1) probe
+    left join lateral (
+      select h.updated_at, h.id from public.payment_sources h
+       where h.user_id = auth.uid()
+       order by h.updated_at desc, h.id desc limit 1
+    ) k on true
+  union all
+  select 'computed_columns'::text, k.updated_at, k.id
+    from (select 1) probe
+    left join lateral (
+      select h.updated_at, h.id from public.computed_columns h
+       where h.user_id = auth.uid()
+       order by h.updated_at desc, h.id desc limit 1
+    ) k on true
+  union all
+  select 'installment_plans'::text, k.updated_at, k.id
+    from (select 1) probe
+    left join lateral (
+      select h.updated_at, h.id from public.installment_plans h
+       where h.user_id = auth.uid()
+       order by h.updated_at desc, h.id desc limit 1
+    ) k on true
+  union all
+  select 'credit_card_statements'::text, k.updated_at, k.id
+    from (select 1) probe
+    left join lateral (
+      select h.updated_at, h.id from public.credit_card_statements h
+       where h.user_id = auth.uid()
+       order by h.updated_at desc, h.id desc limit 1
+    ) k on true
+  union all
+  select 'subscriptions'::text, k.updated_at, k.id
+    from (select 1) probe
+    left join lateral (
+      select h.updated_at, h.id from public.subscriptions h
+       where h.user_id = auth.uid()
+       order by h.updated_at desc, h.id desc limit 1
+    ) k on true
+  union all
+  select 'transactions'::text, k.updated_at, k.id
+    from (select 1) probe
+    left join lateral (
+      select h.updated_at, h.id from public.transactions h
+       where h.user_id = auth.uid()
+       order by h.updated_at desc, h.id desc limit 1
+    ) k on true
+  union all
+  select 'attachments'::text, k.updated_at, k.id
+    from (select 1) probe
+    left join lateral (
+      select h.updated_at, h.id from public.attachments h
+       where h.user_id = auth.uid()
+       order by h.updated_at desc, h.id desc limit 1
+    ) k on true
+  union all
+  select 'matrix_colors'::text, k.updated_at, k.id
+    from (select 1) probe
+    left join lateral (
+      select h.updated_at, h.id from public.matrix_colors h
+       where h.user_id = auth.uid()
+       order by h.updated_at desc, h.id desc limit 1
+    ) k on true
+  union all
+  select 'investment_operations'::text, k.updated_at, k.id
+    from (select 1) probe
+    left join lateral (
+      select h.updated_at, h.id from public.investment_operations h
+       where h.user_id = auth.uid()
+       order by h.updated_at desc, h.id desc limit 1
+    ) k on true
+  union all
+  select 'price_history'::text, k.updated_at, k.id
+    from (select 1) probe
+    left join lateral (
+      select h.updated_at, h.id from public.price_history h
+       where h.user_id = auth.uid()
+       order by h.updated_at desc, h.id desc limit 1
+    ) k on true
+  union all
+  select 'recurring_incomes'::text, k.updated_at, k.id
+    from (select 1) probe
+    left join lateral (
+      select h.updated_at, h.id from public.recurring_incomes h
+       where h.user_id = auth.uid()
+       order by h.updated_at desc, h.id desc limit 1
+    ) k on true
+  union all
+  select 'expected_payments'::text, k.updated_at, k.id
+    from (select 1) probe
+    left join lateral (
+      select h.updated_at, h.id from public.expected_payments h
+       where h.user_id = auth.uid()
+       order by h.updated_at desc, h.id desc limit 1
+    ) k on true
+  union all
+  select 'balance_adjustments'::text, k.updated_at, k.id
+    from (select 1) probe
+    left join lateral (
+      select h.updated_at, h.id from public.balance_adjustments h
+       where h.user_id = auth.uid()
+       order by h.updated_at desc, h.id desc limit 1
+    ) k on true
+  union all
+  select 'cell_notes'::text, k.updated_at, k.id
+    from (select 1) probe
+    left join lateral (
+      select h.updated_at, h.id from public.cell_notes h
+       where h.user_id = auth.uid()
+       order by h.updated_at desc, h.id desc limit 1
+    ) k on true
+  union all
+  select 'settings'::text, k.updated_at, k.id
+    from (select 1) probe
+    left join lateral (
+      select h.updated_at, h.id from public.settings h
+       where h.user_id = auth.uid()
+       order by h.updated_at desc, h.id desc limit 1
+    ) k on true
+  union all
+  select 'fx_rates'::text, k.updated_at, k.id
+    from (select 1) probe
+    left join lateral (
+      select h.updated_at, h.id from public.fx_rates h
+       where h.user_id = auth.uid()
+       order by h.updated_at desc, h.id desc limit 1
+    ) k on true
+$$;
 
 -- Same posture as delete_own_account: a signed-in caller only, and the body
 -- carries no argument that could name another account.
