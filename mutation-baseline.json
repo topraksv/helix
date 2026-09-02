@@ -9,6 +9,15 @@
       "measuredOn": "0c2881fade9362f7d22692880634afe8e92c4b8c",
       "measuredDate": "2026-08-20"
     },
+    "src/auth/session.ts": {
+      "score": 19.4,
+      "killed": 84,
+      "timeout": 0,
+      "survived": 129,
+      "noCoverage": 220,
+      "measuredOn": "6b188b7f05384011a6ff7de1486a0f8ec5fec37a",
+      "measuredDate": "2026-09-02"
+    },
     "src/data/repo/accounts.ts": {
       "score": 99.09,
       "killed": 327,
@@ -198,6 +207,15 @@
       "measuredOn": "a4394d5ebe1055ee856167dd23e77c801b72b071",
       "measuredDate": "2026-08-21"
     },
+    "src/domain/app-guard.ts": {
+      "score": 99.19,
+      "killed": 123,
+      "timeout": 0,
+      "survived": 1,
+      "noCoverage": 0,
+      "measuredOn": "6b188b7f05384011a6ff7de1486a0f8ec5fec37a",
+      "measuredDate": "2026-09-02"
+    },
     "src/domain/attachments.ts": {
       "score": 86.39,
       "killed": 146,
@@ -260,6 +278,15 @@
       "noCoverage": 0,
       "measuredOn": "0dda8f4ab515ff54e3f87476074b9cd1c8ec055c",
       "measuredDate": "2026-08-22"
+    },
+    "src/domain/diagnostics.ts": {
+      "score": 88.11,
+      "killed": 126,
+      "timeout": 0,
+      "survived": 17,
+      "noCoverage": 0,
+      "measuredOn": "6b188b7f05384011a6ff7de1486a0f8ec5fec37a",
+      "measuredDate": "2026-09-02"
     },
     "src/domain/expected.ts": {
       "score": 97.59,
@@ -374,18 +401,18 @@
       "killed": 0,
       "timeout": 0,
       "survived": 0,
-      "noCoverage": 62,
-      "measuredOn": "93f59856f33f8646f00e988daacb8bddbf3dc29b",
-      "measuredDate": "2026-08-24"
+      "noCoverage": 75,
+      "measuredOn": "6b188b7f05384011a6ff7de1486a0f8ec5fec37a",
+      "measuredDate": "2026-09-02"
     },
     "src/services/attachment-store.web.ts": {
       "score": 0,
       "killed": 0,
       "timeout": 0,
       "survived": 0,
-      "noCoverage": 91,
-      "measuredOn": "93f59856f33f8646f00e988daacb8bddbf3dc29b",
-      "measuredDate": "2026-08-24"
+      "noCoverage": 105,
+      "measuredOn": "6b188b7f05384011a6ff7de1486a0f8ec5fec37a",
+      "measuredDate": "2026-09-02"
     },
     "src/services/backup-remap.ts": {
       "score": 60.32,
@@ -405,6 +432,15 @@
       "measuredOn": "a4394d5ebe1055ee856167dd23e77c801b72b071",
       "measuredDate": "2026-08-21"
     },
+    "src/services/diagnostics.ts": {
+      "score": 58.68,
+      "killed": 71,
+      "timeout": 0,
+      "survived": 44,
+      "noCoverage": 6,
+      "measuredOn": "6b188b7f05384011a6ff7de1486a0f8ec5fec37a",
+      "measuredDate": "2026-09-02"
+    },
     "src/services/export-import.ts": {
       "score": 33.96,
       "killed": 54,
@@ -422,6 +458,15 @@
       "noCoverage": 0,
       "measuredOn": "e74e17d4740a531ce1a342a2eeb52f9b7841e0fc",
       "measuredDate": "2026-08-23"
+    },
+    "src/services/logger.ts": {
+      "score": 54.39,
+      "killed": 31,
+      "timeout": 0,
+      "survived": 10,
+      "noCoverage": 16,
+      "measuredOn": "6b188b7f05384011a6ff7de1486a0f8ec5fec37a",
+      "measuredDate": "2026-09-02"
     },
     "src/services/markets.ts": {
       "score": 64.29,
@@ -449,6 +494,33 @@
       "noCoverage": 39,
       "measuredOn": "a9263150c9529d2bdb5552037b378916cbb57f34",
       "measuredDate": "2026-08-21"
+    },
+    "src/sync/attachment-mirror.ts": {
+      "score": 65.63,
+      "killed": 126,
+      "timeout": 0,
+      "survived": 47,
+      "noCoverage": 19,
+      "measuredOn": "6b188b7f05384011a6ff7de1486a0f8ec5fec37a",
+      "measuredDate": "2026-09-02"
+    },
+    "src/sync/engine.ts": {
+      "score": 0,
+      "killed": 0,
+      "timeout": 0,
+      "survived": 0,
+      "noCoverage": 470,
+      "measuredOn": "6b188b7f05384011a6ff7de1486a0f8ec5fec37a",
+      "measuredDate": "2026-09-02"
+    },
+    "src/sync/merge-policy.ts": {
+      "score": 77.3,
+      "killed": 109,
+      "timeout": 0,
+      "survived": 28,
+      "noCoverage": 4,
+      "measuredOn": "6b188b7f05384011a6ff7de1486a0f8ec5fec37a",
+      "measuredDate": "2026-09-02"
     },
     "src/sync/outbound-validation.ts": {
       "score": 59.69,
