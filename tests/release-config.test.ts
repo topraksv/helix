@@ -494,3 +494,144 @@ describe("workflow supply chain", () => {
     expect(floating).toEqual([]);
   });
 });
+
+/**
+ * The version number, and the record that has to move with it.
+ *
+ * There was no version discipline here at all: one string in two files that
+ * nothing compared, no tags, and no changelog. That is survivable while
+ * everything ships continuously from `main` and stays 1.0.0, and stops being
+ * survivable the moment a release has to be identified — a diagnostic row
+ * carries `app_version`, and `incident_by_release` groups by it, so a number
+ * that never moves makes both of those answer the same thing for ever.
+ *
+ * These assertions exist so the changelog cannot be the step that gets skipped.
+ * A person bumping the version and stopping there fails the suite, which is
+ * the only reliable way a changelog stays written.
+ */
+describe("version and changelog", () => {
+  const changelog = read("CHANGELOG.md");
+  const headings = [...changelog.matchAll(/^## (\d+\.\d+\.\d+)\s*$/gm)];
+  const versions = headings.map((match) => match[1]!);
+  const order = (version: string) => version.split(".").map(Number);
+
+  it("keeps the shipped version and the packaged version the same string", () => {
+    // Expo reads app.json and nothing reads package.json's copy, which is
+    // exactly how the two drift: the one that matters is the one nobody looks
+    // at when the other is edited.
+    expect(app.expo.version).toBe(packageJson.version);
+    expect(app.expo.version).toMatch(/^\d+\.\d+\.\d+$/);
+  });
+
+  it("names the shipped version at the top of the changelog", () => {
+    expect(versions[0], "the newest changelog entry must be the version app.json ships").toBe(app.expo.version);
+  });
+
+  it("lists releases newest first, with no version recorded twice", () => {
+    expect(versions.length).toBeGreaterThan(0);
+    expect(new Set(versions).size).toBe(versions.length);
+    for (let index = 1; index < versions.length; index += 1) {
+      const [newer, older] = [order(versions[index - 1]!), order(versions[index]!)];
+      expect(newer.join("."), `${versions[index - 1]} must sort above ${versions[index]}`)
+        .not.toBe(older.join("."));
+      const ranks = [0, 1, 2].map((part) => Math.sign(newer[part]! - older[part]!));
+      expect(ranks.find((rank) => rank !== 0), `${versions[index - 1]} must be newer than ${versions[index]}`).toBe(1);
+    }
+  });
+
+  it("gives every release its three lines", () => {
+    const sections = changelog.split(/^## /m).slice(1);
+    expect(sections.length).toBe(versions.length);
+    for (const [index, section] of sections.entries()) {
+      for (const line of ["Ne değişti", "Kimi ilgilendiriyor", "Ne yapmalısın"]) {
+        expect(section, `${versions[index]} is missing "${line}"`).toContain(line);
+      }
+    }
+  });
+});
+
+/**
+ * What a link to this app turns into somewhere else.
+ *
+ * None of it is visible while using the app, which is exactly why it rots: a
+ * canonical URL that has stopped matching where the app lives tells an index to
+ * credit somebody else's page, and a card image that 404s leaves a blank
+ * rectangle in every message the link is pasted into. Neither shows up in any
+ * other check, and neither is noticed by the person who moved the thing.
+ */
+/**
+ * A JPEG's real dimensions, from its own frame header.
+ *
+ * JPEG has no fixed-offset size the way PNG does: the file is a chain of
+ * marker segments and the numbers live in whichever start-of-frame marker the
+ * encoder used. So this walks the chain rather than guessing an offset.
+ */
+function jpegSize(bytes: Buffer): { width: number; height: number } {
+  let offset = 2;
+  while (offset + 9 < bytes.length) {
+    if (bytes[offset] !== 0xff) break;
+    const marker = bytes[offset + 1]!;
+    const length = bytes.readUInt16BE(offset + 2);
+    // C0-CF are the start-of-frame markers, except C4/C8/CC which are tables.
+    if (marker >= 0xc0 && marker <= 0xcf && ![0xc4, 0xc8, 0xcc].includes(marker)) {
+      return { height: bytes.readUInt16BE(offset + 5), width: bytes.readUInt16BE(offset + 7) };
+    }
+    offset += 2 + length;
+  }
+  throw new Error("not a JPEG with a readable frame header");
+}
+
+describe("social and search metadata", () => {
+  const html = read("src/app/+html.tsx");
+  const readme = read("README.md");
+  const siteUrl = /const SITE_URL = "([^"]+)"/.exec(html)?.[1];
+  const ogImage = /const OG_IMAGE = "([^"]+)"/.exec(html)?.[1];
+
+  it("points canonical and og:url at the address README sends people to", () => {
+    expect(siteUrl, "SITE_URL must stay parseable").toBeTruthy();
+    expect(readme, `README must link ${siteUrl}`).toContain(siteUrl!);
+    expect(siteUrl!.endsWith("/"), "the base is a directory, so every asset URL below it concatenates").toBe(true);
+  });
+
+  it("serves the card image from the published root at the size the tags claim", () => {
+    // `public/` is copied verbatim into the export; `assets/` is hashed and
+    // renamed, so a card image kept there would be advertised under a name
+    // that does not exist.
+    const file = resolve(process.cwd(), "public", ogImage!);
+    expect(existsSync(file), `public/${ogImage} must exist`).toBe(true);
+    // Read out of the file rather than trusted from its name: the tags below
+    // promise 1200x630 to every crawler, and a card whose real size disagrees
+    // is cropped or rejected by the very services the tags exist for.
+    expect(jpegSize(readFileSync(file))).toEqual({ width: 1200, height: 630 });
+    expect(html).toContain('content="1200"');
+    expect(html).toContain('content="630"');
+  });
+
+  it("declares the tags a link preview and a search result actually read", () => {
+    for (const tag of [
+      'rel="canonical"',
+      'property="og:title"',
+      'property="og:description"',
+      'property="og:url"',
+      'property="og:image"',
+      'name="twitter:card"',
+      'name="theme-color"',
+      'type="application/ld+json"',
+    ]) {
+      expect(html, `+html.tsx is missing ${tag}`).toContain(tag);
+    }
+  });
+
+  it("describes itself as the kind of application it is", () => {
+    expect(html).toContain('"@type": "SoftwareApplication"');
+    expect(html).toContain('applicationCategory: "FinanceApplication"');
+  });
+
+  it("gives the page a title that means something on its own", () => {
+    const layout = read("src/app/_layout.tsx");
+    expect(layout, "the tab title must not be the bare product name").toContain("<title>{tr.meta.title}</title>");
+    const tr = read("src/i18n/tr.ts");
+    const title = /title: "(Helix[^"]*)"/.exec(tr)?.[1] ?? "";
+    expect(title.length, "a title of one word says nothing to a stranger").toBeGreaterThan("Helix".length);
+  });
+});

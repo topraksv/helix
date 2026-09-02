@@ -69,7 +69,9 @@ supabase/.temp/
 /.claude/*
 
 # The code map graphify exports into the docs vault: ~3,250 generated notes,
-# rebuilt from the AST by `npm run graph:refresh` and never tracked.
+# rebuilt from the AST by `graphify export obsidian --dir docs/graph` and never
+# tracked. Deliberately not an npm script — `package.json` is published and the
+# index is local tooling; see AGENTS.md "The code graph".
 /docs/graph
 
 # TestSprite MCP-flow output: generated Python test scripts and per-run

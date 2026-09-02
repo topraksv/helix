@@ -126,13 +126,35 @@ const root = process.argv[2] ?? "dist";
 // its own chart, its four ranges and the candle model behind them. Measured
 // 3_527_386 entry / 4_157_151 total / 7_676_406 export — 44_682 bytes BELOW the
 // line above it on both JavaScript figures, feature included.
+// Then six packages landed together and the export measured 7_879_811, past a
+// ceiling of 7_791_000 by 88_811 bytes. What added them: the attachment mirror
+// and its Storage client path, the diagnostics error shape and the global crash
+// handlers, the sync change probe and its cursor policy, the rebuilt
+// boot-failure screen, and the social card at `public/og-cover.jpg`. The card
+// is 37_822 of the 88_811 and is the only part no user of the app ever
+// downloads — a crawler does — which is why it is a JPEG rather than the
+// 99_725-byte PNG it started as, and why it is still counted rather than
+// exempted: an asset that is deployed is an asset this budget is for. Removing
+// it entirely would still leave the export 50_989 over, so the ceiling moves to
+// the measured figure plus ~1% of slack.
+//
+// The JavaScript ceilings are NOT moved. Both still pass, on 21_185 and 27_420
+// bytes — about 0.6%, narrower than this file likes. Moving a limit that passed
+// is loosening it for no measured reason; the next feature that trips one
+// measures it then.
+//
+// Left unmeasured on purpose: `assets/brand/symbol-{light,dark}-t.png` are
+// 1024x1024 and 560_835 bytes together, drawn at 130pt by the splash and
+// smaller again by `src/ui/brand.tsx`. That is the largest single saving
+// available here and it is not taken, because resampling brand art is a
+// judgement about how the mark looks, not about bytes.
 const limits = {
   entryJavaScript: 3_562_000,
   totalJavaScript: 4_198_000,
   // Fonts are 1_534_728 of this and the rest is one HTML file per route, so it
   // grows in coarser steps than the JavaScript above it — measured 8_037_112
   // with ~3% of slack rather than the ~1% the JS ceilings carry.
-  totalExport: 7_791_000,
+  totalExport: 7_958_000,
   fontFiles: 6,
   fontBytes: 800_000,
   // Pages is public. Symbolication maps belong only in a private crash service,
