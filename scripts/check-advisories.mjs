@@ -42,60 +42,6 @@ const ACKNOWLEDGED = [
     reason:
       "image-size@1.2.1 remains only in Metro's build chain: `npm ls image-size --all` resolves the single path expo -> @expo/metro -> metro, and the audit reports one install node (metro/node_modules/image-size). Re-verified 2026-08-19 that image-size is absent from the production web export. npm offers no fix other than downgrading expo a major version, and image-size@2.0.2 was tested earlier but rejected because Expo Metro failed on its unmatched.png asset path. Recheck the package and the export before expiry.",
   },
-  {
-    id: "GHSA-c83g-rgw3-j3cx",
-    package: "browserslist",
-    checkedOn: "2026-09-02",
-    expectedPaths: [],
-    recheckAfter: "2026-10-02",
-    reason:
-      "browserslist@4.28.5 is build-time only: `npm ls browserslist --all` resolves it through babel-preset-expo (compilation targets) and expo -> @expo/metro-config, and both advisories need attacker-controlled input — a hostile browserslist-stats.json, or unbounded distinct queries — neither of which exists in a build whose only query source is this repository's own config. Verified 2026-09-02 that the string `browserslist` appears in no file of the shipped web bundle. A fix exists at 4.28.8, but `npm audit fix` reaches it only by moving 197 packages including expo 54.0.36 -> 54.0.37 and six @react-navigation packages, which `dependabot.yml` forbids outside a coordinated, compatibility-tested SDK upgrade. Take it in that upgrade, not here. The audit reports no direct root for this advisory, so expectedPaths is empty and the tree-moved check cannot help; re-read `npm ls` at the recheck.",
-  },
-  {
-    id: "GHSA-73wf-gq98-2v4g",
-    package: "browserslist",
-    checkedOn: "2026-09-02",
-    expectedPaths: [],
-    recheckAfter: "2026-10-02",
-    reason:
-      "browserslist@4.28.5 is build-time only: `npm ls browserslist --all` resolves it through babel-preset-expo (compilation targets) and expo -> @expo/metro-config, and both advisories need attacker-controlled input — a hostile browserslist-stats.json, or unbounded distinct queries — neither of which exists in a build whose only query source is this repository's own config. Verified 2026-09-02 that the string `browserslist` appears in no file of the shipped web bundle. A fix exists at 4.28.8, but `npm audit fix` reaches it only by moving 197 packages including expo 54.0.36 -> 54.0.37 and six @react-navigation packages, which `dependabot.yml` forbids outside a coordinated, compatibility-tested SDK upgrade. Take it in that upgrade, not here. The audit reports no direct root for this advisory, so expectedPaths is empty and the tree-moved check cannot help; re-read `npm ls` at the recheck.",
-  },
-  {
-    id: "GHSA-5jgf-p345-68v8",
-    package: "fast-uri",
-    checkedOn: "2026-09-02",
-    expectedPaths: [],
-    recheckAfter: "2026-10-02",
-    reason:
-      "fast-uri@3.1.5 reaches this repository through exactly one path: `npm ls fast-uri --all` gives @stryker-mutator/core -> ajv -> fast-uri. Stryker is a devDependency that runs mutation testing in CI and is never bundled, so all four advisories — SSRF and host confusion in URI normalisation — describe a parser that never sees a URI from anywhere but a JSON schema in the mutation config. Verified 2026-09-02 that the string `fast-uri` appears in no file of the shipped web bundle. The fixed line is 3.1.7, reachable only through the same 197-package `npm audit fix` that moves expo, which `dependabot.yml` forbids outside a coordinated SDK upgrade. The audit reports no direct root, so expectedPaths is empty and the tree-moved check cannot help; re-read `npm ls` at the recheck.",
-  },
-  {
-    id: "GHSA-f65p-4m7j-42xc",
-    package: "fast-uri",
-    checkedOn: "2026-09-02",
-    expectedPaths: [],
-    recheckAfter: "2026-10-02",
-    reason:
-      "fast-uri@3.1.5 reaches this repository through exactly one path: `npm ls fast-uri --all` gives @stryker-mutator/core -> ajv -> fast-uri. Stryker is a devDependency that runs mutation testing in CI and is never bundled, so all four advisories — SSRF and host confusion in URI normalisation — describe a parser that never sees a URI from anywhere but a JSON schema in the mutation config. Verified 2026-09-02 that the string `fast-uri` appears in no file of the shipped web bundle. The fixed line is 3.1.7, reachable only through the same 197-package `npm audit fix` that moves expo, which `dependabot.yml` forbids outside a coordinated SDK upgrade. The audit reports no direct root, so expectedPaths is empty and the tree-moved check cannot help; re-read `npm ls` at the recheck.",
-  },
-  {
-    id: "GHSA-fph4-wmhf-6fwf",
-    package: "fast-uri",
-    checkedOn: "2026-09-02",
-    expectedPaths: [],
-    recheckAfter: "2026-10-02",
-    reason:
-      "fast-uri@3.1.5 reaches this repository through exactly one path: `npm ls fast-uri --all` gives @stryker-mutator/core -> ajv -> fast-uri. Stryker is a devDependency that runs mutation testing in CI and is never bundled, so all four advisories — SSRF and host confusion in URI normalisation — describe a parser that never sees a URI from anywhere but a JSON schema in the mutation config. Verified 2026-09-02 that the string `fast-uri` appears in no file of the shipped web bundle. The fixed line is 3.1.7, reachable only through the same 197-package `npm audit fix` that moves expo, which `dependabot.yml` forbids outside a coordinated SDK upgrade. The audit reports no direct root, so expectedPaths is empty and the tree-moved check cannot help; re-read `npm ls` at the recheck.",
-  },
-  {
-    id: "GHSA-jqff-g426-hqxp",
-    package: "fast-uri",
-    checkedOn: "2026-09-02",
-    expectedPaths: [],
-    recheckAfter: "2026-10-02",
-    reason:
-      "fast-uri@3.1.5 reaches this repository through exactly one path: `npm ls fast-uri --all` gives @stryker-mutator/core -> ajv -> fast-uri. Stryker is a devDependency that runs mutation testing in CI and is never bundled, so all four advisories — SSRF and host confusion in URI normalisation — describe a parser that never sees a URI from anywhere but a JSON schema in the mutation config. Verified 2026-09-02 that the string `fast-uri` appears in no file of the shipped web bundle. The fixed line is 3.1.7, reachable only through the same 197-package `npm audit fix` that moves expo, which `dependabot.yml` forbids outside a coordinated SDK upgrade. The audit reports no direct root, so expectedPaths is empty and the tree-moved check cannot help; re-read `npm ls` at the recheck.",
-  },
 ];
 
 /**
