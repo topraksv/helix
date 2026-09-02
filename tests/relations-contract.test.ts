@@ -91,3 +91,30 @@ describe("RLS suite coverage", () => {
     );
   });
 });
+
+/**
+ * The change probe carries a second copy of the synced table list.
+ *
+ * `public.sync_cursors()` (migration 32) reports each table's keyset head so a
+ * sync can skip tables that have not moved. Its list is a literal in PL/pgSQL —
+ * it cannot import `SYNCED_TABLES`. A table added to the schema but not to that
+ * array would be reported as ABSENT, and the client is written to pull an
+ * absent table for exactly this reason. So a drifted list costs a round trip,
+ * never a row.
+ *
+ * This asserts the equality anyway, because "you silently lost the speedup on
+ * your newest table" is not a thing anyone would notice, and the failure mode
+ * of the opposite drift — a name in the function that is no longer a table —
+ * is a runtime error inside the function for every user.
+ */
+describe("sync change probe coverage", () => {
+  it("names exactly the synced tables in sync_cursors()", () => {
+    const sql = readFileSync(join(migrationsDir, "00000000000032_sync_change_probe.sql"), "utf8");
+    const array = /foreach\s+t\s+in\s+array\s+array\[([\s\S]*?)\]/i.exec(sql);
+    expect(array, "the table array literal must stay parseable").not.toBeNull();
+
+    const named = [...array![1]!.matchAll(/'([a-z_]+)'/g)].map((match) => match[1]!);
+    expect(named.length).toBe(new Set(named).size);
+    expect(named.sort()).toEqual(Object.keys(SYNCED_TABLES).sort());
+  });
+});

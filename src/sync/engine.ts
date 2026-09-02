@@ -14,10 +14,22 @@ import { getSupabase } from "./supabase";
 import { classifyRefreshFailure, completedSyncState, DEAD_LETTER_COUNT_SQL, useSyncStatus, type RefreshOutcome } from "./status";
 import { tr } from "../i18n/tr";
 import { SessionEpoch, SessionEpochCancelledError, runSessionEpochTask, type SessionEpochToken } from "./session-epoch";
-import { isUuidShaped, remoteSupersededLocal, remoteWinsLww, shouldApplyServerAck, type ParsedOutboxEvent } from "./merge-policy";
+import {
+  cursorIsAtServerHead,
+  formatPullCursor,
+  isUuidShaped,
+  parsePullCursor,
+  PULL_EPOCH,
+  remoteSupersededLocal,
+  remoteWinsLww,
+  shouldApplyServerAck,
+  type ParsedOutboxEvent,
+  type PullCursor,
+} from "./merge-policy";
 import { devError, devWarning } from "../services/logger";
 import { uploadDiagnostics, type DiagnosticUpload, type DiagnosticUploadPort } from "../services/diagnostics";
 import { prepareOutboundBatch } from "./outbound-validation";
+import { purgeRemoteAttachments, reconcileAttachments } from "./attachment-mirror";
 import { isValidImportRow } from "../services/backup-validation";
 import type { Database } from "./database.types";
 
@@ -154,6 +166,16 @@ async function upsertLocalRemote(
 async function pushOutbox(userId: string, token: SessionEpochToken): Promise<void> {
   const supabase = getSupabase()!;
   const sqlite = await getSqliteAsync();
+  // Which tables were refused, per reason, across the whole push.
+  //
+  // `sync_dead_letters` is local to the device (see `src/db/schema.ts`), so no
+  // server query can reach it and a row stuck here is invisible to anyone not
+  // holding the phone. The incident log is the only channel that leaves, and
+  // what it used to carry was `"12 invalid outbox event(s) quarantined"` —
+  // whose count the fingerprint drops as digits and whose table and reason it
+  // never had. Naming them costs nothing and is the difference between knowing
+  // something is stuck and knowing what.
+  const quarantined = new Map<string, Set<string>>();
   // Push per table in FK-safe declaration order, oldest events first.
   for (const table of Object.keys(SYNCED_TABLES) as SyncedTableName[]) {
     for (;;) {
@@ -214,11 +236,74 @@ async function pushOutbox(userId: string, token: SessionEpochToken): Promise<voi
         const placeholders = events.map(() => "?").join(", ");
         await sqlite.runAsync(`DELETE FROM outbox WHERE id IN (${placeholders})`, events.map((event) => event.id));
       });
-      if (rejected.length > 0) {
-        devWarning("sync", `${rejected.length} invalid outbox event(s) quarantined`);
+      for (const event of rejected) {
+        const tables = quarantined.get(event.reason) ?? new Set<string>();
+        tables.add(table);
+        quarantined.set(event.reason, tables);
       }
     }
   }
+  // Grouped by reason rather than per rejected row: the ring holds twelve
+  // events, and there are exactly three reasons, so a push that refuses a
+  // thousand rows still cannot evict the rest of the ring to say so. The table
+  // names ride in the message because they survive the fingerprint as tokens.
+  for (const [reason, tables] of quarantined) {
+    devWarning("sync.quarantine", `${reason} ${[...tables].join(" ")}`);
+  }
+}
+
+/** One row of `public.sync_cursors()` (migration 32). */
+interface ServerHeadRow {
+  table_name: string;
+  max_updated_at: string | null;
+  max_id: string | null;
+}
+
+/**
+ * Set when the server answers "no such function".
+ *
+ * Migration 32 is not applied to a project the moment this code ships, and
+ * rediscovering that would cost a round trip on every sync. Module-scoped
+ * rather than persisted, so applying the migration takes effect at the next
+ * launch without a client change.
+ */
+let changeProbeUnavailable = false;
+
+/**
+ * Where each table's keyset head is, in one request.
+ *
+ * Returns null when the probe cannot be used, which the caller reads as "pull
+ * every table" — the behaviour this function replaced, unchanged. A table the
+ * answer does not mention is likewise absent from the map, and is pulled: the
+ * function's table list is a second copy of `SYNCED_TABLES`, and a copy can
+ * fall behind. Only a table that is present AND reports a head may be skipped.
+ */
+async function fetchServerHeads(
+  supabase: NonNullable<ReturnType<typeof getSupabase>>,
+  token: SessionEpochToken,
+): Promise<Map<string, PullCursor | null> | null> {
+  if (changeProbeUnavailable) return null;
+  const { data, error } = await supabase.rpc("sync_cursors").abortSignal(token.signal);
+  if (error) {
+    // PGRST202 is PostgREST's "no such function in the schema cache", and is
+    // the only failure that degrades quietly. An auth or network error has to
+    // reach `runSync` so the session refresh and the backoff still happen.
+    if (error.code !== "PGRST202") throw new Error(`pull probe: ${error.message}`);
+    devWarning("sync", "sync_cursors() is not applied; pulling every table");
+    changeProbeUnavailable = true;
+    return null;
+  }
+  const heads = new Map<string, PullCursor | null>();
+  for (const row of (data ?? []) as ServerHeadRow[]) {
+    if (typeof row?.table_name !== "string") continue;
+    if (row.max_updated_at == null && row.max_id == null) {
+      heads.set(row.table_name, null);
+    } else if (typeof row.max_updated_at === "string" && isUuidShaped(row.max_id)) {
+      heads.set(row.table_name, { ts: row.max_updated_at, id: row.max_id });
+    }
+    // Any other shape is left out of the map, so that table is pulled.
+  }
+  return heads;
 }
 
 /** Returns how many pulled rows replaced a version this device already had. */
@@ -226,20 +311,40 @@ async function pullAndMerge(userId: string, token: SessionEpochToken): Promise<n
   const supabase = getSupabase()!;
   const sqlite = await getSqliteAsync();
   let superseded = 0;
-  for (const table of Object.keys(SYNCED_TABLES) as SyncedTableName[]) {
+  const tables = Object.keys(SYNCED_TABLES) as SyncedTableName[];
+
+  // One read for all 21 cursors. `sync_state` holds one small row per table,
+  // and this was 21 separate statements for them.
+  const cursorRows = await sqlite.getAllAsync<{ table_name: string; last_pulled_at: string }>(
+    `SELECT table_name, last_pulled_at FROM sync_state`,
+    [],
+  );
+  const cursors = new Map(cursorRows.map((row) => [row.table_name, parsePullCursor(row.last_pulled_at)]));
+  const cursorFor = (table: SyncedTableName): PullCursor => cursors.get(table) ?? parsePullCursor(null);
+
+  assertActive(token);
+  // A workspace that has never pulled anything has nothing to skip, so the
+  // probe could only add a round trip. Every other sync asks once and then
+  // pulls the few tables that actually moved.
+  const heads = tables.some((table) => cursorFor(table).ts !== PULL_EPOCH)
+    ? await fetchServerHeads(supabase, token)
+    : null;
+  // `filter` keeps the declaration order, which is FK-safe: SQLite runs with
+  // `PRAGMA foreign_keys = ON`, so a child row must never be merged before its
+  // parent exists. That ordering is also why the pending tables are pulled one
+  // after another rather than concurrently.
+  const pending = heads
+    ? tables.filter((table) =>
+        !heads.has(table) || !cursorIsAtServerHead(cursorFor(table), heads.get(table) ?? null))
+    : tables;
+
+  for (const table of pending) {
     assertActive(token);
     const allowed = KNOWN_COLUMNS.get(table)!;
-    const cursorRow = await sqlite.getFirstAsync<{ last_pulled_at: string }>(
-      `SELECT last_pulled_at FROM sync_state WHERE table_name = ?`,
-      [table],
-    );
     // Cursor is a keyset on (updated_at, id) encoded as "ts|id"; a plain ISO
     // string is the legacy form (id empty). A composite cursor is required so a
     // page boundary that splits rows sharing one updated_at never skips them.
-    const raw = cursorRow?.last_pulled_at ?? "1970-01-01T00:00:00.000Z";
-    const sep = raw.indexOf("|");
-    let curTs = sep >= 0 ? raw.slice(0, sep) : raw;
-    let curId = sep >= 0 ? raw.slice(sep + 1) : "";
+    let { ts: curTs, id: curId } = cursorFor(table);
     for (;;) {
       let query = supabase
         .from(table)
@@ -296,7 +401,7 @@ async function pullAndMerge(userId: string, token: SessionEpochToken): Promise<n
         await sqlite.runAsync(
           `INSERT INTO sync_state (table_name, last_pulled_at) VALUES (?, ?)
            ON CONFLICT(table_name) DO UPDATE SET last_pulled_at = excluded.last_pulled_at`,
-          [table, `${curTs}|${curId}`],
+          [table, formatPullCursor({ ts: curTs, id: curId })],
         );
       });
       if (data.length < PULL_PAGE) break;
@@ -405,6 +510,21 @@ async function runSync(userId: string, token: SessionEpochToken, allowRefresh: b
     // and the upload must never be the reason either is spent. It reports its
     // own failures nowhere and cannot fail this sync.
     void uploadDiagnostics(diagnosticUploadPort(userId), userId, devicePlatform(), APP_VERSION);
+    // The retention window, applied where the app already has a live session.
+    // There is no scheduler on this project, so an unenforced policy would be
+    // a sentence in a document; this makes it a delete. It can only reach rows
+    // already past the window, so calling it often costs nothing and calling
+    // it never is the only way the limit is missed.
+    // `.catch` even though PostgREST failures come back as `{ error }` rather
+    // than a rejection: this is a fire-and-forget on the sync's success path,
+    // and a transport that ever did reject would surface as an unhandled
+    // rejection — which `installCrashHandlers` would faithfully record as a
+    // crash the app did not actually have.
+    void getSupabase()?.rpc("purge_expired_diagnostics").then(undefined, () => {});
+    // Registered as session work rather than fired loose: this one can spend a
+    // while sending a 25 MB file, and a sign-out that wiped the database out
+    // from under it would be reading a document that no longer has a row.
+    void runSyncSessionTask(userId, (signal) => reconcileAttachments(userId, signal));
     status.set({
       state: completionState,
       lastSyncAt: new Date().toISOString(),
@@ -506,6 +626,17 @@ export async function syncNow(userId: string, allowRefresh = true): Promise<bool
     }
   }
 }
+
+/**
+ * Erase this account's mirrored documents.
+ *
+ * Re-exported here rather than imported from `attachment-mirror` directly,
+ * because this module is the whole of what the auth layer knows about sync —
+ * it already comes here for `flushOutbox` and the session epoch. Reaching past
+ * it made the sign-out path load the database layer that the auth tests mock
+ * this module precisely to avoid, which is the seam telling the truth.
+ */
+export { purgeRemoteAttachments };
 
 /** Debounced trigger for after-write sync (UI never waits on this). */
 export function scheduleSync(userId: string, delayMs = 1500): void {

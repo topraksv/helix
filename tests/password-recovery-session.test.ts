@@ -45,6 +45,8 @@ vi.mock("../src/sync/engine", () => ({
   runSyncSessionTask: vi.fn(async (_userId: string, task: (signal: AbortSignal) => Promise<unknown>) => task(new AbortController().signal)),
   startSyncSession: vi.fn(),
   stopSyncSession: vi.fn(async () => {}),
+  // Account deletion clears the Storage bucket first; the sync facade owns it.
+  purgeRemoteAttachments: vi.fn(async () => {}),
 }));
 vi.mock("../src/sync/status", () => ({
   useSyncStatus: { getState: () => ({ set: vi.fn() }) },

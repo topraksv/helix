@@ -351,6 +351,9 @@ export type Database = {
         Row: {
           app_version: string
           code: string
+          error_name: string | null
+          fingerprint: string | null
+          frames: string | null
           id: string
           occurred_at: string
           platform: string
@@ -362,6 +365,9 @@ export type Database = {
         Insert: {
           app_version: string
           code: string
+          error_name?: string | null
+          fingerprint?: string | null
+          frames?: string | null
           id?: string
           occurred_at: string
           platform: string
@@ -373,6 +379,9 @@ export type Database = {
         Update: {
           app_version?: string
           code?: string
+          error_name?: string | null
+          fingerprint?: string | null
+          frames?: string | null
           id?: string
           occurred_at?: string
           platform?: string
@@ -1269,6 +1278,15 @@ export type Database = {
     }
     Functions: {
       delete_own_account: { Args: never; Returns: undefined }
+      purge_expired_diagnostics: { Args: never; Returns: number }
+      sync_cursors: {
+        Args: never
+        Returns: {
+          table_name: string
+          max_updated_at: string | null
+          max_id: string | null
+        }[]
+      }
     }
     Enums: {
       [_ in never]: never

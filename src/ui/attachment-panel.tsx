@@ -31,6 +31,8 @@ import { addAttachment, AttachmentRejectedError, deleteAttachment, restoreAttach
 import { ATTACHMENT_MIME_TYPES, type AttachmentRejection } from "../domain/attachments";
 import { attachmentThumbnail, attachmentsSupported, openAttachment, presentAttachments, storeAttachmentBytes } from "../services/attachment-store";
 import { devError } from "../services/logger";
+import { fetchAttachment } from "../sync/attachment-mirror";
+import { isSupabaseConfigured } from "../sync/supabase";
 import { tr } from "../i18n/tr";
 import { scheduleSync } from "../sync/engine";
 import { Badge, Body, Button, Card, IconButton, Row, SectionHeader } from "./components";
@@ -120,15 +122,29 @@ export function AttachmentPanel({
    */
   const [present, setPresent] = useState<ReadonlySet<string>>(new Set());
   const thumbnails = useThumbnails(attachments, present);
+  const missingLabel = isSupabaseConfigured ? tr.attachments.otherDevice : tr.attachments.otherDeviceLocal;
   const totalBytes = attachments.reduce((sum, attachment) => sum + attachment.byteSize, 0);
   const storedNames = attachments.map((attachment) => attachment.storedName).join("|");
   useEffect(() => {
     let cancelled = false;
-    void presentAttachments(storedNames === "" ? [] : storedNames.split("|"))
-      .then((found) => { if (!cancelled) setPresent(found); })
-      .catch((error) => devError("attachment.presence", error));
+    const names = storedNames === "" ? [] : storedNames.split("|");
+    void (async () => {
+      const found = await presentAttachments(names);
+      if (cancelled) return;
+      // Held documents render immediately rather than waiting on the network.
+      setPresent(found);
+      const missing = names.filter((name) => !found.has(name));
+      if (missing.length === 0) return;
+      // This is the whole of "lazy download": only the documents on this
+      // screen, only when they are not already here. Nothing walks the whole
+      // ledger pulling every receipt onto every device.
+      const fetched = await Promise.all(missing.map((name) => fetchAttachment(userId, name)));
+      if (cancelled || !fetched.some(Boolean)) return;
+      const arrived = await presentAttachments(names);
+      if (!cancelled) setPresent(arrived);
+    })().catch((error) => devError("attachment.presence", error));
     return () => { cancelled = true; };
-  }, [storedNames]);
+  }, [storedNames, userId]);
 
   const pick = async () => {
     if (busy) return;
@@ -168,7 +184,7 @@ export function AttachmentPanel({
       await openAttachment(attachment.storedName, attachment.mimeType);
     } catch (error) {
       devError("attachment.open", error);
-      void appAlert(tr.attachments.unavailable, tr.errors.title);
+      void appAlert(isSupabaseConfigured ? tr.attachments.unavailable : tr.attachments.unavailableLocal, tr.errors.title);
     }
   };
 
@@ -197,7 +213,7 @@ export function AttachmentPanel({
 
   return (
     <View testID="attachment-panel" style={{ marginBottom: spacing.md }}>
-      <SectionHeader description={tr.attachments.hint}>{tr.attachments.title}</SectionHeader>
+      <SectionHeader description={isSupabaseConfigured ? tr.attachments.hint : tr.attachments.hintLocal}>{tr.attachments.title}</SectionHeader>
 
       <Card>
         {attachments.length === 0 ? (
@@ -220,7 +236,7 @@ export function AttachmentPanel({
                     accessibilityLabel={[
                       held ? `${tr.attachments.open} · ${attachment.fileName}` : attachment.fileName,
                       tr.attachments.sizeLabel(Math.max(1, Math.round(attachment.byteSize / 1024))),
-                      held ? null : tr.attachments.otherDevice,
+                      held ? null : missingLabel,
                     ].filter(Boolean).join(" · ")}
                     disabled={!held}
                     onPress={() => void open(attachment)}
@@ -245,7 +261,7 @@ export function AttachmentPanel({
                         badge under a tile that looks the same as the ones
                         that work. */}
                     {held ? null : (
-                      <Badge testID={`attachment-missing-${attachment.id}`} text={tr.attachments.otherDevice} tone="warning" />
+                      <Badge testID={`attachment-missing-${attachment.id}`} text={missingLabel} tone="warning" />
                     )}
                   </Pressable>
                   <Row style={{ alignItems: "center", justifyContent: "space-between", marginTop: 2 }}>

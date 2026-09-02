@@ -1,14 +1,16 @@
 /**
- * Where an attachment's bytes live: this device, and nowhere else (spec §3.1c).
+ * This device's copy of an attachment's bytes (spec §3.1c).
  *
- * The row that describes an attachment syncs; the file does not. That is not a
- * limitation being worked around, it is the design — the sync pipeline carries
- * PostgREST JSON, and pushing documents through it would replicate every
- * receipt to every device and put them somewhere the owner did not choose.
+ * It used to be the only copy. `src/sync/attachment-mirror.ts` now sends what
+ * is here to the owner's Storage bucket and fetches what is not, so this is a
+ * cache: authoritative for what can be opened right now, not for what exists.
  *
- * The consequence is stated openly rather than hidden: a device that did not
- * add the file does not have it, `presentAttachments` omits it there, and the
- * UI says so instead of showing an open button that cannot work.
+ * The original objection survives the change and shapes it. Replicating every
+ * receipt onto every device is still the wrong behaviour, so the mirror uploads
+ * eagerly and downloads lazily — only the documents a screen is showing. What
+ * changed is that a file this device lacks is now "not here yet" rather than
+ * unreachable, and the panel asks the mirror before it tells the owner
+ * anything.
  *
  * Native uses the app sandbox; `attachment-store.web.ts` is the browser's
  * equivalent and keeps this exact interface.
@@ -115,4 +117,28 @@ export async function pruneOrphanAttachmentFiles(liveNames: ReadonlySet<string>)
     devWarning("attachment.prune", String(error));
   }
   return removed;
+}
+
+/**
+ * The bytes themselves, for the remote mirror.
+ *
+ * Separate from `openAttachment` and `attachmentThumbnail` because those hand
+ * a URI to something that will draw or share it, and the mirror needs the
+ * content. `null` means this device does not hold the file, which is a normal
+ * answer for a row that arrived by sync, not an error.
+ */
+export async function readAttachmentBytes(storedName: string): Promise<Uint8Array<ArrayBuffer> | null> {
+  const file = resolve(storedName);
+  if (!file?.exists) return null;
+  return file.bytes();
+}
+
+/** Write bytes fetched from the mirror into the same sandbox `storeAttachmentBytes` uses. */
+export async function writeAttachmentBytes(storedName: string, bytes: Uint8Array<ArrayBuffer>): Promise<void> {
+  const file = resolve(storedName);
+  if (!file) throw new Error("Refusing to store an attachment under an unsafe name");
+  // `overwrite` rather than a prior existence check: a partially written file
+  // from an interrupted download must be replaced, not appended to.
+  file.create({ intermediates: true, overwrite: true });
+  file.write(bytes);
 }

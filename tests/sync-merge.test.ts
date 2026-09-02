@@ -1,5 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { classifyOutboxBatch, isUuidShaped, remoteWinsLww, shouldApplyServerAck } from "../src/sync/merge-policy";
+import {
+  classifyOutboxBatch,
+  cursorIsAtServerHead,
+  formatPullCursor,
+  isUuidShaped,
+  parsePullCursor,
+  PULL_EPOCH,
+  remoteWinsLww,
+  shouldApplyServerAck,
+} from "../src/sync/merge-policy";
 import { classifyRefreshFailure, completedSyncState } from "../src/sync/status";
 
 describe("sync merge policy", () => {
@@ -99,5 +108,61 @@ describe("token refresh failure classification", () => {
     // real refusal rather than optimistically retried forever.
     expect(classifyRefreshFailure(new Error("something else"))).toBe("expired");
     expect(classifyRefreshFailure(null)).toBe("expired");
+  });
+});
+
+/**
+ * What lets a sync skip a table without asking PostgREST for a page.
+ *
+ * The risk this covers is asymmetric: skipping a table that HAS moved omits a
+ * row until something else happens to move that table, which on an
+ * offline-first ledger is indistinguishable from losing it. Pulling a table
+ * that has not moved costs one empty page. So every case that is not provably
+ * "the cursor is standing on the newest row" must pull.
+ */
+describe("pull cursor policy", () => {
+  const HEAD = { ts: "2026-09-02T10:00:00.000Z", id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" };
+
+  it("round-trips the stored keyset and reads a legacy cursor as having no id", () => {
+    expect(parsePullCursor(formatPullCursor(HEAD))).toEqual(HEAD);
+    expect(parsePullCursor("2026-09-02T10:00:00.000Z")).toEqual({ ts: "2026-09-02T10:00:00.000Z", id: "" });
+    expect(parsePullCursor(null)).toEqual({ ts: PULL_EPOCH, id: "" });
+    expect(parsePullCursor("")).toEqual({ ts: PULL_EPOCH, id: "" });
+  });
+
+  it("skips only a table whose newest row is the one the cursor stands on", () => {
+    expect(cursorIsAtServerHead(HEAD, HEAD)).toBe(true);
+    // Server has nothing for this user: there is no page to fetch.
+    expect(cursorIsAtServerHead(HEAD, null)).toBe(true);
+  });
+
+  it("pulls whenever the head is a different row, in either direction", () => {
+    const otherId = { ...HEAD, id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb" };
+    expect(cursorIsAtServerHead(HEAD, otherId)).toBe(false);
+    expect(cursorIsAtServerHead(HEAD, { ...HEAD, ts: "2026-09-02T10:00:01.000Z" })).toBe(false);
+    // A cursor ahead of the head is not evidence of anything; pull and let the
+    // keyset filter decide.
+    expect(cursorIsAtServerHead({ ...HEAD, ts: "2026-09-02T11:00:00.000Z" }, HEAD)).toBe(false);
+  });
+
+  it("pulls a table this device has never pulled", () => {
+    expect(cursorIsAtServerHead(parsePullCursor(null), HEAD)).toBe(false);
+  });
+
+  it("pulls a legacy cursor, which cannot prove which row it stands on", () => {
+    expect(cursorIsAtServerHead({ ts: HEAD.ts, id: "" }, HEAD)).toBe(false);
+  });
+
+  it("pulls rather than trusting an unparseable timestamp on either side", () => {
+    expect(cursorIsAtServerHead(HEAD, { ...HEAD, ts: "not a date" })).toBe(false);
+    expect(cursorIsAtServerHead({ ...HEAD, ts: "not a date" }, HEAD)).toBe(false);
+  });
+
+  it("does not let sub-millisecond precision hide a newer row", () => {
+    // Postgres keeps updated_at to microseconds; the stored cursor is an
+    // ISO string truncated to milliseconds. A "head is not greater than the
+    // cursor" test would compare these equal and skip the table forever.
+    const microsecondsLater = { ts: "2026-09-02T10:00:00.000Z", id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb" };
+    expect(cursorIsAtServerHead(HEAD, microsecondsLater)).toBe(false);
   });
 });

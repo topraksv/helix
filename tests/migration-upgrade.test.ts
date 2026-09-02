@@ -15,7 +15,7 @@
  */
 
 import { DatabaseSync } from "node:sqlite";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import journal from "../src/db/migrations/meta/_journal.json";
@@ -122,6 +122,23 @@ describe("boot migration", () => {
     // Applied in `when` order, which is what the resume rule compares against.
     const times = journal.entries.map((entry) => entry.when);
     expect([...times].sort((a, b) => a - b)).toEqual(times);
+  });
+
+  it("keeps a meta snapshot for exactly the migrations that move the schema", () => {
+    // `meta/NNNN_snapshot.json` is drizzle-kit's record of the schema AFTER a
+    // migration, and `generate` diffs `schema.ts` against the newest one. A
+    // data-only migration moves no schema, so drizzle writes no snapshot and
+    // the previous one stays current — 0010 and 0012 are both pure `UPDATE`.
+    //
+    // This is asserted because the gap reads like a defect: the journal has 13
+    // entries and `meta/` has 11 snapshots, and an audit has already raised
+    // that as a broken folder once. The rule is snapshot-iff-DDL, so state it
+    // where it can fail rather than explaining it again in prose.
+    for (const entry of journal.entries) {
+      const movesSchema = /^\s*(CREATE|ALTER|DROP)\b/im.test(sqlFor(entry.tag));
+      const snapshot = join(MIGRATIONS_DIR, "meta", `${String(entry.idx).padStart(4, "0")}_snapshot.json`);
+      expect(existsSync(snapshot), `${entry.tag} ${movesSchema ? "moves" : "does not move"} the schema`).toBe(movesSchema);
+    }
   });
 
   it("brings a fresh install to the full schema", async () => {

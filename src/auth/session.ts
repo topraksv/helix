@@ -16,7 +16,7 @@ import {
   wasPasswordRecoveryDetected,
 } from "../sync/supabase";
 import { pendingOutboxCount, resetLocalWorkspace, writeSetting } from "../db/mutations";
-import { flushOutbox, runSyncSessionTask, startSyncSession, stopSyncSession } from "../sync/engine";
+import { flushOutbox, purgeRemoteAttachments, runSyncSessionTask, startSyncSession, stopSyncSession } from "../sync/engine";
 import { useSyncStatus } from "../sync/status";
 import { connectMarkets, disconnectMarkets } from "../services/markets";
 import { clearRateCache, loadRateCache } from "../services/fx-fetch";
@@ -521,6 +521,13 @@ export const useSession = create<SessionStore>((set, get) => ({
     if (isSupabaseConfigured) {
       const supabase = getSupabase();
       if (supabase) {
+        // Storage has no foreign key to the account, so nothing cascades the
+        // documents away. This removes them through the API, which is what
+        // actually frees the stored blob; migration 35 repeats the removal
+        // inside the RPC so an interruption here still cannot leave a receipt
+        // behind an identity that no longer exists. It cannot fail the delete:
+        // an unreachable file must never become the reason an account survives.
+        await purgeRemoteAttachments(userId).catch(() => {});
         const { error } = await supabase.rpc("delete_own_account");
         if (error) {
           startSyncSession(userId);

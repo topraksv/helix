@@ -1,15 +1,17 @@
 /**
  * The browser's copy of the attachment store.
  *
- * Same promise as the native one — the bytes never leave this device — with
- * the browser's own private storage standing in for the app sandbox.
- * IndexedDB rather than `localStorage`: documents are binary and can be
- * megabytes, and `localStorage` is a synchronous string store with a few
+ * Same role as the native one — this device's cache of documents the mirror
+ * keeps — with the browser's own private storage standing in for the app
+ * sandbox. IndexedDB rather than `localStorage`: documents are binary and can
+ * be megabytes, and `localStorage` is a synchronous string store with a few
  * megabytes for the whole origin.
  *
  * It is deliberately NOT the SQLite database the rest of the app uses. Every
- * table there is a synced table, and a document put in one would be pushed to
- * the server — which is the single thing this feature promises not to do.
+ * table there is a synced table, so a document put in one would travel as a
+ * base64 column inside PostgREST JSON — through the outbox, into every LWW
+ * comparison, and into every backup file. The bytes do reach the server now,
+ * but through Storage, which is built to carry them.
  */
 
 import { isStoredAttachmentName } from "../domain/attachments";
@@ -140,4 +142,16 @@ export async function pruneOrphanAttachmentFiles(liveNames: ReadonlySet<string>)
     devWarning("attachment.prune", String(error));
     return 0;
   }
+}
+
+/** See the native file for why these are separate from the URI accessors. */
+export async function readAttachmentBytes(storedName: string): Promise<Uint8Array<ArrayBuffer> | null> {
+  if (!isStoredAttachmentName(storedName)) return null;
+  const blob = await transact<Blob | undefined>("readonly", (store) => store.get(storedName));
+  return blob ? new Uint8Array(await blob.arrayBuffer()) : null;
+}
+
+export async function writeAttachmentBytes(storedName: string, bytes: Uint8Array<ArrayBuffer>): Promise<void> {
+  if (!isStoredAttachmentName(storedName)) throw new Error("Refusing to store an attachment under an unsafe name");
+  await transact("readwrite", (store) => store.put(new Blob([bytes]), storedName));
 }
