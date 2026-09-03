@@ -1514,7 +1514,18 @@ test("investment setup, weighted sale, BES contribution and wallet refund form o
   await page.getByRole("radio", { name: "Bir kısmı", exact: true }).click();
   await page.getByRole("textbox", { name: "Aktarılacak tutar", exact: true }).fill("100");
   await page.getByRole("button", { name: "Mali Tabloya Aktar", exact: true }).click();
-  await expect(page.getByText("₺9.000,00", { exact: true }).first()).toBeVisible();
+  // Wait for the FORM TO CLOSE, not for a particular screen to appear. Closing
+  // it calls `router.back()`, and where that lands depends on how deep browser
+  // history got while this flow opened and closed six modals: measured locally
+  // it returns to Investments in ~270ms, and in CI run 33782056236 it went one
+  // step further to the dashboard, on the first attempt and on the retry. This
+  // used to assert the wallet balance right here, which only passed while the
+  // outgoing screen was still the one on top — so a slower runner turned a real
+  // open question about that landing into a failure of a test about neither.
+  // The balance is asserted below instead, on the tab this test lands on
+  // deliberately, and scoped to the element that owns it rather than to any
+  // text anywhere on the page.
+  await expect(page).not.toHaveURL(/\/transaction/);
 
   // Expo Router keeps every tab mounted, so `getByTestId` can resolve inside a
   // screen that is not on top — and a hidden screen never re-measures, so it
@@ -1525,6 +1536,7 @@ test("investment setup, weighted sale, BES contribution and wallet refund form o
   // it every time.
   await page.getByRole("tab", { name: "Yatırımlar" }).click();
   await expect(page.getByRole("tab", { name: "Yatırımlar", selected: true })).toBeVisible();
+  await expect(page.getByTestId("investment-cash-amount")).toContainText("₺9.000,00");
   await page.setViewportSize({ width: 1280, height: 900 });
   await expect(page.getByTestId("investment-distribution-chart")).toBeVisible();
   const walletGeometry = await page.getByTestId("investment-wallet-summary").evaluate((wallet) => {

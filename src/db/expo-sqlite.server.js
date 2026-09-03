@@ -23,6 +23,13 @@
  *
  * `metro.config.js` owns the substitution and names the environments it
  * applies to. `tests/release-config.test.ts` holds the pair together.
+ *
+ * NOTHING IMPORTS THIS FILE, and nothing ever will: Metro's resolver hands it
+ * back in place of a package name, which no static analysis can see. `npm run
+ * audit:unused` therefore reported it as an unused file — accurately, and with
+ * exactly the wrong conclusion — so `knip.json` ignores it by name. Deleting it
+ * does not fail a build; it puts the SQLite driver back into every server
+ * render, which is the 500 above.
  */
 
 function unavailable(name) {
