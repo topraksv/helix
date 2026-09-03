@@ -123,9 +123,9 @@ jobs:
           # high-risk, which skips the step below and runs the suite in
           # `full-gate` instead; the first docs-only push to main found it.
           fetch-depth: 0
-      # Expo SDK 54 tooling is incompatible with Node 24/26 native TypeScript
-      # stripping (it chokes on expo-modules-core's src/index.ts). Node 22 is
-      # the newest LTS the SDK 54 build supports.
+      # Node 22, matching `.nvmrc`. Node 24/26 native TypeScript stripping
+      # breaks this SDK's toolchain (it chokes on expo-modules-core's
+      # src/index.ts); `docs/ARCHITECTURE.md` records the pin.
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
@@ -454,4 +454,7 @@ jobs:
             echo "::error::EXPO_TOKEN is not configured; the preview OTA was not published."
             exit 1
           fi
-          npx --yes eas-cli@21.4.0 update --branch preview --platform all --message "main $GITHUB_SHA" --clear-cache --non-interactive
+          # `--environment` is mandatory from SDK 55 on: without it the CLI
+          # refuses the publish rather than defaulting, so it is pinned to the
+          # branch this job actually updates.
+          npx --yes eas-cli@23.2.0 update --branch preview --environment preview --platform all --message "main $GITHUB_SHA" --clear-cache --non-interactive

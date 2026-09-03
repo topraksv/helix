@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { BRAND, brandPlate } from "../src/ui/brand-colors";
 import { badgeHue, initialsBadgeColor } from "../src/ui/badge-color";
+import { INVESTMENT_ASSET_TYPES } from "../src/domain/investments";
 import { chartSeriesColors, darkPalette, DEFAULT_PALETTE_ID, generatedBadgeForeground, heroSurface, lightPalette, PALETTES, resolvePaletteId, type Palette } from "../src/ui/theme";
 
 /** sRGB hex to CIE Lab (D65), for perceptual difference rather than luminance. */
@@ -508,6 +509,54 @@ describe("semantic theme contrast", () => {
       }
     }
     expect(SURFACES.length).toBeGreaterThan(0);
+  });
+
+  /**
+   * A chart mark never comes from a surface token.
+   *
+   * The wallet ring painted free cash in `surfaceStrong` — the colour that
+   * looks like the right answer for "this one is not a category", and the one
+   * value the ramp's own note above records as measured and rejected. The
+   * numbers below re-derive why: against the ring's unfilled track it lands
+   * around 1.5, where a graphical object owes 3. Cash is usually the largest
+   * thing in the wallet, so the ring's biggest slice read as the part of the
+   * ring nobody had filled in — and selecting it painted the centre readout in
+   * that same colour, so a lock that HAD been taken showed nothing at all. It
+   * was reported as the ring refusing to lock, which is exactly how it looked.
+   *
+   * `walletDonutSlices` now emits ramp entries only, so this pins the reason
+   * rather than the symptom: any surface token fails the floor a mark must
+   * clear, whichever ground it is drawn on.
+   */
+  it("rules out every surface token as a chart mark", () => {
+    for (const palette of shippedPalettes) {
+      for (const token of ["surface", "surfaceAlt", "surfaceStrong"] as const) {
+        for (const ground of [palette.surface, palette.surfaceAlt]) {
+          expect(
+            contrastRatio(palette[token], ground),
+            `${token} (${palette[token]}) as a mark on ${ground}`,
+          ).toBeLessThan(3);
+        }
+      }
+    }
+  });
+
+  /**
+   * Cash keeps the ramp's last slot, and no asset type can reach it.
+   *
+   * The wallet binds a colour to an asset type's POSITION in the canonical
+   * list, and cash — which is not an asset type — takes the far end. That only
+   * stays a rule while the list is shorter than the ramp; a seventh type is
+   * fine, a ninth would silently hand cash's colour to a holding.
+   */
+  it("leaves the wallet ring a slot no asset type can take", () => {
+    // Spelled out because the ORDER is the contract: position N in this list is
+    // colour N in the ring, so a reorder recolours holdings someone has already
+    // learned to read, and this is where that has to be argued rather than
+    // noticed.
+    expect(INVESTMENT_ASSET_TYPES).toEqual(["metal", "currency", "equity", "fund", "crypto", "pension"]);
+    expect(INVESTMENT_ASSET_TYPES.length).toBeLessThan(chartSeriesColors("light").length);
+    expect(new Set(INVESTMENT_ASSET_TYPES).size).toBe(INVESTMENT_ASSET_TYPES.length);
   });
 
   it("keeps every pair of series colours apart, in normal and red-green vision", () => {

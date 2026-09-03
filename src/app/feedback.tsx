@@ -18,7 +18,7 @@
  * beside the control that produced it.
  */
 
-import React, { useState } from "react";
+import { useState } from "react";
 import { View } from "react-native";
 import { useRouter, type Href } from "expo-router";
 import { Image } from "expo-image";

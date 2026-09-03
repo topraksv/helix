@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import { Text, View } from "react-native";
 import Bitcoin from "lucide-react-native/icons/bitcoin";
 import ChartNoAxesCombined from "lucide-react-native/icons/chart-no-axes-combined";

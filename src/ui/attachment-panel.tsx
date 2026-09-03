@@ -19,7 +19,7 @@
  * button that cannot work.
  */
 
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { Pressable, View } from "react-native";
 import { Image } from "expo-image";
 import * as DocumentPicker from "expo-document-picker";

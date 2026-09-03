@@ -10,7 +10,7 @@
  * deferred `require()` to avoid a cycle.
  */
 
-import React, { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import {
   Animated,
   Platform,

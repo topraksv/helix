@@ -1,4 +1,3 @@
-import React from "react";
 import { Pressable } from "react-native";
 import { useLocalSearchParams, useRouter, type Href } from "expo-router";
 import ChevronLeft from "lucide-react-native/icons/chevron-left";

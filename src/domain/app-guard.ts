@@ -1,6 +1,6 @@
 /** Pure root-route guard. Effects consume `redirect`; rendering consumes `view`. */
 
-type RootRouteArea = "auth" | "recovery" | "onboarding" | "setup-helper" | "protected" | "root";
+type RootRouteArea = "auth" | "recovery" | "public" | "onboarding" | "setup-helper" | "protected" | "root";
 type RootGuardRedirect = "/(auth)/sign-in" | "/(onboarding)/setup" | "/(tabs)";
 
 interface RootGuardInput {
@@ -24,6 +24,11 @@ export function classifyRootRoute(segments: readonly string[]): RootRouteArea {
   if (!first) return "root";
   if (first === "(auth)" && second === "reset-password") return "recovery";
   if (first === "(auth)") return "auth";
+  // The KVKK notice is the one screen whose whole job is to be readable BEFORE
+  // an account exists. Left in the fall-through below it classified as
+  // `protected`, so the guard bounced a signed-out reader straight back to
+  // sign-in and the link on that screen did nothing at all.
+  if (first === "privacy") return "public";
   if (first === "(onboarding)") return "onboarding";
   if (first === "import-wizard" || first === "bulk-entry") return "setup-helper";
   return "protected";
@@ -31,6 +36,12 @@ export function classifyRootRoute(segments: readonly string[]): RootRouteArea {
 
 export function resolveRootGuard(input: RootGuardInput): RootGuardDecision {
   if (!input.ready || input.locked !== false) return { view: "wait", redirect: null };
+
+  // A disclosure nobody can open discloses nothing, so this route answers
+  // before the session is even considered. It carries no account data — it is
+  // the same static text for every reader — which is what makes granting it
+  // unconditionally safe rather than merely convenient.
+  if (input.route === "public") return { view: "stack", redirect: null };
 
   if (!input.userId) {
     if (input.route === "auth" || input.route === "recovery") return { view: "stack", redirect: null };

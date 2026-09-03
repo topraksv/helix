@@ -13,7 +13,7 @@
  * owns saying them out loud.
  */
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { View } from "react-native";
 import { Redirect, useRouter } from "expo-router";
 import Banknote from "lucide-react-native/icons/banknote";

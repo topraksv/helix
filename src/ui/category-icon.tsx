@@ -28,7 +28,6 @@
  * is a fallback rather than an assertion.
  */
 
-import React from "react";
 import type { LucideIcon } from "lucide-react-native";
 import Baby from "lucide-react-native/icons/baby";
 import Banknote from "lucide-react-native/icons/banknote";

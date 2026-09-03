@@ -1,4 +1,3 @@
-import React from "react";
 import { Stack } from "expo-router";
 import { HeaderBackButton } from "../../../ui/header-back";
 import { pageScreenOptions } from "../../../ui/header-bar";

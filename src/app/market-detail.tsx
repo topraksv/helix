@@ -13,7 +13,7 @@
  * one that admits it has nothing.
  */
 
-import React, { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Text, View } from "react-native";
 import { useLocalSearchParams } from "expo-router";
 import TrendingDown from "lucide-react-native/icons/trending-down";

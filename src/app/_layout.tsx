@@ -4,7 +4,7 @@
  * fully offline; sync, FX and notifications run opportunistically.
  */
 
-import React, { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Platform, Pressable, Text, useColorScheme, View } from "react-native";
 import { Stack, useRouter, useSegments } from "expo-router";
 import AppWindow from "lucide-react-native/icons/app-window";

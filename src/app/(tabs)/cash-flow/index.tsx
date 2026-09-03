@@ -53,7 +53,7 @@ import { scheduleSync } from "../../../sync/engine";
 import { devError } from "../../../services/logger";
 import { kv } from "../../../services/kv";
 import { Amount, Button, Card, DataStateNotice, EmptyState, FadeIn, IconButton, Row, Screen, Segmented, Spread } from "../../../ui/components";
-import { useScrollToTop } from "@react-navigation/native";
+import { useScrollToTop } from "expo-router";
 import { StickyTable, STICKY_HEADER_HEIGHT, STICKY_ROW_HEIGHT } from "../../../ui/sticky-table";
 import { MatrixColorSheet } from "../../../ui/matrix-color-sheet";
 import { buildColorIndex, matrixColorLabel, MATRIX_COLOR_TOKENS, parseMatrixColorLabels, resolveCellToken, type MatrixColorLabels, type MatrixColorScope, type MatrixColorToken } from "../../../domain/matrix-colors";

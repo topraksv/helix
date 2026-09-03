@@ -1,6 +1,6 @@
 /** Person management (§2.8): named people; non-self people are watch-only. */
 
-import React, { useState } from "react";
+import { useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { usePersonsState, useUserId } from "../../../data/hooks";
 import { combineLiveStates } from "../../../data/live-state";

@@ -31,7 +31,7 @@
 import { useEffect } from "react";
 import { InteractionManager, Platform } from "react-native";
 import { useNavigation } from "expo-router";
-import type { NavigationProp } from "@react-navigation/native";
+import type { NavigationProp } from "expo-router/react-navigation";
 
 /**
  * The tabs this hook may warm.

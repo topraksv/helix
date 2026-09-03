@@ -1,4 +1,3 @@
-import React from "react";
 import { Stack } from "expo-router";
 import { tr } from "../../../i18n/tr";
 import { HeaderBackButton } from "../../../ui/header-back";

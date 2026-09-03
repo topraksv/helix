@@ -8,7 +8,7 @@
  * `domain/attention.ts` keeps that bounded.
  */
 
-import React, { useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { Text, View } from "react-native";
 import { Stack, useRouter, type Href } from "expo-router";
 import BellOff from "lucide-react-native/icons/bell-off";

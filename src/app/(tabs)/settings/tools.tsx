@@ -7,7 +7,6 @@
  * one, and its heading hierarchy sat one step above every sibling in Settings.
  */
 
-import React from "react";
 import { View } from "react-native";
 import { shouldUseWideWorkspace } from "../../../ui/responsive";
 import { useContentWidth } from "../../../ui/viewport";

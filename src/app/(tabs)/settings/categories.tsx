@@ -1,7 +1,7 @@
 /** Category & column management — the personalization core: names, kinds,
  *  column visibility all belong to the user (nothing is hardcoded). */
 
-import React, { useState, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { StyleSheet, View } from "react-native";
 import { useRouter } from "expo-router";
 import { useCategoriesState, useUserId } from "../../../data/hooks";

@@ -225,6 +225,41 @@ describe("computed columns", () => {
       categoryIds: Array.from({ length: MAX_COMPUTED_CATEGORY_IDS + 1 }, (_, index) => String(index)),
     })).toThrow();
   });
+
+  // The shapes a schema library used to refuse on this file's behalf. They are
+  // pinned here because the validator is hand-written now: every one of these
+  // reaches it from `JSON.parse` of a synced or restored row, so "not an
+  // object" and "not a string" are inputs, not hypotheticals.
+  it("refuses definitions that are not an object of the declared shape", () => {
+    for (const raw of [null, undefined, 42, "sum", true, [], [{ op: "sum" }]]) {
+      expect(() => parseDefinition(raw)).toThrow();
+    }
+    expect(() => parseDefinition({})).toThrow();
+    expect(() => parseDefinition({ op: null })).toThrow();
+    expect(() => parseDefinition({ op: { toString: () => "sum" } })).toThrow();
+  });
+
+  it("refuses category lists that are not lists of non-empty strings", () => {
+    expect(() => parseDefinition({ op: "sum", categoryIds: "a" })).toThrow();
+    expect(() => parseDefinition({ op: "sum", categoryIds: [1] })).toThrow();
+    expect(() => parseDefinition({ op: "sum", categoryIds: [""] })).toThrow();
+    expect(() => parseDefinition({ op: "sum", categoryIds: [null] })).toThrow();
+    expect(() => parseDefinition({ op: "difference", plusCategoryIds: ["a"], minusCategoryIds: [] })).toThrow();
+  });
+
+  it("refuses a key the branch did not declare, including one JSON can smuggle", () => {
+    expect(() => parseDefinition({ op: "cc_split", part: "single", extra: 1 })).toThrow();
+    expect(() => parseDefinition({ op: "cc_split", part: "both" })).toThrow();
+    // `JSON.parse` makes `__proto__` an OWN property, so strict keys are what
+    // stop it rather than any prototype check.
+    expect(() => parseDefinition(JSON.parse('{"op":"income_minus_expense","__proto__":{"x":1}}'))).toThrow();
+  });
+
+  it("returns only the declared keys, so a definition cannot carry a payload", () => {
+    expect(parseDefinition({ op: "cc_split", part: "installment" }))
+      .toEqual({ op: "cc_split", part: "installment" });
+    expect(Object.keys(parseDefinition({ op: "income_minus_expense" }))).toEqual(["op"]);
+  });
 });
 
 // (spreadsheet import parsing moved to tests/spreadsheet-import.test.ts)

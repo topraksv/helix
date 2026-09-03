@@ -30,12 +30,12 @@ import {
   useUserId,
 } from "../../../data/hooks";
 import { combineLiveStates } from "../../../data/live-state";
-import { type InvestmentAssetType } from "../../../domain/investments";
+import { INVESTMENT_ASSET_TYPES, type InvestmentAssetType } from "../../../domain/investments";
 import { formatMinorCompact } from "../../../domain/money";
 import { todayISO } from "../../../domain/dates";
 import { dateLabel, tr } from "../../../i18n/tr";
 import { Amount, Body, Button, Card, ChipPicker, DataStateNotice, EmptyState, Eyebrow, Heading, HeroCard, IconButton, MetricStrip, Row, Screen, SectionHeader, Spread } from "../../../ui/components";
-import { Donut, useSeriesColors } from "../../../ui/charts";
+import { Donut, useSeriesColors, walletDonutSlices } from "../../../ui/charts";
 import { useDrawIn } from "../../../ui/motion-primitives";
 import { interactionSurface } from "../../../ui/interaction";
 import { actionTileMetrics, circle, density, font, iconSize, motion, radius, spacing, type, useTheme } from "../../../ui/theme";
@@ -47,7 +47,6 @@ import { userMessage } from "../../../domain/user-error";
 import { useUndo } from "../../../ui/undo";
 import { shouldUseCompactInvestmentHero, shouldUseDesktopInvestmentHero, shouldUseTallInvestmentHero } from "../../../ui/responsive";
 
-const ASSET_TYPES: InvestmentAssetType[] = ["metal", "currency", "equity", "fund", "crypto", "pension"];
 // Every peer section inside the wallet uses the same 16pt boundary. Internal
 // label/value gaps stay smaller; mixing those two scales was what made the
 // transfer panel look twice as far from the bar on the desktop layout.
@@ -471,21 +470,24 @@ export default function InvestmentsScreen() {
   }
 
   const active = state.products.filter((product) => product.active);
-  const activeAssetTypes = ASSET_TYPES.filter((assetType) => active.some((product) => product.assetType === assetType));
+  const activeAssetTypes = INVESTMENT_ASSET_TYPES.filter((assetType) => active.some((product) => product.assetType === assetType));
   const visibleActive = productFilter === "all"
     ? active
     : active.filter((product) => product.assetType === productFilter);
   const byType = new Map<InvestmentAssetType, number>();
   for (const product of active) byType.set(product.assetType, (byType.get(product.assetType) ?? 0) + product.costMinor);
-  const slices = [
-    ...(state.cashMinor > 0 ? [{ label: tr.investments.cash, valueMinor: state.cashMinor, color: palette.surfaceStrong }] : []),
-    ...ASSET_TYPES.flatMap((assetType, index) => {
-      const valueMinor = byType.get(assetType) ?? 0;
-      return valueMinor > 0
-        ? [{ label: tr.investments.types[assetType], valueMinor, color: colors[index] ?? colors[0] }]
-        : [];
-    }),
-  ];
+  const slices = walletDonutSlices({
+    cashLabel: tr.investments.cash,
+    cashMinor: state.cashMinor,
+    // The full canonical list, empties included: the position in it is what
+    // fixes each type's colour, so filtering here would recolour every type
+    // below the one that just went to zero.
+    assets: INVESTMENT_ASSET_TYPES.map((assetType) => ({
+      label: tr.investments.types[assetType],
+      valueMinor: byType.get(assetType) ?? 0,
+    })),
+    colors,
+  });
   const totalCapital = state.cashMinor + state.investedCostMinor;
   const cashSummary = (
     <View style={compact ? { width: "100%" } : { flex: 1, minWidth: 0 }}>

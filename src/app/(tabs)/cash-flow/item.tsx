@@ -4,7 +4,7 @@
  * month row jumps into that month's detail where the transactions are managed.
  */
 
-import React, { useMemo } from "react";
+import { useMemo } from "react";
 import { Pressable, Text, View } from "react-native";
 import { Redirect, Stack, useLocalSearchParams, useRouter } from "expo-router";
 import Inbox from "lucide-react-native/icons/inbox";

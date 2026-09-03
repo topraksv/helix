@@ -53,6 +53,42 @@ describe("root guard state machine", () => {
     expect(resolveRootGuard({ ...base, userId: null, onboarded: null, route: "recovery" }).view).toBe("stack");
     expect(resolveRootGuard({ ...base, route: "auth" }).redirect).toBe("/(tabs)");
   });
+
+  /**
+   * The KVKK notice opens in every state, and this is a regression test.
+   *
+   * It classified as `protected` until 2026-09-03, so the guard sent a
+   * signed-out reader back to sign-in: the "Aydınlatma Metnini Oku" link on
+   * that very screen did nothing. The disclosure is required BEFORE an account
+   * exists — that is the moment an e-mail address starts being processed — so
+   * the one state it has to work in was the one state it did not.
+   *
+   * Each case below is a state someone can actually be in while wanting to
+   * read it: never signed in, signed in but not through onboarding, and signed
+   * in with the freeze flag still unresolved.
+   */
+  it("opens the legal notice in every session state", () => {
+    expect(classifyRootRoute(["privacy"])).toBe("public");
+    for (const state of [
+      { userId: null, onboarded: null, frozen: null },
+      { userId: "user-a", onboarded: false, frozen: null },
+      { userId: "user-a", onboarded: true, frozen: null },
+      { userId: "user-a", onboarded: true, frozen: true },
+    ]) {
+      expect(resolveRootGuard({ ...base, ...state, route: "public" })).toEqual({
+        view: "stack",
+        redirect: null,
+      });
+    }
+  });
+
+  /** Opening one route to everyone must not open the rest. */
+  it("keeps every other route guarded while signed out", () => {
+    for (const route of ["protected", "onboarding", "setup-helper", "root"] as const) {
+      expect(resolveRootGuard({ ...base, userId: null, onboarded: null, route }).redirect)
+        .toBe("/(auth)/sign-in");
+    }
+  });
 });
 
 /**

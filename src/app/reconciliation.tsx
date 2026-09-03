@@ -1,7 +1,7 @@
 /** Catch-up / reconciliation screen ("nerede kaldım"): everything that came
  *  due since the last entry, confirm/skip/correct with bank statement in hand. */
 
-import React, { useState } from "react";
+import { useState } from "react";
 import { View } from "react-native";
 import { Stack, useRouter } from "expo-router";
 import CheckCircle2 from "lucide-react-native/icons/circle-check";

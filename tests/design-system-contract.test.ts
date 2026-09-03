@@ -635,6 +635,38 @@ describe("a press lights the control it is on", () => {
   });
 
   /**
+   * One rule for how far a row's fill reaches past its own words.
+   *
+   * A hover that stops at the first and last glyph reads as a fill that missed,
+   * so a row inside a card bleeds to the card's padding and gives the inset
+   * straight back. The value was hand-written at six call sites before this,
+   * as 4, 8 or 12 depending on which screen it was typed on — identical rows in
+   * identical cards lighting three different shapes. `interactionBleed()` in
+   * `src/ui/interaction.ts` is the rule; a literal beside `interactionSurface`
+   * is someone re-deciding it.
+   */
+  it("bleeds every row's fill by the shared inset, not a local number", () => {
+    const offenders: string[] = [];
+    for (const path of sourceFiles("src", { atLeast: 150 })) {
+      // Where the rule is defined.
+      if (path === "src/ui/interaction.ts") continue;
+      const source = readFileSync(join(root, path), "utf8");
+      if (!source.includes("interactionSurface(")) continue;
+      for (const match of source.matchAll(/margin(?:Horizontal|Left|Right): -/g)) {
+        offenders.push(`${path}:${source.slice(0, match.index!).split("\n").length}`);
+      }
+    }
+    expect(offenders, "use interactionBleed() rather than a hand-written inset").toEqual([]);
+  });
+
+  /** The rule has to be reachable, and it has to be the card's own padding. */
+  it("derives that inset from the card padding rather than a constant", () => {
+    const interaction = readFileSync(join(root, "src/ui/interaction.ts"), "utf8");
+    expect(interaction).toContain("export function interactionBleed");
+    expect(interaction).toContain("inset: number = density.list.cardPadding");
+  });
+
+  /**
    * Every control answers a touch.
    *
    * 21 of the app's 50 interactive `Pressable`s used to give no visual response

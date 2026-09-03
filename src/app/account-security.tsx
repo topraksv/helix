@@ -3,7 +3,7 @@
  * the current password (re-authentication), matching the delete/freeze gate.
  */
 
-import React, { useState } from "react";
+import { useState } from "react";
 import { View } from "react-native";
 import { Redirect, useRouter } from "expo-router";
 import KeyRound from "lucide-react-native/icons/key-round";

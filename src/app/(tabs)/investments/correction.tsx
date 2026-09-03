@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { Text, View } from "react-native";
 import ArrowUpFromLine from "lucide-react-native/icons/arrow-up-from-line";
 import Landmark from "lucide-react-native/icons/landmark";

@@ -1,7 +1,7 @@
 /** Bulk history entry (approved feature): fill a whole past month like an
  *  Excel row — one total per category, saved as aggregate transactions. */
 
-import React, { useState } from "react";
+import { useState } from "react";
 import { View } from "react-native";
 import { useRouter } from "expo-router";
 import { bulkMonthEntry } from "../data/repo";

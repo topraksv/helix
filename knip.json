@@ -13,7 +13,8 @@
     "**/*.{js,mjs,ts,tsx}"
   ],
   "ignore": [
-    "src/sync/database.types.ts"
+    "src/sync/database.types.ts",
+    "supabase/functions/**"
   ],
   "ignoreDependencies": [
     "@expo-google-fonts/ibm-plex-serif",

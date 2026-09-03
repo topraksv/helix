@@ -2,8 +2,11 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Platform } from "react-native";
-import { useNavigation } from "expo-router";
-import { useIsFocused, usePreventRemove } from "@react-navigation/native";
+import { useIsFocused, useNavigation } from "expo-router";
+// `usePreventRemove` and `NavigationContext` have no root export yet, so the
+// compat subpath stays for them; the two hooks upstream marks deprecated there
+// are imported from the package root instead.
+import { usePreventRemove } from "expo-router/react-navigation";
 import { tr } from "../i18n/tr";
 import { appConfirm } from "./dialog";
 import { shouldBlockDirtyExit } from "../domain/form-state";

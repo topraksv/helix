@@ -5,7 +5,7 @@
  * persisted order behind both entry points.
  */
 
-import React, { useState } from "react";
+import { useState } from "react";
 import CategoriesScreen from "./(tabs)/settings/categories";
 import ComputedColumnsScreen from "./(tabs)/settings/computed-columns";
 import { tr } from "../i18n/tr";

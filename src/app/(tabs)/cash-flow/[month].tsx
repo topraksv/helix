@@ -37,7 +37,7 @@ import { useDrawIn } from "../../../ui/motion-primitives";
 import { TransactionRow } from "../../../ui/transaction-row";
 import { useUndo } from "../../../ui/undo";
 import { selectionTapIfChanged } from "../../../ui/haptics";
-import { interactionSurface } from "../../../ui/interaction";
+import { interactionBleed, interactionSurface } from "../../../ui/interaction";
 import { controlSize, iconSize, motion, radius, spacing, type, useTheme } from "../../../ui/theme";
 import { navigateBack } from "../../../ui/navigation";
 import { useDirtyExitGuard } from "../../../ui/dirty-exit";
@@ -349,8 +349,7 @@ export default function MonthDetailScreen() {
               style={(state) => ({
                 minHeight: controlSize.minimumTarget,
                 justifyContent: "center",
-                marginHorizontal: -spacing.sm,
-                paddingHorizontal: spacing.sm,
+                ...interactionBleed(),
                 borderRadius: radius.sm,
                 ...interactionSurface(palette, state),
               })}

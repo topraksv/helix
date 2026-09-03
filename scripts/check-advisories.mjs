@@ -22,27 +22,16 @@ import { readFileSync } from "node:fs";
  * Every field here is a claim someone checked, not a note someone copied.
  * Before extending this list: confirm the advisory has no compatible fix,
  * prove the package is absent from the export, and date the check.
+ *
+ * Empty is a state this list is allowed to be in, and reaching it is the point
+ * of the check rather than a sign the check stopped working. The two
+ * `image-size` entries that lived here were closed by the SDK 57 upgrade, which
+ * carried Metro past the version they described: `npm ls image-size --all` now
+ * resolves nothing at all. Leaving a closed acknowledgement behind is how a
+ * list like this turns into the place advisories go to be forgotten, which is
+ * why a stale entry is reported as loudly as an unacknowledged advisory.
  */
-const ACKNOWLEDGED = [
-  {
-    id: "GHSA-w3rx-r6r6-pgpr",
-    package: "image-size",
-    checkedOn: "2026-08-19",
-    expectedPaths: ["expo"],
-    recheckAfter: "2026-09-19",
-    reason:
-      "image-size@1.2.1 remains only in Metro's build chain: `npm ls image-size --all` resolves the single path expo -> @expo/metro -> metro, and the audit reports one install node (metro/node_modules/image-size). Re-verified 2026-08-19 that image-size is absent from the production web export. npm offers no fix other than downgrading expo a major version, and image-size@2.0.2 was tested earlier but rejected because Expo Metro failed on its unmatched.png asset path. Recheck the package and the export before expiry.",
-  },
-  {
-    id: "GHSA-5p2g-fcmc-qvqq",
-    package: "image-size",
-    checkedOn: "2026-08-19",
-    expectedPaths: ["expo"],
-    recheckAfter: "2026-09-19",
-    reason:
-      "image-size@1.2.1 remains only in Metro's build chain: `npm ls image-size --all` resolves the single path expo -> @expo/metro -> metro, and the audit reports one install node (metro/node_modules/image-size). Re-verified 2026-08-19 that image-size is absent from the production web export. npm offers no fix other than downgrading expo a major version, and image-size@2.0.2 was tested earlier but rejected because Expo Metro failed on its unmatched.png asset path. Recheck the package and the export before expiry.",
-  },
-];
+const ACKNOWLEDGED = [];
 
 /**
  * Dependencies the registry audit cannot see, and the review that replaces it.

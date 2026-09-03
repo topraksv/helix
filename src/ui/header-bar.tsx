@@ -19,7 +19,7 @@
  * renders it, so there is one back control and one back rule everywhere.
  */
 
-import React, { type ReactNode } from "react";
+import { type ReactNode } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { controlSize, font, spacing, type, useTheme, type Palette } from "./theme";

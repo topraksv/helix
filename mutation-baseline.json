@@ -189,6 +189,15 @@
       "measuredOn": "a4394d5ebe1055ee856167dd23e77c801b72b071",
       "measuredDate": "2026-08-21"
     },
+    "src/db/client.ts": {
+      "score": 28.18,
+      "killed": 51,
+      "timeout": 0,
+      "survived": 54,
+      "noCoverage": 76,
+      "measuredOn": "58570d5bfc79c0eec180fcac4978c97dd5bc66c1",
+      "measuredDate": "2026-09-03"
+    },
     "src/db/mutations.ts": {
       "score": 80.16,
       "killed": 201,
@@ -208,13 +217,13 @@
       "measuredDate": "2026-08-21"
     },
     "src/domain/app-guard.ts": {
-      "score": 99.19,
-      "killed": 123,
+      "score": 99.26,
+      "killed": 134,
       "timeout": 0,
       "survived": 1,
       "noCoverage": 0,
-      "measuredOn": "6b188b7f05384011a6ff7de1486a0f8ec5fec37a",
-      "measuredDate": "2026-09-02"
+      "measuredOn": "58570d5bfc79c0eec180fcac4978c97dd5bc66c1",
+      "measuredDate": "2026-09-03"
     },
     "src/domain/attachments.ts": {
       "score": 86.39,
@@ -269,6 +278,15 @@
       "noCoverage": 0,
       "measuredOn": "c74ef5673070c2c16a3f021e5a8d6d9296f1ca63",
       "measuredDate": "2026-08-24"
+    },
+    "src/domain/computed-columns.ts": {
+      "score": 71.97,
+      "killed": 113,
+      "timeout": 0,
+      "survived": 43,
+      "noCoverage": 1,
+      "measuredOn": "58570d5bfc79c0eec180fcac4978c97dd5bc66c1",
+      "measuredDate": "2026-09-03"
     },
     "src/domain/dashboard.ts": {
       "score": 94.83,
@@ -505,13 +523,13 @@
       "measuredDate": "2026-09-02"
     },
     "src/sync/engine.ts": {
-      "score": 0,
-      "killed": 0,
-      "timeout": 0,
-      "survived": 0,
-      "noCoverage": 470,
-      "measuredOn": "6b188b7f05384011a6ff7de1486a0f8ec5fec37a",
-      "measuredDate": "2026-09-02"
+      "score": 16.6,
+      "killed": 74,
+      "timeout": 4,
+      "survived": 123,
+      "noCoverage": 269,
+      "measuredOn": "58570d5bfc79c0eec180fcac4978c97dd5bc66c1",
+      "measuredDate": "2026-09-03"
     },
     "src/sync/merge-policy.ts": {
       "score": 77.3,

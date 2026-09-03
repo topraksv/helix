@@ -1,6 +1,6 @@
 /** Payment source management: cards / cash / bank, per-person, card cycle. */
 
-import React, { useState } from "react";
+import { useState } from "react";
 import { View } from "react-native";
 import { PaymentSourceLogo } from "../../../ui/logo";
 import { useContentWidth } from "../../../ui/viewport";

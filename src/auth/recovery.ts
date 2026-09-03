@@ -23,8 +23,10 @@ export function webPasswordRecoveryRedirectUrl(origin: string, baseUrl: string):
 
 /**
  * Password links carry one-time bearer material after Supabase verifies them.
- * Published Expo Go callback URLs are explicitly unstable in Expo SDK 54, so
- * every native request returns to the same hosted HTTPS recovery screen. The
+ * Expo Go's published callback URL is not a stable address — it is reissued
+ * with the client, so it cannot be registered as a redirect target — and that
+ * is a property of Expo Go rather than of any one SDK. Every native request
+ * therefore returns to the same hosted HTTPS recovery screen. The
  * responsive web screen completes recovery safely from a phone browser and
  * can then reopen the stable Expo Go preview channel without forwarding the
  * credentials.

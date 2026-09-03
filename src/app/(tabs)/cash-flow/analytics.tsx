@@ -2,7 +2,7 @@
  *  or a calendar year), a category filter, per-category cumulative trend and
  *  transaction search. */
 
-import React, { useDeferredValue, useEffect, useMemo, useState } from "react";
+import { useDeferredValue, useEffect, useMemo, useState } from "react";
 import { FlatList, Pressable, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import ChevronLeft from "lucide-react-native/icons/chevron-left";
@@ -35,7 +35,7 @@ import { Collapse } from "../../../ui/motion-primitives";
 import { StickyTable } from "../../../ui/sticky-table";
 import { shouldOfferTrendChart, shouldPairFilterCards, shouldUseNarrowAnalytics, shouldUseWideWorkspace } from "../../../ui/responsive";
 import { useContentWidth } from "../../../ui/viewport";
-import { interactionSurface } from "../../../ui/interaction";
+import { interactionBleed, interactionSurface } from "../../../ui/interaction";
 import { radius, segmentedMaxWidth, spacing, type, useTheme } from "../../../ui/theme";
 import { renderKeyboardSafeListScroll } from "../../../ui/keyboard-safe";
 
@@ -464,13 +464,16 @@ export default function AnalysisScreen() {
         accessibilityHint={tr.analysis.openTransaction}
         onPress={() => router.push({ pathname: "/transaction", params: { id: t.id } })}
         style={(state) => ({
-          marginHorizontal: -spacing.sm,
-          paddingHorizontal: spacing.sm,
+          ...interactionBleed(),
+          // The vertical padding belongs to the PRESSABLE, not to the row
+          // inside it: on the child the fill stopped short of its own control
+          // top and bottom, which is the same miss as a too-small bleed.
+          paddingVertical: spacing.xs,
           borderRadius: radius.sm,
           ...interactionSurface(palette, state),
         })}
       >
-        <Spread style={{ paddingVertical: spacing.xs }}>
+        <Spread>
           <View style={{ flex: 1, paddingRight: spacing.sm }}>
             <Body>{catName(t.categoryId) || tr.common.none}</Body>
             <Body muted style={{ fontSize: type.small.fontSize }}>
@@ -512,13 +515,13 @@ export default function AnalysisScreen() {
           />
         </View>
       ) : null}
-      {/* The distribution and the limits are the screen's two analysis
-          outputs, and on a desktop they are peers: stacked, each took a
-          full-width card for content worth about 650px, so the chart centred
-          itself between two dead margins and the limits it should be compared
-          against sat a scroll away. */}
-      <View style={compact ? undefined : { flexDirection: "row", alignItems: "flex-start", gap: spacing.lg }}>
-      <View style={compact ? undefined : { flex: 1.15, minWidth: 0 }}>
+      {/* The distribution gets the full width, and the limits sit under it.
+          They were peers in a row, which cost the chart a third of the screen:
+          a ring, a legend and a trend line are read by comparing shapes, and
+          shapes want width. The limits are a short list of numbers and lose
+          nothing by being a scroll lower. */}
+      <View>
+      <View>
       {rows.length > 0 || pieSlices.length > 0 || pieSupplemental.length > 0 ? (
         <Card>
           {/* Wraps on its own box, not on the screen's width. Paired with the
@@ -595,7 +598,7 @@ export default function AnalysisScreen() {
       ) : null}
       </View>
 
-      <View style={compact ? undefined : { flex: 0.85, minWidth: 0 }}>
+      <View>
       {activeBudgetRows.length === 0 ? (
         <Card rows>
           <ListRow

@@ -6,7 +6,7 @@
  * read-only helper never opens a separate network request or writes a row.
  */
 
-import React, { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Pressable, ScrollView, View } from "react-native";
 import { useFocusEffect } from "expo-router";
 import ArrowDownUp from "lucide-react-native/icons/arrow-down-up";

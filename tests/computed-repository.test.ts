@@ -112,7 +112,9 @@ describe("computed-column repository persistence", () => {
       },
       {
         input: { name: "Unsafe", definition: { op: "eval", code: "1 + 1" } as never, sortOrder: 0 },
-        message: "Invalid discriminator value",
+        // This project's own wording since the Zod schema went; the UI never
+        // shows it (every caller catches and renders `tr.errors.saveFailed`).
+        message: "Unknown computed column op",
       },
     ];
 

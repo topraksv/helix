@@ -9,7 +9,7 @@
  * no trademarked bitmap is reproduced.
  */
 
-import React, { useState } from "react";
+import { useState } from "react";
 import { PixelRatio, Text, View } from "react-native";
 import { Image } from "expo-image";
 import Building2 from "lucide-react-native/icons/building-2";

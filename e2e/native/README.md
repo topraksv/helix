@@ -35,6 +35,26 @@ its JavaScript from Metro on every launch, which is why the first assertion in
 each flow waits up to 90s; a release build with an embedded bundle is up in a
 fraction of that.
 
+### The scripts reset the simulator keychain first
+
+Every flow starts from a signed-out device, and `launchApp: clearState` does
+not deliver one: it empties the app's data container, but the Supabase session
+lives in the iOS keychain through `expo-secure-store`. The keychain belongs to
+the simulator rather than to the app, so it survives `clearState`, a delete and
+a reinstall alike.
+
+Left alone, a run that signs in changes what every later run starts from — the
+app restores the session, pulls a workspace and opens the dashboard, and the
+flows fail asserting a sign-in screen that was never going to appear. The
+failure reads as a broken app rather than as leftover state, which is the worst
+kind of red. `xcrun simctl keychain <device> reset` therefore runs inside the
+npm scripts rather than living in someone's memory. Android has no keychain and
+its script is unchanged.
+
+Two rules follow for anything added here: a flow may not depend on state an
+earlier flow left behind, and any device state a flow needs must be established
+by the script rather than assumed.
+
 ## What each flow proves
 
 **`01-launch.yaml` — the app opens in a native runtime.**
@@ -45,10 +65,18 @@ deliberately a Turkish sentence — ş, ı, ğ and ü live in the ranges
 `scripts/subset-fonts.mjs` keeps, so a bad subset draws tofu here rather than
 failing loudly anywhere else.
 
-**`02-sign-in-surface.yaml` — the cloud entry renders.**
+**`02-sign-in-surface.yaml` — the cloud entry renders, and consent gates it.**
 The first screen a phone shows, and one the browser suite never sees at all:
 `scripts/export-e2e-web.mjs` empties the Supabase configuration to reach the
 local-only path, so nothing had ever exercised this screen.
+
+It is also the only place that can see the KVKK consent control, so that is
+asserted here: the sign-up form carries the consent gate, the notice opens OVER
+the form and closes back onto it, and the notice scrolls the whole way to the
+acceptance at its end. All three matter — a consent line whose notice cannot be
+read is a tick-box, a notice that costs a half-typed form is one people learn
+not to open, and an acceptance nobody can scroll to is unreachable while every
+static assertion about it still passes.
 
 **`03-restart-persistence.yaml` — the app survives a cold start.**
 On iOS the database is a file in an app container rather than IndexedDB. The

@@ -22,7 +22,7 @@
  * about it that does not touch the record itself.
  */
 
-import React, { useState } from "react";
+import { useState } from "react";
 import { View } from "react-native";
 import CloudOff from "lucide-react-native/icons/cloud-off";
 import FileDown from "lucide-react-native/icons/file-down";

@@ -42,8 +42,18 @@ appId: com.toprak.helix
 # clipping it away. Which surface that is depends on whether an account exists
 # on this simulator, so both are accepted: the assertion is about the TEXT
 # surviving, not about the route.
-- assertVisible:
-    text: "Kişisel finans çalışma alanın|Günaydın|İyi akşamlar|Tünaydın|İyi geceler"
+#
+# It WAITS rather than asserting outright, because "Helix" is the brand mark and
+# a dev-client paints that before the routed screen has rendered — so the two
+# are not the same moment, and the gap between them is set by how busy the
+# machine is. Measured 2026-09-03: this line failed once, in a suite run that
+# happened to share the machine with a Stryker run, and passed alone twelve
+# seconds later on the same build. `.claude/rules/e2e.md` names that failure
+# mode for the browser suite; it is the same machine and the same rule here.
+# A bounded wait costs nothing when the screen is already up.
+- extendedWaitUntil:
+    visible: "Helix'e hoş geldin|Günaydın|İyi akşamlar|Tünaydın|İyi geceler"
+    timeout: 30000
 # The tab bar is the tightest box in the app: five equal columns in a bounded
 # 56pt bar. Once a label no longer clears its column the bar drops to icons,
 # rather than drawing "Durum | Mali Ta | Abone | Yatırım | Ayarlar" on top of
@@ -55,7 +65,7 @@ appId: com.toprak.helix
 # lands on the entry surface, which has no navigation to check.
 - runFlow:
     when:
-      notVisible: "Kişisel finans çalışma alanın"
+      notVisible: "Helix'e hoş geldin"
     commands:
       - assertVisible:
           id: ".*"

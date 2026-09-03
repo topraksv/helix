@@ -51,7 +51,7 @@ function resolve(storedName: string): File | null {
 export async function storeAttachmentBytes(source: { uri: string }, storedName: string): Promise<void> {
   const destination = resolve(storedName);
   if (!destination) throw new Error("Refusing to store an attachment under an unsafe name");
-  new File(source.uri).copy(destination);
+  await new File(source.uri).copy(destination);
 }
 
 /** Which of these documents this device actually holds. */

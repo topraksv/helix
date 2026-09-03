@@ -4,13 +4,30 @@ const INVESTMENT_QUANTITY_SCALE = 8;
 const QUANTITY_FACTOR = 100_000_000n;
 const QUANTITY_LIMIT_ATOMS = 999_999_999_999n * QUANTITY_FACTOR;
 
-export type InvestmentAssetType =
-  | "metal"
-  | "currency"
-  | "equity"
-  | "fund"
-  | "crypto"
-  | "pension";
+/**
+ * The asset types, in the order every surface presents them.
+ *
+ * The ORDER is part of the contract, not presentation: the wallet ring binds a
+ * categorical colour to a type's position here, so a type keeps its colour when
+ * another one empties out and reordering this list recolours holdings someone
+ * has already learned to read. The investments screen used to keep its own copy
+ * of the list, which is that contract one careless edit away from meaning
+ * something different on two screens.
+ *
+ * The union is derived from the list rather than declared beside it, so a
+ * seventh asset type cannot exist in the type system while being missing from
+ * every surface that iterates the list.
+ */
+export const INVESTMENT_ASSET_TYPES = [
+  "metal",
+  "currency",
+  "equity",
+  "fund",
+  "crypto",
+  "pension",
+] as const;
+
+export type InvestmentAssetType = (typeof INVESTMENT_ASSET_TYPES)[number];
 
 export type InvestmentOperationKind = "existing" | "buy" | "sell" | "contribution";
 

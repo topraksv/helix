@@ -1,4 +1,3 @@
-import React from "react";
 import { View } from "react-native";
 import { MONTH_END_DAY } from "../domain/dates";
 import { tr } from "../i18n/tr";

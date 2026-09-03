@@ -14,6 +14,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
+import { classifyRootRoute, resolveRootGuard } from "../src/domain/app-guard";
 import { tr } from "../src/i18n/tr";
 
 const read = (path: string) => readFileSync(resolve(process.cwd(), path), "utf8");
@@ -41,13 +42,31 @@ describe("KVKK notice", () => {
   it("is reachable from every screen that collects something", () => {
     // Sign-up creates the account and starts the transfer; feedback sends a
     // message and a screenshot; settings is where a person goes to look.
+    //
+    // Two mechanisms count, because reachability is the rule and the route is
+    // only one way to satisfy it. The auth screen opens `LegalNoticeSheet`
+    // instead of pushing: a push there costs a half-typed form, and the sheet
+    // renders the same `LegalNoticeBody` the route does, so there is no second
+    // copy of the text to drift.
     for (const [screen, file] of [
       ["sign-up", "src/app/(auth)/sign-in.tsx"],
       ["feedback", "src/app/feedback.tsx"],
       ["settings", "src/app/(tabs)/settings/index.tsx"],
     ] as const) {
-      expect(read(file), `${screen} must link to the notice`).toContain('"/privacy"');
+      const source = read(file);
+      const reachable = source.includes('"/privacy"') || source.includes("LegalNoticeSheet");
+      expect(reachable, `${screen} must link to or open the notice`).toBe(true);
     }
+  });
+
+  /** One body, two frames. A second copy is a second thing to keep true. */
+  it("shows the same text on the route and in the sheet", () => {
+    const shared = read("src/ui/legal-notice.tsx");
+    expect(shared).toContain("export function LegalNoticeBody");
+    expect(shared).toContain("export function LegalNoticeSheet");
+    expect(read("src/app/privacy.tsx")).toContain("LegalNoticeBody");
+    // The route must not re-implement the notice beside the shared one.
+    expect(read("src/app/privacy.tsx")).not.toContain("legal.collectedTitle");
   });
 
   it("is readable before an account exists", () => {
@@ -55,6 +74,22 @@ describe("KVKK notice", () => {
     expect(layout).toContain('<Stack.Screen name="privacy"');
     // The route file is top-level, not inside the protected `(tabs)` group.
     expect(() => read("src/app/privacy.tsx")).not.toThrow();
+
+    // Structure alone was not enough, and this is why the assertion below
+    // exists: all of the above was already true on 2026-09-03 while the route
+    // classified as protected account UI, so the guard sent every signed-out
+    // reader back to sign-in. The notice was unreachable for exactly the
+    // audience it is written for, and nothing here said so.
+    expect(classifyRootRoute(["privacy"])).toBe("public");
+    expect(resolveRootGuard({
+      ready: true,
+      locked: false,
+      userId: null,
+      onboarded: null,
+      frozen: null,
+      awaitingFirstPull: false,
+      route: "public",
+    })).toEqual({ view: "stack", redirect: null });
   });
 
   it("says the account is what moves the data abroad, on the screen that creates one", () => {

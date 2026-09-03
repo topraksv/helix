@@ -11,7 +11,7 @@
  * to know the split happened.
  */
 
-import React, { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
   Animated,
   Easing,

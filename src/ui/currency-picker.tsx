@@ -16,7 +16,6 @@
  * theirs; only its currency changes.
  */
 
-import React from "react";
 import { Pressable, Text, View } from "react-native";
 import { Select } from "./components";
 import { SUPPORTED_CURRENCIES, type Currency } from "../services/fx-fetch";

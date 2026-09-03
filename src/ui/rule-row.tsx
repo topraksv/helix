@@ -11,14 +11,14 @@
  * stranded against the first line of a much taller row.
  */
 
-import React, { type ReactNode } from "react";
+import { type ReactNode } from "react";
 import { Pressable, View } from "react-native";
 import Pencil from "lucide-react-native/icons/pencil";
 import Trash2 from "lucide-react-native/icons/trash-2";
 import type { LucideIcon } from "lucide-react-native";
 import { tr } from "../i18n/tr";
 import { Amount, Badge, Body, IconButton, Row } from "./components";
-import { interactionSurface } from "./interaction";
+import { interactionBleed, interactionSurface } from "./interaction";
 import { controlSize, font, radius, spacing, type, useTheme } from "./theme";
 import { shouldStackListActions } from "./responsive";
 import { useContentWidth } from "./viewport";
@@ -114,8 +114,7 @@ export function RuleRow({
             minHeight: controlSize.minimumTarget,
             marginVertical: -spacing.sm,
             paddingVertical: spacing.sm,
-            marginLeft: -spacing.sm,
-            paddingHorizontal: spacing.sm,
+            ...interactionBleed(),
             borderRadius: radius.sm,
             ...interactionSurface(palette, state),
           })}

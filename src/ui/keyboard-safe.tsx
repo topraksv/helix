@@ -1,7 +1,7 @@
 /**
  * One keyboard contract for every form surface.
  *
- * Native uses Expo SDK 54's keyboard controller rather than a stack of
+ * Native uses Expo's keyboard controller rather than a stack of
  * per-screen `KeyboardAvoidingView`s: it follows the keyboard frame and keeps
  * the focused input inside its own scroll view. Mobile web has no equivalent
  * native event, so its visual viewport re-centres the active DOM input after

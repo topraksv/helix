@@ -1,7 +1,7 @@
 /** First-run tour: one short slide per place the app keeps something.
  *  Shown once (kv flag), reopenable from Settings. */
 
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { Modal, Pressable, ScrollView, Text, View, useWindowDimensions } from "react-native";
 import Banknote from "lucide-react-native/icons/banknote";
 import CalendarCheck from "lucide-react-native/icons/calendar-check";

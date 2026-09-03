@@ -1,7 +1,6 @@
 /** Helix brand mark — the botanical DNA-helix symbol, theme-aware. Uses the
  *  charcoal artwork on light surfaces and the cream artwork on dark / gradient. */
 
-import React from "react";
 import { View } from "react-native";
 import { Image } from "expo-image";
 import { useTheme } from "./theme";

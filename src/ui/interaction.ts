@@ -9,7 +9,7 @@
 
 import { Platform, type PressableStateCallbackType, type ViewStyle } from "react-native";
 import { isReducedMotion } from "./motion";
-import { motion, type Palette } from "./theme";
+import { density, motion, type Palette } from "./theme";
 
 /**
  * Whether a pointer is resting on this control.
@@ -151,4 +151,27 @@ export function interactionSurface(
     transitionDuration: `${isReducedMotion() ? 0 : motion.hover}ms`,
     transitionTimingFunction: "cubic-bezier(0.22, 1, 0.36, 1)",
   } as unknown as ViewStyle;
+}
+
+
+/**
+ * How far a row's fill reaches past its own content, on each side.
+ *
+ * A row inside a card is a full-width control, and a hover that stops at the
+ * first and last glyph reads as a fill that missed rather than as a decision.
+ * The inset is given back as padding, so nothing moves and only the lit area
+ * grows.
+ *
+ * The DEFAULT is the standard card's own padding, because that is what makes
+ * the fill reach the card edge — the whole point. Pass a different inset only
+ * when the row sits in a container with different padding, and pass that
+ * container's padding rather than a number that looks about right.
+ *
+ * This exists as one exported rule because it was six numbers before: rows in
+ * identical cards bled by 4, 8 or 12 depending on which screen they were
+ * written on, so the same gesture lit a different shape in each. `spacing.sm`
+ * was the common wrong answer, and it lands 4px short on both sides.
+ */
+export function interactionBleed(inset: number = density.list.cardPadding): ViewStyle {
+  return { marginHorizontal: -inset, paddingHorizontal: inset };
 }

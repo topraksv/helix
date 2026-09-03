@@ -57,7 +57,7 @@ import { dateLabel, dateTimeLabel, tr } from "../../../i18n/tr";
 import { Badge, Body, Button, Card, ChoiceTile, DataStateNotice, Field, ListRow, OperationStatusNotice, Row, Screen, SectionHeader, Toggle } from "../../../ui/components";
 import { appAlert, appConfirm } from "../../../ui/dialog";
 import { OperationCancelledError, useTrackedOperation, type TrackedOperationContext } from "../../../ui/operation-guard";
-import { circle, font, PALETTES, radius, spacing, type, type Palette, type ThemePreference, useTheme } from "../../../ui/theme";
+import { circle, density, font, PALETTES, radius, spacing, type, type Palette, type ThemePreference, useTheme } from "../../../ui/theme";
 import { selectionTapIfChanged } from "../../../ui/haptics";
 import { todayISO } from "../../../domain/dates";
 import { formatMinorCompact } from "../../../domain/money";
@@ -221,21 +221,20 @@ function SettingsDestinationGrid({
   testID: string;
 }) {
   return (
-    <View
-      style={{
-        flexDirection: "row",
-        flexWrap: "wrap",
-        columnGap: spacing.xl,
-      }}
-    >
+    <View style={{ flexDirection: "row", flexWrap: "wrap" }}>
       {items.map(({ icon, title, subtitle, onPress }) => (
         <View
           key={title}
           testID={testID}
           style={{
-            flexBasis: twoColumns ? "45%" : "100%",
-            flexGrow: 1,
+            // Exactly half, and no gutter: the tiles tile the card. A gap here
+            // would be space no row could light, which is what made this grid
+            // the odd one out.
+            flexBasis: twoColumns ? "50%" : "100%",
             minWidth: 0,
+            // The padding a row bleeds into. It lives on the tile rather than
+            // on the card so the lit area is one tile wide.
+            paddingHorizontal: density.list.cardPadding,
           }}
         >
           <ListRow
@@ -521,7 +520,14 @@ export default function SettingsScreen() {
       </Card>
 
       <SectionHeader>{tr.settings.workspaceSection}</SectionHeader>
-      <Card>
+      {/* `padded={false}` because the TILES carry the padding here, not the
+          card. A row bleeds its fill by the padding of the box it sits in, so
+          with the padding on the card the fill spilled into the column gutter
+          on one side and stopped short of the card on the other — the one
+          place in Settings where a hover did not light the box it belonged to.
+          With the padding on the tile the fill covers the tile exactly, and
+          the outer tiles still reach the card's border. */}
+      <Card rows padded={false}>
         <SettingsDestinationGrid
           items={workspaceDestinations}
           twoColumns={shouldPairFilterCards(contentWidth)}

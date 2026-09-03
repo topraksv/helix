@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import AlertCircle from "lucide-react-native/icons/circle-alert";
 import BellRing from "lucide-react-native/icons/bell-ring";
@@ -7,17 +7,17 @@ import CloudOff from "lucide-react-native/icons/cloud-off";
 import Table2 from "lucide-react-native/icons/table-2";
 import WalletCards from "lucide-react-native/icons/wallet-cards";
 import { useSession } from "../../auth/session";
+import { LegalConsentControl, LegalNoticeSheet } from "../../ui/legal-notice";
 import { isSupabaseConfigured } from "../../sync/supabase";
-import { useRouter, type Href } from "expo-router";
 import { Body, Button, Card, Field, Screen } from "../../ui/components";
 import { useSubmitOnEnter } from "../../ui/keyboard";
 import { clearLifecycleIntent } from "../../ui/lifecycle-intent";
 import { BrandMark } from "../../ui/brand";
 import { interactionSurface } from "../../ui/interaction";
-import { controlSize, font, maxFontScale, radius, spacing, type, useTheme } from "../../ui/theme";
+import { controlSize, font, maxFontScale, radius, spacing, stateOpacity, type, useTheme } from "../../ui/theme";
 import { tr } from "../../i18n/tr";
 import { useOperationGuard } from "../../ui/operation-guard";
-import { OperationFlow, OperationSignature } from "../../ui/operation-flow";
+import { OperationFlow } from "../../ui/operation-flow";
 import { isValidNewPassword } from "../../domain/input";
 import { shouldSplitAuthHero } from "../../ui/responsive";
 import { useContentWidth } from "../../ui/viewport";
@@ -136,8 +136,40 @@ function AuthJourneyArtwork({ compact }: { compact: boolean }) {
   );
 }
 
+/**
+ * A quiet action on this screen: the notice, "forgot password", "back to
+ * sign-in".
+ *
+ * They were three full-width ghost buttons stacked down the card, each with its
+ * own 44pt row and margin. That is a lot of vertical weight for actions nobody
+ * comes here to take, and it is what pushed the form past the fold on a phone.
+ * As inline links they read as secondary, sit on one line, and still carry the
+ * full touch target through `minHeight` rather than through padding that would
+ * make the row wider than the words.
+ */
+function AuthLink({ label, onPress, disabled }: { label: string; onPress: () => void; disabled?: boolean }) {
+  const { palette } = useTheme();
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityState={{ disabled: Boolean(disabled) }}
+      disabled={disabled}
+      onPress={onPress}
+      style={(state) => ({
+        minHeight: controlSize.minimumTarget,
+        justifyContent: "center",
+        paddingHorizontal: spacing.xs,
+        borderRadius: radius.sm,
+        opacity: disabled ? stateOpacity.disabled : 1,
+        ...interactionSurface(palette, state),
+      })}
+    >
+      <Text style={[type.small, { color: palette.primaryText, fontFamily: font.semibold }]}>{label}</Text>
+    </Pressable>
+  );
+}
+
 export default function SignInScreen() {
-  const router = useRouter();
   const [mode, setMode] = useState<"signIn" | "signUp" | "forgot">("signIn");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -145,15 +177,30 @@ export default function SignInScreen() {
   const [busy, setBusy] = useState(false);
   const [resetSent, setResetSent] = useState(false);
   const [signUpConfirmationSent, setSignUpConfirmationSent] = useState(false);
+  const [consented, setConsented] = useState(false);
+  /** Only true after a refused submit: the form does not scold while it is being filled. */
+  const [consentRefused, setConsentRefused] = useState(false);
+  const [noticeOpen, setNoticeOpen] = useState(false);
   const { signIn, signUp, requestPasswordReset } = useSession();
   const { palette } = useTheme();
   const operationGuard = useOperationGuard();
   const wide = shouldSplitAuthHero(useContentWidth());
 
   const emailValid = /.+@.+\..+/.test(email.trim());
-  const canSubmit = emailValid && (
+  /**
+   * The two conditions are deliberately separate.
+   *
+   * `formReady` is everything the person has typed. Consent is the one further
+   * condition on sign-up, and it is kept out of `formReady` so the button can
+   * stay PRESSABLE while it is the only thing missing — pressing it then says
+   * what is missing, which a greyed-out button never does. A form that is
+   * simply not filled in yet still disables the button, because there the
+   * fields already show their own errors.
+   */
+  const formReady = emailValid && (
     mode === "forgot" || (mode === "signUp" ? isValidNewPassword(password) : password.length >= 6)
   ) && !busy;
+  const canSubmit = formReady && (mode !== "signUp" || consented);
   const primaryLabel = mode === "signIn"
       ? tr.auth.signIn
       : mode === "signUp"
@@ -207,6 +254,11 @@ export default function SignInScreen() {
     setError(null);
     setResetSent(false);
     setSignUpConfirmationSent(false);
+    // Consent belongs to the attempt that was made, not to the session. Leaving
+    // it ticked across a mode switch would mean a later sign-up inherited an
+    // acceptance nobody gave on that form.
+    setConsented(false);
+    setConsentRefused(false);
     setMode(mode === "signIn" ? "signUp" : "signIn");
   };
 
@@ -216,73 +268,80 @@ export default function SignInScreen() {
     setError(null);
     setResetSent(false);
     setSignUpConfirmationSent(false);
+    setConsented(false);
+    setConsentRefused(false);
   };
 
   useSubmitOnEnter(() => void submit(), canSubmit);
 
   return (
     <Screen scroll width="form">
+      {/* WHY THIS COLUMN IS TOP-ALIGNED. It used to centre its children, so
+          every change in the form's height re-centred the whole layout and the
+          brand mark drifted up or down on each switch between sign-in, sign-up
+          and reset — the "screen keeps resizing" this screen was reported for.
+          Anchoring the top pins the mark and the greeting under it: only the
+          card's bottom edge moves now, which is the one thing that has to. */}
       <View
         style={{
           flex: 1,
-          minHeight: wide ? 650 : undefined,
-          justifyContent: "center",
-          paddingVertical: wide ? spacing.xxl : spacing.lg,
+          justifyContent: "flex-start",
+          paddingVertical: wide ? spacing.xl : spacing.lg,
           flexDirection: wide ? "row" : "column",
-          alignItems: "stretch",
+          alignItems: "flex-start",
           gap: wide ? spacing.xxl : spacing.lg,
         }}
       >
-        <View style={{ flex: wide ? 1.08 : undefined, justifyContent: "center", minWidth: 0 }}>
-          <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm, marginBottom: wide ? spacing.xl : spacing.md }}>
-            <BrandMark size={wide ? 48 : 38} />
-            <View style={{ flex: 1, minWidth: 0 }}>
-              <Text style={[type.title, { color: palette.textStrong }]}>{tr.app.name}</Text>
-              <Body muted>{tr.auth.journeyEyebrow}</Body>
-            </View>
+        {/* `stretch` is what gives a child its full WIDTH in the column
+            layout — and its full HEIGHT in the row one, which left the form
+            card floating in a tall empty box on a desktop. It follows the
+            direction rather than being set once. */}
+        {/* ONE header, not two. The mark used to sit above its own "Kişisel
+            finans çalışma alanın" line, and a separate "Helix'e hoş geldin"
+            heading followed it with a second supporting sentence — four lines
+            saying the product's name and purpose twice. The mark now leads the
+            greeting itself, and one sentence supports it.
+
+            `stretch` is what gives a child its full WIDTH in the column layout
+            and its full HEIGHT in the row one, so it follows the direction
+            rather than being set once. */}
+        <View style={{ flex: wide ? 1.08 : undefined, alignSelf: wide ? "flex-start" : "stretch", minWidth: 0 }}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.md, marginBottom: spacing.sm }}>
+            <BrandMark size={wide ? 48 : 40} />
+            <Text
+              accessibilityRole="header"
+              style={[type.display, {
+                flex: 1,
+                minWidth: 0,
+                color: palette.textStrong,
+                lineHeight: wide ? 45 : 33,
+                fontSize: wide ? undefined : Math.round(type.sectionTitle.fontSize * 1.3),
+              }]}
+            >
+              {tr.auth.welcomeTitle}
+            </Text>
           </View>
-          {wide ? (
-            <>
-              <Text accessibilityRole="header" style={[type.display, { color: palette.textStrong, lineHeight: 45 }]}>
-                {tr.auth.journeyTitle}
-              </Text>
-              <Body muted style={{ fontSize: type.sectionTitle.fontSize, lineHeight: 23, marginTop: spacing.md, marginBottom: spacing.xl, maxWidth: 470 }}>
-                {tr.auth.journeySubtitle}
-              </Body>
-            </>
-          ) : null}
-          <AuthJourneyArtwork compact={!wide} />
+          <Body muted style={{ marginBottom: spacing.lg, maxWidth: 470, lineHeight: 22 }}>
+            {tr.auth.welcomeBody}
+          </Body>
+          {/* Decoration, and the first thing to go when the form grows: a
+              phone has to reach the submit button without scrolling, and on
+              sign-up the form itself is taller. */}
+          {wide || mode === "signIn" ? <AuthJourneyArtwork compact={!wide} /> : null}
         </View>
 
-        <Card style={{ flex: wide ? 0.92 : undefined, justifyContent: "center", marginBottom: 0, padding: wide ? spacing.xl : spacing.lg }}>
-          {/* The signature and the form heading are two different things and
-              need to look like it: the signature names where you are going,
-              the heading opens the form. They used to sit flush against each
-              other, so the card read as four stacked sentences — two of which
-              said the same thing. The rule below drops the duplicate line and
-              the divider gives the pair a boundary. */}
-          {mode === "signIn" ? (
-            <View style={{ marginBottom: spacing.lg, paddingBottom: spacing.lg, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: palette.border }}>
-              <OperationSignature
-                kind="sign-in"
-                eyebrow={tr.auth.signInSignatureEyebrow}
-                title={tr.auth.signInSignatureTitle}
-                description={tr.auth.signInSignatureDescription}
-                detail={tr.auth.signInSignatureDetail}
-                compact
-                testID="sign-in-signature"
-              />
-            </View>
-          ) : null}
+        {/* One skeleton for all three modes: heading, subtitle, fields,
+            actions — in that order, with the same gaps. Sign-in used to open
+            with an extra signature panel and carry no subtitle, so it was both
+            taller at the top and shorter in the middle than its siblings, and
+            switching modes redrew the card at three different sizes. */}
+        <Card style={{ flex: wide ? 0.92 : undefined, alignSelf: wide ? "flex-start" : "stretch", marginBottom: 0, padding: wide ? spacing.xl : spacing.lg }}>
           <Text accessibilityRole="header" style={[type.heading, { color: palette.text, marginBottom: spacing.xs }]}>
-            {mode === "signIn" ? tr.auth.welcomeBack : mode === "signUp" ? tr.auth.signUpTitle : tr.auth.forgotTitle}
+            {mode === "signIn" ? tr.auth.signInHeading : mode === "signUp" ? tr.auth.signUpTitle : tr.auth.forgotTitle}
           </Text>
-          {mode === "signIn" ? null : (
-            <Body muted style={{ marginBottom: spacing.lg }}>
-              {mode === "signUp" ? tr.auth.signUpSubtitle : tr.auth.forgotSubtitle}
-            </Body>
-          )}
-          {mode === "signIn" ? <View style={{ height: spacing.lg }} /> : null}
+          <Body muted style={{ marginBottom: spacing.lg }}>
+            {mode === "signIn" ? tr.auth.signInSubtitle : mode === "signUp" ? tr.auth.signUpSubtitle : tr.auth.forgotSubtitle}
+          </Body>
 
           <Field
             label={tr.auth.email}
@@ -363,36 +422,50 @@ export default function SignInScreen() {
           {/* Before the account exists, not after. Creating one is the moment
               an e-mail address and every later record starts being processed on
               servers in another country, and that is the one fact a person
-              cannot undo by reading the notice afterwards. The link is here in
-              every mode, because the address is typed in every mode. */}
+              cannot undo by reading the notice afterwards. */}
           {mode === "signUp" ? (
-            <Body muted style={{ marginBottom: spacing.sm, fontSize: type.small.fontSize }}>
-              {tr.legal.signUpNotice}
-            </Body>
+            <>
+              <Body muted style={{ marginBottom: spacing.sm, fontSize: type.small.fontSize }}>
+                {tr.legal.signUpNotice}
+              </Body>
+              <LegalConsentControl
+                consented={consented}
+                onOpen={() => setNoticeOpen(true)}
+                invalid={consentRefused && !consented}
+              />
+            </>
           ) : null}
           <Button
             label={primaryLabel}
-            onPress={() => void submit()}
-            disabled={!canSubmit}
+            onPress={() => {
+              // A disabled button explains nothing. When consent is the only
+              // thing missing, say so instead of leaving a grey button and no
+              // reason — the same courtesy the e-mail and password fields
+              // already extend.
+              if (mode === "signUp" && !consented) {
+                setConsentRefused(true);
+                return;
+              }
+              void submit();
+            }}
+            disabled={!formReady}
           />
-          <View style={{ marginTop: spacing.sm }}>
-            <Button
-              label={tr.legal.readNotice}
-              variant="ghost"
-              size="sm"
-              onPress={() => router.push("/privacy" as Href)}
-            />
+          {/* One row of text links instead of three stacked full-width ghost
+              buttons. Each of those carried its own 44pt target and margin, so
+              the quiet actions took more vertical space than the form they sat
+              under and pushed the card past a phone screen. */}
+          {/* The notice is NOT offered here. It belongs to the moment an
+              account is created, which is when an e-mail address and every
+              later record start being processed abroad — signing in to an
+              account that already exists starts nothing, and repairing a
+              password is a credential fix. Putting the link on all three modes
+              was mistaking "the address is typed here" for "collection begins
+              here", and it buried the one screen where it matters among two
+              where it does not. */}
+          <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", justifyContent: "center", gap: spacing.md, marginTop: spacing.md }}>
+            {mode === "signIn" ? <AuthLink label={tr.auth.forgotPassword} onPress={showForgot} /> : null}
+            {resetSent ? <AuthLink label={tr.auth.backToSignIn} onPress={switchMode} disabled={busy} /> : null}
           </View>
-          {resetSent ? (
-            <View style={{ marginTop: spacing.sm }}>
-              <Button label={tr.auth.backToSignIn} variant="ghost" onPress={switchMode} disabled={busy} />
-            </View>
-          ) : null}
-          {mode === "signIn" ? (
-            <View style={{ marginTop: spacing.sm }}>
-              <Button label={tr.auth.forgotPassword} variant="ghost" onPress={showForgot} />
-            </View>
-          ) : null}
 
           {/* `alignItems` is not decoration here. A row defaults to `stretch`,
               so the question text grew to the 44px touch target beside it and
@@ -401,7 +474,7 @@ export default function SignInScreen() {
               baselines. Found on an iOS simulator, because the browser suite
               exports with an empty Supabase configuration and never reaches
               this screen at all. */}
-          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", flexWrap: "wrap", gap: spacing.xs, marginTop: spacing.lg }}>
+          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", flexWrap: "wrap", gap: spacing.xs, marginTop: spacing.md }}>
             <Body muted>{mode === "signIn" ? tr.auth.noAccount : mode === "signUp" ? tr.auth.haveAccount : tr.auth.rememberedPassword}</Body>
             <Pressable
               accessibilityRole="button"
@@ -423,7 +496,7 @@ export default function SignInScreen() {
             </Pressable>
           </View>
 
-          <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm, justifyContent: "center", marginTop: spacing.xl }}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm, justifyContent: "center", marginTop: spacing.lg }}>
             <CloudOff accessible={false} size={14} color={palette.textSecondary} />
             <Text style={[type.small, { color: palette.textSecondary, textAlign: "center", flexShrink: 1 }]}>
               {isSupabaseConfigured ? tr.auth.offlineNote : tr.settings.syncUnconfiguredHint}
@@ -431,6 +504,20 @@ export default function SignInScreen() {
           </View>
         </Card>
       </View>
+      {/* Opened rather than navigated to: a push would cost a half-typed form,
+          and the notice is most often asked for mid-form. */}
+      {noticeOpen ? (
+        <LegalNoticeSheet
+          onClose={() => setNoticeOpen(false)}
+          // Only sign-up can accept. Opened from anywhere else it is a
+          // document to read, with nothing to agree to.
+          onAccept={mode === "signUp" ? () => {
+            setConsented(true);
+            setConsentRefused(false);
+            setNoticeOpen(false);
+          } : undefined}
+        />
+      ) : null}
     </Screen>
   );
 }

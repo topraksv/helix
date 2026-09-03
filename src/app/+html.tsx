@@ -87,17 +87,6 @@ export default function Root({ children }: PropsWithChildren) {
             "form-action 'self'",
           ].join("; ")}
         />
-        {/* Zod otherwise probes `new Function` even though it catches the
-            rejection. Strict-CSP browsers report that harmless probe as a
-            page error; preselect its documented interpreter path before the
-            application bundle loads. It stays after the CSP declaration and
-            uses the inline policy the static Expo bootstrap already requires.
-            Native keeps Zod's default fast path. */}
-        <script
-          dangerouslySetInnerHTML={{
-            __html: "globalThis.__zod_globalConfig={jitless:true};",
-          }}
-        />
         {/* No maximum-scale: locking pinch-zoom fails WCAG 1.4.4 and blocks
             low-vision users; the app's own scroll containers are unaffected
             by page zoom. */}
@@ -155,6 +144,32 @@ export default function Root({ children }: PropsWithChildren) {
             `theme-color` and a tag appended later would never be read. */}
         <meta name="theme-color" media="(prefers-color-scheme: light)" content={LIGHT_BACKGROUND} />
         <meta name="theme-color" media="(prefers-color-scheme: dark)" content={DARK_BACKGROUND} />
+        {/* Declared twice, deliberately: the meta tag is the documented signal
+            and the CSS rule below is the one `getComputedStyle` can actually
+            confirm — Chromium's own DevTools do not surface the meta tag's
+            effect on the CSSOM, so a future check on this has something to
+            read.
+
+            Without either, a browser whose OS-level dark mode is on and that
+            has "adapt pages that don't declare their own dark mode" enabled
+            (a real, commonly-on Edge/Chrome setting) will repaint an
+            unrelated page's colours with its own heuristic — and it treats an
+            UNDECLARED `color-scheme` as exactly that kind of page.
+            `RootLayoutInner` already sets a precise single value once it
+            knows the signed-in owner's stored preference
+            (`document.documentElement.style.colorScheme`, which — being an
+            inline style on the element itself — always wins over this
+            document-level default once it runs); this is what covers the
+            frames BEFORE that effect can run at all: the multi-tab lock
+            screen, the boot-failure retry screen, and the database-recovery
+            notice, none of which can read a stored preference because the
+            database that holds it is exactly what they are waiting on.
+            `light dark` matches what those screens already render —
+            `bootTheme` in `_layout.tsx` picks its palette from the OS scheme
+            for the same reason — so this is a statement of fact about the
+            markup already being sent, not a second, competing default. */}
+        <meta name="color-scheme" content="light dark" />
+        <style dangerouslySetInnerHTML={{ __html: ":root{color-scheme:light dark}" }} />
 
         {/* One SoftwareApplication, in the category that says what it is for.
             Serialised from an object rather than written as a string so a typo

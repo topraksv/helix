@@ -1,4 +1,4 @@
-import React, { useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { Modal, Pressable, Text, View } from "react-native";
 import { Amount, Body, Button, FadeIn, MoneyField, Row } from "./components";
 import { useModalAccessibility } from "./accessibility";

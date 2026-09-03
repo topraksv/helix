@@ -5,7 +5,7 @@
  * current month, then save.
  */
 
-import React, { useMemo, useState, type ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import Calculator from "lucide-react-native/icons/calculator";
 import Columns3 from "lucide-react-native/icons/columns-3";

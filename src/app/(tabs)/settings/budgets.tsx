@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { View } from "react-native";
 import Pencil from "lucide-react-native/icons/pencil";
 import Target from "lucide-react-native/icons/target";

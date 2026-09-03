@@ -190,8 +190,18 @@ describe("advisory gate: dependency paths and expiry", () => {
 
   it("requires every real acknowledgement to carry paths and an expiry", () => {
     const source = readFileSync(resolve(process.cwd(), "scripts/check-advisories.mjs"), "utf8");
-    const list = source.match(/const ACKNOWLEDGED = (\[[\s\S]*?\]);\n\nconst BLOCKING/)?.[1];
+    // Anchored on ACKNOWLEDGED's OWN terminator. Reaching forward to the next
+    // `];` before `const BLOCKING` looked equivalent and was not: the first
+    // such position belongs to UNAUDITED, two declarations further down, so
+    // the capture always swept up that list too and `list` could never equal
+    // "[]". The empty-list escape below was therefore unreachable, and stayed
+    // unreachable until the day the list was genuinely emptied — which is the
+    // one day it existed for.
+    const list = source.match(/const ACKNOWLEDGED = (\[[\s\S]*?\]);\n/)?.[1];
     expect(list).toBeDefined();
+    // Nothing acknowledged is a real answer, not a skipped check: the CLI
+    // reports a stale entry, so an empty list means every acknowledgement that
+    // was here got closed.
     if (list === "[]") return;
 
     for (const field of ["expectedPaths", "recheckAfter", "checkedOn"]) {

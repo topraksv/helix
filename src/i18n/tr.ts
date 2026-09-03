@@ -168,6 +168,14 @@ export const tr = {
        afterwards: creating an account is what starts the transfer abroad. */
     signUpNotice: "Hesap oluşturduğunuzda e-posta adresiniz ve kayıtlarınız Almanya'daki sunucularda işlenir.",
     readNotice: "Aydınlatma Metnini Oku",
+    /* The consent gate on sign-up. It says "read and accept", so the control
+       beside it has to make reading possible without leaving the form — which
+       is what the notice sheet is for. */
+    consentLabel: "Okudum, anladım ve kişisel verilerimin burada anlatıldığı şekilde işlenmesini kabul ediyorum.",
+    consentOpen: "Aydınlatma Metni'ni Oku ve Onayla",
+    consentGiven: "Aydınlatma Metni onaylandı",
+    consentChange: "Metni yeniden aç",
+    consentRequired: "Devam etmek için Aydınlatma Metni'ni okuyup onaylaman gerekiyor.",
   },
   meta: {
     /* The document title, which is also the search result and the shared-link
@@ -384,17 +392,30 @@ export const tr = {
     example: (sample: string) => `Ör. ${sample}`,
   },
   auth: {
-    journeyEyebrow: "Kişisel finans çalışma alanın",
-    journeyTitle: "Paranın hikâyesi, tek bakışta.",
-    journeySubtitle: "İşlemini ekle, Mali Tablo'da yerini gör, yaklaşanları zamanında takip et.",
     journeyEntry: "Kaydet",
     journeyLedger: "Anla",
     journeyTrack: "Takip et",
-    welcomeBack: "Tekrar hoş geldin",
+    /* The card's heading NAMES THE ACTION, like its two siblings ("Hesap
+       oluştur", "Şifreni yenile"). It used to be a second "hoş geldin"
+       directly under the page's own greeting. */
+    signInHeading: "Hesabına giriş yap",
+    /* Every mode's heading now has a subtitle under it. Sign-in was the one
+       that did not, so its card was a line shorter than the other two and the
+       layout resized on every switch. */
+    signInSubtitle: "E-posta adresin ve şifrenle çalışma alanına gir.",
+    /* The greeting above the form, and it is deliberately the SAME in all three
+       modes. It used to be a sign-in-only panel reading "Çalışma alanına dön /
+       Kaldığın yerden devam et", which addresses somebody who has been here
+       before — on the screen most people meet Helix on for the first time. It
+       also existed in one mode out of three, so the card changed height on
+       every switch and the brand mark above it moved with it. One constant
+       greeting fixes both: it welcomes whoever is reading, and it does not
+       move. */
+    /* Still used by `operation-flow.tsx`, which labels the sign-in operation
+       with it. Only the auth screen's own greeting moved. */
     signInSignatureEyebrow: "Güvenli geri dönüş",
-    signInSignatureTitle: "Çalışma alanına dön",
-    signInSignatureDescription: "Kaldığın yerden devam et; kayıtların ve düzenin seni bekliyor.",
-    signInSignatureDetail: "E-posta ve şifren yalnızca girişini doğrulamak için kullanılır.",
+    welcomeTitle: "Helix'e hoş geldin",
+    welcomeBody: "Gelirini, giderini ve yaklaşan ödemelerini tek yerde topla; paranın nereye gittiğini gör.",
     signUpTitle: "Hesap oluştur",
     signUpSubtitle: "Hesabını oluştur; e-posta adresini doğruladıktan sonra güvenle giriş yap.",
     signUpConfirmationSent: "Doğrulama bağlantısı e-posta adresine gönderildi. Gelen kutunu ve gereksiz klasörünü kontrol et.",

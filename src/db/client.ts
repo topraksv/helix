@@ -108,7 +108,11 @@ async function setAsideCorruptDb(): Promise<void> {
     const main = new File(dir, DB_NAME);
     if (main.exists) {
       preservedFileName = `helix.corrupt-${recoveredAt}.db`;
-      main.move(new File(dir, preservedFileName));
+      // Awaited, and not only because SDK 56 made `move` asynchronous. An
+      // un-awaited rejection here escaped this `try` entirely, so a failed
+      // rename skipped the fallback below and still reported the file as
+      // preserved — the one outcome this function exists to prevent.
+      await main.move(new File(dir, preservedFileName));
     }
     for (const suffix of ["-wal", "-shm"]) {
       const side = new File(dir, `${DB_NAME}${suffix}`);

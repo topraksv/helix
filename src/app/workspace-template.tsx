@@ -6,7 +6,7 @@
  * without creating a fresh account).
  */
 
-import React, { useState } from "react";
+import { useState } from "react";
 import { View } from "react-native";
 import { useRouter } from "expo-router";
 import CheckCircle2 from "lucide-react-native/icons/circle-check";

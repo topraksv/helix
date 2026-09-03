@@ -15,6 +15,12 @@ yükseltilemez, ki bu kaydın boş kalmamasının tek gerçek garantisi budur.
 Numaranın nasıl seçileceği ve etiketin nasıl atılacağı
 [`docs/RELEASE.md`](docs/RELEASE.md) belgesindedir.
 
+## 1.2.0
+
+- **Ne değişti:** Uygulama telefonda yeniden açılıyor. Helix, Expo'nun güncel sürümüne (SDK 57) taşındı; App Store'daki Expo Go bir süredir eski sürümü çalıştıramıyordu, yani mobil taraf fiilen kapalıydı. Tarayıcıdaki görünüm ve davranış aynı.
+- **Kimi ilgilendiriyor:** Telefonunda Expo Go ile kullanan herkesi — kapalı olan yol yeniden açılıyor. Yalnızca tarayıcıdan kullananlar için görünen hiçbir şey değişmiyor; veriler, hesaplar ve eşitleme aynı kalıyor.
+- **Ne yapmalısın:** Telefonunda Expo Go'yu güncelle ve Helix'i yeniden aç. Veritabanı göçü yok, verilerine dokunulmuyor. Önceki mobil güncelleme soyu bu sürümle kapanıyor, o yüzden telefon yeni güncellemeyi bir kez indirir.
+
 ## 1.1.0
 
 - **Ne değişti:** İşlemlere eklediğin fiş ve faturalar artık tüm cihazlarında açılıyor; uygulamaya aydınlatma metni eklendi ve Ayarlar'dan okunabiliyor; eşitleme belirgin şekilde hızlandı; Helix ikinci bir sekmede açıldığında çıkan ekran ne olduğunu anlatıyor ve diğer sekmeyi kapattığında kendiliğinden açılıyor.

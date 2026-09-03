@@ -12,7 +12,7 @@ appId: com.toprak.helix
 # the first assertion has to wait for the bundle rather than race it. A release
 # build with an embedded bundle is up in a fraction of this.
 - extendedWaitUntil:
-    visible: "Tekrar hoş geldin"
+    visible: "Hesabına giriş yap"
     timeout: 90000
 - assertVisible: "E-posta"
 - assertVisible: "Şifre"
@@ -37,7 +37,49 @@ appId: com.toprak.helix
     timeout: 10000
 - tapOn: "Kayıt ol"
 - assertVisible: "Hesap oluştur"
-- assertVisible: "Zaten hesabın var mı?"
+# Consent is a condition of creating the account, so the account screen has to
+# carry it and the notice has to be readable from here without leaving the
+# form. Until 2026-09-03 neither was true: there was no consent control, and
+# the link went to a route the root guard bounced signed-out readers away from,
+# so the one audience the notice is written for could not open it at all.
+- assertVisible: "Aydınlatma Metni'ni Oku ve Onayla"
+- tapOn: "Aydınlatma Metni'ni Oku ve Onayla"
+- extendedWaitUntil:
+    visible: "Aydınlatma Metni"
+    timeout: 20000
+# It opens over the form rather than replacing it — a push here would cost
+# whatever had been typed.
+- tapOn: "Kapat"
+- assertVisible: "Hesap oluştur"
+# Closing without reading leaves consent ungiven: the button is still the way
+# in, not a record that anything was accepted.
+- assertVisible: "Aydınlatma Metni'ni Oku ve Onayla"
+# The notice SCROLLS, and this asserts it by scrolling the whole way. It is
+# worth its own step: the sheet shipped once with its ScrollView nested inside
+# a Pressable, which swallowed the drag — so the text could not be read past
+# its first screen and the acceptance at the bottom could not be reached at
+# all, while every static assertion above still passed.
+- tapOn: "Aydınlatma Metni'ni Oku ve Onayla"
+- extendedWaitUntil:
+    visible: "Aydınlatma Metni"
+    timeout: 20000
+- scrollUntilVisible:
+    element:
+      text: ".*Okudum, anladım.*"
+    direction: DOWN
+    timeout: 30000
+# Consent is given at the END of the notice, so reaching it is the reading.
+- tapOn: ".*Okudum, anladım.*"
+- extendedWaitUntil:
+    visible: "Aydınlatma Metni onaylandı"
+    timeout: 20000
+# Below the consent control on a phone, so it is scrolled to like every other
+# control this flow reaches rather than asserted where it used to sit.
+- scrollUntilVisible:
+    element:
+      text: "Zaten hesabın var mı?"
+    direction: DOWN
+    timeout: 10000
 - scrollUntilVisible:
     element:
       text: "Giriş yap"
@@ -45,4 +87,4 @@ appId: com.toprak.helix
     timeout: 10000
 - assertVisible: "Giriş yap"
 - tapOn: "Giriş yap"
-- assertVisible: "Tekrar hoş geldin"
+- assertVisible: "Hesabına giriş yap"

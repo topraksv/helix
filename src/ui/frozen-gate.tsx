@@ -5,7 +5,7 @@
  * back in (logging in clears the freeze). A local-only workspace just unlocks.
  */
 
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { Platform, View } from "react-native";
 import * as LocalAuthentication from "expo-local-authentication";
 import ShieldCheck from "lucide-react-native/icons/shield-check";

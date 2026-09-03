@@ -148,13 +148,53 @@ const root = process.argv[2] ?? "dist";
 // smaller again by `src/ui/brand.tsx`. That is the largest single saving
 // available here and it is not taken, because resampling brand art is a
 // judgement about how the mark looks, not about bytes.
+//
+// 2026-09-03, and the largest single drop this file has recorded: removing Zod
+// took 397_764 bytes off all three JavaScript figures at once. It was reached
+// from `db/schema.ts`, so it sat in the entry chunk for every screen, and the
+// source map attributed 388_415 bytes to it — 11.4% of the entry, more than
+// react-dom — to validate four object shapes for one settings screen. The
+// replacement in `src/domain/computed-columns.ts` is hand-written, which is
+// what every other boundary in this tree already was.
+//
+// All three ceilings COME DOWN with it. Lowering after a measured improvement
+// is this file working; leaving them would have banked 400_000 bytes of silent
+// headroom and stopped the budget catching anything for a year. The slack is
+// the usual ~1% on JavaScript and ~3% on the export.
+//
+// Then, the same day, Expo SDK 54 -> 57: React Native 0.81.5 -> 0.86.3, React
+// 19.1 -> 19.2.3, expo-router 6 -> 57. Measured 3_226_086 entry / 3_855_749
+// total / 7_599_936 export, so the two JavaScript figures went UP by 34_086 and
+// 27_749 while the export came DOWN by 159_064.
+//
+// The rise is attributed, not assumed. The source map puts `expo-router` at
+// 465_686 bytes, 14.43% of the entry chunk and the largest single dependency in
+// it after this app's own screens. That is the upgrade's own doing: SDK 56 cut
+// the router's dependency on React Navigation by vendoring that code inside
+// itself, which is also why `@react-navigation/native` and
+// `@react-navigation/bottom-tabs` could leave `package.json` in the same
+// change. The weight did not appear, it moved — and ~34_000 bytes for three SDK
+// majors is the whole bill.
+//
+// The JavaScript ceilings move to measured plus the usual ~1%. The export
+// ceiling COMES DOWN, to measured plus ~1.5% rather than ~3%, on the rule the
+// note above it already set: fonts are the coarse part of that figure and they
+// did not change, so the looser step is not earned. Ratcheting down after an
+// unasked-for 159_064-byte improvement is the same discipline as the Zod line.
+//
+// Not taken, and named so it is not re-derived: `@supabase/realtime-js` and
+// `@supabase/phoenix` are 69_343 bytes of the entry chunk and this app opens no
+// socket — `createClient` builds a realtime client whether or not anything
+// subscribes. That is the largest remaining lead in this file, and it is a
+// change to how the Supabase client is constructed, which is a sync decision
+// and not a bundle one. Measure it there, not here.
 const limits = {
-  entryJavaScript: 3_562_000,
-  totalJavaScript: 4_198_000,
+  entryJavaScript: 3_258_000,
+  totalJavaScript: 3_888_000,
   // Fonts are 1_534_728 of this and the rest is one HTML file per route, so it
   // grows in coarser steps than the JavaScript above it — measured 8_037_112
   // with ~3% of slack rather than the ~1% the JS ceilings carry.
-  totalExport: 7_958_000,
+  totalExport: 7_714_000,
   fontFiles: 6,
   fontBytes: 800_000,
   // Pages is public. Symbolication maps belong only in a private crash service,

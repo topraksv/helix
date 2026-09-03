@@ -18,9 +18,14 @@ appId: com.toprak.helix
     timeout: 90000
 # Turkish glyphs specifically: ş, ı, ğ and ü live in the ranges the subset
 # keeps, and a broken subset draws tofu here rather than failing loudly.
-- assertVisible: "Kişisel finans çalışma alanın"
-# A regex, because this heading is not its own accessibility node: the card
-# merges its title, its description and the signature line into ONE label, so
-# an exact match finds nothing. That merge is also why the label reads
-# "…seni bekliyor.. E-posta…" with two full stops.
-- assertVisible: ".*Çalışma alanına dön.*"
+# The greeting, which is one heading beside the mark rather than a line merged
+# into a signature card, and the same text in all three auth modes: this screen
+# is where most people meet Helix for the first time, and it used to greet them
+# by asking them to return to a workspace they had never had.
+- assertVisible: "Helix'e hoş geldin"
+# The font assertion, and it is this line rather than the heading because of
+# WHICH glyphs it carries: ı, ş, ğ and ö all live in the ranges
+# `scripts/subset-fonts.mjs` keeps, and a broken subset draws tofu here rather
+# than failing loudly. The string this replaced claimed those four and actually
+# contained two of them.
+- assertVisible: ".*paranın nereye gittiğini gör.*"

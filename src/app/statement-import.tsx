@@ -18,7 +18,7 @@
  * promise about two file types, and this is the more dangerous of them.
  */
 
-import React, { useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { Pressable, Text, View } from "react-native";
 import { Stack, useRouter } from "expo-router";
 import * as DocumentPicker from "expo-document-picker";
@@ -61,7 +61,7 @@ import {
 } from "../ui/components";
 import { ImportArtwork, ImportJourney } from "../ui/import-journey";
 import { Select } from "../ui/selection-controls";
-import { interactionSurface } from "../ui/interaction";
+import { interactionBleed, interactionSurface } from "../ui/interaction";
 import { appConfirm, appAlert } from "../ui/dialog";
 import { useUndo } from "../ui/undo";
 import { useOperationGuard } from "../ui/operation-guard";
@@ -176,8 +176,7 @@ function CandidateRow({
           gap: spacing.md,
           // The pressable owns its padding and bleeds to the card's edge, so
           // the lit area is the row rather than a band floating inside it.
-          marginHorizontal: -spacing.md,
-          paddingHorizontal: spacing.md,
+          ...interactionBleed(),
           paddingVertical: spacing.sm,
           borderRadius: radius.sm,
           ...interactionSurface(palette, state),

@@ -84,13 +84,21 @@ const MUTATION_RELEVANT = /^src\/(?:domain|data\/repo|db|sync|auth|services)\/.*
  * the five domains that take the DuckDuckGo route and the two URLs, and
  * `tests/brand-domains.test.ts` checks every domain against both.
  *
+ * `src/db/expo-sqlite.server.js` is the fourth, and the only one that is not a
+ * data file. It is what `expo-sqlite` resolves to while a page is rendered on
+ * the server, and it is three functions that throw plus one that returns an
+ * empty subscription — a statement that the database is unreachable there.
+ * There is no behaviour to mutate: killing a mutant would mean asserting that
+ * a throw still throws. `metro.config.js` decides when it is substituted, and
+ * `tests/release-config.test.ts` holds the two together.
+ *
  * The exclusion stays narrow: everything under `domain`, `data/repo`,
  * `services`, `sync` and `auth` is still mutated, including files whose
  * mutants are mostly static. `domain/statement-import.ts` is 219 static
  * mutants of Turkish month names and amount-splitting regexes — real logic,
  * so it keeps paying for itself.
  */
-const MUTATION_EXCLUDED = /^src\/(?:db\/(?:migrations\/|schema\.ts$)|domain\/brand-mark-audit\.ts$)/;
+const MUTATION_EXCLUDED = /^src\/(?:db\/(?:migrations\/|schema\.ts$|expo-sqlite\.server\.js$)|domain\/brand-mark-audit\.ts$)/;
 
 /**
  * Whether a path is inside the gate at all.

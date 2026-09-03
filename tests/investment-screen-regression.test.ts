@@ -32,6 +32,28 @@ describe("investment screen recovery", () => {
     expect(charts).toContain("tr.analysis.chartEmpty");
   });
 
+  /**
+   * The wallet ring builds its marks through the shared rule, not by hand.
+   *
+   * Free cash was painted in `palette.surfaceStrong` here, which is 1.55
+   * against the ring's own empty track: the largest slice in the wallet looked
+   * like the part of the ring that had not been drawn, and locking it painted
+   * the centre readout in the same invisible colour. `tests/theme-contrast`
+   * owns why no surface token can be a mark; this owns that the screen goes
+   * through `walletDonutSlices` to get one.
+   */
+  it("takes every wallet ring colour from the shared series ramp", () => {
+    const source = readFileSync(join(root, "src/app/(tabs)/investments/index.tsx"), "utf8");
+    const slices = source.slice(source.indexOf("const slices = "), source.indexOf("const totalCapital"));
+
+    expect(slices).toContain("walletDonutSlices({");
+    expect(slices).not.toMatch(/color:\s*palette\./);
+    // The empties stay in the list: the index is the colour slot, so dropping
+    // a zeroed type would recolour every type below it.
+    expect(slices).toContain("INVESTMENT_ASSET_TYPES.map(");
+    expect(slices).not.toContain("flatMap");
+  });
+
   it("keeps investment entry actions primary and separated from the date field", () => {
     const operation = readFileSync(join(root, "src/app/(tabs)/investments/operation.tsx"), "utf8");
     const opening = readFileSync(join(root, "src/ui/opening-balance-editor.tsx"), "utf8");

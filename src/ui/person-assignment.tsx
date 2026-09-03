@@ -1,4 +1,3 @@
-import React from "react";
 import { tr } from "../i18n/tr";
 import { Body, ChipPicker, Label } from "./components";
 import { spacing, type } from "./theme";

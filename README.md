@@ -16,7 +16,7 @@ subscriptions and investments — with a spreadsheet's mind and a phone's manner
 <a href="https://topraksv.github.io/helix/"><img alt="Helix'i aç" src="https://img.shields.io/badge/Helix'i_aç-BA5B38?style=for-the-badge&logo=expo&logoColor=white"></a>
 
 [![ci](https://github.com/topraksv/helix/actions/workflows/ci.yml/badge.svg)](https://github.com/topraksv/helix/actions/workflows/ci.yml)
-[![Expo SDK 54](https://img.shields.io/badge/Expo-SDK%2054-0F0F0D?logo=expo&logoColor=white)](https://docs.expo.dev/versions/v54.0.0/)
+[![Expo SDK 57](https://img.shields.io/badge/Expo-SDK%2057-0F0F0D?logo=expo&logoColor=white)](https://docs.expo.dev/versions/v57.0.0/)
 [![Node 22](https://img.shields.io/badge/Node-22-0F0F0D?logo=nodedotjs&logoColor=5FA04E)](#geliştirici-kurulumu)
 [![Proprietary](https://img.shields.io/badge/license-proprietary-BA5B38)](LICENSE)
 
@@ -141,7 +141,7 @@ güncellenir, gönderim arkada sırasını bekler.
 | **iOS / Android** | Expo Go ile açılan EAS `preview` update'i. **Fiziksel cihaz kabulü henüz yapılmadı**; tarayıcı testleri native SQLite, Keychain, bildirim izni, biyometri ve app-switcher görüntüsünü kanıtlamaz |
 
 EAS Build, development client, TestFlight ve store submission bu teslim yolunun
-parçası **değil**. Mobil kullanım Expo Go'nun SDK 54 ile sunduğu native
+parçası **değil**. Mobil kullanım Expo Go'nun SDK 57 ile sunduğu native
 kütüphanelerle sınırlı.
 
 ---
@@ -184,7 +184,7 @@ satır anatomisi her listede aynı — mark, ad, değer, eylem.
 
 ## Geliştirici kurulumu
 
-> **Node 22 zorunlu** (`.nvmrc`) — Expo SDK 54'ün derleyip test ettiği sürüm.
+> **Node 22 zorunlu** (`.nvmrc`) — Expo SDK 57'nin derleyip test ettiği sürüm.
 
 ```bash
 git clone https://github.com/topraksv/helix.git
@@ -192,9 +192,15 @@ cd helix
 npm ci
 cp .env.example .env             # boş bırakılırsa uygulama hesapsız açılır
 
-npm run web                      # tarayıcıda geliştirme
+npm run web                      # tarayıcıda aç
 npx expo start --tunnel --clear  # Expo Go için QR
 ```
+
+> `npm run web`, Expo'nun web geliştirme sunucusunu değil üretim export'unu
+> derleyip sunar; sebebini çalışırken kendisi yazıyor ve
+> [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) "Non-obvious toolchain
+> constraints" bölümünde kayıtlı. Baktığın şey yayına gidenin aynısı olur;
+> karşılığında fast refresh yoktur, değişiklikten sonra yeniden çalıştır.
 
 ### Kalite kapısı
 

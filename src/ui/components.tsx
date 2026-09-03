@@ -25,8 +25,7 @@ import {
   type ViewStyle,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useSegments } from "expo-router";
-import { useScrollToTop } from "@react-navigation/native";
+import { useScrollToTop, useSegments } from "expo-router";
 import ChevronRight from "lucide-react-native/icons/chevron-right";
 import TriangleAlert from "lucide-react-native/icons/triangle-alert";
 import type { LucideIcon } from "lucide-react-native";
@@ -34,7 +33,7 @@ import { DelayedLoading, LoadingIndicator } from "./loading-indicator";
 import type { TrackedOperationState } from "./operation-guard";
 import { tr } from "../i18n/tr";
 import type { LiveQueryStatus } from "../data/live-state";
-import { interactionSurface } from "./interaction";
+import { interactionBleed, interactionSurface } from "./interaction";
 import { useReducedMotion } from "./motion";
 import {
   Amount,
@@ -349,11 +348,11 @@ export function Card({
    * The children are `ListRow`s, which carry their own vertical padding and
    * bleed their fill to the card's edges.
    *
-   * Without this the card's own 13px sat OUTSIDE every row's pressable, so a
-   * hovered row lit a band that stopped short of the card top and bottom. On a
-   * card holding one row — Bakiye Düzeltme, Tanıtım Turu — that reads as a
-   * control smaller than the box it lives in, while the same row inside a
-   * multi-row card looked correct. One rule for both.
+   * Without this the card's own padding sits OUTSIDE every row's pressable, so
+   * a hovered row lights a band that stops short of the card's top and bottom.
+   * On a card holding one row that reads as a control smaller than the box it
+   * lives in, while the same row inside a multi-row card looks correct. Any
+   * card whose children are rows sets it.
    */
   rows?: boolean;
   tone?: "success" | "warning" | "error";
@@ -369,9 +368,15 @@ export function Card({
       borderColor: toneColor ? toneColor + "66" : palette.border + "70",
       borderRadius: radius.lg,
       paddingHorizontal: padded ? density.list.cardPadding : 0,
-      // Rows own the vertical space so their fill can reach the card's edge;
-      // the card still clips (`overflow: hidden`), so the horizontal bleed
-      // lands exactly on the border rather than past it.
+      // A hovered row fills its cell in BOTH directions — to the card's border
+      // left and right, and to the card's edge top and bottom when it is the
+      // first or last row. The lit area is the control, and a control that
+      // stops short of the box it lives in reads as a fill that missed.
+      //
+      // `rows` is what makes the vertical half true: the card gives up its own
+      // vertical padding and the rows carry it instead, inside their
+      // pressables. The card still clips (`overflow: hidden`), so a fill lands
+      // exactly on the border rather than past it.
       paddingVertical: rows ? 0 : padded ? density.list.cardPadding : 0,
       marginBottom: spacing.md,
       overflow: "hidden",
@@ -911,15 +916,6 @@ export function ListRow({
 }
 
 /**
- * How far a row's fill reaches past its own content, each side.
- *
- * Exactly the card's own padding, so a hovered row lights the card from edge to
- * edge. At `spacing.sm` it stopped 4px short of that edge on both sides, which
- * does not read as a decision — it reads as a fill that missed.
- */
-const PRESS_BLEED = density.list.cardPadding;
-
-/**
  * List row wrapper with quiet, interruptible tonal press feedback.
  *
  * The fill reaches past the text on both sides. Painted on the bare content
@@ -936,8 +932,7 @@ function PressableRow({ children, onPress }: { children: ReactNode; onPress: () 
       accessibilityRole="button"
       onPress={onPress}
       style={(state) => ({
-        marginHorizontal: -PRESS_BLEED,
-        paddingHorizontal: PRESS_BLEED,
+        ...interactionBleed(),
         ...interactionSurface(palette, state),
         borderRadius: radius.sm,
         transform: [{ translateY: state.pressed ? 1 : 0 }],

@@ -3,7 +3,7 @@
  *  that has no payment in the selected month (finished, or not yet started) is
  *  hidden — each month shows only its own live installments (spec §3.2, §2.8). */
 
-import React, { useState } from "react";
+import { useState } from "react";
 import { Pressable, Text, View } from "react-native";
 import { PaymentSourceLogo } from "../../../ui/logo";
 import { useContentWidth } from "../../../ui/viewport";

@@ -15,6 +15,7 @@ import { calculatorKeyHaptic } from "./calculator-feedback";
 import { haptic } from "./haptics";
 import { useModalAccessibility } from "./accessibility";
 import { useReducedMotion } from "./motion";
+import { interactionSurface } from "./interaction";
 import { modalAnimationType } from "./modal-motion";
 
 type Op = "+" | "-" | "×" | "÷";
@@ -251,17 +252,22 @@ export function CalculatorPad({
                     haptic(calculatorKeyHaptic(state, key));
                     press(key);
                   }}
-                  style={({ pressed }) => [
+                  style={(state) => [
                     {
                       flex: key === "0" ? 2.09 : 1,
                       minHeight: landscape ? 48 : 56,
                       borderRadius: radius.md,
-                      backgroundColor: bg,
                       alignItems: "center",
                       justifyContent: "center",
-                      opacity: pressed ? 0.7 : 1,
                     },
                     themeShadow.card(palette),
+                    // A key used to dim itself to 70% under a finger and do
+                    // nothing at all under a pointer — the one control in the
+                    // app with a private press and no hover. `bg` is its
+                    // resting fill, so the shared surface composites into it
+                    // and the keypad now answers a pointer like everything
+                    // else does.
+                    interactionSurface(palette, state, { base: bg }),
                   ]}
                 >
                   {key === "⌫" ? (

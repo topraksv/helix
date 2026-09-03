@@ -6,7 +6,6 @@
  * (spec §3.1g).
  */
 
-import React from "react";
 import { Text, View } from "react-native";
 import Paperclip from "lucide-react-native/icons/paperclip";
 import Pencil from "lucide-react-native/icons/pencil";

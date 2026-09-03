@@ -21,7 +21,7 @@
 
 import React, { useContext, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { Animated, Easing, Platform, View, type StyleProp, type ViewStyle } from "react-native";
-import { NavigationContext } from "@react-navigation/native";
+import { NavigationContext } from "expo-router/react-navigation";
 import { useReducedMotion } from "./motion";
 import { createScreenVisitStore, type ScreenVisitStore } from "./screen-visit";
 import { motion, spacing, useTheme } from "./theme";

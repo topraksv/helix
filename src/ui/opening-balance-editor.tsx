@@ -10,7 +10,7 @@
  * Mali Tablo, so it always has a working back/close regardless of launch point.
  */
 
-import React, { useState } from "react";
+import { useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import ArrowRight from "lucide-react-native/icons/arrow-right";

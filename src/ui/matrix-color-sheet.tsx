@@ -1,4 +1,4 @@
-import React, { useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { Modal, Pressable, Text, View } from "react-native";
 import Check from "lucide-react-native/icons/check";
 import Pencil from "lucide-react-native/icons/pencil";

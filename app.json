@@ -2,7 +2,7 @@
   "expo": {
     "name": "Helix",
     "slug": "helix",
-    "version": "1.1.0",
+    "version": "1.2.0",
     "orientation": "default",
     "icon": "./assets/images/icon.png",
     "scheme": "helix",
@@ -123,7 +123,11 @@
         "expo-notifications",
         {}
       ],
-      "./plugins/with-ios-native-product-name.js"
+      "./plugins/with-ios-native-product-name.js",
+      "expo-font",
+      "expo-image",
+      "expo-sharing",
+      "expo-status-bar"
     ],
     "experiments": {
       "typedRoutes": true,

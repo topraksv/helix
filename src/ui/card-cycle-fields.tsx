@@ -9,7 +9,6 @@
  * card entered during onboarding is the same card entered in settings.
  */
 
-import React from "react";
 import { Text, View } from "react-native";
 import Svg, { Circle } from "react-native-svg";
 import {

@@ -1,7 +1,7 @@
 /** Accessible SVG chart primitives shared by native and web. */
 
 import React, { useMemo, type ReactNode } from "react";
-import { Animated, PanResponder, Pressable, StyleSheet, Text, View } from "react-native";
+import { Animated, PanResponder, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import Svg, { Circle, ClipPath, Defs, Path, Rect, Line as SvgLine, Text as SvgText } from "react-native-svg";
 import type { Distribution } from "../domain/analytics";
 import { compactMoneyScale, formatMinorCompact, formatMinorCompactAtScale, type CompactMoneyScale, usesCompactMoneyScale } from "../domain/money";
@@ -12,7 +12,7 @@ import { Amount } from "./primitives";
 import { useDrawIn } from "./motion-primitives";
 import { chart, chartSeriesColors, font, motion, radius, spacing, type, useTheme } from "./theme";
 import { selectionTap } from "./haptics";
-import { interactionSurface } from "./interaction";
+import { interactionBleed, interactionSurface } from "./interaction";
 import { useMeasuredWidth } from "./viewport";
 import { shouldUseLargeAxisType } from "./responsive";
 
@@ -162,6 +162,45 @@ export function distributionDonutData(
 }
 
 /**
+ * The investments wallet ring: free cash, then one arc per asset type that
+ * holds anything.
+ *
+ * WHY CASH IS NOT `surfaceStrong`. That token reads like the obvious "this one
+ * is not a category" colour, and it is the single value `theme.ts` measured and
+ * rejected as a mark: 1.68-2.03 against the surfaces this app paints it on,
+ * where a graphical object owes 3:1. Against the ring's OWN empty track it is
+ * 1.55. Cash is usually the largest thing in the wallet, so the ring's biggest
+ * slice looked like the part of the ring that had not been filled in — and
+ * selecting it painted the centre readout in that same colour, so a lock that
+ * had in fact been taken showed nothing. It was reported as the ring not
+ * locking, which is exactly what it looked like.
+ *
+ * So cash takes a measured ramp entry, and it takes the LAST one: asset types
+ * fill the ramp from the front, so cash keeps its colour when a seventh type is
+ * added rather than sliding to whichever slot is left over.
+ * `tests/theme-contrast.test.ts` owns both halves of that rule.
+ */
+export function walletDonutSlices(input: {
+  cashLabel: string;
+  cashMinor: number;
+  /** Every asset type in canonical order. The index IS the colour slot, so a
+   *  type that empties out must stay in this list rather than be filtered. */
+  assets: readonly { label: string; valueMinor: number }[];
+  colors: SeriesColors;
+}): DonutSlice[] {
+  const cashColor = seriesColor(input.colors, input.colors.length - 1);
+  return [
+    ...(input.cashMinor > 0
+      ? [{ label: input.cashLabel, valueMinor: input.cashMinor, color: cashColor }]
+      : []),
+    ...input.assets.flatMap((asset, index) =>
+      asset.valueMinor > 0
+        ? [{ label: asset.label, valueMinor: asset.valueMinor, color: seriesColor(input.colors, index) }]
+        : []),
+  ];
+}
+
+/**
  * The chart-focus rules, bound to React.
  *
  * The rules themselves live in `chart-focus.ts` so they can be tested without
@@ -216,10 +255,18 @@ export function Donut({
   // a 236 ring, a 16 gap and a 220 legend, so the legend dropped underneath a
   // centred ring and the card grew a wasted band on both sides of it. Below the
   // point where shrinking the ring would make it unreadable, wrapping is the
-  // right answer and the caller's size stands — which is every phone.
+  // right answer and the caller's size stands.
+  //
+  // THE PHONE APP NEVER PAIRS THEM. Measuring the box is the correct question
+  // for a browser window, and the wrong one for a handset: a phone held
+  // sideways clears the budget easily, and what it buys is a shrunken ring
+  // beside a column of clipped category names. There is no pointer there to
+  // spend the width on, so the ring stays the chart and the legend stays the
+  // list under it. Web keeps the measurement, and a narrow browser window
+  // reaches the same stacked layout through it.
   const [boxWidth, onBoxLayout] = useMeasuredWidth(size + LEGEND_BASIS + spacing.lg);
   const ringBudget = boxWidth - LEGEND_BASIS - spacing.lg - 2;
-  const sideBySide = ringBudget >= MIN_PAIRED_RING;
+  const sideBySide = Platform.OS === "web" && ringBudget >= MIN_PAIRED_RING;
   const fittedSize = sideBySide ? Math.min(size, ringBudget) : size;
   const arcTotal = slices.reduce((sum, s) => sum + Math.max(s.valueMinor, 0), 0);
   const displayTotal = totalMinor ?? arcTotal;
@@ -277,8 +324,8 @@ export function Donut({
 
   return (
     // Side by side the two halves span the row, so a wide card reads as one
-    // chart rather than a centred island with a margin on each side. Wrapped —
-    // every phone — the ring centres over its legend as before.
+    // chart rather than a centred island with a margin on each side. Stacked —
+    // every phone, and a narrow browser — the ring centres over its legend.
     <View
       onLayout={onBoxLayout}
       style={{
@@ -436,20 +483,12 @@ export function Donut({
           position: "relative",
           // Stretched to the ring's height ONLY beside it, so the space below
           // the last row is part of the legend and can be pressed to release a
-          // lock. Wrapped underneath there is no ring height to reach and
-          // nothing to centre against: Yoga still stretched the box, and the
-          // rows sat in the middle of it — a band of empty space between the
-          // ring and the first category, with every category pushed down. It
-          // measured right on web and wrong on the phone, which is the shape
-          // of a rule written for one layout and applied to both.
-          alignSelf: sideBySide ? "stretch" : "flex-start",
+          // lock. Stacked there is no ring height to reach and nothing to
+          // centre against, and the legend takes the card's full width so its
+          // rows read as the list they are rather than a narrow column under a
+          // centred ring.
+          alignSelf: "stretch",
           justifyContent: sideBySide ? "center" : "flex-start",
-          // Beside the ring the legend takes the rest of the row: its rows are
-          // a name on the left and a share on the right, which is the same
-          // anatomy every list in the app uses at full width. Capped only when
-          // it has wrapped underneath, where a full-width block of legend under
-          // a centred ring would read as a second list.
-          maxWidth: sideBySide ? undefined : 420,
           gap: 6,
         }}
       >
@@ -528,11 +567,18 @@ export function Donut({
                 {
                   gap: 6,
                   marginBottom: 2,
-                  // Inset and un-inset by the same amount, so selecting a row
-                  // never moves the rows under it.
-                  marginHorizontal: -spacing.xs,
-                  paddingHorizontal: spacing.xs,
-                  paddingVertical: 2,
+                  // The inset is EXPLICIT here because this row is not in a
+                  // card: the legend is a column beside the ring and carries no
+                  // padding of its own, so the default — reach the card's edge
+                  // — would spill the fill into the gap between the two. It
+                  // still goes through the one rule rather than a bare
+                  // negative margin, which is what keeps it a decision rather
+                  // than a number someone typed.
+                  ...interactionBleed(spacing.xs),
+                  // The actual defect this row was reported for: at 2px the lit
+                  // band was thinner than the text inside it, so a hover here
+                  // read as a hairline rather than as a row lighting up.
+                  paddingVertical: spacing.xs,
                   borderRadius: radius.sm,
                 },
                 selectable

@@ -73,11 +73,42 @@ describe("release contract", () => {
     expect(app.expo.ios.bundleIdentifier).toBe("com.toprak.helix");
     expect(app.expo.android.package).toBe("com.toprak.helix");
     expect(app.expo.android.allowBackup).toBe(false);
-    expect(packageJson.dependencies.expo).toMatch(/^~54\./);
-    expect(eas.cli.version).toBe("21.4.0");
+    expect(packageJson.dependencies.expo).toMatch(/^~57\./);
+    expect(eas.cli.version).toBe("23.2.0");
     expect(eas.build).toBeUndefined();
     expect(eas.submit).toBeUndefined();
     expect(packageJson.engines.node).toBe("^22");
+  });
+
+  /**
+   * A server render has no database, and three files have to agree on that.
+   *
+   * `web.output` is "static", so every route is rendered once in Node. Left
+   * alone that pass drags the whole SQLite driver — and on SDK 57 its Web
+   * Worker, which Metro then cannot chunk for a server bundle — into a render
+   * that could never open a database anyway. `metro.config.js` substitutes the
+   * stub, the stub says what it answers with, and the mutation gate excludes it
+   * because a throw has no behaviour to mutate. Any one of the three drifting
+   * from the other two puts the driver back.
+   */
+  it("keeps the database out of server rendering", () => {
+    const metro = read("metro.config.js");
+    const stub = read("src/db/expo-sqlite.server.js");
+    const stryker = read("stryker.ci.config.mjs");
+
+    expect(app.expo.web.output).toBe("static");
+    expect(metro).toContain('moduleName === "expo-sqlite"');
+    expect(metro).toContain("src/db/expo-sqlite.server.js");
+    // Both server environments Expo names, and no client one.
+    expect(metro).toContain('"node"');
+    expect(metro).toContain('"react-server"');
+
+    // The three runtime imports the app makes from `expo-sqlite`. A fourth
+    // added later resolves to `undefined` on the server unless it lands here.
+    for (const name of ["openDatabaseAsync", "deleteDatabaseAsync", "addDatabaseChangeListener"]) {
+      expect(stub, `${name} must be answered for the server`).toContain(name);
+    }
+    expect(stryker).toContain("expo-sqlite\\.server\\.js");
   });
 
   it("keeps web recovery and offline caches inside narrow browser boundaries", () => {
@@ -91,6 +122,36 @@ describe("release contract", () => {
     expect(serviceWorker).toContain('res.ok && contentType.startsWith("text/html")');
     expect(serviceWorker.indexOf('contentType.startsWith("text/html")'))
       .toBeLessThan(serviceWorker.indexOf("cache.put(SHELL, res.clone())"));
+  });
+
+  /**
+   * The multi-tab lock screen, the boot-failure retry screen and the
+   * database-recovery notice all render before `RootLayoutInner` ever mounts,
+   * so `_layout.tsx`'s one `documentElement.style.colorScheme` assignment —
+   * pinned below to confirm it stays that single, late occurrence — cannot
+   * have run yet. Without a document-level default declared here, a browser
+   * whose OS dark mode is on and that auto-adapts pages which don't declare
+   * their own `color-scheme` (a real, commonly-on Edge/Chrome setting)
+   * repaints those screens with its own heuristic, over colours that were
+   * already correct — text measured at 1.9:1 against its own background
+   * where the underlying HTML/CSS carries 8:1. Declared twice, because
+   * Chromium's computed style does not reflect the meta tag's effect, only
+   * the CSS rule's — a regression here would otherwise pass a check that
+   * only grepped for the meta tag and ship silently broken again.
+   */
+  it("declares its own color scheme before any script can, so a browser never auto-darkens an undeclared page", () => {
+    const html = read("src/app/+html.tsx");
+    expect(html).toContain('<meta name="color-scheme" content="light dark" />');
+    expect(html.replace(/\s+/g, "")).toContain(":root{color-scheme:lightdark}");
+
+    const layout = read("src/app/_layout.tsx");
+    const assignments = [...layout.matchAll(/documentElement\.style\.colorScheme\s*=/g)];
+    expect(assignments, "exactly one place may claim a scheme once the owner's preference is known").toHaveLength(1);
+    // That one assignment sits inside `RootLayoutInner`, which mounts only
+    // after `dbReady` — everything the outer `RootLayout` can render (the
+    // three screens named above) is before this point in the file and never
+    // reaches it.
+    expect(layout.indexOf("function RootLayoutInner")).toBeLessThan(assignments[0]!.index!);
   });
 
   it("publishes one Expo Go preview update and never searches for or creates a binary", () => {
@@ -380,7 +441,7 @@ describe("release contract", () => {
     expect(packageJson.devDependencies["eas-cli"]).toBeUndefined();
     expect(packageJson.dependencies?.["eas-cli"]).toBeUndefined();
     expect(packageLock.packages["node_modules/eas-cli"]).toBeUndefined();
-    expect(Object.keys(packageJson.overrides)).not.toContain("eas-cli@21.4.0");
+    expect(Object.keys(packageJson.overrides)).not.toContain(`eas-cli@${eas.cli.version}`);
   });
 
   it("withholds the Expo publish credential from dependency installation", () => {
