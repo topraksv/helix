@@ -1463,7 +1463,18 @@ test("investment setup, weighted sale, BES contribution and wallet refund form o
 
   await expect(page.getByRole("heading", { name: "Yatırım alanını başlat", exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Yatırım Alanını Aç", exact: true }).click();
-  await page.getByRole("textbox", { name: "Bugünkü serbest yatırım bakiyesi", exact: true }).fill("10.000");
+  // EVERY MoneyField in this flow goes through the calculator seam, not just
+  // the one that was caught. They share one failure — a controlled MoneyField
+  // drops keystrokes on Firefox under CI load — so hardening only the field
+  // that happened to fail leaves the same trap for the next loaded run. It is
+  // scoped to the Firefox-tagged tests: the seam costs a click per character,
+  // and a chromium-only test has never lost a keystroke.
+  await enterAmountViaCalculator(
+    page,
+    page.getByRole("textbox", { name: "Bugünkü serbest yatırım bakiyesi", exact: true }),
+    "10000",
+    "10.000,00",
+  );
   await page.getByRole("button", { name: "Yatırım Alanını Aç", exact: true }).click();
   await expect(page.getByText("Serbest nakit ve ürün maliyetleri", { exact: true })).toHaveCount(0);
   await expect(page.getByTestId("screen-header").getByRole("button", { name: "İşlem Ekle", exact: true })).toBeVisible();
@@ -1490,7 +1501,19 @@ test("investment setup, weighted sale, BES contribution and wallet refund form o
 
   await page.getByRole("button", { name: "Satış Yap" }).click();
   await page.getByRole("textbox", { name: "Miktar / adet · zorunlu", exact: true }).fill("4");
-  await page.getByRole("textbox", { name: "Birim fiyat · zorunlu", exact: true }).fill("150");
+  // Through the calculator seam, for the reason the helper already gives: a
+  // controlled MoneyField loses keystrokes on Firefox under CI load. The buy
+  // step above was hardened when that was first measured and this one was not,
+  // so it kept passing on an unloaded machine and cost run 33784806992 a
+  // deploy — the price field was empty in the failure screenshot and "Satış
+  // yap" was correctly disabled, so the click waited out the whole test.
+  // Quantity is a plain numeric field, not a MoneyField, and stays a `fill`.
+  await enterAmountViaCalculator(
+    page,
+    page.getByRole("textbox", { name: "Birim fiyat · zorunlu", exact: true }),
+    "150",
+    "150,00",
+  );
   await page.getByRole("button", { name: "Satış yap", exact: true }).click();
   await expect(page.getByText("₺200,00", { exact: true }).first()).toBeVisible();
 
@@ -1512,7 +1535,12 @@ test("investment setup, weighted sale, BES contribution and wallet refund form o
 
   await page.getByRole("button", { name: "Serbest Bakiyeyi Aktar" }).click();
   await page.getByRole("radio", { name: "Bir kısmı", exact: true }).click();
-  await page.getByRole("textbox", { name: "Aktarılacak tutar", exact: true }).fill("100");
+  await enterAmountViaCalculator(
+    page,
+    page.getByRole("textbox", { name: "Aktarılacak tutar", exact: true }),
+    "100",
+    "100,00",
+  );
   await page.getByRole("button", { name: "Mali Tabloya Aktar", exact: true }).click();
   // Wait for the FORM TO CLOSE, not for a particular screen to appear. Closing
   // it calls `router.back()`, and where that lands depends on how deep browser
