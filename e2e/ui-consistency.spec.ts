@@ -113,36 +113,37 @@ async function enterAmountViaCalculator(page: Page, field: Locator, raw: string,
 /**
  * A controlled numeric field, filled and CONFIRMED to have taken the value.
  *
- * `fill` writes the DOM value and dispatches one `input`. That is enough for
- * an uncontrolled input and not always enough for a controlled one: if a
- * re-render lands between the write and React's commit, the state — which is
- * still empty — is what survives. Nothing fails at the fill; the field simply
- * reads blank several steps later, which is how run 33888791602 reported it as
- * a missing "amounts disagree" alert. This app re-renders on a timer while
- * nobody touches it, because the market feed polls every ten seconds and the
- * E2E fixture blocks its host, so the window for that is open the whole run.
+ * `fill` writes the DOM value and dispatches one `input`. That is enough for an
+ * uncontrolled input and not always enough for a controlled one under load: if
+ * React has not committed by the time something else re-renders, the state —
+ * still empty — is what survives. Nothing fails at the fill; the field reads
+ * blank several steps later, which is how run 33888791602 reported it as a
+ * missing "amounts disagree" alert three steps further on.
  *
- * Typing the value instead was measured and is WORSE: `pressSequentially`
- * turned "10" into "1" on Firefox four runs in five, with or without a delay
- * between keys — the re-render after the first key discards the second.
+ * WAITING is the fix, and the two shortcuts are both worse. Typing was
+ * measured: `pressSequentially` turned "10" into "1" on Firefox four runs in
+ * five, with a 40ms delay between keys and without one, because the re-render
+ * after the first key discards the second. And a tight retry loop is worse
+ * still — every `fill` CLEARS the field first, so a commit that was about to
+ * land gets wiped by the next attempt: run 33891256399 ended empty after three
+ * two-second tries, which is the loop racing itself rather than the app losing
+ * anything.
  *
- * So the fill is repeated rather than replaced, which is what a person does
- * when a field does not take, and the assertion is what makes a genuine drop
- * fail HERE — naming the field and both values — instead of surfacing three
- * steps later as something that did not appear. Three attempts, then the
- * failure stands: a field that will not take a value in three tries is a
- * defect and not a race.
+ * So the first attempt gets the full assertion timeout, which is what a slow
+ * runner actually needs, and there is exactly one more in case the value never
+ * arrived at all. The assertion is the half that matters either way: a genuine
+ * drop fails HERE, naming the field and both values.
  */
 async function enterQuantity(field: Locator, value: string) {
-  for (let attempt = 1; attempt <= 3; attempt += 1) {
-    await field.fill(value);
-    try {
-      await expect(field).toHaveValue(value, { timeout: 2_000 });
-      return;
-    } catch (error) {
-      if (attempt === 3) throw error;
-    }
+  await field.fill(value);
+  try {
+    await expect(field).toHaveValue(value);
+    return;
+  } catch {
+    // Never taken rather than slow to take. One more, then the failure stands.
   }
+  await field.fill(value);
+  await expect(field).toHaveValue(value);
 }
 
 test("a card's trailing action leaves the same gap as its first row", async ({ page }) => {
