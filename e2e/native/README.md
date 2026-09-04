@@ -35,6 +35,15 @@ its JavaScript from Metro on every launch, which is why the first assertion in
 each flow waits up to 90s; a release build with an embedded bundle is up in a
 fraction of that.
 
+That cost is not paid only at launch. Maestro runs the flows in parallel
+against one simulator, so on the FIRST run after a build all five contend for
+the same bundler and every interaction is slower, not just the first: measured
+on one machine, the sign-in flow took 52s cold against 44s warm and its
+30s scroll bound was the one thing in the suite short enough to run out. A flow
+that fails once on a cold run and passes on the next full run is that, and the
+fix for it is to re-run rather than to widen a bound — a wait raised to cover
+the coldest possible start stops catching the thing it was written for.
+
 ### The scripts reset the simulator keychain first
 
 Every flow starts from a signed-out device, and `launchApp: clearState` does

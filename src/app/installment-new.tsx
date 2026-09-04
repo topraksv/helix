@@ -4,12 +4,12 @@ import React, { useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { Redirect, Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { countInstallmentsForPlan, createInstallmentPlan, CreditCardCycleRequiredError, deletePlan, InstallmentHistoryConflictError, updateInstallmentPlan } from "../data/repo";
-import { useAllTransactionsState, useCategoriesState, usePersonsState, usePlansState, useSourcesState, useUserId } from "../data/hooks";
+import { useAllTransactionsState, useAnsweredForId, useCategoriesState, usePersonsState, usePlansState, useSourcesState, useUserId } from "../data/hooks";
 import { combineLiveStates } from "../data/live-state";
 import { classifyRecordId } from "../domain/route-params";
 import { addMonthsToKey, monthKeyOf, todayISO, type MonthKey } from "../domain/dates";
 import { deriveStartMonth, isValidInstallmentCount, planProgress, type GeneratedInstallment } from "../domain/installments";
-import { formatMinorCompact, formatMinorInput } from "../domain/money";
+import { formatMinorCompact, formatMinorInput, installmentShareRange } from "../domain/money";
 import { monthLabel, tr } from "../i18n/tr";
 import CalendarRange from "lucide-react-native/icons/calendar-range";
 import ChevronLeft from "lucide-react-native/icons/chevron-left";
@@ -111,11 +111,13 @@ export default function PlanModal() {
   const record = classifyRecordId(id);
   const plansState = usePlansState();
   const existing = record?.mode === "edit" ? plansState.data.find((p) => p.id === record.id) : undefined;
-  // Loading is `updatedAt == null`; anything after that is a row that does not
-  // exist, which must recover instead of rendering a permanent blank screen.
+  // Dated proof, not merely "the query ran": this query is not parameterised
+  // by the id, so a completion from before the row was written would otherwise
+  // read as "no such plan". See `useAnsweredForId`.
+  const answered = useAnsweredForId(plansState, record, existing != null);
   if (!record) return <Redirect href="/(tabs)/cash-flow/installments" />;
   if (record.mode === "edit" && !existing) {
-    if (plansState.updatedAt == null) {
+    if (!answered) {
       return (
         <Screen scroll={false}>
           <DataStateNotice status={plansState.status} retry={plansState.retry} />
@@ -377,7 +379,13 @@ function PlanForm({ existing }: { existing?: ReturnType<typeof usePlansState>["d
             {valid && amountMinor ? (
               <Body muted>
                 {kind === "card_installment"
-                  ? tr.tx.installmentInfo(formatMinorCompact(Math.trunc(amountMinor / count)), count)
+                  ? (() => {
+                const shares = installmentShareRange(amountMinor, count);
+                if (!shares) return null;
+                return shares.first === shares.last
+                  ? tr.tx.installmentInfo(formatMinorCompact(shares.first), count)
+                  : tr.tx.installmentInfoUneven(count, formatMinorCompact(shares.first), formatMinorCompact(shares.last));
+              })()
                   : tr.tx.installmentInfo(formatMinorCompact(amountMinor), count)}
               </Body>
             ) : null}

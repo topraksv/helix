@@ -49,6 +49,7 @@ describe("investment decimal and quote rules", () => {
     const messages: Record<InvestmentDomainError["code"], string> = {
       invalid_quantity: "invalid investment quantity",
       invalid_money: "invalid investment money",
+      invalid_date: "investment date is missing or in the future",
       quote_incomplete: "two investment quote fields are required",
       quote_inconsistent: "investment quote fields are inconsistent",
       unknown_product: "investment product does not exist",

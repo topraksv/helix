@@ -49,7 +49,10 @@ export interface InvestmentOperationInput extends InvestmentQuoteInput {
 }
 
 function validateDate(date: string): asserts date is ISODate {
-  if (!isISODate(date) || date > todayISO()) throw new InvestmentDomainError("invalid_money");
+  // Its own code: the screen turns a code into a sentence, and a date the
+  // owner cannot have reached yet was being reported as an amount over the
+  // ceiling — a sentence about a figure the form never held.
+  if (!isISODate(date) || date > todayISO()) throw new InvestmentDomainError("invalid_date");
 }
 
 export async function setupInvestments(userId: string, input: InvestmentSetupInput): Promise<void> {

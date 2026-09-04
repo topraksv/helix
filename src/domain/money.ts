@@ -62,6 +62,25 @@ export function splitIntoInstallments(totalMinor: Minor, count: number): Minor[]
   return shares;
 }
 
+/**
+ * The two figures a screen needs to describe a split truthfully: the uniform
+ * early instalment, and the last one that carries the remainder.
+ *
+ * Two screens previewed a card plan by dividing the total themselves with
+ * `Math.trunc`, which is a DIFFERENT answer from the schedule this module
+ * writes whenever the total does not divide evenly — "3 taksit x ₺333,33"
+ * described a ₺999,99 purchase for a ₺1.000,00 one. The preview and the
+ * schedule now come from the same split, so they cannot disagree.
+ *
+ * `null` for a count no plan could have, so a screen previewing a half-typed
+ * field cannot throw during render.
+ */
+export function installmentShareRange(totalMinor: Minor, count: number): { first: Minor; last: Minor } | null {
+  if (!Number.isInteger(count) || count < 1 || !Number.isSafeInteger(totalMinor)) return null;
+  const shares = splitIntoInstallments(totalMinor, count);
+  return { first: shares[0]!, last: shares[shares.length - 1]! };
+}
+
 const CURRENCY_FORMATTERS = new Map<string, Intl.NumberFormat>();
 
 function formatterFor(currency: string): Intl.NumberFormat {
@@ -106,7 +125,13 @@ function roundsToNextCompactScale(value: number): boolean {
 export function compactMoneyScale(amountMinor: Minor): CompactMoneyScale {
   assertMinor(amountMinor);
   const major = Math.abs(amountMinor) / 100;
-  if (major >= 1e12) return "Tr";
+  // No separate trilyon branch: promotion already covers it. A value at or
+  // above a trilyon is at least 1000 when read in milyar, and 1000 milyar
+  // rounds to the promotion threshold exactly — so the branch below returns
+  // "Tr" for every input a `major >= 1e12` shortcut could have caught, and
+  // could never disagree with it. Mutation found this by leaving five mutants
+  // on those two lines that no test could kill, which is the same statement:
+  // the guards decided nothing.
   if (major >= 1e9) return roundsToNextCompactScale(major / 1e9) ? "Tr" : "Mr";
   if (major >= 1e6) return roundsToNextCompactScale(major / 1e6) ? "Mr" : "Mn";
   return "Mn";
@@ -162,23 +187,52 @@ export function formatMinorCompactAtScale(
   return sign + symbol + COMPACT_NUMBER.format(Math.abs(scaled)) + suffix;
 }
 
+/** Why Turkish-formatted input did not become an amount. Not exported: the
+ *  reasons reach callers through `ReadAmount`, which is the value they hold. */
+type AmountRejection = "empty" | "malformed" | "over-limit";
+
+/**
+ * A typed amount, or the reason it is not one.
+ *
+ * `null` used to carry both refusals at once and the amount field could only
+ * guess between them, so it named the louder: an unfinished expression — a
+ * lone comma, or "1+" halfway through typing "1+2" — was refused with "this
+ * amount exceeds the supported limit", a limit the input was nowhere near.
+ * The reason is derived in the same pass as the value so a message and a
+ * number cannot disagree; `parseTRAmountToMinor` and
+ * `parseAmountExpression` stay as the thin answers for callers that only
+ * want the number.
+ */
+export type ReadAmount = { ok: true; minor: Minor } | { ok: false; reason: AmountRejection };
+
+/** Read one Turkish-formatted amount, saying why when it is not one. */
+export function readTRAmount(input: string): ReadAmount {
+  // No `.trim()` before this: `\s` already covers every code point `trim`
+  // removes, so the call was doing nothing that the strip does not.
+  const trimmed = input.replace(/[₺\s]/g, "");
+  if (trimmed === "") return { ok: false, reason: "empty" };
+  const negative = trimmed.startsWith("-");
+  const body = negative ? trimmed.slice(1) : trimmed;
+  if (!/^\d{1,3}(\.\d{3})*(,\d{1,2})?$|^\d+(,\d{1,2})?$/.test(body)) {
+    return { ok: false, reason: "malformed" };
+  }
+  const [intPart, fracPart = ""] = body.replace(/\./g, "").split(",");
+  const minor = Number(intPart) * 100 + Number((fracPart + "00").slice(0, 2));
+  // Beyond safe-integer range the arithmetic is no longer exact — treat it as
+  // invalid input rather than storing a corrupted amount (assertMinor would
+  // otherwise throw at display time). Too large to store is a different thing
+  // to say than unreadable, which is why it is a distinct reason and not null.
+  if (!isSupportedMinorAmount(minor)) return { ok: false, reason: "over-limit" };
+  return { ok: true, minor: negative ? -minor : minor };
+}
+
 /**
  * Parse Turkish-formatted decimal input ("1.234,56", "1234,5", "1234") into
  * minor units. Returns null for input that is not a clean number.
  */
 export function parseTRAmountToMinor(input: string): Minor | null {
-  const trimmed = input.trim().replace(/[₺\s]/g, "");
-  if (trimmed === "") return null;
-  const negative = trimmed.startsWith("-");
-  const body = negative ? trimmed.slice(1) : trimmed;
-  if (!/^\d{1,3}(\.\d{3})*(,\d{1,2})?$|^\d+(,\d{1,2})?$/.test(body)) return null;
-  const [intPart, fracPart = ""] = body.replace(/\./g, "").split(",");
-  const minor = Number(intPart) * 100 + Number((fracPart + "00").slice(0, 2));
-  // Beyond safe-integer range the arithmetic is no longer exact — treat it as
-  // invalid input rather than storing a corrupted amount (assertMinor would
-  // otherwise throw at display time).
-  if (!isSupportedMinorAmount(minor)) return null;
-  return negative ? -minor : minor;
+  const read = readTRAmount(input);
+  return read.ok ? read.minor : null;
 }
 
 /**
@@ -190,7 +244,13 @@ export function parseTRAmountToMinor(input: string): Minor | null {
  * so the form can explain the limit instead of silently changing the amount.
  */
 export function formatTRInputLive(raw: string): string {
-  const negative = raw.trim().startsWith("-");
+  // The sign is read once the currency symbol is out of the way. "₺-5" does
+  // not START with a minus, so the sign was neither seen here nor kept by the
+  // strip below — a pasted refund came back as a charge of the same size, and
+  // `parseTRAmountToMinor` had already got it right, so the two disagreed about
+  // the same string. Only the symbol and spaces are removed: an operator is
+  // still not a sign, and `formatMoneyInputLive` owns that case.
+  const negative = raw.replace(/[₺\s]/g, "").startsWith("-");
   const cleaned = raw.replace(/[^\d,]/g, "");
   const firstComma = cleaned.indexOf(",");
   let intDigits = (firstComma === -1 ? cleaned : cleaned.slice(0, firstComma)).replace(/\D/g, "");
@@ -230,20 +290,34 @@ export function formatMoneyInputLive(raw: string): string {
 }
 
 /**
+ * Read a spreadsheet-style sum ("300+400+500", "+300+1.250,50-100"), saying
+ * why when it is not one.
+ */
+export function readAmountExpression(input: string): ReadAmount {
+  const compact = input.replace(/[₺\s]/g, "");
+  if (compact === "") return { ok: false, reason: "empty" };
+  const terms = compact.match(/[+-]?[\d.,]+/g);
+  if (!terms || terms.join("") !== compact) return { ok: false, reason: "malformed" };
+  let total = 0;
+  for (const term of terms) {
+    const sign = term.startsWith("-") ? -1 : 1;
+    // A term that is itself unreadable or itself too large answers for the
+    // whole expression, so "1+abc" reads as unreadable and "1+9e20" as over
+    // the limit rather than both collapsing to one message.
+    const read = readTRAmount(term.replace(/^[+-]/, ""));
+    if (!read.ok) return read;
+    total += sign * read.minor;
+  }
+  // Every term fit and the sum did not: the figure is too large to store, and
+  // that is the one case the limit message was written for.
+  return isSupportedMinorAmount(total) ? { ok: true, minor: total } : { ok: false, reason: "over-limit" };
+}
+
+/**
  * Parse a spreadsheet-style sum ("300+400+500", "+300+1.250,50-100") into
  * minor units. Single plain amounts parse too. Null for anything else.
  */
 export function parseAmountExpression(input: string): Minor | null {
-  const compact = input.replace(/[₺\s]/g, "");
-  if (compact === "") return null;
-  const terms = compact.match(/[+-]?[\d.,]+/g);
-  if (!terms || terms.join("") !== compact) return null;
-  let total = 0;
-  for (const term of terms) {
-    const sign = term.startsWith("-") ? -1 : 1;
-    const minor = parseTRAmountToMinor(term.replace(/^[+-]/, ""));
-    if (minor == null) return null;
-    total += sign * minor;
-  }
-  return isSupportedMinorAmount(total) ? total : null;
+  const read = readAmountExpression(input);
+  return read.ok ? read.minor : null;
 }

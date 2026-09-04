@@ -8,7 +8,7 @@ import CalendarClock from "lucide-react-native/icons/calendar-clock";
 import Repeat2 from "lucide-react-native/icons/repeat-2";
 import { Redirect, Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { createRecordId, CreditCardCycleRequiredError, ensureSubscriptionCategory, upsertSubscription } from "../data/repo";
-import { useCategoriesState, usePersonsState, useSourcesState, useSubscriptionsState, useUserId } from "../data/hooks";
+import { useAnsweredForId, useCategoriesState, usePersonsState, useSourcesState, useSubscriptionsState, useUserId } from "../data/hooks";
 import { combineLiveStates } from "../data/live-state";
 import { classifyRecordId } from "../domain/route-params";
 import { advanceDueDate, dueDateInMonth, nextDueAfter } from "../domain/recurrence";
@@ -178,11 +178,13 @@ export default function SubscriptionFormModal() {
   const record = classifyRecordId(id);
   const subscriptionsState = useSubscriptionsState();
   const existing = record?.mode === "edit" ? subscriptionsState.data.find((s) => s.id === record.id) : undefined;
-  // Loading is `updatedAt == null`; anything after that is a row that does not
-  // exist, which must recover instead of rendering a permanent blank screen.
+  // Dated proof, not merely "the query ran": this query is not parameterised
+  // by the id, so a completion from before the row was written would otherwise
+  // read as "no such subscription". See `useAnsweredForId`.
+  const answered = useAnsweredForId(subscriptionsState, record, existing != null);
   if (!record) return <Redirect href="/(tabs)/subscriptions" />;
   if (record.mode === "edit" && !existing) {
-    if (subscriptionsState.updatedAt == null) {
+    if (!answered) {
       return (
         <Screen scroll={false}>
           <Stack.Screen options={{ title: tr.subs.edit }} />

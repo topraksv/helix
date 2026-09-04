@@ -36,6 +36,7 @@ export class InvestmentDomainError extends Error {
     public readonly code:
       | "invalid_quantity"
       | "invalid_money"
+      | "invalid_date"
       | "quote_incomplete"
       | "quote_inconsistent"
       | "unknown_product"
@@ -47,6 +48,7 @@ export class InvestmentDomainError extends Error {
     super({
       invalid_quantity: "invalid investment quantity",
       invalid_money: "invalid investment money",
+      invalid_date: "investment date is missing or in the future",
       quote_incomplete: "two investment quote fields are required",
       quote_inconsistent: "investment quote fields are inconsistent",
       unknown_product: "investment product does not exist",

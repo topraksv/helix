@@ -25,13 +25,14 @@ import {
   usePersonsState,
   useSourcesState,
   useUserId,
+  useAnsweredForId,
 } from "../data/hooks";
 import { combineLiveStates } from "../data/live-state";
 import { classifyRecordId } from "../domain/route-params";
 import { previewTryMinor, resolveTransactionSave } from "../domain/transaction-draft";
 import { assertISODate, isISODate, lastDayOf, monthKeyOf, todayISO, type MonthKey } from "../domain/dates";
 import { isValidCardCycle, statementForPurchase } from "../domain/card-statements";
-import { formatMinorCompact, formatMinorInput } from "../domain/money";
+import { formatMinorCompact, formatMinorInput, installmentShareRange } from "../domain/money";
 import { currencyLabel } from "../domain/fx-provider";
 import { deriveStartMonth, isValidInstallmentCount } from "../domain/installments";
 import { lookupRate, useFxRates } from "../services/fx-fetch";
@@ -93,14 +94,10 @@ export default function TransactionModal() {
   const record = classifyRecordId(id);
   const txState = useAllTransactionsState();
   const existing = record?.mode === "edit" ? txState.data.find((t) => t.id === record.id) : undefined;
-  // `id && !existing` could not tell "still loading" from "no such row", so a
-  // deleted, foreign or hand-typed id rendered an empty screen with a header
-  // FOREVER. `updatedAt` is the only proof the query ran for these parameters:
-  // until it lands we are loading, after it lands the row genuinely does not
-  // exist and the user is returned to the list that owns it.
+  const answeredForThisId = useAnsweredForId(txState, record, existing != null);
   if (!record) return <Redirect href="/(tabs)/cash-flow" />;
   if (record.mode === "edit" && !existing) {
-    if (txState.updatedAt == null) {
+    if (!answeredForThisId) {
       return (
         <Screen scroll={false}>
           <DataStateNotice status={txState.status} retry={txState.retry} />
@@ -837,7 +834,13 @@ function TransactionForm({ existing, investmentRefund = false }: { existing?: Ex
             </Row>
           ) : null}
           {installment && installmentValid && amountMinor ? (
-            <Body muted>{tr.tx.installmentInfo(formatMinorCompact(Math.trunc(amountMinor / count), currency), count)}</Body>
+            <Body muted>{(() => {
+                const shares = installmentShareRange(amountMinor, count);
+                if (!shares) return null;
+                return shares.first === shares.last
+                  ? tr.tx.installmentInfo(formatMinorCompact(shares.first, currency), count)
+                  : tr.tx.installmentInfoUneven(count, formatMinorCompact(shares.first, currency), formatMinorCompact(shares.last, currency));
+              })()}</Body>
           ) : null}
         </View>
       ) : null}

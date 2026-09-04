@@ -106,17 +106,24 @@ describe("operation progress language", () => {
     // pre-action surface that pulses reads as work already happening. Motion
     // belongs to the waiting view, which is the one moment something really is
     // running — and it honours Reduce Motion.
-    const signature = source.slice(source.indexOf("export function OperationSignature("));
-    expect(signature).not.toContain("Animated");
-    const waiting = source.slice(source.indexOf("if (waiting) {"), source.indexOf("export function OperationSignature("));
+    // Anchored on the dialog header because it is now the pre-action surface:
+    // `OperationSignature` was removed unrendered, and slicing on a marker the
+    // file no longer contains made every assertion below it vacuous — the
+    // slice ran to the end of the string and still passed.
+    const header = source.indexOf("export function OperationDialogHeader(");
+    expect(header, "the pre-action surface must still exist to be checked").toBeGreaterThan(0);
+    expect(source.slice(header)).not.toContain("Animated");
+    const waiting = source.slice(source.indexOf("if (waiting) {"), header);
     expect(waiting).toContain("<Animated.View");
     expect(source).toContain("if (reducedMotion) {");
+    // The component this rule used to name is gone; nothing may quietly bring
+    // back an unrendered second signature surface.
+    expect(source).not.toContain("OperationSignature");
   });
 
   it("keeps lifecycle entry points quiet and routes cloud sign-out through confirmation", () => {
     const settings = readFileSync(join(process.cwd(), "src/app/(tabs)/settings/index.tsx"), "utf8");
     const accountSecurity = readFileSync(join(process.cwd(), "src/app/account-security.tsx"), "utf8");
-    expect(settings).not.toContain("<OperationSignature");
     expect(settings).not.toContain("ActionBadge");
     expect(settings).toContain('testID="account-sign-out-action"');
     expect(settings).toContain('operation: "sign-out"');

@@ -31,7 +31,7 @@ import Eye from "lucide-react-native/icons/eye";
 import EyeOff from "lucide-react-native/icons/eye-off";
 import Minus from "lucide-react-native/icons/minus";
 import { CalculatorModal } from "./calculator";
-import { formatMinorInput, formatMoneyInputLive, majorToMinor, parseAmountExpression } from "../domain/money";
+import { formatMinorInput, formatMoneyInputLive, majorToMinor, parseAmountExpression, readAmountExpression } from "../domain/money";
 import { INPUT_LIMITS } from "../domain/input";
 import { addMonthsToKey, type MonthKey } from "../domain/dates";
 import { monthLabel, tr } from "../i18n/tr";
@@ -239,9 +239,17 @@ export function MoneyField({
   const [calcOpen, setCalcOpen] = useState(false);
   const calculatorTriggerRef = useRef<View>(null);
   const display = formatMoneyInputLive(value);
-  const minor = value.trim() === "" ? null : parseAmountExpression(display);
-  const invalid = value.trim() !== "" && minor === null;
-  const resolvedError = invalid ? tr.common.amountLimit : error;
+  // One read, so the number shown and the reason given cannot disagree. An
+  // unfinished expression and an amount too large to store are different
+  // refusals; both used to arrive as `null` and were both reported as the
+  // limit, which is a sentence about a figure the input had not reached.
+  const read = readAmountExpression(display);
+  const rejection = value.trim() === "" || read.ok ? null : read.reason;
+  const resolvedError = rejection === "over-limit"
+    ? tr.common.amountLimit
+    : rejection != null
+      ? tr.common.amountUnreadable
+      : error;
   return (
     <View style={{ marginBottom: inline ? spacing.sm : spacing.md }}>
       <View style={inline ? { flexDirection: "row", alignItems: "center", gap: spacing.sm } : undefined}>

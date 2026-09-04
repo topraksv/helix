@@ -205,7 +205,9 @@ describe("the bank and card catalogue", () => {
    * have no mark, so they are recorded as unmarked rather than requested.
    */
   it("does not ask for a mark that was checked and found missing", () => {
-    const unmarked = source.slice(source.indexOf("export const UNMARKED_INSTITUTIONS"));
+    const recorded = source.indexOf("UNMARKED INSTITUTIONS (checked, no mark published)");
+    expect(recorded, "the record these names live in must still exist").toBeGreaterThan(0);
+    const unmarked = source.slice(recorded);
     for (const name of ["denizbank", "turkiye finans", "emlak katilim", "tosla"]) {
       expect(unmarked, name).toContain(`"${name}"`);
       expect(resolve(name), name).toBeNull();

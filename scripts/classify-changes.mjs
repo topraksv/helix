@@ -14,6 +14,38 @@ import { appendFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { resolve } from "node:path";
 
+/**
+ * The scripts a CI job actually executes.
+ *
+ * `scripts/` used to escalate as a whole, and the cost of that was paid by
+ * files no runner ever loads: editing the font subsetter or the brand-mark
+ * auditor bought coverage, mutation and a three-shard browser run for a change
+ * that cannot reach either delivered artifact. What decides risk is not the
+ * directory, it is whether a workflow can run the file.
+ *
+ * Reachability is proven rather than asserted. `tests/change-classification`
+ * walks every `run:` line in `.github/workflows/`, follows each `npm run`
+ * target through `package.json`, reads the config files those commands load,
+ * and fails if it finds a `node scripts/...` command that is missing here — so
+ * a script that becomes part of the gate cannot stay on the light tier by
+ * being forgotten. Everything under `scripts/` that is NOT here is a local
+ * tool, and `NOT_SHIPPED` already keeps the whole directory out of both
+ * deployments whichever tier it lands on.
+ *
+ * `.github/` is narrowed on the same reasoning and in the same place: only
+ * `ci.yml` decides what a push proves, and it is already delivery control.
+ * The other workflows carry their own triggers and cannot change this one's
+ * answer.
+ */
+const CI_EXECUTED_SCRIPTS = [
+  "scripts/check-advisories.mjs",
+  "scripts/check-mutation-ratchet.mjs",
+  "scripts/check-web-budget.mjs",
+  "scripts/classify-changes.mjs",
+  "scripts/export-e2e-web.mjs",
+  "scripts/serve-static.mjs",
+];
+
 /** Money, persistence, identity, sync, native and delivery boundaries. */
 const HIGH_RISK = [
   /^src\/domain\//,
@@ -38,8 +70,8 @@ const HIGH_RISK = [
   /^knip\.json$/,
   /^src\/app\/(?:.*\/)?_layout\.tsx$/,
   /^src\/app\/\+html\.tsx$/,
-  /^\.github\//,
-  /^scripts\//,
+  /^\.github\/workflows\/ci\.yml$/,
+  new RegExp(`^(?:${CI_EXECUTED_SCRIPTS.map((script) => script.replace(/[.]/g, "\\.")).join("|")})$`),
 ];
 
 /**
@@ -85,6 +117,10 @@ const DELIVERY_CONTROL = [
 
 /** Explicit light-tier allowlist; everything else escalates. */
 const KNOWN_LIGHT = [
+  // Whatever HIGH_RISK above did not name. A file matching both is high risk:
+  // `unknown` is what escalates, and HIGH_RISK is tested first.
+  /^scripts\//,
+  /^\.github\//,
   /^src\/i18n\//,
   /^src\/app\/.*\.tsx$/,
   /^src\/ui\//,
@@ -138,6 +174,8 @@ const AFFECTS_MOBILE_UPDATE = [
 ];
 
 const matches = (path, patterns) => patterns.some((pattern) => pattern.test(path));
+
+export { CI_EXECUTED_SCRIPTS };
 
 export function classify(files) {
   if (files.length === 0) {

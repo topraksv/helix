@@ -144,6 +144,77 @@ function validatedRemoteRow(
   return remote;
 }
 
+/**
+ * SQLite's compiled parameter ceiling is well above this, but a page is 1000
+ * rows and a chunk that large builds a 1000-placeholder statement string for
+ * every table on every sync. Five statements of 200 cost less to prepare than
+ * one of 1000 and stay clear of the ceiling on any build.
+ */
+const ID_LOOKUP_CHUNK = 200;
+
+/** The handle `getSqliteAsync` hands back, named so the helpers below can take it. */
+type LocalDatabase = Awaited<ReturnType<typeof getSqliteAsync>>;
+
+/** `ids` in groups small enough to bind in one statement. */
+function* idChunks(ids: readonly string[]): Generator<string[]> {
+  for (let start = 0; start < ids.length; start += ID_LOOKUP_CHUNK) {
+    yield ids.slice(start, start + ID_LOOKUP_CHUNK);
+  }
+}
+
+/**
+ * The local merge state for a whole pulled page, keyed by id.
+ *
+ * One point read per row was the shape this had, and the cost is not the query
+ * — SQLite answers a primary-key lookup in microseconds — it is the driver. On
+ * web every one of these is a postMessage round trip to the SQLite worker, so a
+ * 1000-row page paid 1000 of them before merging anything. Ids within a page
+ * are unique (the server pages by `(updated_at, id)`), and the merge loop
+ * writes only the row it is holding, so a snapshot taken before the loop stays
+ * true for every row still to come.
+ */
+async function localMergeState(
+  sqlite: LocalDatabase,
+  table: SyncedTableName,
+  ids: readonly string[],
+): Promise<Map<string, { updated_at: string; tombstone_version: number }>> {
+  const state = new Map<string, { updated_at: string; tombstone_version: number }>();
+  for (const chunk of idChunks(ids)) {
+    const rows = await sqlite.getAllAsync<{ id: string; updated_at: string; tombstone_version: number }>(
+      `SELECT id, updated_at, tombstone_version FROM ${table} WHERE id IN (${chunk.map(() => "?").join(", ")})`,
+      chunk,
+    );
+    for (const row of rows) state.set(row.id, { updated_at: row.updated_at, tombstone_version: row.tombstone_version });
+  }
+  return state;
+}
+
+/**
+ * The newest outbox event id per row, for a whole acknowledged batch.
+ *
+ * `MAX(id)` over a group is the same answer `ORDER BY id DESC LIMIT 1` gave one
+ * row at a time; what changes is that a 200-row batch asks once. Safe to read
+ * before the loop for the same reason as above: the loop writes to the table
+ * being synced, never to `outbox`, and the batch's own rows are deleted after
+ * it ends.
+ */
+async function newestOutboxIds(
+  sqlite: LocalDatabase,
+  table: SyncedTableName,
+  rowIds: readonly string[],
+): Promise<Map<string, number>> {
+  const newest = new Map<string, number>();
+  for (const chunk of idChunks(rowIds)) {
+    const rows = await sqlite.getAllAsync<{ row_id: string; id: number }>(
+      `SELECT row_id, MAX(id) AS id FROM outbox WHERE table_name = ? AND row_id IN (${chunk.map(() => "?").join(", ")})
+       GROUP BY row_id`,
+      [table, ...chunk],
+    );
+    for (const row of rows) newest.set(row.row_id, row.id);
+  }
+  return newest;
+}
+
 async function upsertLocalRemote(
   table: SyncedTableName,
   remote: Record<string, unknown>,
@@ -213,15 +284,12 @@ async function pushOutbox(userId: string, token: SessionEpochToken): Promise<voi
       const allowed = KNOWN_COLUMNS.get(table)!;
       await withTransaction(async () => {
         assertActive(token);
+        const newestByRow = await newestOutboxIds(sqlite, table, pushedEvents.map((event) => event.row_id));
         for (const raw of acknowledged) {
           const remote = validatedRemoteRow(table, raw, userId);
           const pushed = eventByRow.get(remote.id as string);
           if (!pushed) throw new Error(`push ${table}: unknown acknowledgement`);
-          const newest = await sqlite.getFirstAsync<{ id: number }>(
-            `SELECT id FROM outbox WHERE table_name = ? AND row_id = ? ORDER BY id DESC LIMIT 1`,
-            [table, pushed.row_id],
-          );
-          if (shouldApplyServerAck(pushed.id, newest?.id ?? null)) {
+          if (shouldApplyServerAck(pushed.id, newestByRow.get(pushed.row_id) ?? null)) {
             await upsertLocalRemote(table, remote, allowed);
           }
         }
@@ -368,12 +436,10 @@ async function pullAndMerge(userId: string, token: SessionEpochToken): Promise<n
       // omission hidden behind a newer cursor.
       const remoteRows = data.map((row) => validatedRemoteRow(table, row as Record<string, unknown>, userId));
       await withTransaction(async () => {
+        const localByRow = await localMergeState(sqlite, table, remoteRows.map((remote) => String(remote.id)));
         for (const remote of remoteRows) {
           assertActive(token);
-          const local = await sqlite.getFirstAsync<{ updated_at: string; tombstone_version: number }>(
-            `SELECT updated_at, tombstone_version FROM ${table} WHERE id = ?`,
-            [String(remote.id)],
-          );
+          const local = localByRow.get(String(remote.id)) ?? null;
           const remoteWins = remoteWinsLww(
             local?.updated_at ?? null,
             remote.updated_at as string,

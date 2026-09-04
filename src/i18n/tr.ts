@@ -199,18 +199,12 @@ export const tr = {
     total: "Toplam", note: "Not", none: "Kategorisiz", retry: "Tekrar dene",
     confirm: "Onayla", skip: "Atla", all: "Tümü", active: "Aktif", inactive: "Pasif",
     operationSummary: "Bu adımda ne olur", operationPlan: "İşlem planı",
-    /** `OperationSignature`'s default support line, per operation kind. A
-     *  caller that passes its own `detail` overrides these.
-     *
-     *  The `…Detail` suffix is load-bearing: `design-system-contract` looks a
-     *  label up by its LEAF key across the whole file, so a sentence keyed
-     *  `delete` here would be read as the casing of the "Sil" button. */
-    operationSupportFreezeDetail: "Geçici bir durum; yeniden girişle devam edebilirsin.",
-    operationSupportDeleteDetail: "Bu işlem geri alınamaz.",
-    operationSupportSignOutDetail: "Oturum kapanır; hesabın silinmez.",
-    operationSupportDefaultDetail: "Çalışma alanına güvenle dön.",
     selectAll: "Tümünü seç", clearAll: "Tümünü bırak",
     amountLimit: "Bu tutar desteklenen sınırı aşıyor. En fazla ₺999.999.999.999,99 girebilirsin.",
+    /** For input that is not a number at all — an unfinished expression, a
+     *  lone comma. `amountLimit` used to answer for this too, naming a
+     *  ceiling the input was nowhere near. */
+    amountUnreadable: "Geçerli bir tutar yaz. Örnek: 1.234,56 ya da 300+400.",
     optionalHint: "Opsiyonel",
     other: "Diğer",
     paymentFallback: "Ödeme",
@@ -1030,6 +1024,11 @@ export const tr = {
     installmentCount: "Taksit sayısı",
     alreadyPaid: "Ödenen taksit",
     installmentInfo: (m: string, n: number) => `${n} taksit × ${m}`,
+    /** When the total does not divide evenly the remainder rides on the LAST
+     *  instalment, which is how TR cards bill it. Saying only the uniform
+     *  figure made the preview add up to less than the purchase. */
+    installmentInfoUneven: (n: number, first: string, last: string) =>
+      `${n} taksit × ${first}, son taksit ${last}`,
     saveAndNew: "Kaydet ve Yeni Ekle",
     savedNotice: "İşlem kaydedildi.",
     updatedNotice: "İşlem güncellendi.",
@@ -1577,6 +1576,8 @@ export const tr = {
     inconsistentQuote: "Miktar, birim fiyat ve toplam tutar birbiriyle uyuşmuyor.",
     incompleteQuote: "Miktar, birim fiyat ve toplamdan en az ikisini doldur.",
     invalidQuantity: "Geçerli, pozitif bir miktar yaz.",
+    invalidAmount: "Geçerli, pozitif bir tutar yaz.",
+    invalidDate: "İşlem tarihi geçerli olmalı ve bugünden ileri olamaz.",
     invalidOperation: "Bu hareket seçtiğin yatırım türü için uygun değil.",
     types: {
       metal: "Kıymetli Maden",

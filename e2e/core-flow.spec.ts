@@ -441,9 +441,11 @@ test("a receipt can be attached, opened and removed on the web", async ({ page }
   await expect(page.getByRole("alert").first()).toContainText("İşlem kaydedildi");
 
   // Reached through the ledger rather than through the save confirmation's own
-  // shortcut. This test is about DOCUMENTS; routing it through that shortcut
-  // made it fail four runs in five on a defect that has nothing to do with
-  // attachments — see the note in `helix-undo-bar-click-race`.
+  // shortcut. That shortcut used to fail four runs in five on a defect that has
+  // nothing to do with attachments; it is fixed and now has its own test below
+  // ("the save confirmation opens the row it just saved"). The ledger route
+  // stays because this test is about DOCUMENTS and should not fail for a
+  // navigation reason again.
   await page.goto(`/helix/cash-flow/${currentMonthKey()}`);
   await page.getByRole("button", { name: /Market/ }).first().click();
   await page.getByRole("button", { name: /^Düzenle/ }).first().click();
@@ -480,6 +482,75 @@ test("a receipt can be attached, opened and removed on the web", async ({ page }
   await expect(page.getByTestId("attachment-empty")).toBeVisible();
   await page.getByRole("alert").first().getByRole("button", { name: "Geri Al", exact: true }).click();
   await expect(panel).toContainText("fatura.pdf");
+
+  await assertNoRuntimeErrors(errors, testInfo);
+});
+
+/**
+ * The save confirmation's own shortcut, taken at once.
+ *
+ * This is the defect recorded as an unreproducible navigation race: after a
+ * save, "Düzenle" sometimes landed on Mali Tablo. It was never the router.
+ * `useAllTransactionsState` is not parameterised by an id, so `useLive` never
+ * clears `updatedAt` when the id changes, and the transaction screen read a
+ * completion recorded BEFORE the row was written as proof the row did not
+ * exist — then redirected to the list that owns it. The write, the 60 ms
+ * change-event debounce and the tap all fall inside one another.
+ *
+ * The click therefore has to be fired the moment the control EXISTS. Waiting
+ * for it to be stable — which is what an ordinary Playwright click does — waits
+ * out the very window the bug lives in, which is why every instrumented run
+ * passed. Measured on the export before the fix: 8 attempts, 8 landings on
+ * Mali Tablo; after it, 12 of 12 correct.
+ */
+test("the save confirmation opens the row it just saved, even when taken at once", async ({ page }, testInfo) => {
+  const errors = collectRuntimeErrors(page);
+  await onboard(page);
+
+  await page.getByRole("button", { name: /İşlem Ekle/u }).first().click();
+  await page.getByRole("textbox", { name: "Tutar · TRY", exact: true }).fill("321");
+  await pickOption(page, "Kategori", "Market");
+  await page.getByRole("button", { name: "Kaydet", exact: true }).click();
+
+  const fired = await page.evaluate(async () => {
+    const deadline = Date.now() + 10_000;
+    while (Date.now() < deadline) {
+      const node = [...document.querySelectorAll('[role="alert"] [role="button"], [role="alert"] button')]
+        .find((element) => (element.textContent ?? "").trim() === "Düzenle");
+      if (node instanceof HTMLElement) {
+        node.click();
+        return true;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 8));
+    }
+    return false;
+  });
+  expect(fired, "the confirmation never offered its shortcut").toBe(true);
+
+  await expect(page).toHaveURL(/\/transaction\?id=/u);
+  await expect(page.getByRole("heading", { name: "İşlemi Düzenle" })).toBeVisible();
+  // The saved row, not a blank form: the amount comes back formatted from what
+  // was stored, which is what proves the screen resolved the id it was given.
+  await expect(page.getByRole("textbox", { name: "Tutar · TRY", exact: true })).toHaveValue("321,00");
+
+  await assertNoRuntimeErrors(errors, testInfo);
+});
+
+/**
+ * The other half of the same guard, and the reason it cannot simply wait.
+ *
+ * A deleted, foreign or hand-typed id writes nothing, so no change event is
+ * coming and no later completion would ever arrive on its own. Waiting for
+ * dated proof without asking for it would replace a wrong redirect with a
+ * screen that never resolves — the "empty screen with a header FOREVER" the
+ * guard was introduced to end.
+ */
+test("an id that names no row still answers, instead of waiting for ever", async ({ page }, testInfo) => {
+  const errors = collectRuntimeErrors(page);
+  await onboard(page);
+
+  await page.goto("/helix/transaction?id=01a06b2c-0000-7000-8000-000000000000");
+  await expect(page).toHaveURL(/\/cash-flow/u, { timeout: 10_000 });
 
   await assertNoRuntimeErrors(errors, testInfo);
 });

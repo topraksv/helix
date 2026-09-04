@@ -68,7 +68,7 @@ describe("investment owner-graph validation", () => {
     invalidProfile.investment_profiles![0]!.started_on = "2999-01-01";
     await expect(projectInvestmentWrites(database(invalidProfile), USER, [{
       table: "settings", row: { id: "irrelevant" },
-    }])).rejects.toMatchObject({ code: "invalid_money" });
+    }])).rejects.toMatchObject({ code: "invalid_date" });
 
     const rows = ownerGraph();
     rows.investment_operations = [
@@ -150,7 +150,7 @@ describe("investment owner-graph validation", () => {
     for (const startedOn of ["not-a-date", "2999-01-01"]) {
       const rows = ownerGraph();
       rows.investment_profiles![0]!.started_on = startedOn;
-      await expectDomainCode(rows, "invalid_money");
+      await expectDomainCode(rows, "invalid_date");
     }
     for (const openingCash of [0, MAX_ABS_AMOUNT_MINOR]) {
       const rows = ownerGraph();
@@ -207,9 +207,9 @@ describe("investment owner-graph validation", () => {
 
   it("rejects malformed operations before replay", async () => {
     const cases: { mutation: Record<string, unknown>; code: string }[] = [
-      { mutation: { kind: "unknown" }, code: "invalid_money" },
-      { mutation: { operation_date: "not-a-date" }, code: "invalid_money" },
-      { mutation: { operation_date: "2999-01-01" }, code: "invalid_money" },
+      { mutation: { kind: "unknown" }, code: "invalid_operation" },
+      { mutation: { operation_date: "not-a-date" }, code: "invalid_date" },
+      { mutation: { operation_date: "2999-01-01" }, code: "invalid_date" },
       { mutation: { kind: "buy", quantity: null, unit_price_minor: null }, code: "invalid_quantity" },
       { mutation: { kind: "contribution", quantity: null, unit_price_minor: 100 }, code: "invalid_quantity" },
       { mutation: { kind: "buy", quantity: "bad", unit_price_minor: 100 }, code: "invalid_quantity" },
@@ -433,6 +433,6 @@ describe("investment owner-graph validation", () => {
         id: "profile", user_id: USER, started_on: "2999-01-01",
         opening_cash_minor: 1_000, deleted_at: null,
       }],
-    }), USER, [], true)).rejects.toThrow("invalid investment money");
+    }), USER, [], true)).rejects.toThrow("investment date is missing or in the future");
   });
 });

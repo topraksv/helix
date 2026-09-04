@@ -4,6 +4,7 @@ import {
   MAX_ABS_AMOUNT_MINOR,
   formatMinor,
   formatMinorCompact,
+  compactMoneyScale,
   formatMinorCompactAtScale,
   formatMinorInput,
   formatMoneyInputLive,
@@ -11,6 +12,8 @@ import {
   majorToMinor,
   parseAmountExpression,
   parseTRAmountToMinor,
+  readAmountExpression,
+  readTRAmount,
   usesCompactMoneyScale,
 } from "../src/domain/money";
 import { convertToTryMinor, pickRate } from "../src/domain/fx";
@@ -52,6 +55,62 @@ describe("TR money formatting/parsing", () => {
     expect(parseTRAmountToMinor("1234")).toBe(123400);
     expect(parseTRAmountToMinor("-2.024,99")).toBe(-202499);
     expect(parseTRAmountToMinor("₺ 500")).toBe(50000);
+  });
+
+  /**
+   * The amount field can only be as truthful as what the parser hands it.
+   * While a refusal was a bare `null` the field had one message for two
+   * different problems and chose the limit, so typing a lone comma — or
+   * pausing halfway through "1+2" — was answered with "this amount exceeds
+   * the supported limit", about a figure nowhere near it. These cases are the
+   * distinction itself, not the wording: an unreadable amount and an amount
+   * too large to store must never report the same reason.
+   */
+  describe("says WHY an amount was refused", () => {
+    it("calls unfinished and unreadable input malformed, never over the limit", () => {
+      for (const input of ["0,", ",", "1+", "1-", "abc", "12.34", "1,234.56", "12,345", "300++400", "abc+3", "1,2,"]) {
+        expect(readAmountExpression(input), input).toEqual({ ok: false, reason: "malformed" });
+      }
+    });
+
+    it("calls an amount past the ceiling over-limit, never malformed", () => {
+      for (const input of ["1000000000000", "99999999999999999999", "600000000000+600000000000", "999999999999,99+0,01"]) {
+        expect(readAmountExpression(input), input).toEqual({ ok: false, reason: "over-limit" });
+      }
+    });
+
+    it("separates nothing typed yet from something typed wrong", () => {
+      expect(readAmountExpression("")).toEqual({ ok: false, reason: "empty" });
+      expect(readAmountExpression("  ₺ ")).toEqual({ ok: false, reason: "empty" });
+      expect(readTRAmount("")).toEqual({ ok: false, reason: "empty" });
+      expect(readTRAmount("₺")).toEqual({ ok: false, reason: "empty" });
+    });
+
+    it("lets a single bad term answer for the whole expression", () => {
+      // One term unreadable and one term too large are different reports even
+      // though the sum is refused either way.
+      expect(readAmountExpression("1+abc")).toEqual({ ok: false, reason: "malformed" });
+      expect(readAmountExpression("1+99999999999999999999")).toEqual({ ok: false, reason: "over-limit" });
+    });
+
+    it("carries the value itself when there is nothing to refuse", () => {
+      expect(readAmountExpression("300+400")).toEqual({ ok: true, minor: 70000 });
+      expect(readTRAmount("-2.024,99")).toEqual({ ok: true, minor: -202499 });
+      expect(readTRAmount("999999999999,99")).toEqual({ ok: true, minor: MAX_ABS_AMOUNT_MINOR });
+    });
+
+    it("keeps the thin parsers answering exactly what the reader does", () => {
+      // The two must not drift: a null here and an ok there would put the
+      // field back to guessing.
+      for (const input of ["", "0,", "1+", "300+400", "1000000000000", "750", "abc"]) {
+        const read = readAmountExpression(input);
+        expect(parseAmountExpression(input), input).toBe(read.ok ? read.minor : null);
+      }
+      for (const input of ["", "₺", "12.34", "1234", "1000000000000", "-2.024,99"]) {
+        const read = readTRAmount(input);
+        expect(parseTRAmountToMinor(input), input).toBe(read.ok ? read.minor : null);
+      }
+    });
   });
 
   it("rejects malformed input instead of guessing", () => {
@@ -118,6 +177,25 @@ describe("TR money formatting/parsing", () => {
     expect(formatTRInputLive("0,5")).toBe("0,5"); // keep a lone zero
     expect(formatTRInputLive(",5")).toBe("0,5");
     expect(formatTRInputLive("₺ 1.250,50")).toBe("1.250,50"); // idempotent on formatted
+    // A sign that follows the currency symbol is still a sign. The live
+    // formatter read it from the RAW string, which "₺-5" does not begin with,
+    // and the strip below then removed it — so a pasted refund came back as a
+    // charge for the same amount while the parser, given the same text, read
+    // it correctly. The two must agree.
+    expect(formatTRInputLive("₺-5")).toBe("-5");
+    expect(formatTRInputLive("₺ -1.250,50")).toBe("-1.250,50");
+    expect(formatTRInputLive("-₺5")).toBe("-5");
+    expect(parseAmountExpression(formatMoneyInputLive("₺-5"))).toBe(-500);
+    expect(parseAmountExpression(formatMoneyInputLive("₺-5"))).toBe(parseTRAmountToMinor("₺-5"));
+    // An operator is not a leading sign, and the expression path still owns it.
+    expect(formatMoneyInputLive("5-3")).toBe("5-3");
+    // A second comma is what a person produces by correcting a typo without
+    // clearing the field first, and the kuruş are read from everything AFTER
+    // the first comma — so the digits either side of a stray one must still
+    // land in the right half. Nothing else in the suite types two.
+    expect(formatTRInputLive("1,2,3")).toBe("1,23");
+    expect(formatTRInputLive("1.234,5,6")).toBe("1.234,56");
+    expect(formatTRInputLive(",,")).toBe("0,");
   });
 
   it("loads saved values into the one exact editable input format", () => {
@@ -142,6 +220,84 @@ describe("TR money formatting/parsing", () => {
     // and the grouped expression still evaluates
     expect(parseAmountExpression(formatMoneyInputLive("400+500"))).toBe(90000);
     expect(parseAmountExpression(formatMoneyInputLive("1250+500"))).toBe(175000);
+  });
+});
+
+/**
+ * The edges the ordinary cases never reach.
+ *
+ * Each of these was a mutant nobody killed, which is the same statement as
+ * "no test distinguishes this line from a wrong one". They are grouped
+ * separately from the readable examples above because that is what they are:
+ * the exact value at a boundary, the empty half of a branch, the character a
+ * formatter is supposed to insert.
+ */
+describe("money edges", () => {
+  it("refuses a value that is not a finite number rather than storing NaN", () => {
+    // `>= <=` comparisons against NaN are all false, so an unguarded path
+    // returns a minor amount of NaN and stores it.
+    expect(majorToMinor(Number.NaN)).toBeNull();
+    expect(majorToMinor(Number.POSITIVE_INFINITY)).toBeNull();
+    expect(majorToMinor(Number.NEGATIVE_INFINITY)).toBeNull();
+  });
+
+  it("switches compact scale at each threshold, in both directions", () => {
+    // 1.000.000,00 is the figure a person is most likely to type, and the two
+    // sides of it are different units.
+    expect(compactMoneyScale(1_000_000 * 100)).toBe("Mn");
+    expect(compactMoneyScale(1_000_000 * 100 - 1)).toBe("Mn");
+    expect(compactMoneyScale(1_000_000_000 * 100)).toBe("Mr");
+    expect(compactMoneyScale(1_000_000_000_000 * 100)).toBe("Tr");
+    // Negative amounts scale by magnitude; an expense is not a smaller number.
+    expect(compactMoneyScale(-1_000_000_000 * 100)).toBe("Mr");
+    // Mid-range, where nothing is promoted: the plain answer for each unit.
+    expect(compactMoneyScale(150_000_000)).toBe("Mn");
+    expect(compactMoneyScale(150_000_000_000)).toBe("Mr");
+    expect(compactMoneyScale(150_000_000_000_000)).toBe("Tr");
+  });
+
+  it("promotes a value that would round up into the next scale", () => {
+    // 999.999.999,99 renders as "1.000 Mn" at three decimals, which reads as a
+    // milyar written in the wrong unit. Promotion is also why the function
+    // needs no separate trilyon guard: anything at or above a trilyon divides
+    // into a milyar figure that rounds past the same threshold, so the extra
+    // branch could only ever agree with the one below it.
+    expect(compactMoneyScale(99_999_999_999)).toBe("Mr");
+    expect(compactMoneyScale(99_999_999_999_999)).toBe("Tr");
+  });
+
+  it("groups thousands with a full stop and keeps the comma for kuruş", () => {
+    // The separator characters themselves, which no example above asserts:
+    // swap them and every amount in the app still parses and still looks like
+    // a number.
+    expect(formatTRInputLive("1234567")).toBe("1.234.567");
+    expect(formatTRInputLive("1234,5")).toBe("1.234,5");
+    expect(formatTRInputLive("₺ 1 234 567")).toBe("1.234.567");
+  });
+
+  it("gives a bare kuruş entry its leading zero", () => {
+    expect(formatTRInputLive(",5")).toBe("0,5");
+    expect(formatTRInputLive(",")).toBe("0,");
+  });
+
+  it("keeps a lone minus so the field can be typed into", () => {
+    // Deleting back to just the sign must not erase the sign as well; the
+    // next keystroke is the amount it belongs to.
+    expect(formatTRInputLive("-")).toBe("-");
+    expect(formatTRInputLive("")).toBe("");
+  });
+
+  it("keeps every operator in a sum expression", () => {
+    // The operators are what makes it an expression. Dropping one turns
+    // "300+400" into "300400" under the user's cursor.
+    expect(formatMoneyInputLive("300+400")).toBe("300+400");
+    expect(formatMoneyInputLive("1250+500")).toBe("1.250+500");
+    expect(formatMoneyInputLive("+300+1250,50-100")).toBe("+300+1.250,50-100");
+  });
+
+  it("reads an amount that arrived with whitespace around it", () => {
+    expect(readTRAmount("  1.234,56  ")).toEqual({ ok: true, minor: 123456 });
+    expect(readTRAmount("   ")).toEqual({ ok: false, reason: "empty" });
   });
 });
 

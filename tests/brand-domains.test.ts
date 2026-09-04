@@ -12,7 +12,7 @@ const logoSource = readFileSync(join(root, "src/ui/logo.tsx"), "utf8");
 function fetchedDomains(): string[] {
   const table = logoSource.slice(
     logoSource.indexOf("const BRAND_DOMAIN"),
-    logoSource.indexOf("export const UNMARKED_INSTITUTIONS"),
+    logoSource.indexOf("UNMARKED INSTITUTIONS (checked, no mark published)"),
   );
   return [...new Set([...table.matchAll(/:\s*"([a-z0-9-]+(?:\.[a-z0-9-]+)+)"/g)].map((m) => m[1]!))].sort();
 }
@@ -29,6 +29,11 @@ function fetchedDomains(): string[] {
  */
 describe("brand marks", () => {
   it("has a measurement on record for every domain it fetches", () => {
+    // A floor first, because every assertion in this file reads the catalogue
+    // out of a TEXT SLICE between two markers: shorten the slice and the
+    // checks below inspect fewer domains and all still pass. The count is what
+    // notices that the slice stopped covering the tables.
+    expect(fetchedDomains().length, "the catalogue slice no longer reaches both tables").toBeGreaterThan(150);
     const unmeasured = fetchedDomains().filter((domain) => BRAND_MARK_AUDIT[domain] == null);
     expect(unmeasured, "run scripts/audit-brand-marks.mjs").toEqual([]);
   });
@@ -125,7 +130,9 @@ describe("brand marks", () => {
   });
 
   it("keeps the names it has no mark for on the record", () => {
-    const listed = logoSource.slice(logoSource.indexOf("export const UNMARKED_INSTITUTIONS"));
+    const recorded = logoSource.indexOf("UNMARKED INSTITUTIONS (checked, no mark published)");
+    expect(recorded, "the record these names live in must still exist").toBeGreaterThan(0);
+    const listed = logoSource.slice(recorded);
     for (const name of ["denizbank", "turkiye finans", "tosla", "nays", "bip", "bisu", "millenicom"]) {
       expect(listed, `${name} must say why it has no mark`).toContain(`"${name}"`);
     }

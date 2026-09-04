@@ -76,12 +76,10 @@ export async function assertInvestmentWrites(
   const profile = profiles[0]!;
   const startedOn = value<string>(profile, "startedOn", "started_on");
   const openingCashMinor = value<number>(profile, "openingCashMinor", "opening_cash_minor");
-  if (
-    !isISODate(startedOn)
-    || startedOn > todayISO()
-    || !isSupportedMinorAmount(openingCashMinor)
-    || openingCashMinor < 0
-  ) {
+  if (!isISODate(startedOn) || startedOn > todayISO()) {
+    throw new InvestmentDomainError("invalid_date");
+  }
+  if (!isSupportedMinorAmount(openingCashMinor) || openingCashMinor < 0) {
     throw new InvestmentDomainError("invalid_money");
   }
 
@@ -104,8 +102,11 @@ export async function assertInvestmentWrites(
       const quantity = (row.quantity as string | null | undefined) ?? null;
       const unitPriceMinor = value<number | null>(row, "unitPriceMinor", "unit_price_minor") ?? null;
       const totalMinor = value<number>(row, "totalMinor", "total_minor");
-      if (!["existing", "buy", "sell", "contribution"].includes(kind) || !isISODate(operationDate) || operationDate > todayISO()) {
-        throw new InvestmentDomainError("invalid_money");
+      if (!["existing", "buy", "sell", "contribution"].includes(kind)) {
+        throw new InvestmentDomainError("invalid_operation");
+      }
+      if (!isISODate(operationDate) || operationDate > todayISO()) {
+        throw new InvestmentDomainError("invalid_date");
       }
       if (quantity == null) {
         if (unitPriceMinor != null) throw new InvestmentDomainError("invalid_quantity");

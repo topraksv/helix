@@ -8,7 +8,7 @@ import {
   planAmounts,
   planProgress,
 } from "../src/domain/installments";
-import { splitIntoInstallments } from "../src/domain/money";
+import { installmentShareRange, splitIntoInstallments } from "../src/domain/money";
 import type { InstallmentPlanLike } from "../src/domain/types";
 
 function plan(overrides: Partial<InstallmentPlanLike>): InstallmentPlanLike {
@@ -46,6 +46,50 @@ describe("splitIntoInstallments", () => {
   it("rejects non-integer amounts and invalid counts", () => {
     expect(() => splitIntoInstallments(100.5, 3)).toThrow();
     expect(() => splitIntoInstallments(100_00, 0)).toThrow();
+  });
+});
+
+/**
+ * What the two plan screens show BEFORE the schedule exists.
+ *
+ * Both used to divide the total themselves with `Math.trunc`, so a preview
+ * and the schedule it previewed were different numbers: "3 taksit x ₺333,33"
+ * for a ₺1.000,00 purchase adds up to ₺999,99, and the row the app then wrote
+ * for the last month was ₺333,34. One split now answers both.
+ */
+describe("installmentShareRange", () => {
+  it("reports the same two figures the schedule will use", () => {
+    for (const [total, count] of [[1000_00, 3], [999_99, 7], [123_45, 12], [1, 3], [600_00, 6]] as const) {
+      const shares = splitIntoInstallments(total, count);
+      expect(installmentShareRange(total, count), `${total}/${count}`).toEqual({
+        first: shares[0],
+        last: shares[shares.length - 1],
+      });
+    }
+  });
+
+  it("names a different last instalment exactly when the total does not divide evenly", () => {
+    expect(installmentShareRange(1000_00, 3)).toEqual({ first: 33333, last: 33334 });
+    // Divisible: both ends agree, and the screen says one figure rather than two.
+    expect(installmentShareRange(600_00, 6)).toEqual({ first: 100_00, last: 100_00 });
+  });
+
+  it("never rounds the purchase away", () => {
+    // The whole point: first x (count - 1) + last must be the amount typed.
+    for (const [total, count] of [[1000_00, 3], [999_99, 7], [55_55, 4]] as const) {
+      const { first, last } = installmentShareRange(total, count)!;
+      expect(first * (count - 1) + last, `${total}/${count}`).toBe(total);
+    }
+  });
+
+  /** A half-typed count must not throw inside a render. */
+  it("answers null for a plan that could not exist", () => {
+    for (const count of [0, -1, 1.5, Number.NaN]) {
+      expect(installmentShareRange(1000_00, count), String(count)).toBeNull();
+    }
+    expect(installmentShareRange(100.5, 3)).toBeNull();
+    // One instalment is a real plan, not an invalid one.
+    expect(installmentShareRange(1000_00, 1)).toEqual({ first: 1000_00, last: 1000_00 });
   });
 });
 

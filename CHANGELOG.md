@@ -15,6 +15,12 @@ yükseltilemez, ki bu kaydın boş kalmamasının tek gerçek garantisi budur.
 Numaranın nasıl seçileceği ve etiketin nasıl atılacağı
 [`docs/RELEASE.md`](docs/RELEASE.md) belgesindedir.
 
+## 1.3.0
+
+- **Ne değişti:** Kaydettikten hemen sonra "Düzenle"ye basınca artık az önce kaydettiğin satır açılıyor, listeye geri atılmıyor. Okunamayan bir tutar "limit aşıldı" yerine okunamadığını söylüyor, yapıştırılan `₺-5` eksi kalıyor, taksit önizlemesi kurulacak planın kendisiyle aynı rakamı gösteriyor ve yatırım işleminde hatalı tarih artık tarih hatası olarak bildiriliyor. Eşitleme ve ekstre içe aktarma belirgin şekilde hızlandı.
+- **Kimi ilgilendiriyor:** Kaydedip hemen düzenleyen, taksitli alışveriş giren ya da iade yapıştıran herkesi — bunların hepsi sessizce yanlış davranıyordu. Hız farkını en çok defteri büyümüş ve birden fazla cihazda eşitleyen kullanıcı görür; eşitleme her satır için ayrı ayrı sorduğu soruyu artık sayfanın tamamı için bir kez soruyor.
+- **Ne yapmalısın:** Bir şey yapmana gerek yok. Veritabanı göçü yok, verilerine dokunulmuyor.
+
 ## 1.2.0
 
 - **Ne değişti:** Uygulama telefonda yeniden açılıyor. Helix, Expo'nun güncel sürümüne (SDK 57) taşındı; App Store'daki Expo Go bir süredir eski sürümü çalıştıramıyordu, yani mobil taraf fiilen kapalıydı. Tarayıcıdaki görünüm ve davranış aynı.

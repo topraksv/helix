@@ -10,6 +10,7 @@ import { getDb } from "../db/client";
 import * as s from "../db/schema";
 import { useSession } from "../auth/session";
 import { buildLedgerChain, ledgerChainEndYear, sliceLedgerYear, type LedgerBundle, type LedgerChain } from "../domain/balance";
+import type { classifyRecordId } from "../domain/route-params";
 import { projectInvestmentState } from "../domain/investment-projection";
 import type { InvestmentState } from "../domain/investments";
 import { daysBetweenISO, todayISO, type MonthKey } from "../domain/dates";
@@ -33,6 +34,53 @@ interface LiveResult<T> extends LiveSnapshot<T[]> {
   /** Immediately bypass the current backoff timer and try again. */
   retry: () => void;
 }
+
+/**
+ * Whether a live query has answered the question a screen is asking about ONE
+ * id — not merely whether it has ever run.
+ *
+ * `updatedAt` proves the query completed. For a query parameterised by its
+ * subject those are the same statement, and `useLive` clears it when the
+ * parameters change. The record screens read a query that is NOT parameterised
+ * by the id they look up — every transaction, every plan, every subscription —
+ * so a completion recorded BEFORE a row was written still reads as a
+ * completion after it, and the screen concluded a brand-new row did not exist
+ * and redirected to the list. Measured on the save confirmation's "Düzenle":
+ * eight attempts, eight landings on Mali Tablo, and the push never reached
+ * `/transaction` at all — which is why looking at the router found nothing.
+ *
+ * So the proof is dated against the moment the screen began asking. The single
+ * request is what keeps that terminating: a row that never existed writes
+ * nothing, so no change event is coming and no later completion would arrive
+ * on its own — waiting for dated proof without asking for it would restore the
+ * permanent blank screen the redirect was introduced to end.
+ */
+export function useAnsweredForId(
+  state: { updatedAt: Date | undefined; retry: () => void },
+  /** What the route asked for. A "new" record looks nothing up. */
+  record: RecordId,
+  /** Whether the row is already in hand; a found row needs no further proof. */
+  found: boolean,
+): boolean {
+  const id = record?.mode === "edit" ? record.id : null;
+  // Dated against the query's OWN completions rather than a clock: every
+  // completion stamps a fresh `Date`, so "a completion this screen had not
+  // already seen when it started asking" is an identity comparison — and one
+  // that stays pure during render, which `Date.now()` would not.
+  const [asked, setAsked] = useState<{ id: string | null; seen: Date | undefined }>(
+    { id, seen: state.updatedAt },
+  );
+  if (asked.id !== id) setAsked({ id, seen: state.updatedAt });
+  const answered = state.updatedAt != null && state.updatedAt !== asked.seen;
+  const { retry } = state;
+  useEffect(() => {
+    if (id != null && !found && !answered) retry();
+  }, [id, found, answered, retry]);
+  return answered;
+}
+
+/** What `classifyRecordId` answers: a new record, one by id, or a bad route. */
+type RecordId = ReturnType<typeof classifyRecordId>;
 
 interface LiveValueResult<T> extends LiveSnapshot<T> {
   retry: () => void;

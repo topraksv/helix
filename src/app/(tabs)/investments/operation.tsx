@@ -46,7 +46,12 @@ function errorText(error: unknown): string {
     quote_inconsistent: tr.investments.inconsistentQuote,
     quote_incomplete: tr.investments.incompleteQuote,
     invalid_quantity: tr.investments.invalidQuantity,
-    invalid_money: tr.common.amountLimit,
+    // Not the ceiling: nothing throws this code for an amount over the limit
+    // (that check throws a plain Error), so the limit sentence was wrong in
+    // every case it could appear. What it does mean is a figure that is
+    // negative or zero where the record needs a positive one.
+    invalid_money: tr.investments.invalidAmount,
+    invalid_date: tr.investments.invalidDate,
     unknown_product: tr.investments.noProducts,
     invalid_operation: tr.investments.invalidOperation,
   }[error.code];

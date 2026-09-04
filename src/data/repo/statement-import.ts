@@ -40,6 +40,28 @@ export interface StatementCommitResult {
   skipped: number;
 }
 
+/** SQLite binds far more than this. The ids are asked for in groups anyway, so
+ *  the statement text stays the same size whatever the import's length. */
+const ID_LOOKUP_CHUNK = 200;
+
+/** Which of `ids` this account already holds a transaction for. */
+async function existingTransactionIds(
+  sqlite: Awaited<ReturnType<typeof getSqliteAsync>>,
+  userId: string,
+  ids: readonly string[],
+): Promise<Set<string>> {
+  const present = new Set<string>();
+  for (let offset = 0; offset < ids.length; offset += ID_LOOKUP_CHUNK) {
+    const chunk = ids.slice(offset, offset + ID_LOOKUP_CHUNK);
+    const rows = await sqlite.getAllAsync<{ id: string }>(
+      `SELECT id FROM transactions WHERE user_id = ? AND id IN (${chunk.map(() => "?").join(", ")})`,
+      [userId, ...chunk],
+    );
+    for (const row of rows) present.add(row.id);
+  }
+  return present;
+}
+
 /**
  * Write the accepted rows in one atomic batch.
  *
@@ -62,21 +84,33 @@ export async function commitStatementRows(
   const writtenIds: string[] = [];
   let skipped = 0;
 
+  // Checked as what is actually WRITTEN below: a refund is a negative expense
+  // in its own category, never income. Validating it as income rejected every
+  // refund whose category was (correctly) an expense one.
+  //
+  // Once per distinct category rather than once per row. A statement is
+  // hundreds of lines drawn from a handful of columns, so the per-row form
+  // asked the same question of the same category hundreds of times.
+  for (const categoryId of new Set(rows.map((row) => row.categoryId))) {
+    await assertTransactionCategory(userId, "expense", categoryId, true);
+  }
+
+  // The ids first, then ONE existence read for all of them. Per-row point
+  // reads are what a statement import spent its time on, and on web each is a
+  // round trip to the SQLite worker.
+  const idByRow = new Map<string, string>();
+  for (const row of rows) {
+    idByRow.set(row.importKey, await deterministicId(naturalKeys.statementTx(userId, row.importKey)));
+  }
+  const present = await existingTransactionIds(sqlite, userId, [...idByRow.values()]);
+
   for (const row of rows) {
     assertInputWithinLimit(row.description, "text");
     assertSupportedMinorAmount(row.amountMinor, false);
     if (row.amountMinor <= 0) throw new Error("Statement row amount must be positive");
-    // Checked as what is actually WRITTEN below: a refund is a negative
-    // expense in its own category, never income. Validating it as income
-    // rejected every refund whose category was (correctly) an expense one.
-    await assertTransactionCategory(userId, "expense", row.categoryId, true);
 
-    const id = await deterministicId(naturalKeys.statementTx(userId, row.importKey));
-    const existing = await sqlite.getFirstAsync<{ id: string }>(
-      `SELECT id FROM transactions WHERE id = ? AND user_id = ?`,
-      [id, userId],
-    );
-    if (existing) {
+    const id = idByRow.get(row.importKey)!;
+    if (present.has(id)) {
       skipped += 1;
       continue;
     }

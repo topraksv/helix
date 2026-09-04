@@ -52,21 +52,6 @@ function operationColor(palette: Palette, tone: Tone): string {
   return palette.primary;
 }
 
-function operationSupportIcon(kind: OperationFlowKind): LucideIcon {
-  switch (kind) {
-    case "freeze":
-      return RefreshCw;
-    case "delete":
-      return Trash2;
-    case "sign-in":
-    case "sign-up":
-    case "local-sign-out":
-      return WalletCards;
-    default:
-      return ShieldCheck;
-  }
-}
-
 /** One operation-specific visual and one caption; callers cannot duplicate it. */
 export function OperationFlow({
   kind,
@@ -215,112 +200,6 @@ export function OperationFlow({
           {label}
         </Text>
       </View>
-    </View>
-  );
-}
-
-/**
- * A persistent operation signature. The in-flight status above is intentionally
- * separate; this surface explains an action before it starts with a quiet,
- * static visual signal and consequence line.
- */
-export function OperationSignature({
-  kind,
-  eyebrow,
-  title,
-  description,
-  detail,
-  compact = false,
-  testID,
-}: {
-  kind: OperationFlowKind;
-  eyebrow: string;
-  title: string;
-  description: string;
-  detail?: string;
-  compact?: boolean;
-  testID?: string;
-}) {
-  const { palette } = useTheme();
-  const [Icon, tone = "primary"] = operationVisuals[kind];
-  const color = operationColor(palette, tone);
-  const foreground = tone === "destructive"
-    ? palette.errorText
-    : tone === "warning"
-      ? palette.warningText
-      : tone === "success"
-        ? palette.successText
-        : palette.textStrong;
-  const SupportIcon = operationSupportIcon(kind);
-  const support = detail ?? (
-    kind === "freeze"
-      ? tr.common.operationSupportFreezeDetail
-      : kind === "delete"
-        ? tr.common.operationSupportDeleteDetail
-        : kind === "sign-out" || kind === "local-sign-out"
-          ? tr.common.operationSupportSignOutDetail
-          : tr.common.operationSupportDefaultDetail
-  );
-
-  return (
-    <View
-      testID={testID}
-      accessible
-      accessibilityRole="image"
-      accessibilityLabel={`${title}. ${description}. ${support}`}
-      style={{
-        width: "100%",
-        ...(compact
-          ? {}
-          : {
-              borderLeftWidth: 3,
-              borderLeftColor: color,
-              borderRadius: radius.md,
-              padding: spacing.md,
-              backgroundColor: tone === "destructive"
-                ? palette.error + "0D"
-                : tone === "warning"
-                  ? palette.warning + "10"
-                  : palette.surfaceAlt,
-              borderWidth: StyleSheet.hairlineWidth,
-              borderColor: color + "55",
-            }),
-      }}
-    >
-      {/* The compact signature is a two-line block beside one mark, so the mark
-          belongs on its centre line. Top-aligned it floated against the first
-          line and the row read as two unrelated things. The full form keeps the
-          top alignment: it carries an eyebrow, a heading and a paragraph, and
-          its mark belongs with the eyebrow. */}
-      <View style={{ flexDirection: "row", alignItems: compact ? "center" : "flex-start", gap: spacing.md }}>
-        <View
-          testID={testID ? `${testID}-icon` : undefined}
-          style={{
-            width: compact ? 34 : 46,
-            height: compact ? 34 : 46,
-            flexShrink: 0,
-            borderRadius: compact || kind === "delete" ? radius.sm : radius.full,
-            alignItems: "center",
-            justifyContent: "center",
-            backgroundColor: color + "18",
-            borderWidth: compact ? StyleSheet.hairlineWidth : kind === "delete" ? 2 : StyleSheet.hairlineWidth,
-            borderColor: color,
-          }}
-        >
-          <Icon accessible={false} size={compact ? 17 : 21} color={color} strokeWidth={2.2} />
-        </View>
-        <View style={{ flex: 1, minWidth: 0 }}>
-          {!compact ? <Eyebrow color={color}>{eyebrow}</Eyebrow> : null}
-          <Text style={[compact ? type.body : type.heading, { color: foreground, marginTop: compact ? 0 : 2 }]}>{title}</Text>
-          <Text style={[compact ? type.small : type.body, { color: palette.textSecondary, marginTop: compact ? 1 : 3 }]}>{description}</Text>
-        </View>
-      </View>
-      {!compact ? (
-        <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm, marginTop: spacing.md, paddingTop: spacing.sm, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: color + "40" }}>
-          <SupportIcon accessible={false} size={15} color={color} strokeWidth={2.1} />
-          <Text style={[type.small, { color: palette.textSecondary, flex: 1 }]}>{support}</Text>
-        </View>
-      ) : null}
     </View>
   );
 }

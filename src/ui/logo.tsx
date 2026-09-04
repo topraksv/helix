@@ -415,17 +415,22 @@ const BANK_DOMAIN: Record<string, string> = {
  * for byte — so the catalogue was showing the bank's logo to someone who had
  * chosen Nays. A neutral glyph is a smaller error than a confident picture of
  * the wrong institution.
+ *
+ * UNMARKED INSTITUTIONS (checked, no mark published):
+ *   "denizbank"
+ *   "turkiye finans"
+ *   "emlak katilim"
+ *   "tosla"
+ *   "nays"
+ *   "bip"
+ *   "bisu"
+ *   "millenicom"
+ *
+ * A record rather than an array: nothing imported it, so it was data the
+ * bundle carried and no screen read. What enforces the rule is that none of
+ * these names appears in a domain table above, which `payment-source-logo`
+ * asserts by resolving each one and requiring null.
  */
-export const UNMARKED_INSTITUTIONS = [
-  "denizbank",
-  "turkiye finans",
-  "emlak katilim",
-  "tosla",
-  "nays",
-  "bip",
-  "bisu",
-  "millenicom",
-] as const;
 
 /** Resolve the domain to fetch a favicon from (explicit override or a brand). */
 /**
