@@ -37,6 +37,7 @@ vi.mock("../src/sync/supabase", () => ({
 }));
 vi.mock("../src/services/logger", () => ({ devError: vi.fn() }));
 
+const { devError } = await import("../src/services/logger");
 const { MAX_FEEDBACK_IMAGES, MAX_FEEDBACK_TOTAL_IMAGE_BYTES } = await import("../src/domain/feedback");
 const { sendFeedback } = await import("../src/services/feedback");
 
@@ -58,6 +59,7 @@ beforeEach(() => {
   harness.session = { access_token: "t" };
   harness.invoke = vi.fn(async () => ({ error: null }));
   harness.supabase = client();
+  vi.mocked(devError).mockClear();
 });
 
 describe("the three answers", () => {
@@ -95,6 +97,65 @@ describe("the three answers", () => {
   it("treats a missing client as unconfigured even when the flag says otherwise", async () => {
     harness.supabase = null;
     await expect(sendFeedback({ ...valid })).resolves.toBe("unconfigured");
+  });
+
+  /**
+   * A limit is not a failure, and telling them apart is the whole point.
+   *
+   * The screen says "wait" for one and "try again" for the other, and a person
+   * told to retry a rate limit will retry it — which is the behaviour the
+   * limit exists to stop. The function answers 429 and nothing else does, so
+   * the status is the contract; the body is the function's own and may change.
+   */
+  it("reads a rate limit off the status, not off the message", async () => {
+    harness.invoke = vi.fn(async () => ({
+      error: { message: "Edge Function returned a non-2xx status code", context: { status: 429 } },
+    }));
+    harness.supabase = client();
+    await expect(sendFeedback({ ...valid })).resolves.toBe("rateLimited");
+  });
+
+  it("keeps every other refused status a plain failure", async () => {
+    // 502 is what the function answers when the mail provider refuses, and 400
+    // when it refuses the body itself. Neither is something waiting fixes.
+    for (const status of [400, 401, 500, 502]) {
+      harness.invoke = vi.fn(async () => ({
+        error: { message: "non-2xx", context: { status } },
+      }));
+      harness.supabase = client();
+      await expect(sendFeedback({ ...valid }), `HTTP ${status}`).resolves.toBe("failed");
+    }
+  });
+
+  it("does not mistake an error with no context for a limit", async () => {
+    // A transport error carries no `context` at all. Reading `status` straight
+    // off it throws, and the throw is CAUGHT — so the answer is "failed"
+    // either way and the outcome alone cannot tell the two apart. What the
+    // incident log records can: the refusal reaches it as the invoke error it
+    // is, not as a TypeError from this module's own line.
+    harness.invoke = vi.fn(async () => ({ error: { message: "Failed to fetch" } }));
+    harness.supabase = client();
+    await expect(sendFeedback({ ...valid })).resolves.toBe("failed");
+    expect(devError).toHaveBeenCalledWith("feedback.send", { message: "Failed to fetch" });
+  });
+
+  it("names the same scope whichever way a send fails", async () => {
+    // `feedback.send` is what groups these in `incident_summary`; two spellings
+    // would make one failure look like two unrelated ones, and an empty scope
+    // would file them under nothing at all.
+    harness.invoke = vi.fn(async () => ({ error: { message: "boom", context: { status: 502 } } }));
+    harness.supabase = client();
+    await expect(sendFeedback({ ...valid })).resolves.toBe("failed");
+    expect(devError).toHaveBeenCalledWith("feedback.send", expect.anything());
+
+    vi.mocked(devError).mockClear();
+    const thrown = new Error("offline");
+    harness.invoke = vi.fn(async () => {
+      throw thrown;
+    });
+    harness.supabase = client();
+    await expect(sendFeedback({ ...valid })).resolves.toBe("failed");
+    expect(devError).toHaveBeenCalledWith("feedback.send", thrown);
   });
 });
 
