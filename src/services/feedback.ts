@@ -13,6 +13,9 @@
  *     says so instead of offering a button that cannot work.
  *   - `unauthenticated` — signed out. The function refuses anonymous reports,
  *     and finding that out after typing is worse than being told before.
+ *   - `rateLimited` — the account has sent too many reports too quickly. Told
+ *     apart from `failed` because the answer is "wait", not "try again", and a
+ *     person who is told to retry a limit will retry it.
  *   - `failed` — everything else: offline, a provider outage, a refused
  *     payload. The caller keeps the draft.
  */
@@ -32,7 +35,7 @@ import {
 } from "../domain/feedback";
 import { devError } from "./logger";
 
-export type FeedbackResult = "sent" | "unconfigured" | "unauthenticated" | "failed";
+export type FeedbackResult = "sent" | "unconfigured" | "unauthenticated" | "rateLimited" | "failed";
 
 export interface FeedbackImage {
   mimeType: string;
@@ -94,6 +97,11 @@ export async function sendFeedback(submission: FeedbackSubmission): Promise<Feed
       },
     });
     if (error) {
+      // The function answers a limit with 429 and nothing else does. Read from
+      // the status rather than the message: the body is the function's, the
+      // status is the contract.
+      const status = (error as { context?: { status?: number } }).context?.status;
+      if (status === 429) return "rateLimited";
       devError("feedback.send", error);
       return "failed";
     }

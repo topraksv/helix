@@ -145,7 +145,11 @@ export default function UpcomingScreen() {
       ) : grouped.map(([month, items]) => (
         <View key={month}>
           <SectionHeader>{monthLabel(month)}</SectionHeader>
-          <Card>
+          {/* Every child is a pressable row, so the card gives up its own
+              vertical padding and the rows carry it inside their pressables —
+              otherwise the first and last row light a band that stops short of
+              the card's edge. */}
+          <Card rows>
             {items.map((item) => (
               <ListRow
                 key={item.key}

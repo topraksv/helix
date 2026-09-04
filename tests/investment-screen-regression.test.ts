@@ -23,13 +23,32 @@ describe("investment screen recovery", () => {
   });
 
   it("keeps empty investment distribution visible and meaningful", () => {
-    const investments = readFileSync(join(root, "src/app/(tabs)/investments/index.tsx"), "utf8");
     const charts = readFileSync(join(root, "src/ui/charts.tsx"), "utf8");
 
-    expect(investments).toContain("ordered.length === 0");
-    expect(investments).toContain("tr.investments.distributionEmpty");
+    // The screen no longer answers this for itself. A phone used to get a
+    // column of ranked bars with its own empty case; every breakpoint now
+    // draws the shared ring, so the empty state is the ring's — one answer to
+    // maintain instead of two that could disagree about what "no data" looks
+    // like.
     expect(charts).toContain('testID="donut-empty-state"');
     expect(charts).toContain("tr.analysis.chartEmpty");
+  });
+
+  it("draws the same ring at every breakpoint, phone included", () => {
+    // The distribution is one fact and had two pictures: a ring where there
+    // was a pointer, ranked bars where there was not — so the surface with no
+    // hover was also the only one where a holding could not be selected at
+    // all. `Donut` carries the selection, the lock and the readout, and it is
+    // the same component the analysis screen draws.
+    const source = readFileSync(join(root, "src/app/(tabs)/investments/index.tsx"), "utf8");
+    const heroStart = source.indexOf("onLayout={onHeroLayout}");
+    const heroCard = source.slice(heroStart, source.indexOf("</HeroCard>", heroStart));
+
+    expect(heroCard).not.toContain("AllocationStrip");
+    expect(source).not.toContain("function AllocationStrip");
+    // Three branches — compact, desktop, and the middle band — and each one
+    // reaches the ring through the same testID the E2E suite looks for.
+    expect(heroCard.split('testID="investment-distribution-chart"').length - 1).toBe(3);
   });
 
   /**

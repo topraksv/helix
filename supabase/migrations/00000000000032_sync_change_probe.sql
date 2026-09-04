@@ -49,11 +49,13 @@
 -- those two would make a table added to SYNCED_TABLES but not to this function
 -- silently un-pullable forever, which is the one failure it must not cause.
 --
--- NOT YET APPLIED to the linked project, on the same terms as migration 8:
--- applying a migration to the live database is a separately authorized step.
--- The client treats a missing function as "probe unavailable" and falls back to
--- the per-table walk, so shipping this ahead of the migration is safe and the
--- speedup simply switches on when the migration lands.
+-- Applied to the linked project; the speedup is live. It was safe to ship the
+-- client ahead of it and remains safe to run against a database that does not
+-- have it: PostgREST answers a missing function with `PGRST202`, which the
+-- engine reads as "probe unavailable" and falls back to the per-table walk for
+-- the rest of the session. That fallback is why this file could be written
+-- before the migration was pushed, and why it stays correct if it is ever
+-- replayed against an older database.
 
 create or replace function public.sync_cursors()
 returns table (table_name text, max_updated_at timestamptz, max_id uuid)

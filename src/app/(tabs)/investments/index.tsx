@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from "react";
-import { Animated, Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import ArrowDownToLine from "lucide-react-native/icons/arrow-down-to-line";
 import ArrowUpFromLine from "lucide-react-native/icons/arrow-up-from-line";
@@ -36,9 +36,8 @@ import { todayISO } from "../../../domain/dates";
 import { dateLabel, tr } from "../../../i18n/tr";
 import { Amount, Body, Button, Card, ChipPicker, DataStateNotice, EmptyState, Eyebrow, Heading, HeroCard, IconButton, MetricStrip, Row, Screen, SectionHeader, Spread } from "../../../ui/components";
 import { Donut, useSeriesColors, walletDonutSlices } from "../../../ui/charts";
-import { useDrawIn } from "../../../ui/motion-primitives";
 import { interactionSurface } from "../../../ui/interaction";
-import { actionTileMetrics, circle, density, font, iconSize, motion, radius, spacing, type, useTheme } from "../../../ui/theme";
+import { actionTileMetrics, circle, density, font, iconSize, radius, spacing, type, useTheme } from "../../../ui/theme";
 import { useContentWidth, useMeasuredWidth } from "../../../ui/viewport";
 import { WorkspaceGrid } from "../../../ui/workspace-layout";
 import { appAlert, appConfirm } from "../../../ui/dialog";
@@ -156,101 +155,6 @@ function TransferMetric({
           // in.
           style={[type.amountSm, { marginTop: 1, textAlign: "left" }]}
         />
-      </View>
-    </View>
-  );
-}
-
-function AllocationStrip({
-  slices,
-  totalMinor,
-}: {
-  slices: { label: string; valueMinor: number; color: string }[];
-  totalMinor: number;
-}) {
-  const { palette } = useTheme();
-  const ordered = [...slices].filter((slice) => slice.valueMinor > 0).sort((a, b) => b.valueMinor - a.valueMinor);
-  const visible = ordered.length === 0
-    ? [{ label: tr.investments.distributionEmpty, valueMinor: 0, color: palette.surfaceStrong }]
-    : ordered.length <= 3
-      ? ordered
-    : [
-        ...ordered.slice(0, 2),
-        {
-          label: tr.common.other,
-          valueMinor: ordered.slice(2).reduce((sum, slice) => sum + slice.valueMinor, 0),
-          color: palette.textSecondary,
-        },
-      ];
-  const summary = ordered.length === 0
-    ? `${tr.investments.distribution}. ${tr.investments.distributionEmpty}`
-    : `${tr.investments.distribution}. ${ordered.map((slice) => `${slice.label}: ${formatMinorCompact(slice.valueMinor)}`).join(", ")}.`;
-  const draw = useDrawIn(true, motion.draw, visible.map((slice) => `${slice.label}:${slice.valueMinor}`).join("|"));
-  return (
-    <View
-      testID="investment-mobile-allocation"
-      accessible
-      accessibilityRole="image"
-      accessibilityLabel={summary}
-      style={{ marginTop: INVESTMENT_SECTION_GAP }}
-    >
-      {/* The same section eyebrow the dashboard's month block uses. As plain
-          secondary body text this heading was the same size and weight as the
-          holding names directly under it, so the group had no visible start. */}
-      <Eyebrow>{tr.investments.distribution}</Eyebrow>
-      {/* A ranked bar per holding, not one stacked strip.
-          The strip answered "what is the split" and nothing else: three clay
-          tones in a 9pt track cannot be compared to each other, and the legend
-          under it repeated every label to say so. A row per holding compares
-          them directly — the longest bar IS the largest position — and costs
-          the same height, which is what keeps the actions under this card above
-          the fold on a phone. */}
-      {/* One rhythm: the heading, each holding and the gap between holdings all
-          step on the same scale, so a row's label and its own bar read as one
-          unit instead of floating between two neighbours. */}
-      <View accessible={false} style={{ marginTop: spacing.md, gap: spacing.md }}>
-        {visible.map((slice) => {
-          const share = totalMinor > 0 ? slice.valueMinor / totalMinor : 0;
-          return (
-            <View key={slice.label} style={{ gap: spacing.xs }}>
-              <Row gap={spacing.sm}>
-                <Text
-                  style={[type.small, { flex: 1, minWidth: 0, color: palette.textSecondary, fontSize: type.caption.fontSize }]}
-                >
-                  {slice.label}
-                </Text>
-                <Text style={[type.amountSm, { color: palette.text, fontSize: type.caption.fontSize }]}>
-                  %{Math.round(share * 100)}
-                </Text>
-              </Row>
-              <View
-                style={{
-                  height: 7,
-                  borderRadius: radius.full,
-                  backgroundColor: palette.surfaceStrong,
-                  overflow: "hidden",
-                }}
-              >
-                <Animated.View
-                  testID="investment-allocation-fill"
-                  style={{
-                    // A holding under one percent is still a holding: it keeps
-                    // a visible stub rather than rounding away to nothing.
-                    width: draw.interpolate({
-                      inputRange: [0, 1],
-                      outputRange: ["0%", `${Math.max(share * 100, slice.valueMinor > 0 ? 2 : 0)}%`],
-                    }),
-                    height: "100%",
-                    borderRadius: radius.full,
-                    backgroundColor: slice.color,
-                  }}
-                >
-                  <View />
-                </Animated.View>
-              </View>
-            </View>
-          );
-        })}
       </View>
     </View>
   );
@@ -593,7 +497,21 @@ export default function InvestmentsScreen() {
           {compact ? (
             <>
               {cashSummary}
-              <AllocationStrip slices={slices} totalMinor={totalCapital} />
+              {/* The same ring the two wider branches draw, and the same one
+                  the analysis screen draws on a phone — not a second picture
+                  of the same fact. A phone used to get a column of ranked
+                  bars here: a different shape, a different reading, and no
+                  way to select a holding at all, so the one surface with no
+                  pointer was also the only one where the distribution could
+                  not be interrogated. `Donut` already stacks its legend under
+                  the ring below the pairing width, which is the layout that
+                  column of bars was reaching for. */}
+              <View testID="investment-distribution-chart" style={{ marginTop: INVESTMENT_SECTION_GAP }}>
+                <Eyebrow>{tr.investments.distribution}</Eyebrow>
+                <View style={{ marginTop: spacing.md }}>
+                  <Donut slices={slices} totalMinor={totalCapital} size={168} />
+                </View>
+              </View>
               {transferSummary}
               {portfolioMetrics}
             </>

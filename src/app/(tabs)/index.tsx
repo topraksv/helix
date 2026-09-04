@@ -59,7 +59,7 @@ import { marketTileColumns, shouldPairDashboardPanels, shouldSplitDashboardHero,
 import { useContentWidth, useMeasuredWidth } from "../../ui/viewport";
 import { interactionSurface } from "../../ui/interaction";
 import { useWarmRoute } from "../../ui/route-warmup";
-import { circle, controlSize, font, heroSurface, iconSize, radius, spacing, stateOpacity, type, useTheme } from "../../ui/theme";
+import { circle, controlSize, density, font, heroSurface, iconSize, radius, spacing, stateOpacity, type, useTheme } from "../../ui/theme";
 import { devError } from "../../services/logger";
 import { useOperationGuard } from "../../ui/operation-guard";
 
@@ -623,7 +623,12 @@ export default function DashboardScreen() {
   const analysisSection = (
     <>
       <SectionHeader>{tr.dashboard.monthInsight}</SectionHeader>
-      <Card>
+      {/* `rows`, because the first child is a pressable row: without it the
+          card's own top padding sits outside that row's pressable and the
+          hover lights a band that stops short of the card's top edge, which
+          reads as a fill that missed rather than as the control it is. The
+          block below gives the padding back on the side that has no row. */}
+      <Card rows>
         <ListRow
           icon={ChartNoAxesColumn}
           title={tr.dashboard.monthNet(formatMinorCompact(monthNetMinor))}
@@ -642,6 +647,7 @@ export default function DashboardScreen() {
           onPress={() => router.push("/analytics")}
         />
         <Divider />
+        <View style={{ paddingBottom: density.list.cardPadding }}>
         {hasMonthFlow ? (
           <>
             <Segmented
@@ -679,6 +685,7 @@ export default function DashboardScreen() {
         ) : (
           <Body muted style={{ marginTop: spacing.md }}>{tr.analysis.noResults}</Body>
         )}
+        </View>
       </Card>
     </>
   );
@@ -1013,7 +1020,7 @@ export default function DashboardScreen() {
           ))}
         </Card>
       ) : (late.length > 0 || upcoming.length > 0) && selfPersonId ? (
-        <Card style={pairedDashboard ? { flex: 1 } : undefined}>
+        <Card rows style={pairedDashboard ? { flex: 1 } : undefined}>
           <View style={pairedDashboard ? { flexGrow: 1 } : undefined}>
             {dashboardLate.map((e) => (
               <ListRow

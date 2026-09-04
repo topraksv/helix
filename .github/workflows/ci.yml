@@ -106,6 +106,30 @@ jobs:
           echo "classification: $REASON"
           echo "light=$LIGHT_GATE full=$FULL_GATE web-build=$run_web_build web=$deploy_web mobile=$deploy_mobile"
 
+          # The same answer, on the run's summary page rather than inside a
+          # step nobody opens. Every job below is conditional, and a skipped
+          # job in the GitHub UI looks identical whether it was correctly
+          # inapplicable or silently misrouted — `e2e-smoke` in particular has
+          # been skipped on every push so far, which reads as a step that never
+          # runs rather than as the light tier's browser gate waiting for a
+          # light-tier push. This says which tier was chosen, why, and which of
+          # the two browser jobs that implies, so the question is answered
+          # before it is asked.
+          if [ "$FULL_GATE" = "true" ]; then
+            browser="e2e-full (3 shards, the whole suite) — e2e-smoke is skipped because its tests are a subset of it"
+          elif [ "$RUN_CI" = "true" ]; then
+            browser="e2e-smoke (@smoke only) — e2e-full is skipped because this tier does not pay for the sharded suite"
+          else
+            browser="none — no application impact"
+          fi
+          {
+            echo "### Gate tier: ${FULL_GATE/true/full}"
+            echo ""
+            echo "- **Reason:** $REASON"
+            echo "- **Browser check:** $browser"
+            echo "- **Publishes:** web=$deploy_web · mobile=$deploy_mobile"
+          } >> "$GITHUB_STEP_SUMMARY"
+
   light-gate:
     needs: classify
     runs-on: ubuntu-latest
@@ -199,9 +223,20 @@ jobs:
         with:
           path: dist
 
-  # The always-on browser signal for a light-tier push. A full-gate push runs
-  # `e2e-full`, whose suite already contains every `@smoke` test, so running
-  # both would repeat them and pay for a third Metro export.
+  # The browser signal for a LIGHT-tier push, and the reason it is usually
+  # skipped: a full-gate push runs `e2e-full`, whose suite already contains
+  # every `@smoke` test, so running both would repeat them and pay for a third
+  # Metro export.
+  #
+  # WHEN IT RUNS. Whenever `classify` does not raise the full gate — a change
+  # confined to `src/ui`, `src/app/*.tsx`, `src/i18n`, `tests`, `e2e`,
+  # `public`, `assets`, a local script or a workflow other than this one.
+  # `scripts/classify-changes.mjs` holds the lists and
+  # `tests/change-classification.test.ts` holds them against the tree. Most
+  # pushes so far have touched `src/domain` or `src/data`, which is money and
+  # persistence and always takes the full gate, so this job has been correctly
+  # skipped rather than inert — the classify job's summary says which tier a
+  # run chose and why.
   e2e-smoke:
     needs: classify
     if: needs.classify.outputs.full_gate != 'true'

@@ -117,6 +117,29 @@ Deno.serve(async (request: Request): Promise<Response> => {
   const user = userData?.user;
   if (userError || !user) return json({ error: "unauthorized" }, 401);
 
+  /**
+   * One send, claimed before anything is read.
+   *
+   * The limit lives in the database (migration 37) rather than here: this
+   * function is a public HTTP endpoint, so a bound it enforced in its own
+   * memory would last exactly as long as one isolate and would be shared by
+   * none of them. The RPC counts and records in one statement under the
+   * caller's own identity, and the table it writes is unreachable by any
+   * other path.
+   *
+   * Claimed BEFORE the body is parsed and the attachments are decoded, so a
+   * caller who is already over the limit cannot make this function do the
+   * expensive part anyway. The cost of that is that a report refused later for
+   * being malformed still spends its slot, which is the right way round: a
+   * client sending malformed bodies at speed is exactly what the limit is for.
+   */
+  const { data: allowed, error: limitError } = await supabase.rpc("record_feedback_send");
+  if (limitError) {
+    console.error("feedback rate check failed", limitError.code ?? limitError.message);
+    return json({ error: "send_failed" }, 502);
+  }
+  if (allowed !== true) return json({ error: "rate_limited" }, 429);
+
   let payload: Record<string, unknown>;
   try {
     payload = await request.json();

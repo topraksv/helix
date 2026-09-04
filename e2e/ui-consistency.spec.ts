@@ -1567,6 +1567,20 @@ test("investment setup, weighted sale, BES contribution and wallet refund form o
   await expect(page.getByTestId("investment-cash-amount")).toContainText("₺9.000,00");
   await page.setViewportSize({ width: 1280, height: 900 });
   await expect(page.getByTestId("investment-distribution-chart")).toBeVisible();
+  // Wait for the WIDE arrangement, not merely for a chart to exist. The ring
+  // is drawn at every breakpoint now, so its testID appearing no longer means
+  // the hero has finished re-measuring after the resize — it used to, only
+  // because the phone branch drew ranked bars and carried no ring at all, and
+  // this measurement was quietly relying on that. Poll the fact the
+  // assertions below are about instead.
+  await expect
+    .poll(async () => page.getByTestId("investment-wallet-summary").evaluate((wallet) => {
+      const cash = wallet.querySelector<HTMLElement>('[data-testid="investment-cash-amount"]');
+      const chart = wallet.querySelector<HTMLElement>('[data-testid="investment-distribution-chart"]');
+      if (!cash || !chart) return false;
+      return chart.getBoundingClientRect().left > cash.getBoundingClientRect().right;
+    }), "the hero has to settle into its side-by-side arrangement")
+    .toBe(true);
   const walletGeometry = await page.getByTestId("investment-wallet-summary").evaluate((wallet) => {
     const cash = wallet.querySelector<HTMLElement>('[data-testid="investment-cash-amount"]')!;
     const transfers = wallet.querySelector<HTMLElement>('[data-testid="investment-transfer-summary"]')!;
@@ -1630,19 +1644,31 @@ test("the investment wallet keeps large balances readable at the narrowest phone
   expect(geometry.amountRight).toBeLessThanOrEqual(geometry.parentRight + 1);
   expect(geometry.amountFontSize).toBeGreaterThanOrEqual(24);
   expect(geometry.descendantsFit).toBe(true);
-  await expect(page.getByTestId("investment-mobile-allocation")).toBeVisible();
-
-  const fill = page.getByTestId("investment-allocation-fill").first();
-  await expect(fill).toBeVisible();
-  const widths = await fill.evaluate(async (element) => {
-    const samples: number[] = [];
-    for (let frame = 0; frame < 6; frame += 1) {
-      samples.push(element.getBoundingClientRect().width);
-      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-    }
-    return samples;
-  });
-  expect(new Set(widths.map((width) => Math.round(width * 10) / 10)).size).toBeGreaterThan(1);
+  // The phone draws the same ring the wider breakpoints do. It used to get a
+  // column of ranked bars instead: a second picture of one fact, and the one
+  // surface where a holding could not be selected at all.
+  const ring = page.getByTestId("investment-distribution-chart");
+  await expect(ring).toBeVisible();
+  // The legend is what carries the selection, so this is the claim that
+  // matters: a phone can now ask the ring about one holding. Locking it is
+  // what a bar could never do.
+  const holding = ring.getByRole("button").first();
+  await expect(holding).toBeVisible();
+  // Read the LIT ROW rather than an ARIA attribute: react-native-web does not
+  // emit `aria-selected` on `role="button"`, and the defect this replaces was
+  // that the lock painted itself in the hero card's own colour and could not
+  // be seen. What is being asserted is that selecting a holding changes what
+  // the reader looks at, and that pressing it again gives it back.
+  const fill = async () => holding.evaluate((element) => getComputedStyle(element).backgroundColor);
+  const resting = await fill();
+  await holding.click();
+  await expect.poll(fill, "a locked legend row has to change colour").not.toBe(resting);
+  await holding.click();
+  // The pointer is still ON the row after the click, and a hovered row is
+  // meant to be tinted — that is the hover, not the lock. Move off it before
+  // asking whether the lock let go, or the two states are read as one.
+  await page.mouse.move(0, 0);
+  await expect.poll(fill, "pressing it again releases the lock").toBe(resting);
   const actionBand = page.locator('[data-testid="investment-actions"]:visible').first();
   const actions = actionBand.getByRole("button");
   await expect(actions).toHaveCount(4);

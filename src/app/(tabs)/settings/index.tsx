@@ -750,7 +750,10 @@ export default function SettingsScreen() {
       </Card>
 
       <SectionHeader>{tr.settings.syncSection}</SectionHeader>
-      <Card>
+      {/* `rows`, because the quarantine row below can be the card's last child
+          and a pressable row at an edge must light all the way to it. The
+          explanation carries the vertical padding the card gives up. */}
+      <Card rows>
         <ListRow
           icon={CloudUpload}
           title={tr.settings.sync}
@@ -774,7 +777,7 @@ export default function SettingsScreen() {
         {sync.error ? (
           <Body accessibilityRole="alert" accessibilityLiveRegion="assertive" style={{ fontSize: type.small.fontSize, marginTop: spacing.xs, color: palette.errorText }}>{sync.error}</Body>
         ) : null}
-        <Body muted style={{ fontSize: type.small.fontSize, marginTop: spacing.xs, marginBottom: spacing.sm }}>
+        <Body muted style={{ fontSize: type.small.fontSize, marginTop: spacing.xs, marginBottom: density.list.cardPadding }}>
           {tr.settings.syncExplain}
         </Body>
         {/* A row, not a panel. Nothing here is lost and nothing is urgent, so

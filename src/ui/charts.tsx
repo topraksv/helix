@@ -582,7 +582,15 @@ export function Donut({
                   borderRadius: radius.sm,
                 },
                 selectable
-                  ? interactionSurface(palette, state, { base: isActive ? palette.surfaceAlt : "transparent" })
+                  // `primarySoft` and NOT `surfaceAlt` for the locked base.
+                  // `heroSurface` resolves to `surfaceAlt` in the dark theme,
+                  // so a neutral lock painted the selected row in the card's
+                  // own colour: the same ring, the same code and the same tap
+                  // showed a highlight on the analysis screen and nothing at
+                  // all on the investments hero. An accent tint is a colour
+                  // no surface in this app is, so the lock reads wherever the
+                  // ring is placed.
+                  ? interactionSurface(palette, state, { base: isActive ? palette.primarySoft : "transparent" })
                   : null,
               ]}
             >
@@ -1260,10 +1268,20 @@ export function Bars({
           ))}
           {/* The chosen column, marked by the ground under it rather than by
               fading the others. Fading would take the categorical ramp below
-              the 3:1 floor it only just clears — see `chart.donutLift`. This
-              band is the plot's own surface pair, which every card in the app
-              already uses as its one step of separation, and it is drawn
-              BEFORE the bars so it can never sit over a value. */}
+              the 3:1 floor it only just clears — see `chart.donutLift` — and
+              the band is drawn BEFORE the bars so it can never sit over a
+              value.
+
+              An ACCENT band with its own outline, and not the plot's surface
+              pair. The pair was `surfaceAlt` for the plot and `surface` for
+              the band, which is the card's own colour: the highlight therefore
+              removed the plot's tint instead of adding anything, and the chart
+              read as one lit panel with a hole punched wherever the pointer
+              was — the selection appearing to switch OFF the column under it.
+              A tint the surfaces do not use, plus a rule around it, can only
+              ever read as "this one", on either theme and on whatever card the
+              chart is placed. It is the same accent the ring's locked legend
+              row takes, so the two charts answer a selection the same way. */}
           {activeGroup != null ? (
             <Rect
               x={pad.left + activeGroup * groupW}
@@ -1271,7 +1289,9 @@ export function Bars({
               width={groupW}
               height={plotH}
               rx={chart.barRadius}
-              fill={palette.surface}
+              fill={palette.primarySoft}
+              stroke={palette.primary}
+              strokeWidth={1}
             />
           ) : null}
           {groups.map((g, gi) => {

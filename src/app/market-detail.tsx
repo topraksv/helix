@@ -11,6 +11,14 @@
  * tell different stories. It is fetched on demand and never cached: it is one
  * request away, and a chart that quietly shows last week's shape is worse than
  * one that admits it has nothing.
+ *
+ * It also RE-fetches while the screen is open. The price above it comes from
+ * the ticker store and moves on its own, so a chart that was fetched once sat
+ * beside a figure it no longer agreed with — the longer the screen was left
+ * open, the further apart the two answers drifted, and nothing on the page
+ * said which one was old. Only the newest candle actually moves, and it moves
+ * at the same rate whatever interval is being drawn, so one cadence serves
+ * every range.
  */
 
 import { useCallback, useEffect, useState } from "react";
@@ -24,11 +32,22 @@ import { fetchMarketHistory, useMarkets } from "../services/markets";
 import { clockOrDateTimeLabel, marketRateLabel, tr } from "../i18n/tr";
 import { Body, Button, Card, Label, Row, Screen, Segmented, Spread, Title } from "../ui/components";
 import { ChartFrame, Lines, useSeriesColors } from "../ui/charts";
+import { useScreenFocus } from "../ui/motion-primitives";
 import { DelayedLoadingIndicator } from "../ui/loading-indicator";
 import { spacing, type, useTheme } from "../ui/theme";
 import { WorkspaceGrid } from "../ui/workspace-layout";
 
 const RANGES: readonly MarketRange[] = ["day", "week", "month", "year"];
+
+/**
+ * How often an open chart re-reads its own range.
+ *
+ * A minute, for every range. Only the newest candle is still moving and it
+ * moves at the same rate whether it is an hour wide or a week wide, so the
+ * interval being drawn does not change how often the picture is wrong. Six
+ * times less traffic than the ticker beside it, against the same public host.
+ */
+const HISTORY_REFRESH_MS = 60_000;
 
 const CLOCK_FORMAT = new Intl.DateTimeFormat("tr-TR", { hour: "2-digit", minute: "2-digit" });
 
@@ -62,20 +81,39 @@ export default function MarketDetailScreen() {
   const [points, setPoints] = useState<MarketHistoryPoint[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [attempt, setAttempt] = useState(0);
+  // A chart nobody is looking at must not fetch, on the same rule the tiles'
+  // flash follows: leaving this screen in a tab behind another one should cost
+  // nothing.
+  const focused = useScreenFocus();
 
   useEffect(() => {
     if (!title) return;
     let live = true;
-    setLoading(true);
+    // The spinner belongs to an EMPTY chart, not to a refresh. Clearing the
+    // plot every minute to show a loading indicator would make a screen that
+    // keeps itself current look like one that keeps losing its data.
+    setPoints((current) => {
+      if (current === null) setLoading(true);
+      return current;
+    });
     void fetchMarketHistory(code, range).then((result) => {
       if (!live) return;
-      setPoints(result);
+      // A failed refresh keeps the shape it already has rather than replacing
+      // it with "no history": the points on screen were true when they were
+      // fetched, and one refused request does not make them false.
+      setPoints((current) => (result === null && current !== null ? current : result));
       setLoading(false);
     });
     return () => {
       live = false;
     };
   }, [code, range, title, attempt]);
+
+  useEffect(() => {
+    if (!title || !focused) return;
+    const timer = setInterval(() => setAttempt((value) => value + 1), HISTORY_REFRESH_MS);
+    return () => clearInterval(timer);
+  }, [title, focused]);
 
   const retry = useCallback(() => setAttempt((value) => value + 1), []);
 

@@ -23,15 +23,16 @@
 
 import { Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from "react-native";
 import Check from "lucide-react-native/icons/check";
+import ChevronRight from "lucide-react-native/icons/chevron-right";
 import ShieldCheck from "lucide-react-native/icons/shield-check";
 import X from "lucide-react-native/icons/x";
 import { Body, Button, Card, PanelHeader, SectionHeader } from "./components";
 import { useModalAccessibility } from "./accessibility";
 import { modalAnimationType } from "./modal-motion";
 import { useReducedMotion } from "./motion";
-import { interactionSurface } from "./interaction";
+import { interactionBleed, interactionSurface } from "./interaction";
 import { shouldPresentOptionsAsSheet } from "./responsive";
-import { borderWidth, controlSize, font, radius, spacing, themeShadow, type, useTheme } from "./theme";
+import { borderWidth, controlSize, radius, spacing, themeShadow, type, useTheme } from "./theme";
 import { selectionTap } from "./haptics";
 import { tr } from "../i18n/tr";
 
@@ -330,63 +331,72 @@ export function LegalConsentControl({
   invalid?: boolean;
 }) {
   const { palette } = useTheme();
-  if (consented) {
-    return (
-      <View style={{ marginBottom: spacing.md }}>
-        <View
-          accessibilityRole="text"
-          accessibilityLabel={tr.legal.consentGiven}
-          style={{
-            flexDirection: "row",
-            alignItems: "center",
-            gap: spacing.sm,
-            paddingVertical: spacing.sm,
-          }}
-        >
-          <View
-            style={{
-              width: 20,
-              height: 20,
-              borderRadius: radius.sm,
-              alignItems: "center",
-              justifyContent: "center",
-              backgroundColor: palette.primary,
-            }}
-          >
-            <Check accessible={false} size={14} strokeWidth={3} color={palette.onPrimary} />
-          </View>
-          <Text style={[type.small, { flex: 1, color: palette.text }]}>{tr.legal.consentGiven}</Text>
-          <Pressable
-            accessibilityRole="button"
-            onPress={onOpen}
-            style={(state) => ({
-              minHeight: controlSize.minimumTarget,
-              justifyContent: "center",
-              paddingHorizontal: spacing.sm,
-              borderRadius: radius.sm,
-              ...interactionSurface(palette, state),
-            })}
-          >
-            <Text style={[type.small, { color: palette.primaryText, fontFamily: font.semibold }]}>
-              {tr.legal.consentChange}
-            </Text>
-          </Pressable>
-        </View>
-      </View>
-    );
-  }
+  /**
+   * ONE control, in one place, in both states.
+   *
+   * It used to be two: a full-width secondary button before consent, replaced
+   * after it by a tick row with a separate "reopen" link beside it. That is
+   * three affordances for one decision — the form grew a button-sized block,
+   * then swapped it for something a different height, and the way back to the
+   * document was a third target that only existed once you no longer needed
+   * it. The row below is the same height and the same position throughout;
+   * the tick is the state, and pressing it is how the notice opens whether it
+   * has been accepted yet or not.
+   *
+   * Acceptance itself is NOT here and must not be: it lives at the end of the
+   * notice, where the reading ends. This row is a checkbox that reports and a
+   * door that opens, never a box that grants consent to a document nobody was
+   * taken through.
+   */
   return (
     <View style={{ marginBottom: spacing.md }}>
-      <Button
-        label={tr.legal.consentOpen}
-        variant="secondary"
+      <Pressable
+        accessibilityRole="checkbox"
+        accessibilityState={{ checked: consented }}
+        accessibilityLabel={consented ? tr.legal.consentGiven : tr.legal.consentOpen}
+        accessibilityHint={tr.legal.consentHint}
         onPress={onOpen}
-      />
-      {invalid ? (
+        style={(state) => ({
+          flexDirection: "row",
+          alignItems: "center",
+          gap: spacing.sm,
+          minHeight: controlSize.minimumTarget,
+          // Bled into the form's own padding and given straight back, so the
+          // hover and press fill reach the card's edges the way every other
+          // row in the app does. Through the one rule, not a local number:
+          // `tests/design-system-contract` refuses a hand-written inset here.
+          ...interactionBleed(spacing.sm),
+          borderRadius: radius.sm,
+          ...interactionSurface(palette, state),
+        })}
+      >
+        <View
+          accessible={false}
+          style={{
+            width: 20,
+            height: 20,
+            borderRadius: radius.sm,
+            alignItems: "center",
+            justifyContent: "center",
+            backgroundColor: consented ? palette.primary : "transparent",
+            borderWidth: consented ? 0 : borderWidth.control,
+            // The refusal is on the box as well as in the sentence below it:
+            // the sentence explains, the box says which control it is about.
+            borderColor: invalid ? palette.error : palette.controlBorder,
+          }}
+        >
+          {consented ? <Check accessible={false} size={14} strokeWidth={3} color={palette.onPrimary} /> : null}
+        </View>
+        <Text style={[type.small, { flex: 1, color: consented ? palette.text : palette.textSecondary }]}>
+          {consented ? tr.legal.consentGiven : tr.legal.consentOpen}
+        </Text>
+        <ChevronRight accessible={false} size={16} color={palette.textSecondary} />
+      </Pressable>
+      {invalid && !consented ? (
         <Text
           accessibilityRole="alert"
           accessibilityLiveRegion="polite"
-          style={[type.small, { color: palette.errorText, marginTop: spacing.xs, marginLeft: spacing.xs }]}
+          style={[type.small, { color: palette.errorText, marginTop: spacing.xs }]}
         >
           {tr.legal.consentRequired}
         </Text>

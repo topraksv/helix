@@ -144,6 +144,12 @@ describe("CI mutation contract", () => {
     // mutated like any other domain file.
     expect(isMutationScoped("src/domain/brand-marks.ts")).toBe(true);
     expect(isMutationScoped("src/db/schema.ts")).toBe(false);
+    // Generated from the LINKED database and rewritten wholesale, so a mutant
+    // here tests a description of somebody else's Postgres rather than
+    // anything this repository decides. Its sibling in the same directory,
+    // which is the engine that uses those types, stays in scope.
+    expect(isMutationScoped("src/sync/database.types.ts")).toBe(false);
+    expect(isMutationScoped("src/sync/engine.ts")).toBe(true);
     expect(isMutationScoped("src/db/migrations/migrations.js")).toBe(false);
     expect(isMutationScoped("src/db/ids.ts")).toBe(true);
     // Outside the high-risk directories entirely: never mutated, never was.

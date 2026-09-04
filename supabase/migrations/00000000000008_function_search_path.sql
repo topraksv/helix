@@ -18,10 +18,13 @@
 -- `set_updated_at` trigger keeps pointing at this function and no trigger has
 -- to be recreated.
 --
--- NOT YET APPLIED to the linked project: this repository's toolchain has no
--- Supabase CLI, Docker or psql available, and applying migrations to the live
--- database is an explicit, separately authorized step. Until it is applied,
--- `supabase migration list --linked` will show this version as local-only.
+-- Applied to the linked project. This note used to say the opposite and stayed
+-- that way after the migration was pushed, which is the failure mode a comment
+-- about deployment state always has: it is written once, at the moment it is
+-- true, and nothing makes it false again. The record that cannot go stale is
+-- `supabase migration list --linked`, and for a function the proof is the
+-- database's own answer rather than the ledger — ask PostgREST for it and read
+-- whether it exists.
 
 create or replace function public.set_updated_at()
 returns trigger

@@ -394,8 +394,8 @@ export type Database = {
       }
       expected_payments: {
         Row: {
-          amount_minor: number
           amount_is_estimated: boolean
+          amount_minor: number
           auto_confirmed: boolean
           created_at: string
           currency: string
@@ -413,8 +413,8 @@ export type Database = {
           user_id: string
         }
         Insert: {
-          amount_minor: number
           amount_is_estimated?: boolean
+          amount_minor: number
           auto_confirmed?: boolean
           created_at?: string
           currency?: string
@@ -432,8 +432,8 @@ export type Database = {
           user_id?: string
         }
         Update: {
-          amount_minor?: number
           amount_is_estimated?: boolean
+          amount_minor?: number
           auto_confirmed?: boolean
           created_at?: string
           currency?: string
@@ -459,6 +459,24 @@ export type Database = {
             referencedColumns: ["user_id", "id"]
           },
         ]
+      }
+      feedback_reports: {
+        Row: {
+          created_at: string
+          id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          user_id?: string
+        }
+        Relationships: []
       }
       fx_rates: {
         Row: {
@@ -1155,12 +1173,12 @@ export type Database = {
           entry_date: string
           fx_rate: number | null
           id: string
+          import_key: string | null
           installment_no: number | null
           installment_plan_id: string | null
           is_aggregate: boolean
           note: string | null
           origin: string | null
-          import_key: string | null
           payment_source_id: string | null
           person_id: string
           purchase_date: string | null
@@ -1183,12 +1201,12 @@ export type Database = {
           entry_date: string
           fx_rate?: number | null
           id: string
+          import_key?: string | null
           installment_no?: number | null
           installment_plan_id?: string | null
           is_aggregate?: boolean
           note?: string | null
           origin?: string | null
-          import_key?: string | null
           payment_source_id?: string | null
           person_id: string
           purchase_date?: string | null
@@ -1211,12 +1229,12 @@ export type Database = {
           entry_date?: string
           fx_rate?: number | null
           id?: string
+          import_key?: string | null
           installment_no?: number | null
           installment_plan_id?: string | null
           is_aggregate?: boolean
           note?: string | null
           origin?: string | null
-          import_key?: string | null
           payment_source_id?: string | null
           person_id?: string
           purchase_date?: string | null
@@ -1274,17 +1292,59 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      incident_by_release: {
+        Row: {
+          app_version: string | null
+          distinct_scopes: number | null
+          errors: number | null
+          first_seen: string | null
+          last_seen: string | null
+          platform: string | null
+          warnings: number | null
+        }
+        Relationships: []
+      }
+      incident_recent: {
+        Row: {
+          app_version: string | null
+          code: string | null
+          error_name: string | null
+          fingerprint: string | null
+          frames: string | null
+          occurred_at: string | null
+          platform: string | null
+          received_at: string | null
+          scope: string | null
+          severity: string | null
+        }
+        Relationships: []
+      }
+      incident_summary: {
+        Row: {
+          app_versions: string[] | null
+          code: string | null
+          error_names: string[] | null
+          fingerprints: string[] | null
+          first_seen: string | null
+          last_seen: string | null
+          occurrences: number | null
+          platforms: string[] | null
+          scope: string | null
+          severity: string | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
       delete_own_account: { Args: never; Returns: undefined }
       purge_expired_diagnostics: { Args: never; Returns: number }
+      record_feedback_send: { Args: never; Returns: boolean }
       sync_cursors: {
         Args: never
         Returns: {
+          max_id: string
+          max_updated_at: string
           table_name: string
-          max_updated_at: string | null
-          max_id: string | null
         }[]
       }
     }
@@ -1305,12 +1365,12 @@ export type Tables<
   DefaultSchemaTableNameOrOptions extends
     | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
         DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -1334,11 +1394,11 @@ export type TablesInsert<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -1359,11 +1419,11 @@ export type TablesUpdate<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -1384,11 +1444,11 @@ export type Enums<
   DefaultSchemaEnumNameOrOptions extends
     | keyof DefaultSchema["Enums"]
     | { schema: keyof DatabaseWithoutInternals },
-  EnumName extends DefaultSchemaEnumNameOrOptions extends {
+  EnumName extends (DefaultSchemaEnumNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaEnumNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -1401,11 +1461,11 @@ export type CompositeTypes<
   PublicCompositeTypeNameOrOptions extends
     | keyof DefaultSchema["CompositeTypes"]
     | { schema: keyof DatabaseWithoutInternals },
-  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
+  CompositeTypeName extends (PublicCompositeTypeNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
-    : never = never,
+    : never) = never,
 > = PublicCompositeTypeNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }

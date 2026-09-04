@@ -24,7 +24,7 @@ import { Body, Button, Card, ChipPicker, DataStateNotice, Field, Heading, IconBu
 import { appAlert } from "../../ui/dialog";
 import { BrandMark } from "../../ui/brand";
 import { placeholderPools, useRotatingPlaceholder } from "../../ui/placeholders";
-import { font, radius, spacing, type, useTheme } from "../../ui/theme";
+import { density, font, radius, spacing, type, useTheme } from "../../ui/theme";
 import { useOperationGuard } from "../../ui/operation-guard";
 import { readPickedText } from "../../services/picked-file";
 import { monthDayLabel } from "../../ui/month-day-field";
@@ -570,13 +570,22 @@ export default function SetupScreen() {
           </Row>
         </Card>
 
-        <Card>
-          <Heading>5 · {tr.onboarding.historyPrompt}</Heading>
-          <Body muted style={{ marginBottom: spacing.sm }}>{tr.onboarding.historyHint}</Body>
+        {/* `rows`: the last history row can be the card's last child, and a
+            pressable row at an edge lights all the way to it. The heading
+            block carries the top padding the card gives up. */}
+        <Card rows>
+          <View style={{ paddingTop: density.list.cardPadding }}>
+            <Heading style={{ marginTop: 0 }}>5 · {tr.onboarding.historyPrompt}</Heading>
+            <Body muted style={{ marginBottom: spacing.sm }}>{tr.onboarding.historyHint}</Body>
+          </View>
           <ListRow icon={CalendarPlus} title={tr.onboarding.historyManual} subtitle={tr.onboarding.historyManualDesc} chevron onPress={() => void openImporter("manual")} />
           <ListRow icon={FileSpreadsheet} title={tr.onboarding.historyExcel} subtitle={tr.onboarding.historyExcelDesc} chevron onPress={() => void openImporter("excel")} />
           <ListRow icon={FileUp} title={tr.onboarding.historyJson} subtitle={tr.onboarding.historyJsonDesc} chevron onPress={() => void openImporter("json")} />
-          {seeded ? <Body muted style={{ fontSize: type.small.fontSize, marginTop: spacing.sm }}>{tr.onboarding.historySeeded}</Body> : null}
+          {seeded ? (
+            <Body muted style={{ fontSize: type.small.fontSize, marginTop: spacing.sm, marginBottom: density.list.cardPadding }}>
+              {tr.onboarding.historySeeded}
+            </Body>
+          ) : null}
         </Card>
 
         <Button label={tr.onboarding.finishStart} onPress={() => void commit()} loading={busy} />

@@ -600,13 +600,19 @@ describe("version and changelog", () => {
     }
   });
 
-  it("gives every release its three lines", () => {
+  it("gives every release at least one note, and none of them a template", () => {
+    // The shape used to be three fixed headings — what changed, who it
+    // concerns, what to do — and two of them were answering the same question
+    // for a single-user product: "you" and, almost always, "nothing". What is
+    // worth keeping is the record itself, so the rule is now that a release
+    // says what changed in its own words and cannot ship saying nothing.
     const sections = changelog.split(/^## /m).slice(1);
     expect(sections.length).toBe(versions.length);
     for (const [index, section] of sections.entries()) {
-      for (const line of ["Ne değişti", "Kimi ilgilendiriyor", "Ne yapmalısın"]) {
-        expect(section, `${versions[index]} is missing "${line}"`).toContain(line);
-      }
+      const notes = section.split("\n").filter((line) => line.startsWith("- ") && line.trim().length > 10);
+      expect(notes.length, `${versions[index]} has no release note`).toBeGreaterThan(0);
+      expect(section, `${versions[index]} still carries the retired template`).not.toContain("Kimi ilgilendiriyor");
+      expect(section, `${versions[index]} still carries the retired template`).not.toContain("Ne yapmalısın");
     }
   });
 });

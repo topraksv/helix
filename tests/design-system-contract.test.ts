@@ -635,6 +635,57 @@ describe("a press lights the control it is on", () => {
   });
 
   /**
+   * The other half of the same rule: how far a row's fill reaches VERTICALLY.
+   *
+   * `interactionBleed` gets the fill to the card's left and right edges. Top
+   * and bottom are the card's job, and `Card`'s `rows` prop is how it does it:
+   * the card gives up its own vertical padding and the rows carry it inside
+   * their pressables instead. A card that forgets it lights a band that stops
+   * short of its own top and bottom, so a single-row card reads as a control
+   * smaller than the box it lives in — which is precisely how it was reported,
+   * on "Bu ay net değişim", and it was true of six more cards.
+   *
+   * The scan is deliberately about a PRESSABLE row: an inert row has no fill
+   * to misplace, which is why `data-reset`'s toggle rows are not offenders.
+   */
+  it("gives up its vertical padding for any card holding a pressable row", () => {
+    const offenders: string[] = [];
+    const screens = sourceFiles("src", { atLeast: 150 }).filter((file) => file.endsWith(".tsx"));
+    for (const path of screens) {
+      const lines = readFileSync(join(root, path), "utf8").split("\n");
+      for (const [index, line] of lines.entries()) {
+        if (!/<Card\b/.test(line)) continue;
+        let tag = line;
+        for (let ahead = 1; ahead <= 5 && !tag.includes(">"); ahead += 1) tag += ` ${lines[index + ahead] ?? ""}`;
+        if (/\brows\b/.test(tag.split(">")[0] ?? "")) continue;
+        let depth = 0;
+        let pressableRow = false;
+        for (let cursor = index; cursor < Math.min(lines.length, index + 160); cursor += 1) {
+          const at = lines[cursor] ?? "";
+          if (/<Card\b/.test(at)) depth += 1;
+          if (/<\/Card>/.test(at)) {
+            depth -= 1;
+            if (depth <= 0) break;
+          }
+          if (cursor === index || !/<ListRow\b/.test(at)) continue;
+          for (let prop = cursor; prop < Math.min(lines.length, cursor + 22); prop += 1) {
+            const propLine = lines[prop] ?? "";
+            if (/\/>/.test(propLine)) break;
+            if (/onPress=\{(?!undefined)/.test(propLine)) {
+              pressableRow = true;
+              break;
+            }
+          }
+        }
+        if (pressableRow) offenders.push(`${path}:${index + 1}`);
+      }
+    }
+    // The floor: a scan that matched no cards at all would pass this for ever.
+    expect(screens.length).toBeGreaterThan(40);
+    expect(offenders, "give the Card its `rows` prop, or the row's fill stops short of the card edge").toEqual([]);
+  });
+
+  /**
    * One rule for how far a row's fill reaches past its own words.
    *
    * A hover that stops at the first and last glyph reads as a fill that missed,
@@ -1040,13 +1091,16 @@ describe("investment hero keeps one motion path at every width", () => {
     expect(compactBranch).toContain("count");
   });
 
-  it("redraws the compact allocation bars on arrival and data changes", () => {
-    const allocation = investments.slice(
-      investments.indexOf("function AllocationStrip("),
-      investments.indexOf("function InvestmentQuickAction("),
-    );
-    expect(allocation).toContain("useDrawIn(true, motion.draw");
-    expect(allocation).toContain("<Animated.View");
+  it("redraws the distribution on arrival and data changes, at every width", () => {
+    // The rule is unchanged and its owner moved. A phone used to draw ranked
+    // bars with their own animation while the wider branches drew the ring
+    // with its own; one shape, one motion path, so the rule now lives where
+    // the ring does and applies to every breakpoint at once.
+    const charts = readFileSync(join(root, "src/ui/charts.tsx"), "utf8");
+    const donut = charts.slice(charts.indexOf("export function Donut("), charts.indexOf("export function Lines("));
+    expect(donut).toContain("useDrawIn(true, motion.draw");
+    expect(donut).toContain("strokeDashoffset={draw.interpolate(");
+    expect(investments).not.toContain("useDrawIn");
   });
 });
 

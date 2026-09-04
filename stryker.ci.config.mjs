@@ -84,7 +84,17 @@ const MUTATION_RELEVANT = /^src\/(?:domain|data\/repo|db|sync|auth|services)\/.*
  * the five domains that take the DuckDuckGo route and the two URLs, and
  * `tests/brand-domains.test.ts` checks every domain against both.
  *
- * `src/db/expo-sqlite.server.js` is the fourth, and the only one that is not a
+ * `src/sync/database.types.ts` is the fourth of the same kind. It is 1_400
+ * lines written by `supabase gen types typescript --linked` — the Row, Insert
+ * and Update shape of every table and view, and nothing else. There is no
+ * function in it, it is regenerated wholesale rather than edited, and what it
+ * describes is the LINKED DATABASE's schema, so a mutant that renames a column
+ * type does not test this repository's behaviour: it tests whether TypeScript
+ * still compiles against a description of somebody else's Postgres. The thing
+ * worth checking about this file is that it MATCHES the live schema, which is
+ * a regeneration and a typecheck, not a mutant.
+ *
+ * `src/db/expo-sqlite.server.js` is the fifth, and the only one that is not a
  * data file. It is what `expo-sqlite` resolves to while a page is rendered on
  * the server, and it is three functions that throw plus one that returns an
  * empty subscription — a statement that the database is unreachable there.
@@ -98,7 +108,7 @@ const MUTATION_RELEVANT = /^src\/(?:domain|data\/repo|db|sync|auth|services)\/.*
  * mutants of Turkish month names and amount-splitting regexes — real logic,
  * so it keeps paying for itself.
  */
-const MUTATION_EXCLUDED = /^src\/(?:db\/(?:migrations\/|schema\.ts$|expo-sqlite\.server\.js$)|domain\/brand-mark-audit\.ts$)/;
+const MUTATION_EXCLUDED = /^src\/(?:db\/(?:migrations\/|schema\.ts$|expo-sqlite\.server\.js$)|domain\/brand-mark-audit\.ts$|sync\/database\.types\.ts$)/;
 
 /**
  * Whether a path is inside the gate at all.

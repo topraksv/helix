@@ -19,7 +19,7 @@
  */
 
 import { useState } from "react";
-import { View } from "react-native";
+import { Text, View } from "react-native";
 import { useRouter, type Href } from "expo-router";
 import { Image } from "expo-image";
 import * as DocumentPicker from "expo-document-picker";
@@ -62,9 +62,10 @@ import {
 } from "../ui/components";
 import { placeholderPools, useRotatingPlaceholder } from "../ui/placeholders";
 import { useUndo } from "../ui/undo";
+import { useDirtyExitGuard } from "../ui/dirty-exit";
 import { shouldUseTripleTileGrid } from "../ui/responsive";
 import { useContentWidth } from "../ui/viewport";
-import { radius, spacing, type, useTheme } from "../ui/theme";
+import { font, radius, spacing, type, useTheme } from "../ui/theme";
 
 /** A picked screenshot, plus what the form needs to show it. */
 interface PickedImage extends FeedbackImage {
@@ -176,6 +177,17 @@ export default function FeedbackScreen() {
     setImages((current) => current.filter((_, position) => position !== index));
   };
 
+  /**
+   * An unsent report is a draft, and a screenshot is the expensive half of it.
+   *
+   * Nothing here is persisted: leaving the screen drops the message and every
+   * picked file, and a picture is the one part a person cannot retype. The
+   * guard asks before that happens, on the same terms as every other form in
+   * the app — the pictures are counted as well as the words, because attaching
+   * three screenshots and typing nothing is still work worth protecting.
+   */
+  const { allowExit } = useDirtyExitGuard((message.trim().length > 0 || images.length > 0) && !busy);
+
   const submit = async () => {
     setAttempted(true);
     if (feedbackMessageRejection(message) !== null) return;
@@ -184,7 +196,10 @@ export default function FeedbackScreen() {
       const result = await sendFeedback({ category, message, images });
       if (result === "sent") {
         undo.show(tr.feedback.sent);
-        router.back();
+        // The report has left the device, so there is no draft left to lose:
+        // the guard has to be told, or it would ask about discarding the thing
+        // it just watched being sent.
+        allowExit(() => router.back());
         return;
       }
       setImageError(
@@ -192,7 +207,9 @@ export default function FeedbackScreen() {
           ? tr.feedback.unauthenticated
           : result === "unconfigured"
             ? tr.feedback.unconfigured
-            : tr.feedback.failed,
+            : result === "rateLimited"
+              ? tr.feedback.rateLimited
+              : tr.feedback.failed,
       );
     } finally {
       setBusy(false);
@@ -201,17 +218,7 @@ export default function FeedbackScreen() {
 
   return (
     <Screen width="form">
-      <Body muted style={{ marginBottom: spacing.sm }}>{tr.feedback.intro}</Body>
-      {/* This form is a collection point: the message, the category and any
-          screenshot leave the device and travel through a third country. */}
-      <View style={{ marginBottom: spacing.lg, alignItems: "flex-start" }}>
-        <Button
-          label={tr.legal.readNotice}
-          variant="ghost"
-          size="sm"
-          onPress={() => router.push("/privacy" as Href)}
-        />
-      </View>
+      <Body muted style={{ marginBottom: spacing.lg }}>{tr.feedback.intro}</Body>
 
       <SectionHeader>{tr.feedback.categoryLabel}</SectionHeader>
       <View
@@ -345,8 +352,21 @@ export default function FeedbackScreen() {
         </Card>
       ) : null}
 
+      {/* This form is a collection point: the message, the category and any
+          screenshot leave the device and travel through a third country. So
+          the notice stays reachable from here — but as the last clause of the
+          sentence that already says what is sent, at the moment of sending,
+          rather than as a lone ghost button parked under the intro where it
+          read as an unrelated control. */}
       <Body muted style={{ marginBottom: spacing.lg, color: palette.textSecondary }}>
-        {tr.feedback.privacy}
+        {tr.feedback.privacy}{" "}
+        <Text
+          accessibilityRole="link"
+          onPress={() => router.push("/privacy" as Href)}
+          style={{ color: palette.primaryText, fontFamily: font.semibold }}
+        >
+          {tr.legal.readNotice}
+        </Text>
       </Body>
 
       <Row>

@@ -19,7 +19,7 @@ import { pendingSyncChangeCount, setAccountFrozen } from "../data/repo";
 import { tr } from "../i18n/tr";
 import { Body, Button, Card, Divider, Field, ListRow, PanelHeader, Screen } from "../ui/components";
 import { appAlert, appConfirm, appPrompt } from "../ui/dialog";
-import { spacing, type, useTheme } from "../ui/theme";
+import { density, spacing, type, useTheme } from "../ui/theme";
 import { navigateBack } from "../ui/navigation";
 import { useOperationGuard } from "../ui/operation-guard";
 import { useDirtyExitGuard } from "../ui/dirty-exit";
@@ -312,7 +312,10 @@ function CloudAccountSecurityScreen() {
           decision at a smaller scale, and the one a person reaches for first
           when what they actually want is a clean table rather than no account.
           Keeping it here means every irreversible choice is on one screen. */}
-      <Card>
+      {/* `rows`: the row IS the card here, so the card's own vertical padding
+          would sit outside its pressable and the hover would light a band
+          narrower than the box it lives in. */}
+      <Card rows>
         <View testID="account-data-reset-action">
           <ListRow
             icon={Eraser}
@@ -327,7 +330,7 @@ function CloudAccountSecurityScreen() {
       {/* The two ways an account ends, in order of severity and in one place.
           Deleting used to live at the foot of Settings, a screen away from the
           reversible version of the same decision. */}
-      <Card>
+      <Card rows>
         <View testID="account-freeze-action">
           <ListRow
             icon={Snowflake}
@@ -339,7 +342,9 @@ function CloudAccountSecurityScreen() {
           />
         </View>
         {freezePhase ? (
-          <OperationFlow kind="freeze" label={tr.operation.freezePhase[freezePhase]} />
+          <View style={{ paddingBottom: density.list.cardPadding }}>
+            <OperationFlow kind="freeze" label={tr.operation.freezePhase[freezePhase]} />
+          </View>
         ) : null}
         <Divider />
         <View testID="account-delete-action">
@@ -353,7 +358,11 @@ function CloudAccountSecurityScreen() {
             onPress={deleting ? undefined : () => void handleDeleteAccount()}
           />
         </View>
-        {deleting ? <OperationFlow kind="delete" label={tr.operation.deletingAccount} /> : null}
+        {deleting ? (
+          <View style={{ paddingBottom: density.list.cardPadding }}>
+            <OperationFlow kind="delete" label={tr.operation.deletingAccount} />
+          </View>
+        ) : null}
       </Card>
       </WorkspaceGrid>
     </Screen>
