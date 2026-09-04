@@ -110,6 +110,41 @@ async function enterAmountViaCalculator(page: Page, field: Locator, raw: string,
   await expect(field).toHaveValue(expected);
 }
 
+/**
+ * A controlled numeric field, filled and CONFIRMED to have taken the value.
+ *
+ * `fill` writes the DOM value and dispatches one `input`. That is enough for
+ * an uncontrolled input and not always enough for a controlled one: if a
+ * re-render lands between the write and React's commit, the state — which is
+ * still empty — is what survives. Nothing fails at the fill; the field simply
+ * reads blank several steps later, which is how run 33888791602 reported it as
+ * a missing "amounts disagree" alert. This app re-renders on a timer while
+ * nobody touches it, because the market feed polls every ten seconds and the
+ * E2E fixture blocks its host, so the window for that is open the whole run.
+ *
+ * Typing the value instead was measured and is WORSE: `pressSequentially`
+ * turned "10" into "1" on Firefox four runs in five, with or without a delay
+ * between keys — the re-render after the first key discards the second.
+ *
+ * So the fill is repeated rather than replaced, which is what a person does
+ * when a field does not take, and the assertion is what makes a genuine drop
+ * fail HERE — naming the field and both values — instead of surfacing three
+ * steps later as something that did not appear. Three attempts, then the
+ * failure stands: a field that will not take a value in three tries is a
+ * defect and not a race.
+ */
+async function enterQuantity(field: Locator, value: string) {
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    await field.fill(value);
+    try {
+      await expect(field).toHaveValue(value, { timeout: 2_000 });
+      return;
+    } catch (error) {
+      if (attempt === 3) throw error;
+    }
+  }
+}
+
 test("a card's trailing action leaves the same gap as its first row", async ({ page }) => {
   await onboard(page);
   // A future-dated expense gives the Upcoming card a row and its footer link.
@@ -1400,12 +1435,12 @@ test("a mistaken investment journal and its selected ledger refund are removed t
   await page.getByRole("textbox", { name: "Ürün adı", exact: true }).fill("Yanlış ürün");
   await page.getByRole("button", { name: "Ürünü Kaydet", exact: true }).click();
   await page.getByRole("button", { name: "Sahip Olduğumu Ekle" }).click();
-  await page.getByRole("textbox", { name: "Miktar / adet · zorunlu", exact: true }).fill("1");
+  await enterQuantity(page.getByRole("textbox", { name: "Miktar / adet · zorunlu", exact: true }), "1");
   await page.getByRole("textbox", { name: "Birim fiyat · zorunlu", exact: true }).fill("100.000");
   await page.getByRole("button", { name: "Mevcut yatırımı ekle", exact: true }).click();
 
   await page.getByRole("button", { name: "Satış Yap" }).click();
-  await page.getByRole("textbox", { name: "Miktar / adet · zorunlu", exact: true }).fill("1");
+  await enterQuantity(page.getByRole("textbox", { name: "Miktar / adet · zorunlu", exact: true }), "1");
   await page.getByRole("textbox", { name: "Birim fiyat · zorunlu", exact: true }).fill("100.000");
   await page.getByRole("button", { name: "Satış yap", exact: true }).click();
 
@@ -1485,7 +1520,7 @@ test("investment setup, weighted sale, BES contribution and wallet refund form o
   await page.getByRole("button", { name: "Ürünü Kaydet", exact: true }).click();
 
   await page.getByTestId("screen-header").getByRole("button", { name: "İşlem Ekle", exact: true }).click();
-  await page.getByRole("textbox", { name: "Miktar / adet · zorunlu", exact: true }).fill("10");
+  await enterQuantity(page.getByRole("textbox", { name: "Miktar / adet · zorunlu", exact: true }), "10");
   await enterAmountViaCalculator(
     page,
     page.getByRole("textbox", { name: "Birim fiyat · zorunlu", exact: true }),
@@ -1500,7 +1535,7 @@ test("investment setup, weighted sale, BES contribution and wallet refund form o
   await expect(page.getByText("SASA", { exact: true }).first()).toBeVisible();
 
   await page.getByRole("button", { name: "Satış Yap" }).click();
-  await page.getByRole("textbox", { name: "Miktar / adet · zorunlu", exact: true }).fill("4");
+  await enterQuantity(page.getByRole("textbox", { name: "Miktar / adet · zorunlu", exact: true }), "4");
   // Through the calculator seam, for the reason the helper already gives: a
   // controlled MoneyField loses keystrokes on Firefox under CI load. The buy
   // step above was hardened when that was first measured and this one was not,
@@ -1974,7 +2009,7 @@ test("investment summary keeps financial meaning grouped on phone and desktop", 
   await page.getByRole("button", { name: "Ürünü Kaydet", exact: true }).click();
   await page.getByTestId("screen-header").getByRole("button", { name: "İşlem Ekle", exact: true }).click();
   await pickOption(page, "Ürün", "Uzun Vadeli Büyüme Sepeti · Borsa");
-  await page.getByRole("textbox", { name: "Miktar / adet · zorunlu", exact: true }).fill("12");
+  await enterQuantity(page.getByRole("textbox", { name: "Miktar / adet · zorunlu", exact: true }), "12");
   await page.getByRole("textbox", { name: "Birim fiyat · zorunlu", exact: true }).fill("1.250");
 
   const summary = page.getByTestId("investment-operation-summary");
