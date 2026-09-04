@@ -41,7 +41,7 @@ import {
   type PaletteId,
   type ThemePreference,
 } from "../ui/theme";
-import { Button, EmptyState, Screen, Title, WaitingNotice } from "../ui/components";
+import { Badge, Button, EmptyState, Screen, Title, WaitingNotice } from "../ui/components";
 import { useLifecycleIntent, type LifecycleIntent } from "../ui/lifecycle-intent";
 import type { OperationFlowKind } from "../ui/operation-flow";
 
@@ -337,9 +337,20 @@ export default function RootLayout() {
                 icon={bootEnding.icon}
                 title={bootEnding.title}
                 hint={bootEnding.hint}
-                action={
+                action={bootEnding.blocked ? (
+                  /* A STATUS, not a refused control.
+                     It used to be a disabled `Button`, and a disabled control
+                     is dimmed to `stateOpacity.disabled`: measured on the light
+                     theme, "Diğer Sekmede Açık" rendered at 2.07:1 against its
+                     own chip — the app holds 4.5:1 everywhere else, and this is
+                     the one line explaining why the screen will not open. It
+                     was also never an action. Nothing happens when it is
+                     pressed and nothing is meant to; the page reloads itself
+                     within about two seconds of the other tab closing. Saying
+                     that as a badge is both legible and true. */
+                  <Badge icon={AppWindow} text={bootEnding.action} />
+                ) : (
                   <Button
-                    disabled={bootEnding.blocked}
                     label={bootEnding.action}
                     onPress={() => {
                       // On web the usual cause is another tab holding the
@@ -363,7 +374,7 @@ export default function RootLayout() {
                       setAttempt((a) => a + 1);
                     }}
                   />
-                }
+                )}
               />
             </View>
           ) : (

@@ -113,6 +113,12 @@ function expectBodyTextContrast(palette: Palette): void {
     [palette.textStrong, palette.background],
     [palette.textSecondary, palette.surface],
     [palette.textSecondary, palette.surfaceAlt],
+    // The page itself, not a card on it. Every full-screen state — the boot
+    // failure, the empty states, the recovery notice — paints `background` and
+    // puts its explanation in `textSecondary`, and that pair was the one this
+    // list did not measure.
+    [palette.textSecondary, palette.background],
+    [palette.textStrong, palette.surface],
     [palette.textMuted, palette.background],
     [palette.textMuted, palette.surface],
     [palette.primaryText, palette.surface],

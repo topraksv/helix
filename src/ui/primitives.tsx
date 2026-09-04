@@ -824,9 +824,34 @@ export function InlineDisclosure(props: Parameters<typeof Button>[0]) {
   );
 }
 
-export function Divider() {
+/**
+ * A rule between two things, and the space around it belongs to what it
+ * separates.
+ *
+ * Two blocks need air on both sides of the line, which is the default. ROWS do
+ * not: a `ListRow` carries its own vertical padding INSIDE its pressable, so a
+ * divider that adds eight more on each side pushes the rule away from both
+ * rows — and because the padding is inside the pressable and the margin is
+ * outside it, the hovered row lights a band that stops short of the line.
+ * That is the "the fill does not reach the edge" defect, reported twice, and
+ * the gap between Freeze and Delete Account is the same eight pixels seen from
+ * the other side.
+ *
+ * So a divider between rows is `flush` and the rows own the spacing, exactly
+ * as `Card`'s `rows` prop makes the card give its own padding up to them.
+ * `tests/design-system-contract` holds the two together.
+ */
+export function Divider({ flush = false }: { flush?: boolean } = {}) {
   const { palette } = useTheme();
-  return <View style={{ height: StyleSheet.hairlineWidth, backgroundColor: palette.border, marginVertical: spacing.sm }} />;
+  return (
+    <View
+      style={{
+        height: StyleSheet.hairlineWidth,
+        backgroundColor: palette.border,
+        marginVertical: flush ? 0 : spacing.sm,
+      }}
+    />
+  );
 }
 
 /**

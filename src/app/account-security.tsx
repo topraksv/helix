@@ -125,7 +125,10 @@ function CloudAccountSecurityScreen() {
         setResetBusy(true);
         try {
           const error = await requestPasswordReset(email);
-          void appAlert(error ?? tr.auth.resetSent, error ? tr.errors.title : tr.account.resetLinkTitle);
+          void appAlert(
+            error ?? tr.auth.resetSentToOwnAddress(email),
+            error ? tr.errors.title : tr.account.resetLinkTitle,
+          );
         } finally {
           setResetBusy(false);
         }
@@ -346,7 +349,7 @@ function CloudAccountSecurityScreen() {
             <OperationFlow kind="freeze" label={tr.operation.freezePhase[freezePhase]} />
           </View>
         ) : null}
-        <Divider />
+        <Divider flush />
         <View testID="account-delete-action">
           <ListRow
             icon={Trash2}

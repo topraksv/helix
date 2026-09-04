@@ -185,7 +185,7 @@ function CloudDataResetScreen() {
           <PanelHeader icon={Eraser} title={tr.dataReset.scopeSection} description={tr.dataReset.intro} />
           {RESET_SCOPES.map((scope, index) => (
             <View key={scope}>
-              {index > 0 ? <Divider /> : null}
+              {index > 0 ? <Divider flush /> : null}
               <ListRow
                 icon={SCOPE_ICONS[scope]}
                 title={tr.dataReset.scope[scope]}

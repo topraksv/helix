@@ -646,8 +646,12 @@ export default function DashboardScreen() {
           // screen, so the gesture and the back button agree.
           onPress={() => router.push("/analytics")}
         />
-        <Divider />
-        <View style={{ paddingBottom: density.list.cardPadding }}>
+        {/* Flush, because the row above it is a pressable that carries its own
+            padding: a divider with margins pushed the rule eight pixels clear
+            of the row and the hover fill stopped there, short of it. The block
+            below takes that half of the space back so the chart does not move. */}
+        <Divider flush />
+        <View style={{ paddingTop: spacing.sm, paddingBottom: density.list.cardPadding }}>
         {hasMonthFlow ? (
           <>
             <Segmented

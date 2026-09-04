@@ -68,7 +68,7 @@ export function TransactionRow({
           <IconButton icon={Trash2} tone="danger" label={`${tr.common.delete} · ${dateText}`} haptic="none" onPress={onDelete} />
         </Row>
       </Spread>
-      {divider ? <Divider /> : null}
+      {divider ? <Divider flush /> : null}
     </View>
   );
 }

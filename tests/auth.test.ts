@@ -11,7 +11,6 @@ import {
   type LoginHistoryStorage,
 } from "../src/auth/login-history";
 import {
-  expoGoPreviewUrl,
   parsePasswordRecoveryUrl,
   passwordRecoveryRequestRedirect,
   webPasswordRecoveryRedirectUrl,
@@ -107,12 +106,6 @@ describe("password recovery links", () => {
       origin: "https://example.com",
       baseUrl: "/preview",
     })).toBe("https://example.com/preview/reset-password");
-  });
-
-  it("returns to the latest compatible Expo Go preview channel after recovery", () => {
-    expect(expoGoPreviewUrl()).toBe(
-      "exp://u.expo.dev/f71b0477-c800-45cc-903a-9b4d32a9c6b4?runtime-version=exposdk%3A54.0.0&channel-name=preview",
-    );
   });
 
   it("parses web PKCE codes and native token deep links", () => {

@@ -836,7 +836,7 @@ export function CardList<T>({
       {header}
       {items.map((item, i) => (
         <React.Fragment key={keyExtractor(item, i)}>
-          {i > 0 ? <Divider /> : null}
+          {i > 0 ? <Divider flush /> : null}
           <FadeIn delay={staggerDelay(i, items.length)}>{renderItem(item, i)}</FadeIn>
         </React.Fragment>
       ))}

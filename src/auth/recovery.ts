@@ -12,8 +12,6 @@ type RecoveryTarget =
 
 const PRODUCTION_WEB_ORIGIN = "https://topraksv.github.io";
 const PRODUCTION_WEB_BASE_URL = "/helix";
-const EXPO_PROJECT_ID = "f71b0477-c800-45cc-903a-9b4d32a9c6b4";
-const EXPO_GO_RUNTIME = "exposdk:54.0.0";
 
 /** Expo Linking does not add Router's web base path to createURL(). */
 export function webPasswordRecoveryRedirectUrl(origin: string, baseUrl: string): string {
@@ -39,12 +37,6 @@ export function passwordRecoveryRequestRedirect(
   return runtime.platform === "web"
     ? webPasswordRecoveryRedirectUrl(runtime.origin, runtime.baseUrl)
     : webPasswordRecoveryRedirectUrl(PRODUCTION_WEB_ORIGIN, PRODUCTION_WEB_BASE_URL);
-}
-
-/** Stable channel URL returned by Expo's official EAS Update QR service. It
- * opens the latest compatible preview rather than pinning a release group. */
-export function expoGoPreviewUrl(): string {
-  return `exp://u.expo.dev/${EXPO_PROJECT_ID}?runtime-version=${encodeURIComponent(EXPO_GO_RUNTIME)}&channel-name=preview`;
 }
 
 /** Recovery credentials are bearer material. Accept them only on the exact

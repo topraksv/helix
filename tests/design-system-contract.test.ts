@@ -635,6 +635,43 @@ describe("a press lights the control it is on", () => {
   });
 
   /**
+   * A divider between rows adds no space of its own.
+   *
+   * `Divider`'s default carries `spacing.sm` above and below, which is right
+   * between two blocks and wrong between two rows: a `ListRow` already carries
+   * its vertical padding INSIDE its pressable, so eight more pixels outside it
+   * push the rule away from the row — and the hovered row then lights a band
+   * that stops short of the line. That is the "fill does not reach the edge"
+   * defect seen from one side and the gap between Freeze and Delete Account
+   * seen from the other: one cause, reported twice.
+   *
+   * Measured after the fix: the hovered row's fill ends at exactly the rule,
+   * zero pixels short.
+   */
+  it("keeps a divider inside a rows card flush against them", () => {
+    const offenders: string[] = [];
+    for (const path of sourceFiles("src", { atLeast: 150 }).filter((file) => file.endsWith(".tsx"))) {
+      const lines = readFileSync(join(root, path), "utf8").split("\n");
+      let depth = 0;
+      let inRowsCard = false;
+      for (const [index, line] of lines.entries()) {
+        if (/<Card\b/.test(line)) {
+          let tag = line;
+          for (let ahead = 1; ahead <= 5 && !tag.includes(">"); ahead += 1) tag += ` ${lines[index + ahead] ?? ""}`;
+          depth += 1;
+          if (depth === 1) inRowsCard = /\brows\b/.test(tag.split(">")[0] ?? "");
+        }
+        if (/<\/Card>/.test(line)) {
+          depth = Math.max(0, depth - 1);
+          if (depth === 0) inRowsCard = false;
+        }
+        if (inRowsCard && /<Divider\s*\/>/.test(line)) offenders.push(`${path}:${index + 1}`);
+      }
+    }
+    expect(offenders, "a divider between rows is `flush`; the rows own the spacing").toEqual([]);
+  });
+
+  /**
    * Consent looks different once it has been given.
    *
    * As a bare row the only thing approving changed was fourteen pixels of

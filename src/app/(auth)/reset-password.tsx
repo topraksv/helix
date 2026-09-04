@@ -6,7 +6,6 @@ import AlertCircle from "lucide-react-native/icons/circle-alert";
 import CheckCircle2 from "lucide-react-native/icons/circle-check";
 import KeyRound from "lucide-react-native/icons/key-round";
 import { useSession } from "../../auth/session";
-import { expoGoPreviewUrl } from "../../auth/recovery";
 import { tr } from "../../i18n/tr";
 import { DelayedLoadingIndicator } from "../../ui/loading-indicator";
 import { Body, Button, Field, Screen } from "../../ui/components";
@@ -26,7 +25,6 @@ export default function ResetPasswordScreen() {
   const [password, setPassword] = useState("");
   const [confirmation, setConfirmation] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [launchError, setLaunchError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const operationGuard = useOperationGuard();
 
@@ -75,15 +73,12 @@ export default function ResetPasswordScreen() {
     );
   }
 
+  // One way out, and it is the one the screen is about. There used to be a
+  // second button offering to open Expo Go: a deep link into a DIFFERENT
+  // client, offered to somebody who had just finished a task in this one, with
+  // its own failure message to explain when it did not work. Whoever gets here
+  // came from a reset e-mail to sign in, so signing in is the whole button.
   const returnToSignIn = () => router.replace("/(auth)/sign-in");
-  const openExpoGo = async () => {
-    setLaunchError(null);
-    try {
-      await Linking.openURL(expoGoPreviewUrl());
-    } catch {
-      setLaunchError(tr.auth.expoGoOpenFailed);
-    }
-  };
   if (state === "expired" || state === "invalid" || state === "success") {
     const success = state === "success";
     return (
@@ -102,12 +97,6 @@ export default function ResetPasswordScreen() {
             {success ? tr.auth.resetSuccessBody : state === "expired" ? tr.auth.resetExpiredBody : tr.auth.resetInvalidBody}
           </Body>
           <Button label={success ? tr.auth.signInAction : tr.auth.requestNewLink} onPress={returnToSignIn} />
-          {success ? <Button label={tr.auth.openInExpoGo} variant="secondary" onPress={() => void openExpoGo()} /> : null}
-          {launchError ? (
-            <Text accessibilityRole="alert" accessibilityLiveRegion="assertive" style={[type.small, { color: palette.errorText, textAlign: "center" }]}>
-              {launchError}
-            </Text>
-          ) : null}
         </View>
       </Screen>
     );

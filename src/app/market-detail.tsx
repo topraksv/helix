@@ -27,7 +27,7 @@ import { useLocalSearchParams } from "expo-router";
 import TrendingDown from "lucide-react-native/icons/trending-down";
 import TrendingUp from "lucide-react-native/icons/trending-up";
 import { INVESTMENT_MARKET_TITLES } from "../domain/investment-catalog";
-import { historyChange, type MarketHistoryPoint, type MarketRange } from "../domain/market";
+import { historyDelta, historyExtent, type MarketHistoryPoint, type MarketRange } from "../domain/market";
 import { fetchMarketHistory, useMarkets } from "../services/markets";
 import { clockOrDateTimeLabel, marketRateLabel, tr } from "../i18n/tr";
 import { Body, Button, Card, Label, Row, Screen, Segmented, Spread, Title } from "../ui/components";
@@ -129,7 +129,9 @@ export default function MarketDetailScreen() {
     );
   }
 
-  const change = points ? historyChange(points) : null;
+  const delta = points ? historyDelta(points) : null;
+  const extent = points ? historyExtent(points) : null;
+  const change = delta?.ratio ?? null;
   const changeColor = change == null || change === 0
     ? palette.textSecondary
     : change > 0 ? palette.positive : palette.negative;
@@ -145,18 +147,24 @@ export default function MarketDetailScreen() {
         <Card>
           <Label>{title.label}</Label>
           {price ? (
+            /* Two prices, one column, in the order they matter.
+               The sell price is what this screen is for and it leads, with its
+               caption ABOVE it rather than beneath — a figure whose label
+               follows it has to be read twice. The buy price is the same quote
+               at a smaller scale directly under it, so the pair reads as one
+               thing. It used to be the big number with its label underneath
+               and the buy price pushed out to the right of a spread, which put
+               the two halves of one quote on two different axes. */
             <>
-              <Text selectable style={[type.amountMd, { color: palette.text, marginTop: spacing.xs }]}>
+              <Body muted style={{ fontSize: type.small.fontSize, marginTop: spacing.sm }}>{tr.markets.sell}</Body>
+              <Text selectable style={[type.amountMd, { color: palette.text }]}>
                 {`${marketRateLabel(price.sellTry)} ₺`}
               </Text>
-              <Body muted style={{ fontSize: type.small.fontSize }}>{tr.markets.sell}</Body>
-              <Spread style={{ marginTop: spacing.md, alignItems: "baseline" }}>
-                <Body muted style={{ fontSize: type.small.fontSize }}>{tr.markets.buy}</Body>
-                <Text style={[type.amount, { color: palette.textSecondary }]}>
-                  {marketRateLabel(price.buyTry)}
-                </Text>
-              </Spread>
-              <Body muted style={{ fontSize: type.small.fontSize, marginTop: spacing.xs }}>
+              <Body muted style={{ fontSize: type.small.fontSize, marginTop: spacing.sm }}>{tr.markets.buy}</Body>
+              <Text selectable style={[type.amount, { color: palette.textSecondary }]}>
+                {`${marketRateLabel(price.buyTry)} ₺`}
+              </Text>
+              <Body muted style={{ fontSize: type.small.fontSize, marginTop: spacing.md }}>
                 {tr.markets.updatedAt(clockOrDateTimeLabel(price.receivedAt))}
               </Body>
             </>
@@ -183,17 +191,6 @@ export default function MarketDetailScreen() {
             </View>
           ) : (
             <>
-              <Spread style={{ marginBottom: spacing.sm }}>
-                <Body muted style={{ fontSize: type.small.fontSize }}>
-                  {tr.markets.rangeChange(tr.markets.range[range])}
-                </Body>
-                <Row gap={spacing.xs} style={{ alignItems: "center" }}>
-                  {ChangeIcon ? <ChangeIcon accessible={false} size={14} color={changeColor} /> : null}
-                  <Body style={{ color: changeColor }}>
-                    {change == null ? tr.markets.unchanged : `%${marketRateLabel(change * 100)}`}
-                  </Body>
-                </Row>
-              </Spread>
               <ChartFrame>
                 {(chartWidth) => (
                   <Lines
@@ -212,6 +209,38 @@ export default function MarketDetailScreen() {
                   />
                 )}
               </ChartFrame>
+              {/* The figures belong UNDER the shape they describe. They sat
+                  above it, so one answer took three glances: the range picker,
+                  then a percentage, then the plot. The floor and ceiling come
+                  first because they are what say whether today's price is
+                  high; the move over the range comes last, in lira as well as
+                  per cent, because a percentage alone does not say how much
+                  money — 0,4% of a Cumhuriyet altını is not a rounding error. */}
+              {extent ? (
+                <Spread style={{ marginTop: spacing.md, alignItems: "flex-start" }}>
+                  <View>
+                    <Body muted style={{ fontSize: type.small.fontSize }}>{tr.markets.rangeLow}</Body>
+                    <Text style={[type.amountSm, { color: palette.text }]}>{`${marketRateLabel(extent.low)} ₺`}</Text>
+                  </View>
+                  <View style={{ alignItems: "flex-end" }}>
+                    <Body muted style={{ fontSize: type.small.fontSize }}>{tr.markets.rangeHigh}</Body>
+                    <Text style={[type.amountSm, { color: palette.text }]}>{`${marketRateLabel(extent.high)} ₺`}</Text>
+                  </View>
+                </Spread>
+              ) : null}
+              <Spread style={{ marginTop: spacing.sm, alignItems: "center" }}>
+                <Body muted style={{ fontSize: type.small.fontSize }}>
+                  {tr.markets.rangeChange(tr.markets.range[range])}
+                </Body>
+                <Row gap={spacing.xs} style={{ alignItems: "center" }}>
+                  {ChangeIcon ? <ChangeIcon accessible={false} size={14} color={changeColor} /> : null}
+                  <Body style={{ color: changeColor }}>
+                    {delta == null
+                      ? tr.markets.unchanged
+                      : `${delta.absoluteTry > 0 ? "+" : ""}${marketRateLabel(delta.absoluteTry)} ₺ · %${marketRateLabel(delta.ratio * 100)}`}
+                  </Body>
+                </Row>
+              </Spread>
             </>
           )}
           <Body muted style={{ fontSize: type.small.fontSize, marginTop: spacing.md }}>

@@ -8,6 +8,8 @@ import {
   deriveMarketQuotes,
   freshMarketQuote,
   historyChange,
+  historyDelta,
+  historyExtent,
   liveMarketSymbol,
   MARKET_DATA_HOST,
   MARKET_PAIRS,
@@ -410,7 +412,37 @@ describe("the past of one instrument", () => {
     expect(historyChange([{ at: 1, valueTry: 100 }])).toBeNull();
     expect(historyChange([])).toBeNull();
     expect(historyChange([{ at: 1, valueTry: 0 }, { at: 2, valueTry: 90 }])).toBeNull();
+  })
+
+  it("says what a range moved in lira as well as per cent", () => {
+    // A percentage answers "how much" and not "how much money", and on an
+    // instrument priced in the tens of thousands those are different
+    // questions. Both come off the same two endpoints, so they cannot
+    // disagree about which points they read.
+    expect(historyDelta([{ at: 1, valueTry: 100 }, { at: 2, valueTry: 110 }]))
+      .toEqual({ absoluteTry: 10, ratio: expect.closeTo(0.1, 9) });
+    expect(historyDelta([{ at: 1, valueTry: 100 }, { at: 2, valueTry: 90 }]))
+      .toEqual({ absoluteTry: -10, ratio: expect.closeTo(-0.1, 9) });
+    expect(historyDelta([{ at: 1, valueTry: 100 }])).toBeNull();
+    expect(historyDelta([])).toBeNull();
+    // Same refusal as `historyChange`: a zero opening price has no ratio, so
+    // there is no delta to report either.
+    expect(historyDelta([{ at: 1, valueTry: 0 }, { at: 2, valueTry: 90 }])).toBeNull();
   });
+
+  it("reads the floor and ceiling from every point, not from the ends", () => {
+    // A month that opened and closed at the same price still has a low and a
+    // high, and those are what say whether today's figure is high.
+    const points = [
+      { at: 1, valueTry: 100 },
+      { at: 2, valueTry: 140 },
+      { at: 3, valueTry: 80 },
+      { at: 4, valueTry: 100 },
+    ];
+    expect(historyExtent(points)).toEqual({ low: 80, high: 140 });
+    expect(historyExtent([{ at: 1, valueTry: 42 }])).toEqual({ low: 42, high: 42 });
+    expect(historyExtent([])).toBeNull();
+  });;
 
   it("asks the exchange for one symbol's candles over the chosen range", () => {
     const url = new URL(marketKlineUrl("PAXGTRY", "1d", 30));

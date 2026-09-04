@@ -452,6 +452,12 @@ export const tr = {
     sendResetLink: "Yenileme Bağlantısı Gönder",
     resendResetLink: "Bağlantıyı Tekrar Gönder",
     resetSent: "Bu adresle bir hesap varsa şifre yenileme bağlantısı gönderildi. Gelen kutunu ve gereksiz klasörünü kontrol et.",
+    /** Signed IN, where the account is not in question and the address is
+     *  known. The hedge above protects a signed-out form from confirming which
+     *  addresses are registered; here it would only be telling somebody their
+     *  own account might not exist. */
+    resetSentToOwnAddress: (email: string) =>
+      `Şifre yenileme bağlantısı ${email} adresine gönderildi. Gelen kutunu ve gereksiz klasörünü kontrol et.`,
     backToSignIn: "Giriş ekranına dön",
     resetTitle: "Yeni şifreni belirle",
     resetSubtitle: "Hesabın için en az 8 karakterli yeni bir şifre oluştur.",
@@ -461,8 +467,6 @@ export const tr = {
     resetSave: "Şifreyi Yenile",
     resetSuccessTitle: "Şifren yenilendi",
     resetSuccessBody: "Yeni şifrenle güvenle giriş yapabilirsin.",
-    openInExpoGo: "Expo Go'da Aç",
-    expoGoOpenFailed: "Expo Go açılamadı. Expo Go'yu açıp preview güncellemesini yeniden seç.",
     resetExpiredTitle: "Bağlantının süresi dolmuş",
     resetExpiredBody: "Güvenliğin için yenileme bağlantıları sınırlı süre geçerlidir. Giriş ekranından yeni bir bağlantı iste.",
     resetInvalidTitle: "Bağlantı kullanılamıyor",
@@ -1798,7 +1802,9 @@ export const tr = {
     rangeChange: (range: string) => `${range} değişimi`,
     historyLoading: "Geçmiş yükleniyor",
     historyUnavailable: "Geçmiş veriye şu an ulaşılamıyor.",
-    sourceNote: "Fiyatlar, halka açık borsa emir defterlerinden hesaplanır: bir ons altının lira karşılığı gram ve sarrafiye ayarına bölünür. Sikkeler yasal has altın içeriğiyle değerlenir; kuyumcu işçiliği eklenmez.",
+    sourceNote: "Fiyatlar halka açık borsa emir defterlerinden anlık olarak alınır.",
+    rangeLow: "En düşük",
+    rangeHigh: "En yüksek",
     updatedAt: (t: string) => `Son güncelleme: ${t}`,
     connecting: "Bağlanıyor…",
     offline: "Çevrimdışı",

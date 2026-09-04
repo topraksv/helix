@@ -300,7 +300,22 @@ export function buildHistorySeries(
 }
 
 /** Move from the first point to the last, as a fraction. Null if unmeasurable. */
-export function historyChange(points: readonly MarketHistoryPoint[]): number | null {
+/**
+ * What the range moved, in lira as well as in per cent.
+ *
+ * A percentage answers "how much" and not "how much money", and on an
+ * instrument priced in the tens of thousands those are different questions:
+ * 0,4% of a Cumhuriyet altını is not a rounding error.
+ *
+ * The guard lives HERE and only here. It was written twice — once for the
+ * ratio and once for the pair — and the second copy could not fail, because
+ * the first had already established both endpoints: mutation left it standing
+ * with nothing able to kill it, which is what an unreachable branch looks like
+ * from the outside.
+ */
+export function historyDelta(
+  points: readonly MarketHistoryPoint[],
+): { absoluteTry: number; ratio: number } | null {
   // Destructured rather than indexed from both ends: `rest` being empty is
   // exactly "there is only one point", so the one-point case and the no-point
   // case are each caught by a check that can genuinely fail, instead of by a
@@ -308,5 +323,41 @@ export function historyChange(points: readonly MarketHistoryPoint[]): number | n
   const [first, ...rest] = points;
   const last = rest[rest.length - 1];
   if (!first || !last || first.valueTry <= 0) return null;
-  return last.valueTry / first.valueTry - 1;
+  return {
+    absoluteTry: last.valueTry - first.valueTry,
+    ratio: last.valueTry / first.valueTry - 1,
+  };
+}
+
+/** The ratio on its own, for callers that only want the percentage. */
+export function historyChange(points: readonly MarketHistoryPoint[]): number | null {
+  return historyDelta(points)?.ratio ?? null;
+}
+
+/**
+ * The lowest and highest the range ever reached.
+ *
+ * Not the endpoints: a month that opened and closed at the same price still
+ * has a floor and a ceiling, and those are what say whether today's figure is
+ * high. Seeded from the first point rather than from infinities, so "there are
+ * no points" is the one thing that returns null and the sentinels never have
+ * to be checked for afterwards.
+ */
+export function historyExtent(
+  points: readonly MarketHistoryPoint[],
+): { low: number; high: number } | null {
+  const [first, ...rest] = points;
+  if (!first) return null;
+  // `Math.min`/`Math.max` rather than a comparison and an assignment. The
+  // hand-written form carried two branches whose `<` and `<=` cannot be told
+  // apart by any input — assigning on equality changes nothing — so mutation
+  // left them standing for ever. These say the same thing with no operator to
+  // get wrong, and swapping the two functions IS observable.
+  let low = first.valueTry;
+  let high = first.valueTry;
+  for (const point of rest) {
+    low = Math.min(low, point.valueTry);
+    high = Math.max(high, point.valueTry);
+  }
+  return { low, high };
 }

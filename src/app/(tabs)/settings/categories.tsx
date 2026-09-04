@@ -333,7 +333,7 @@ export default function CategoriesScreen({ header }: { header?: ReactNode } = {}
                         />
                       </Spread>
                     ) : null}
-                    {index < group.length - 1 ? <Divider /> : null}
+                    {index < group.length - 1 ? <Divider flush /> : null}
                   </View>
                 ) : (
                   <View

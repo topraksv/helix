@@ -1,13 +1,5 @@
 import { expect, test } from "@playwright/test";
-import {
-  addMarketExpense,
-  assertNoRuntimeErrors,
-  collectRuntimeErrors,
-  currentMonthKey,
-  isolateExternalData,
-  onboard,
-  openCashFlow,
-} from "./helpers";
+import { addMarketExpense, assertNoRuntimeErrors, collectRuntimeErrors, currentMonthKey, isolateExternalData, onboard, openCashFlow, renderedContrast } from "./helpers";
 
 test.beforeEach(async ({ context }) => isolateExternalData(context));
 
@@ -91,9 +83,16 @@ test("a second tab fails safely and its retry really recovers", async ({ page, c
   // hatası" sent someone looking for corrupted data over a tab they had open.
   await expect(second.getByText("Helix başka bir sekmede açık")).toBeVisible();
   // While the first tab still holds the database, reloading provably cannot
-  // work — so the control says which tab has it instead of offering an action
-  // that lands back on this screen.
-  await expect(second.getByRole("button", { name: "Diğer Sekmede Açık" })).toBeDisabled();
+  // work — so the screen states which tab has it instead of offering an action
+  // that lands back here. It says so as a STATUS and not as a refused button:
+  // a disabled control is dimmed to `stateOpacity.disabled`, and measured on
+  // the light theme this line rendered at 2.07:1 against its own chip, against
+  // the 4.5:1 the app holds everywhere else — illegible, on the one line
+  // explaining why the screen will not open.
+  await expect(second.getByText("Diğer Sekmede Açık")).toBeVisible();
+  await expect(second.getByRole("button", { name: "Diğer Sekmede Açık" })).toHaveCount(0);
+  const legible = await renderedContrast(second.getByText("Diğer Sekmede Açık"), "text");
+  expect(legible, "the only line explaining the screen has to be readable").toBeGreaterThanOrEqual(4.5);
 
   // The owning tab is untouched by the blocked one.
   await page.bringToFront();

@@ -496,7 +496,7 @@ export default function AnalysisScreen() {
           />
         </Spread>
       </Pressable>
-      {index < visibleResults.length - 1 ? <Divider /> : null}
+      {index < visibleResults.length - 1 ? <Divider flush /> : null}
     </View>
   );
 

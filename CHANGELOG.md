@@ -1,16 +1,16 @@
 # Değişiklik Kaydı
 
-Yayımlanan her sürüm, en yeni üstte. Her sürüm, o sürümde neyin değiştiğini
-maddeler hâlinde yazar — kullanıcının gördüğü şeyle, kısa cümlelerle.
-
-Yayımlanan sürüm numarası `app.json` içindeki `expo.version`'dır.
-`package.json` aynı değeri taşır ve `tests/release-config.test.ts` ikisinin
-ayrışmasını reddeder. Aynı test en üstteki başlığın o sürüm olmasını ve her
-sürümün en az bir madde taşımasını şart koşar — yani bu dosya güncellenmeden
-sürüm yükseltilemez, ki bu kaydın boş kalmamasının tek gerçek garantisi budur.
-
-Numaranın nasıl seçileceği ve etiketin nasıl atılacağı
+Yayımlanan her sürümde neyin değiştiği, en yeni üstte. Sürüm numarası
+`app.json` içindeki `expo.version`'dır; nasıl seçileceği
 [`docs/RELEASE.md`](docs/RELEASE.md) belgesindedir.
+
+## 1.4.1
+
+- "Bu ay net değişim" satırının ve benzerlerinin vurgusu artık çizgiye kadar uzanıyor; hesabı dondur ile hesabı sil arasındaki fazla boşluk da aynı sebepten kalktı.
+- Hesap içinden şifre yenileme istendiğinde "bu adresle bir hesap varsa" denmiyor; bağlantının hangi adrese gittiği yazıyor.
+- Açık temada "Helix başka bir sekmede açık" ekranındaki durum yazısı okunur hale geldi (2,07 kontrasttan çıktı).
+- Şifre yenilendikten sonra çıkan "Expo Go'da Aç" düğmesi kaldırıldı; tek yol giriş yapmak.
+- Piyasa detayında satış fiyatı üstte büyük, alış hemen altında daha küçük. Grafiğin altında artık aralığın en düşük ve en yüksek değeri ile değişim hem lira hem yüzde olarak yazıyor; alttaki uzun açıklama tek cümleye indi.
 
 ## 1.4.0
 
