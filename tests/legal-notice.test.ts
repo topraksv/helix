@@ -92,9 +92,22 @@ describe("KVKK notice", () => {
     })).toEqual({ view: "stack", redirect: null });
   });
 
-  it("says the account is what moves the data abroad, on the screen that creates one", () => {
-    expect(tr.legal.signUpNotice).toMatch(/Almanya|yurt dışı/i);
+  it("says the account is what takes the data off the device, on the screen that creates one", () => {
+    // The FACT is what this rule is about: creating an account is the moment
+    // records stop being device-only, and it has to be said where the account
+    // is created rather than only inside a document. WHERE they go is the
+    // notice's job and is asserted against the code below — a one-line form
+    // note that named a country said less accurately what the notice says in
+    // full, in the register of a warning, on the screen a person is trying to
+    // sign up from.
+    expect(tr.legal.signUpNotice).toMatch(/hesap oluşturduğunda/i);
+    expect(tr.legal.signUpNotice).toMatch(/cihazından çık/i);
+    expect(tr.legal.signUpNotice).toContain("Aydınlatma Metni");
     expect(read("src/app/(auth)/sign-in.tsx")).toContain("tr.legal.signUpNotice");
+    // And the document itself still names the transfer, in the section the
+    // statute expects it in.
+    expect(tr.legal.transferTitle).toMatch(/yurt dışı/i);
+    expect(tr.legal.transfers.join(" ")).toMatch(/Almanya/i);
   });
 
   it("discloses every processor the code actually talks to", () => {

@@ -17,10 +17,10 @@ appId: com.toprak.helix
     timeout: 90000
 - scrollUntilVisible:
     element:
-      text: "Şifremi Unuttum"
+      text: "Şifremi unuttum"
     direction: DOWN
     timeout: 10000
-- tapOn: "Şifremi Unuttum"
+- tapOn: "Şifremi unuttum"
 - assertVisible: "Şifreni yenile"
 - scrollUntilVisible:
     element:
@@ -31,13 +31,16 @@ appId: com.toprak.helix
 # Never reveal whether an address has an account: the form asks for one and
 # promises a link, and says nothing about who is registered.
 - assertNotVisible: "Hesabına giriş yap"
+# The reset screen's own way back, not the sign-up screen's. "Zaten hesabım
+# var" describes somebody who came here to create one; a person recovering the
+# account they already have is told where the link goes instead.
 - scrollUntilVisible:
     element:
-      text: "Giriş yap"
+      text: "Giriş ekranına dön"
     direction: DOWN
     timeout: 10000
-- tapOn: "Giriş yap"
+- tapOn: "Giriş ekranına dön"
 - extendedWaitUntil:
     visible: "Hesabına giriş yap"
     timeout: 20000
-- assertVisible: "Şifremi Unuttum"
+- assertVisible: "Şifremi unuttum"

@@ -166,15 +166,17 @@ export const tr = {
     /* The one-line version, shown where an account is about to be created. It
        has to carry the one fact a person cannot undo by reading the notice
        afterwards: creating an account is what starts the transfer abroad. */
-    signUpNotice: "Hesap oluşturduğunuzda e-posta adresiniz ve kayıtlarınız Almanya'daki sunucularda işlenir.",
+    signUpNotice: "Hesap oluşturduğunda e-postan ve kayıtların cihazından çıkıp bulut sunucularında tutulmaya başlar. Nereye ve neden olduğu Aydınlatma Metni'nde yazıyor.",
     readNotice: "Aydınlatma Metnini Oku",
     /* The consent gate on sign-up. It says "read and accept", so the control
        beside it has to make reading possible without leaving the form — which
        is what the notice sheet is for. */
     consentLabel: "Okudum, anladım ve kişisel verilerimin burada anlatıldığı şekilde işlenmesini kabul ediyorum.",
-    consentOpen: "Aydınlatma Metni'ni Oku ve Onayla",
+    consentOpen: "Aydınlatma Metni'ni oku ve onayla",
     consentGiven: "Aydınlatma Metni onaylandı",
     consentHint: "Metni açar; onay metnin sonundadır.",
+    consentView: "Görüntüle",
+    consentViewHint: "Onayladığın metni yeniden açar.",
     consentRequired: "Devam etmek için Aydınlatma Metni'ni okuyup onaylaman gerekiyor.",
   },
   meta: {
@@ -440,18 +442,17 @@ export const tr = {
     localSignOutDialogStepBackupDetail: "Yedek Oluştur ile verilerini dışa aktarabilirsin.",
     passwordMin: "En az 8 karakter",
     emailInvalid: "Geçerli bir e-posta adresi girin",
-    noAccount: "Hesabın yok mu?",
-    signUpAction: "Kayıt ol",
-    haveAccount: "Zaten hesabın var mı?",
+    createAccountAction: "Yeni hesap oluştur",
+    backToSignInAction: "Zaten hesabım var, giriş yap",
+    /** The reset screen's own button, where "giriş yap" IS the whole action. */
     signInAction: "Giriş yap",
-    forgotPassword: "Şifremi Unuttum",
+    forgotPassword: "Şifremi unuttum",
     forgotTitle: "Şifreni yenile",
     forgotSubtitle: "E-posta adresini yaz; güvenli şifre yenileme bağlantısını gönderelim.",
     sendResetLink: "Yenileme Bağlantısı Gönder",
     resendResetLink: "Bağlantıyı Tekrar Gönder",
     resetSent: "Bu adresle bir hesap varsa şifre yenileme bağlantısı gönderildi. Gelen kutunu ve gereksiz klasörünü kontrol et.",
-    rememberedPassword: "Şifreni hatırladın mı?",
-    backToSignIn: "Girişe Dön",
+    backToSignIn: "Giriş ekranına dön",
     resetTitle: "Yeni şifreni belirle",
     resetSubtitle: "Hesabın için en az 8 karakterli yeni bir şifre oluştur.",
     newPassword: "Yeni şifre",

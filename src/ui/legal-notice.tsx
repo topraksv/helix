@@ -30,9 +30,9 @@ import { Body, Button, Card, PanelHeader, SectionHeader } from "./components";
 import { useModalAccessibility } from "./accessibility";
 import { modalAnimationType } from "./modal-motion";
 import { useReducedMotion } from "./motion";
-import { interactionBleed, interactionSurface } from "./interaction";
+import { interactionSurface } from "./interaction";
 import { shouldPresentOptionsAsSheet } from "./responsive";
-import { borderWidth, controlSize, radius, spacing, themeShadow, type, useTheme } from "./theme";
+import { borderWidth, controlSize, font, radius, spacing, themeShadow, type, useTheme } from "./theme";
 import { selectionTap } from "./haptics";
 import { tr } from "../i18n/tr";
 
@@ -354,20 +354,26 @@ export function LegalConsentControl({
         accessibilityRole="checkbox"
         accessibilityState={{ checked: consented }}
         accessibilityLabel={consented ? tr.legal.consentGiven : tr.legal.consentOpen}
-        accessibilityHint={tr.legal.consentHint}
+        accessibilityHint={consented ? tr.legal.consentViewHint : tr.legal.consentHint}
         onPress={onOpen}
         style={(state) => ({
           flexDirection: "row",
           alignItems: "center",
           gap: spacing.sm,
           minHeight: controlSize.minimumTarget,
-          // Bled into the form's own padding and given straight back, so the
-          // hover and press fill reach the card's edges the way every other
-          // row in the app does. Through the one rule, not a local number:
-          // `tests/design-system-contract` refuses a hand-written inset here.
-          ...interactionBleed(spacing.sm),
-          borderRadius: radius.sm,
-          ...interactionSurface(palette, state),
+          paddingHorizontal: spacing.md,
+          paddingVertical: spacing.sm,
+          borderRadius: radius.md,
+          borderWidth: borderWidth.control,
+          // A BOX, and one that changes state visibly. As a bare row it read
+          // as a caption with a tick beside it, and approving changed one
+          // glyph — the only difference between "you still have to do this"
+          // and "this is done" was 14 pixels of check mark. It now carries the
+          // same success tint every completed thing in the app carries, and
+          // the border says it is a control rather than a sentence.
+          borderColor: consented ? palette.success + "66" : invalid ? palette.error : palette.controlBorder,
+          backgroundColor: consented ? palette.success + "14" : "transparent",
+          ...interactionSurface(palette, state, { base: "transparent" }),
         })}
       >
         <View
@@ -378,19 +384,27 @@ export function LegalConsentControl({
             borderRadius: radius.sm,
             alignItems: "center",
             justifyContent: "center",
-            backgroundColor: consented ? palette.primary : "transparent",
+            backgroundColor: consented ? palette.success : "transparent",
             borderWidth: consented ? 0 : borderWidth.control,
-            // The refusal is on the box as well as in the sentence below it:
-            // the sentence explains, the box says which control it is about.
             borderColor: invalid ? palette.error : palette.controlBorder,
           }}
         >
           {consented ? <Check accessible={false} size={14} strokeWidth={3} color={palette.onPrimary} /> : null}
         </View>
-        <Text style={[type.small, { flex: 1, color: consented ? palette.text : palette.textSecondary }]}>
+        <Text style={[type.small, { flex: 1, color: consented ? palette.successText : palette.text }]}>
           {consented ? tr.legal.consentGiven : tr.legal.consentOpen}
         </Text>
-        <ChevronRight accessible={false} size={16} color={palette.textSecondary} />
+        {/* Plain text, not a second control: a button inside a button is two
+            tab stops for one destination, and both would open the same sheet.
+            The whole box is the target; this says what pressing it does now
+            that there is nothing left to approve. */}
+        {consented ? (
+          <Text style={[type.small, { color: palette.primaryText, fontFamily: font.semibold }]}>
+            {tr.legal.consentView}
+          </Text>
+        ) : (
+          <ChevronRight accessible={false} size={16} color={palette.textSecondary} />
+        )}
       </Pressable>
       {invalid && !consented ? (
         <Text

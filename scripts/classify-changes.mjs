@@ -71,8 +71,18 @@ const HIGH_RISK = [
   /^src\/app\/(?:.*\/)?_layout\.tsx$/,
   /^src\/app\/\+html\.tsx$/,
   /^\.github\/workflows\/ci\.yml$/,
-  new RegExp(`^(?:${CI_EXECUTED_SCRIPTS.map((script) => script.replace(/[.]/g, "\\.")).join("|")})$`),
 ];
+
+/**
+ * The gate scripts are matched by EQUALITY, not by a pattern.
+ *
+ * They were folded into `HIGH_RISK` as a regex built from the list, which
+ * meant escaping path text into a pattern — and an escape that handles `.` and
+ * nothing else is the kind that is right until the first name containing a `+`
+ * or a `(`. CodeQL called it, correctly, before any such name existed. These
+ * are exact paths and comparing them as exact paths cannot be incomplete.
+ */
+const isCiExecutedScript = (path) => CI_EXECUTED_SCRIPTS.includes(path);
 
 /**
  * Repository material that cannot alter either delivered application.
@@ -206,10 +216,10 @@ export function classify(files) {
   }
 
   const unknown = relevant.filter(
-    (file) => !matches(file, HIGH_RISK) && !matches(file, KNOWN_LIGHT),
+    (file) => !matches(file, HIGH_RISK) && !isCiExecutedScript(file) && !matches(file, KNOWN_LIGHT),
   );
   const highRisk = relevant.filter(
-    (file) => matches(file, HIGH_RISK) || unknown.includes(file),
+    (file) => matches(file, HIGH_RISK) || isCiExecutedScript(file) || unknown.includes(file),
   );
   const deliveryControl = relevant.filter((file) => matches(file, DELIVERY_CONTROL));
   const shipping = relevant.filter((file) => !matches(file, NOT_SHIPPED));

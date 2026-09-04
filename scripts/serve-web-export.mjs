@@ -100,8 +100,15 @@ createServer(async (request, response) => {
     });
     response.end(await readFile(file));
   } catch (error) {
+    // The detail goes to whoever started the server, not down the socket. A
+    // stack trace in a response body names absolute paths, module layout and
+    // Node internals to anyone who can reach the port — and this one binds a
+    // port on a developer machine, which is not always only that machine.
+    // CodeQL flags the pattern rather than this instance, and it is right to:
+    // the difference between a preview server and a real one is a habit.
+    console.error("serve-web-export: request failed", error);
     response.writeHead(500, { "content-type": "text/plain; charset=utf-8" });
-    response.end(String(error));
+    response.end("Internal error");
   }
 }).listen(port, () => {
   console.log(`Helix web export on http://localhost:${port}${baseUrl}/`);

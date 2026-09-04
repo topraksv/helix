@@ -450,66 +450,42 @@ export default function SignInScreen() {
             }}
             disabled={!formReady}
           />
-          {/* ONE quiet-action row under the button, not three stacked ones.
-              Each block below used to carry its own 44pt target and its own
-              margin — the reset link, then the mode question, then the offline
-              note — so the footer took more vertical space than the form above
-              it and every mode drew a different amount of it. They now share a
-              single wrapping row and one gap, and the note follows at the same
-              gap rather than a larger one.
+          {/* The quiet actions, STACKED and each one a whole sentence.
+              They were a wrapping row for a while, and side by side they read
+              as one run-on line: "Şifremi Unuttum Hesabın yok mu? Kayıt ol",
+              with a muted question glued to a coloured link at a different
+              size. Two problems, one cause — a link is not half of a sentence
+              somebody else finishes. Each row below says what it does on its
+              own, they share one component so they share one size, and the
+              column adds no gap of its own: every link already carries the
+              44pt target, which is the spacing.
 
               The notice is NOT offered here. It belongs to the moment an
               account is created, which is when an e-mail address and every
-              later record start being processed abroad — signing in to an
-              account that already exists starts nothing, and repairing a
+              later record start being processed off the device — signing in to
+              an account that already exists starts nothing, and repairing a
               password is a credential fix. */}
-          <View
-            style={{
-              flexDirection: "row",
-              flexWrap: "wrap",
-              alignItems: "center",
-              justifyContent: "center",
-              // `alignItems: center` is not decoration: a row defaults to
-              // `stretch`, so the question text grew to the touch target
-              // beside it and drew itself at the top of that box while the
-              // link centred inside the same height — two sentences on one
-              // line, on different baselines.
-              columnGap: spacing.md,
-              rowGap: 0,
-              marginTop: spacing.md,
-            }}
-          >
+          <View style={{ alignItems: "center", marginTop: spacing.sm }}>
             {mode === "signIn" ? <AuthLink label={tr.auth.forgotPassword} onPress={showForgot} /> : null}
-            {resetSent ? (
-              <AuthLink label={tr.auth.backToSignIn} onPress={switchMode} disabled={busy} />
-            ) : (
-              // Suppressed while the reset link above is showing: both send the
-              // reader to the same place, and offering one decision twice in
-              // one row reads as two different ones.
-              <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.xs }}>
-                <Body muted>{mode === "signIn" ? tr.auth.noAccount : mode === "signUp" ? tr.auth.haveAccount : tr.auth.rememberedPassword}</Body>
-                <Pressable
-                  accessibilityRole="button"
-                  onPress={switchMode}
-                  style={(state) => ({
-                    minHeight: controlSize.minimumTarget,
-                    justifyContent: "center",
-                    // The text is the control's visible width. Padding here
-                    // made the hit box overlap the question beside it.
-                    paddingHorizontal: 0,
-                    borderRadius: radius.sm,
-                    ...interactionSurface(palette, state),
-                  })}
-                >
-                  <Text style={[type.body, { color: palette.primaryText, fontFamily: font.semibold }]}>
-                    {mode === "signIn" ? tr.auth.signUpAction : tr.auth.signInAction}
-                  </Text>
-                </Pressable>
-              </View>
-            )}
+            {/* Three modes, three sentences. "Zaten hesabım var" is true of
+                somebody who came here to sign up and false of somebody
+                recovering the account they already have, so the reset screen
+                gets its own way back rather than borrowing one that describes
+                a different reader. */}
+            <AuthLink
+              label={
+                mode === "signIn"
+                  ? tr.auth.createAccountAction
+                  : mode === "signUp"
+                    ? tr.auth.backToSignInAction
+                    : tr.auth.backToSignIn
+              }
+              onPress={switchMode}
+              disabled={busy}
+            />
           </View>
 
-          <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm, justifyContent: "center", marginTop: spacing.md }}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm, justifyContent: "center", marginTop: spacing.sm }}>
             <CloudOff accessible={false} size={14} color={palette.textSecondary} />
             <Text style={[type.small, { color: palette.textSecondary, textAlign: "center", flexShrink: 1 }]}>
               {isSupabaseConfigured ? tr.auth.offlineNote : tr.settings.syncUnconfiguredHint}

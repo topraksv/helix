@@ -14,6 +14,8 @@ import Table2 from "lucide-react-native/icons/table-2";
 import TrendingUp from "lucide-react-native/icons/trending-up";
 import type { LucideIcon } from "lucide-react-native";
 import { kv } from "../services/kv";
+import { useSession } from "../auth/session";
+import { isSupabaseConfigured } from "../sync/supabase";
 import { tr } from "../i18n/tr";
 import { Button, FadeIn, Row } from "./components";
 import { circle, font, radius, spacing, type, useTheme } from "./theme";
@@ -187,12 +189,34 @@ function TourArtwork({ step, icon: IconCmp }: { step: number; icon: LucideIcon }
  * — is fixed in `TourModal`.
  */
 export function FirstRunTour() {
+  /**
+   * Whose first run this is.
+   *
+   * The gate used to be a device-local flag alone, and a flag on the device
+   * cannot answer a question about the ACCOUNT: a workspace that already has
+   * years of records in it still looks brand new to a browser profile that has
+   * never held the key — a second browser, a private window, cleared site
+   * data, a new phone. Someone who has been using Helix for months was being
+   * introduced to it again, which is the report this fixes.
+   *
+   * `isNewSignup` is true only for the session that CREATED the account, and
+   * bootstrap and sign-in both clear it, so signing in to an existing account
+   * can never satisfy it however empty this device happens to be. A workspace
+   * with no cloud account behind it has no sign-up to key on and its first run
+   * is genuinely the device's first run, so there the flag still decides.
+   *
+   * The flag stays as the "already seen" half, so dismissing it is
+   * remembered. What it no longer does is decide on its own.
+   */
+  const isNewSignup = useSession((state) => state.isNewSignup);
+  const firstRunOfAnAccount = isNewSignup || !isSupabaseConfigured;
   const [visible, setVisible] = useState(false);
   useEffect(() => {
+    if (!firstRunOfAnAccount) return;
     void kv.get(TOUR_KEY).then((v) => {
       if (v !== "true") setVisible(true);
     });
-  }, []);
+  }, [firstRunOfAnAccount]);
   if (!visible) return null;
   return <TourModal onClose={() => { setVisible(false); void kv.set(TOUR_KEY, "true"); }} />;
 }

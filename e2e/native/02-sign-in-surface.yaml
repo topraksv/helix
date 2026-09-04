@@ -25,25 +25,29 @@ appId: com.toprak.helix
     direction: DOWN
     timeout: 10000
 - assertVisible: "Giriş yap"
-- assertVisible: "Şifremi Unuttum"
+- assertVisible: "Şifremi unuttum"
 # The promise the product makes on its own front door.
 - assertVisible: "Verilerin cihazında saklanır, internet yokken de çalışır."
 # The mode switch is part of the mobile auth surface too. Keep both directions
 # exercised so the link cannot drift away from the form after a layout change.
+#
+# Each quiet action says what it does on its own — it used to be a muted
+# question with a link finishing it, laid side by side, which read as one
+# run-on line and put the link's touch target under the text beside it.
 - scrollUntilVisible:
     element:
-      text: "Kayıt ol"
+      text: "Yeni hesap oluştur"
     direction: DOWN
     timeout: 10000
-- tapOn: "Kayıt ol"
+- tapOn: "Yeni hesap oluştur"
 - assertVisible: "Hesap oluştur"
 # Consent is a condition of creating the account, so the account screen has to
 # carry it and the notice has to be readable from here without leaving the
 # form. Until 2026-09-03 neither was true: there was no consent control, and
 # the link went to a route the root guard bounced signed-out readers away from,
 # so the one audience the notice is written for could not open it at all.
-- assertVisible: "Aydınlatma Metni'ni Oku ve Onayla"
-- tapOn: "Aydınlatma Metni'ni Oku ve Onayla"
+- assertVisible: "Aydınlatma Metni'ni oku ve onayla"
+- tapOn: "Aydınlatma Metni'ni oku ve onayla"
 - extendedWaitUntil:
     visible: "Aydınlatma Metni"
     timeout: 20000
@@ -53,13 +57,13 @@ appId: com.toprak.helix
 - assertVisible: "Hesap oluştur"
 # Closing without reading leaves consent ungiven: the button is still the way
 # in, not a record that anything was accepted.
-- assertVisible: "Aydınlatma Metni'ni Oku ve Onayla"
+- assertVisible: "Aydınlatma Metni'ni oku ve onayla"
 # The notice SCROLLS, and this asserts it by scrolling the whole way. It is
 # worth its own step: the sheet shipped once with its ScrollView nested inside
 # a Pressable, which swallowed the drag — so the text could not be read past
 # its first screen and the acceptance at the bottom could not be reached at
 # all, while every static assertion above still passed.
-- tapOn: "Aydınlatma Metni'ni Oku ve Onayla"
+- tapOn: "Aydınlatma Metni'ni oku ve onayla"
 - extendedWaitUntil:
     visible: "Aydınlatma Metni"
     timeout: 20000
@@ -77,14 +81,9 @@ appId: com.toprak.helix
 # control this flow reaches rather than asserted where it used to sit.
 - scrollUntilVisible:
     element:
-      text: "Zaten hesabın var mı?"
+      text: "Zaten hesabım var, giriş yap"
     direction: DOWN
     timeout: 10000
-- scrollUntilVisible:
-    element:
-      text: "Giriş yap"
-    direction: DOWN
-    timeout: 10000
-- assertVisible: "Giriş yap"
-- tapOn: "Giriş yap"
+- assertVisible: "Zaten hesabım var, giriş yap"
+- tapOn: "Zaten hesabım var, giriş yap"
 - assertVisible: "Hesabına giriş yap"

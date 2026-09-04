@@ -22,6 +22,7 @@ import { sourceFiles } from "./source-corpus";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { maxFontScale, proseLeading, type } from "../src/ui/theme";
+import { tr } from "../src/i18n/tr";
 
 const root = process.cwd();
 const source = (path: string) => readFileSync(join(root, path), "utf8");
@@ -172,15 +173,41 @@ describe("password-manager metadata on the sign-in form", () => {
   });
 });
 
-describe("auth mode switch layout", () => {
-  it("keeps the sign-in/sign-up link aligned without an overlapping hit box", () => {
+describe("auth quiet actions", () => {
+  /**
+   * Each one is a whole sentence, on its own line, at one size.
+   *
+   * They were a muted question with a coloured link finishing it — "Hesabın
+   * yok mu?" then "Kayıt ol" — laid side by side. Three faults from one cause:
+   * a link that is half a sentence needs the other half beside it, so the two
+   * had different sizes and different colours on one line, the 44pt hit box
+   * ran under the text next to it, and read aloud in sequence with "Şifremi
+   * Unuttum" the footer became one run-on line. A link that says what it does
+   * needs nothing beside it, which is also what makes stacking them cheap.
+   */
+  it("stacks them, each saying what it does on its own", () => {
     const signIn = source("src/app/(auth)/sign-in.tsx");
-    const modeSwitch = signIn.slice(signIn.indexOf("<View style={{ flexDirection: \"row\", alignItems: \"center\""));
 
-    // The row's text and link are peers. A negative margin previously pulled
-    // the link's 44pt hit box over the question text, so native hit testing
-    // disagreed with the web layout even though the glyphs looked adjacent.
-    expect(modeSwitch).toContain("paddingHorizontal: 0");
-    expect(modeSwitch).not.toContain("marginHorizontal: -spacing.sm");
+    // No question fragment survives for a link to complete.
+    expect(signIn).not.toContain("tr.auth.noAccount");
+    expect(signIn).not.toContain("tr.auth.haveAccount");
+    expect(signIn).not.toContain("tr.auth.rememberedPassword");
+    // Every quiet action goes through the one component, which is what makes
+    // them one size: a second inline Pressable here is a second type ramp.
+    expect(signIn).toContain("<AuthLink label={tr.auth.forgotPassword}");
+    expect(signIn).toContain("tr.auth.createAccountAction");
+    expect(signIn).toContain("tr.auth.backToSignInAction");
+    // Just the block that holds them: the offline note below it is a row on
+    // purpose — an icon and one line — and is not a quiet action.
+    const start = signIn.lastIndexOf("<View", signIn.indexOf("<AuthLink label={tr.auth.forgotPassword}"));
+    const block = signIn.slice(start, signIn.indexOf("</View>", start));
+    expect(block, "the quiet actions stack; nothing is laid beside them").not.toContain('flexDirection: "row"');
+    expect(block).toContain('alignItems: "center"');
+  });
+
+  it("says what each action does without needing the sentence beside it", () => {
+    for (const label of [tr.auth.createAccountAction, tr.auth.backToSignInAction, tr.auth.forgotPassword]) {
+      expect(label.trim().split(/\s+/).length, label).toBeGreaterThan(1);
+    }
   });
 });

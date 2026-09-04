@@ -101,8 +101,24 @@ interface DonutSlice {
 
 /** The legend's preferred column: one category name beside its share. */
 const LEGEND_BASIS = 220;
-/** Below this the ring stops being readable, so the pair wraps instead. */
-const MIN_PAIRED_RING = 140;
+/**
+ * The ring may sit beside its legend only while it is at least as wide as it.
+ *
+ * This was 140 against a 220 legend, which paired them the moment the box
+ * reached 378px — a card inner width a large phone clears. The result is the
+ * layout this was reported for: a phone showing the ring squeezed into the
+ * left third with the categories crowded down the right, when the whole point
+ * of a handset layout is the ring on top and the list under it. It also made
+ * the ring the SMALLER half of its own chart, which is the wrong way round for
+ * the thing the screen is named after.
+ *
+ * Tied to the legend rather than to a viewport breakpoint because the question
+ * is about the box the chart was given, not the window: the same ring is a
+ * full-width card on a phone and one column of a desktop pair. The number it
+ * produces — pairing from about a 520px viewport — is where
+ * `shouldUseNarrowAnalytics` already says analytics stops being narrow.
+ */
+const MIN_PAIRED_RING = LEGEND_BASIS;
 
 /** Sentinel colour for a legend row that is not a slice of the ring. */
 const SUPPLEMENTAL_MARK = "supplemental";

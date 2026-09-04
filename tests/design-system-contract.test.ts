@@ -635,6 +635,31 @@ describe("a press lights the control it is on", () => {
   });
 
   /**
+   * Consent looks different once it has been given.
+   *
+   * As a bare row the only thing approving changed was fourteen pixels of
+   * check mark, so "you still have to do this" and "this is done" were the
+   * same shape in the same colours. The control now takes the success tint the
+   * rest of the app gives a finished thing and names the way back into the
+   * document, instead of leaving a chevron pointing at something with nothing
+   * left to do in it.
+   *
+   * Asserted here rather than on the device: an `accessibilityLabel` on the
+   * pressable makes the whole box ONE element on iOS, so its children never
+   * reach the accessibility tree Maestro reads. The native flow proves the
+   * state through that label; this proves what the state looks like.
+   */
+  it("marks a given consent as done rather than as still to do", () => {
+    const legal = readFileSync(join(root, "src/ui/legal-notice.tsx"), "utf8");
+    const control = legal.slice(legal.indexOf("export function LegalConsentControl("));
+    expect(control).toContain("palette.success");
+    expect(control).toContain("tr.legal.consentView");
+    // The two states are one control in one place: a second Pressable here
+    // would be a second tab stop for the same destination.
+    expect(control.match(/<Pressable/g) ?? []).toHaveLength(1);
+  });
+
+  /**
    * The other half of the same rule: how far a row's fill reaches VERTICALLY.
    *
    * `interactionBleed` gets the fill to the card's left and right edges. Top
