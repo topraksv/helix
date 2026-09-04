@@ -478,13 +478,13 @@
       "measuredDate": "2026-08-24"
     },
     "src/services/feedback.ts": {
-      "score": 97.26,
-      "killed": 71,
+      "score": 100,
+      "killed": 78,
       "timeout": 0,
-      "survived": 2,
+      "survived": 0,
       "noCoverage": 0,
-      "measuredOn": "e74e17d4740a531ce1a342a2eeb52f9b7841e0fc",
-      "measuredDate": "2026-08-23"
+      "measuredOn": "88fa1e6829d1768dc5f157450b21bd87739cb721",
+      "measuredDate": "2026-09-04"
     },
     "src/services/logger.ts": {
       "score": 54.39,
