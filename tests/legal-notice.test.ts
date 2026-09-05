@@ -197,7 +197,15 @@ describe("KVKK notice", () => {
     for (const provider of ["google", "duckduckgo", "iconhorse"] as MarkProvider[]) {
       found.add(new URL(markUrl("example.com", provider)).hostname);
     }
-    found.add(MARKET_DATA_HOST);
+    // The market feed reaches native the same way, from the domain constant.
+    // ASSERTED here rather than added, which is not a stylistic difference: an
+    // unconditional `found.add(MARKET_DATA_HOST)` kept this host in the set
+    // however the policy changed, so deleting it from `connect-src` would have
+    // left `hosts` identical, `undecided` empty and the floor satisfied — a
+    // hand-written entry wearing a derived list's clothes, which is the exact
+    // failure the block above argues against. The CSP is the ceiling on the web
+    // build, so the CSP is what has to name it.
+    expect(found, "the market host is no longer named in the web policy").toContain(MARKET_DATA_HOST);
     return [...found].sort();
   }
 

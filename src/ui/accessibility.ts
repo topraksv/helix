@@ -161,52 +161,35 @@ const SCROLL_FOCUS_MARK = "data-helix-scroll-focus";
  */
 export function useKeyboardReachableScroller(ref: RefObject<ScrollView | null>, enabled: boolean): void {
   useEffect(() => {
-    if (Platform.OS !== "web") return;
+    // Short-circuited together, and in this order, because forty-odd screens
+    // render with `readable` false and must pay nothing at all for it — not
+    // even a `getScrollableNode()` call. Turning the affordance off is handled
+    // by the CLEANUP below, which React runs before this effect re-runs, so a
+    // disabled pass has nothing left to undo.
+    if (!enabled || Platform.OS !== "web") return;
 
-    const unmark = (target: HTMLElement | null) => {
-      if (!target?.hasAttribute(SCROLL_FOCUS_MARK)) return;
-      target.removeAttribute(SCROLL_FOCUS_MARK);
-      target.removeAttribute("tabindex");
-    };
-
-    // Switching the affordance OFF has to remove it, not merely stop
-    // maintaining it. `enabled` is `Screen`'s `readable` prop: a screen that
-    // computes it from state re-runs this effect with it false, and a cleanup
-    // that only disconnected the observer left a permanent tab stop on a
-    // screen no longer claiming one. Everything else reaches this line with
-    // nothing to remove, which is what keeps the disabled path cheap in the
-    // app's busiest primitive.
-    if (!enabled) {
-      unmark(scrollableNode(ref.current));
+    const node = scrollableNode(ref.current);
+    if (!node) {
+      // `readable` promises a focusable scroll region and there is none: the
+      // screen was rendered `scroll={false}`, or its ref never reached a
+      // ScrollView. Silent before, and the only thing that would ever have
+      // noticed is an axe sweep over a screen already shipped. Development
+      // only — `devWarning` also persists a diagnostic, and the incident ring
+      // holds twelve entries, so a per-mount write in production would evict
+      // real crash breadcrumbs to report a mistake no user can act on.
+      if (typeof __DEV__ !== "undefined" && __DEV__) {
+        devWarning("ui.readableScreen", "a readable Screen has no scroll region to make keyboard-reachable");
+      }
       return;
     }
 
-    let node: HTMLElement | null = null;
-    let observer: ResizeObserver | null = null;
+    const unmark = () => {
+      if (!node.hasAttribute(SCROLL_FOCUS_MARK)) return;
+      node.removeAttribute(SCROLL_FOCUS_MARK);
+      node.removeAttribute("tabindex");
+    };
 
-    function sync(): void {
-      // Resolved from the ref on every pass rather than captured once. A
-      // ScrollView that remounts — a gated screen resolving into its ready
-      // tree, a keyed branch — would otherwise leave the observer watching a
-      // detached element for the rest of the screen's life, and the ref is the
-      // only thing that still knows where the live one is. Starting at `null`
-      // is also what performs the first attach, so there is one path here and
-      // not two.
-      const current = scrollableNode(ref.current);
-      if (current !== node) {
-        unmark(node);
-        node = current;
-        observer?.disconnect();
-        observer = null;
-        // Content arrives after the first paint on every screen that loads
-        // data, and a one-shot check would answer for the empty frame.
-        if (node && typeof ResizeObserver !== "undefined") {
-          observer = new ResizeObserver(sync);
-          observer.observe(node);
-          for (const child of Array.from(node.children)) observer.observe(child);
-        }
-      }
-      if (!node) return;
+    const sync = () => {
       const overflows = node.scrollHeight > node.clientHeight + 1;
       if (overflows && focusableElements(node).length === 0) {
         if (!node.hasAttribute(SCROLL_FOCUS_MARK)) {
@@ -214,21 +197,28 @@ export function useKeyboardReachableScroller(ref: RefObject<ScrollView | null>, 
           node.tabIndex = 0;
         }
       } else {
-        unmark(node);
+        unmark();
       }
-    }
+    };
 
     sync();
-    // `readable` promises a focusable scroll region and there is no region to
-    // make focusable: the screen was rendered `scroll={false}`, or its ref
-    // never reached a ScrollView. Silent before, and the only thing that would
-    // ever have noticed is an axe sweep over a screen already shipped.
-    if (!node) devWarning("ui.readableScreen", "a readable Screen has no scroll region to make keyboard-reachable");
+    // Content arrives after the first paint on every screen that loads data,
+    // and a one-shot check would answer for the empty frame.
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(sync);
+    if (observer) {
+      observer.observe(node);
+      for (const child of Array.from(node.children)) observer.observe(child);
+    }
+    // Cleanup on EVERY path, including the one with no observer, which used to
+    // return nothing at all after having already written the attribute. It is
+    // also what removes the stop when `readable` goes false on a mounted
+    // screen, and what keeps this scoped to the scroller this pass found: the
+    // affordance belongs to the ScrollView present when the screen mounts, and
+    // a screen that swapped its scroller mid-life would need `Screen` to hand
+    // this hook a callback ref rather than a `RefObject`. None does.
     return () => {
       observer?.disconnect();
-      // Symmetry with setup, on every path. The `ResizeObserver`-less path
-      // used to return no cleanup at all, having already written the attribute.
-      unmark(node);
+      unmark();
     };
   }, [ref, enabled]);
 }

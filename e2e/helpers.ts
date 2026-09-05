@@ -66,6 +66,38 @@ export async function isolateExternalData(context: BrowserContext): Promise<void
   });
 }
 
+/**
+ * Open a route for auditing, and the check that says it was really audited.
+ *
+ * A guard that redirects turns "this route was checked" into a claim about
+ * somewhere else, and a walk cannot tell on its own: it finds a rendered
+ * `#root`, does its work against whatever screen it landed on, and reports the
+ * route it asked for. `/helix/data-reset` and `/helix/account-security` did
+ * exactly that to the accessibility sweep until 2026-09-05.
+ *
+ * The two halves are separate ON PURPOSE, and the order is the whole point.
+ * `<Redirect>` fires from an effect one or two animation frames after `#root`
+ * appears — 35-47ms, measured — so a check made straight after the navigation
+ * reads the route's own path and passes on precisely the routes it exists to
+ * catch. Any fixed wait is a bet against a guard that first awaits storage or
+ * configuration. Calling `routeRedirectProblem` AFTER the route's own work
+ * needs no bet at all: an axe run, a full-document scan, whatever the caller
+ * does, has already given the router far longer than it takes.
+ */
+export async function openRouteForAudit(page: Page, route: string): Promise<void> {
+  await page.goto(route);
+  await expect(page.locator("#root")).toBeVisible();
+}
+
+/** Null when the app held the route; a problem line when it went elsewhere. */
+export function routeRedirectProblem(page: Page, route: string): string | null {
+  const landed = new URL(page.url()).pathname;
+  const requested = new URL(route, page.url()).pathname;
+  return landed === requested
+    ? null
+    : `${route} redirected to ${landed}: this route was not audited, ${landed} was audited twice`;
+}
+
 export function collectRuntimeErrors(page: Page): string[] {
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));

@@ -13,7 +13,15 @@
  * stay in the vitest file, where they belong.
  */
 import { expect, test, type Locator, type Page } from "@playwright/test";
-import { assertNoRuntimeErrors, collectRuntimeErrors, isolateExternalData, onboard, pickOption } from "./helpers";
+import {
+  assertNoRuntimeErrors,
+  collectRuntimeErrors,
+  isolateExternalData,
+  onboard,
+  openRouteForAudit,
+  pickOption,
+  routeRedirectProblem,
+} from "./helpers";
 
 test.beforeEach(async ({ context }) => isolateExternalData(context));
 
@@ -424,16 +432,28 @@ test("the legal notice can be read to the end with a keyboard @cross-browser", a
  * focusable content of their own and must therefore have gained nothing.
  */
 test("screens with their own controls gain no extra tab stop", async ({ page }, testInfo) => {
-  // A count of zero is what a broken screen also produces: an error boundary
-  // firing on any of these four leaves no scroll region to mark, and this was
-  // the only test in the file walking routes without watching the console for
-  // it. `/helix/feedback` is not visited by any other test here.
+  // A count of zero is also what a BROKEN screen produces, and the console
+  // alone cannot tell them apart: `ErrorBoundary` catches the throw, and its
+  // `devError` only reaches `console.error` while `__DEV__` is true — which
+  // the production export these tests drive is not. So each route asserts a
+  // heading of its own. That is what makes the zero mean "this screen rendered
+  // and gained no stop" rather than "something rendered". The runtime-error
+  // collector stays for what it does catch, an uncaught throw.
+  //
+  // The dashboard's own first heading is a time-of-day greeting, so a section
+  // heading is used there: a title read off the clock is a flake by 21:00.
   const errors = collectRuntimeErrors(page);
   await onboard(page);
-  for (const route of ["/helix/", "/helix/settings", "/helix/transaction", "/helix/feedback"]) {
-    await page.goto(route);
-    await expect(page.locator("#root")).toBeVisible();
+  for (const [route, heading] of [
+    ["/helix/", "Bu Ay"],
+    ["/helix/settings", "Ayarlar"],
+    ["/helix/transaction", "Yeni İşlem"],
+    ["/helix/feedback", "Geri bildirim"],
+  ] as const) {
+    await openRouteForAudit(page, route);
+    await expect(page.getByRole("heading", { name: heading, exact: true }).first(), route).toBeVisible();
     await expect(page.locator("[data-helix-scroll-focus]"), route).toHaveCount(0);
+    expect(routeRedirectProblem(page, route), route).toBeNull();
   }
   await assertNoRuntimeErrors(errors, testInfo);
 });

@@ -7,7 +7,9 @@ import {
   currentMonthKey,
   isolateExternalData,
   onboard,
+  openRouteForAudit,
   renderedContrast,
+  routeRedirectProblem,
 } from "./helpers";
 
 /**
@@ -74,10 +76,13 @@ test("main routes have no WCAG A/AA violations @smoke @cross-browser", async ({ 
   await onboard(page);
   const routes = ["/helix/", "/helix/cash-flow", "/helix/subscriptions", "/helix/investments", "/helix/settings", "/helix/transaction"];
   for (const route of routes) {
-    await page.goto(route);
-    await expect(page.locator("#root")).toBeVisible();
+    await openRouteForAudit(page, route);
     const result = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa"]).analyze();
     expect(result.violations, `${route}\n${JSON.stringify(result.violations, null, 2)}`).toEqual([]);
+    // None of these six is guarded today, which is exactly why the check is
+    // here: a walk that only proves `#root` rendered clears routes it never
+    // opened the moment one of them gains a guard.
+    expect(routeRedirectProblem(page, route)).toBeNull();
   }
   await assertNoRuntimeErrors(errors, testInfo);
 });
@@ -108,15 +113,8 @@ const LOCAL_STATIC_ROUTES = [
   // claim about what has been checked, and these made it a false one.
   "/helix/privacy", "/helix/feedback", "/helix/attention", "/helix/sync-issues",
   "/helix/statement-import",
-  // DELIBERATELY ABSENT: `/helix/account-security` and `/helix/data-reset`.
-  // Both open with `if (!isSupabaseConfigured) return <Redirect href="/(tabs)/
-  // settings" />`, and every browser build is exactly that case —
-  // `scripts/export-e2e-web.mjs` exports with blank Supabase values on purpose.
-  // Measured on 2026-09-05: each lands on `/helix/settings` two animation
-  // frames after `#root` appears. Listed here they audited Settings a second
-  // time under two cloud screens' names, which is worse than an omission — a
-  // clean bill of health for a screen nothing looked at. `visitAuditedRoute`
-  // below now refuses to let that happen quietly to anything on this list.
+  // The two routes this list cannot hold are in `CLOUD_ONLY_ROUTES` below,
+  // with a test of their own rather than a comment.
   // Carries its instrument in the query string: without one it is the "unknown
   // instrument" card, which audits a screen nobody reaches. The feed is refused
   // for every browser test, so this is the empty state of the real layout — the
@@ -125,36 +123,116 @@ const LOCAL_STATIC_ROUTES = [
 ];
 
 /**
- * Navigate, and prove the app stayed where it was sent.
+ * The routes the sweep above cannot audit, and the reason as an assertion.
  *
- * A guard that redirects turns "this route was audited" into a claim about
- * somewhere else, and the sweep cannot tell on its own: it finds a rendered
- * `#root`, runs axe against whatever screen it landed on, and reports the
- * route it asked for as clean. Two cloud-only routes did exactly that until
- * 2026-09-05.
+ * Both open with `if (!isSupabaseConfigured) return <Redirect href="/(tabs)/
+ * settings" />`, and every browser build is exactly that case —
+ * `scripts/export-e2e-web.mjs` exports with blank Supabase values on purpose.
+ * While they sat in the list above, the sweep audited Settings a second time
+ * under their names and reported two cloud screens clean without opening
+ * either: worse than an omission.
  *
- * The wait is the load-bearing half. `<Redirect>` fires from an effect one or
- * two animation frames AFTER `#root` becomes visible — measured at 35-47ms on
- * this machine — so reading the URL straight after the navigation returns the
- * route's own path and this check would pass on precisely the routes it exists
- * to catch. Waiting for the path to hold still instead of for a fixed number
- * of frames keeps that from being a bet on a number measured once.
+ * Removing them left a comment doing a test's job, and a comment cannot fail.
+ * The test below is what makes the exclusion conditional rather than
+ * permanent: the day either guard changes, it goes red and says the route
+ * belongs back in the sweep.
  */
-async function visitAuditedRoute(page: Page, route: string): Promise<void> {
-  await page.goto(route);
-  await expect(page.locator("#root")).toBeVisible();
-  await page.evaluate(async () => {
-    const frame = () => new Promise<void>((resolve) => { requestAnimationFrame(() => resolve()); });
-    let path = location.pathname;
-    for (let elapsed = 0, held = 0; elapsed < 30 && held < 5; elapsed += 1) {
-      await frame();
-      if (location.pathname === path) held += 1;
-      else { path = location.pathname; held = 0; }
+const CLOUD_ONLY_ROUTES = ["/helix/account-security", "/helix/data-reset"];
+
+/**
+ * WCAG 2.2 SC 2.5.8 (AA): 24x24 CSS px, minus the standard's Inline exception.
+ *
+ * The exception covers a target sitting IN A SENTENCE, whose size is
+ * constrained by the line-height of the non-target text around it.
+ * `/helix/feedback` has the only one in this app — the notice link inside the
+ * sentence that says what gets sent, 172x19 in a 23px line box — and padding
+ * it to 24 would push those words apart to satisfy a rule that exempts them.
+ *
+ * Three narrowings, each load-bearing, because an exception is the part of a
+ * rule that can quietly swallow it:
+ *
+ *   - HEIGHT only. Line-height constrains height; nothing constrains width, so
+ *     a 10px-wide inline control is still a violation.
+ *   - The measured height must actually fit the parent's line box, so
+ *     `display: inline` on its own buys nothing — react-native-web sets that on
+ *     every `Text` (`Text/index.js` base style), which is most of this app.
+ *   - The parent must carry DIRECT TEXT NODES, which is what "in a sentence"
+ *     means in the DOM. "The parent has other text somewhere" would also be
+ *     true of a labelled row, and would exempt every inline control in one.
+ *
+ * `assertTargetSizeDetectorIsLive` proves all three against injected controls
+ * before the sweep trusts any of them.
+ */
+async function undersizedTargets(page: Page): Promise<string[]> {
+  return page.evaluate(() => {
+    const found: string[] = [];
+    for (const element of Array.from(document.querySelectorAll<HTMLElement>("[role]"))) {
+      const role = element.getAttribute("role");
+      if (!role || !["button", "link", "tab", "radio", "switch", "checkbox"].includes(role)) continue;
+      const style = getComputedStyle(element);
+      if (style.display === "none" || style.visibility === "hidden") continue;
+      const box = element.getBoundingClientRect();
+      if (box.width === 0 || box.height === 0) continue;
+      const parent = element.parentElement;
+      const lineHeight = parent ? Number.parseFloat(getComputedStyle(parent).lineHeight) : Number.NaN;
+      const inSentence = parent != null && Array.from(parent.childNodes).some(
+        (node) => node.nodeType === Node.TEXT_NODE && (node.textContent ?? "").trim().length > 0,
+      );
+      const constrainedByLineHeight = style.display === "inline"
+        && inSentence
+        && Number.isFinite(lineHeight)
+        && box.height <= lineHeight + 1;
+      if (box.width < 24 || (box.height < 24 && !constrainedByLineHeight)) {
+        found.push(`${role} "${(element.getAttribute("aria-label") ?? element.textContent ?? "").trim().slice(0, 30)}" ${Math.round(box.width)}x${Math.round(box.height)}`);
+      }
     }
+    return [...new Set(found)];
   });
-  const landed = new URL(page.url()).pathname;
-  expect(landed, `${route} redirected to ${landed}: it is not reachable in this build`)
-    .toBe(new URL(route, page.url()).pathname);
+}
+
+/**
+ * The same self-check the layout sweep runs, for the same reason: a scan whose
+ * exception is wrong passes identically to one with nothing left to find.
+ *
+ * Three injected controls, one per narrowing. The sentence link must be
+ * exempt, the narrow one in the same sentence must not be (width), and the
+ * inline control standing outside any sentence must not be (no direct text
+ * beside it). Removed again before the sweep measures a real screen.
+ */
+async function assertTargetSizeDetectorIsLive(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const sentence = document.createElement("div");
+    sentence.id = "__targetprobe";
+    sentence.style.cssText = "position:fixed;top:0;left:0;width:420px;line-height:23px;font-size:14px";
+    sentence.append("Bir cümlenin ortasında duran ");
+    const exempt = document.createElement("span");
+    exempt.setAttribute("role", "link");
+    exempt.setAttribute("aria-label", "probe-exempt");
+    exempt.textContent = "yeterince uzun bir bağlantı metni";
+    const narrow = document.createElement("span");
+    narrow.setAttribute("role", "link");
+    narrow.setAttribute("aria-label", "probe-narrow");
+    narrow.style.fontSize = "2px";
+    narrow.textContent = "x";
+    sentence.append(exempt, " ve ", narrow, " olan.");
+    const alone = document.createElement("div");
+    alone.id = "__targetprobe-alone";
+    alone.style.cssText = "position:fixed;top:60px;left:0;line-height:23px;font-size:14px";
+    const lonely = document.createElement("span");
+    lonely.setAttribute("role", "button");
+    lonely.setAttribute("aria-label", "probe-alone");
+    lonely.textContent = "Tek başına duran kontrol";
+    alone.append(lonely);
+    document.body.append(sentence, alone);
+  });
+  const found = await undersizedTargets(page);
+  await page.evaluate(() => {
+    for (const id of ["__targetprobe", "__targetprobe-alone"]) document.getElementById(id)?.remove();
+  });
+  const flagged = (label: string) => found.some((entry) => entry.includes(label));
+  expect(flagged("probe-exempt"), `the Inline exception is not exempting anything:\n${found.join("\n")}`).toBe(false);
+  expect(flagged("probe-narrow"), "the exception is swallowing the width check").toBe(true);
+  expect(flagged("probe-alone"), "the exception is covering controls outside a sentence").toBe(true);
 }
 
 async function localReachableRoutes(page: Page): Promise<string[]> {
@@ -182,9 +260,11 @@ test("every local-mode reachable route stays accessible with real data", async (
   await onboard(page);
   await addMarketExpense(page, "A11y taraması");
   const routes = await localReachableRoutes(page);
+  // Before the sweep trusts the scan, not after.
+  await assertTargetSizeDetectorIsLive(page);
   const problems: string[] = [];
   for (const route of routes) {
-    await visitAuditedRoute(page, route);
+    await openRouteForAudit(page, route);
     if (route === "/helix/cash-flow") {
       // The app shell is visible before the async ledger bundle and measured
       // matrix viewport are ready. Audit the real populated table, not whichever
@@ -194,43 +274,32 @@ test("every local-mode reachable route stays accessible with real data", async (
     if (route === "/helix/settings/computed-columns") {
       await expect(page.getByRole("radio", { name: /^Toplam/ })).toBeVisible();
     }
-    const undersized = await page.evaluate(() => {
-      const found: string[] = [];
-      for (const element of Array.from(document.querySelectorAll<HTMLElement>("[role]"))) {
-        const role = element.getAttribute("role");
-        if (!role || !["button", "link", "tab", "radio", "switch", "checkbox"].includes(role)) continue;
-        const style = getComputedStyle(element);
-        if (style.display === "none" || style.visibility === "hidden") continue;
-        const box = element.getBoundingClientRect();
-        if (box.width === 0 || box.height === 0) continue;
-        // SC 2.5.8 carries its own Inline exception: a target that sits in a
-        // sentence, whose height is simply what the surrounding text's
-        // line-height makes it. `/helix/feedback` has the only one in the app —
-        // the notice link inside the sentence that says what gets sent, 172x19
-        // in a 23px line box — and padding it to 24 would push the words around
-        // it apart to satisfy a rule that exempts it. Deliberately narrow: an
-        // inline box AND non-target text around it, so a control standing on
-        // its own cannot claim the exception. It reads as new only because the
-        // sweep now waits for the entrance animation to settle; before that
-        // this element was measured at zero height and skipped entirely.
-        const parent = element.parentElement;
-        const inlineInSentence = style.display === "inline"
-          && parent != null
-          && (parent.textContent ?? "").trim() !== (element.textContent ?? "").trim();
-        // WCAG 2.2 SC 2.5.8 (AA) — 24x24 CSS px minimum.
-        if (!inlineInSentence && (box.width < 24 || box.height < 24)) {
-          found.push(`${role} "${(element.getAttribute("aria-label") ?? element.textContent ?? "").trim().slice(0, 30)}" ${Math.round(box.width)}x${Math.round(box.height)}`);
-        }
-      }
-      return [...new Set(found)];
-    });
+    const undersized = await undersizedTargets(page);
     if (undersized.length > 0) problems.push(`${route} target size: ${undersized.join(", ")}`);
     const result = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"]).analyze();
     for (const violation of result.violations) {
       problems.push(`${route} axe ${violation.id} (${violation.nodes.length}): ${violation.nodes[0]?.html.slice(0, 140)}`);
     }
+    // Last, because by now the axe run has given any guard far longer than the
+    // frame or two a redirect takes. See `openRouteForAudit`.
+    const redirected = routeRedirectProblem(page, route);
+    if (redirected) problems.push(redirected);
   }
   expect(problems, problems.join("\n")).toEqual([]);
+  await assertNoRuntimeErrors(errors, testInfo);
+});
+
+test("the cloud-only routes are excluded because they redirect, not because they were forgotten", async ({ page }, testInfo) => {
+  const errors = collectRuntimeErrors(page);
+  await onboard(page);
+  for (const route of CLOUD_ONLY_ROUTES) {
+    await openRouteForAudit(page, route);
+    // `toHaveURL` retries, so this waits the guard out rather than racing it.
+    // Red here means the screen is reachable in a browser build now and owes
+    // the sweep above an entry — not that this test needs relaxing.
+    await expect(page, `${route} no longer redirects; it belongs in the route sweep`)
+      .toHaveURL(/\/helix\/settings$/);
+  }
   await assertNoRuntimeErrors(errors, testInfo);
 });
 
@@ -357,7 +426,7 @@ test("layout non-negotiables hold on every route in both widths", async ({ page,
   for (const width of [390, 1440]) {
     await page.setViewportSize({ width, height: 900 });
     for (const route of routes) {
-      await visitAuditedRoute(page, route);
+      await openRouteForAudit(page, route);
       await waitForSettledLayout();
       const found = await scan(false);
       const tag = `${width}px ${route}`;
@@ -365,6 +434,8 @@ test("layout non-negotiables hold on every route in both widths", async ({ page,
       if (found.toggles.length > 1) problems.push(`${tag} toggle sizes differ: ${found.toggles.join(", ")}`);
       const sideways = await page.evaluate(() => document.body.scrollWidth > document.body.clientWidth + 1);
       if (sideways) problems.push(`${tag} scrolls horizontally`);
+      const redirected = routeRedirectProblem(page, route);
+      if (redirected) problems.push(`${width}px ${redirected}`);
     }
   }
   expect(problems, problems.join("\n")).toEqual([]);

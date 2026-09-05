@@ -69,9 +69,23 @@ jobs:
           # someone deletes the release by hand. Converge instead: the notes are
           # derived from the changelog, so rewriting them is the same answer
           # arrived at twice, not a second publication.
-          if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release edit "$TAG" --title "$TAG" --notes-file /tmp/notes.md
-            echo "release $TAG already existed; its notes now match the changelog"
-          else
-            gh release create "$TAG" --title "$TAG" --notes-file /tmp/notes.md --verify-tag
+          #
+          # Driven off create's OWN error rather than a preceding `gh release
+          # view`. `view` exits non-zero for a rate limit, a 5xx and a bad token
+          # exactly as it does for a genuine 404, so branching on it would send
+          # a rate-limited re-run into `create` and reproduce the permanent red
+          # this block exists to remove. Only "already exists" converges; every
+          # other failure still fails, with its own message.
+          if ! output=$(gh release create "$TAG" --title "$TAG" --notes-file /tmp/notes.md --verify-tag 2>&1); then
+            case "$output" in
+              *"already exists"*)
+                echo "release $TAG already existed; refreshing its notes from the changelog"
+                gh release edit "$TAG" --title "$TAG" --notes-file /tmp/notes.md
+                ;;
+              *)
+                echo "$output" >&2
+                echo "::error::could not publish $TAG"
+                exit 1
+                ;;
+            esac
           fi

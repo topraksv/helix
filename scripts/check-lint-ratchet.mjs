@@ -105,6 +105,13 @@ if (process.argv[1] && import.meta.url.endsWith(process.argv[1].split("/").pop()
 
   const record = process.argv.includes("--record");
   if (record) {
+    // Printed before the decision, because `runLint` deletes `.eslintcache`
+    // first: an operator sent away without the measurement pays a second full
+    // cold lint of the tree to find out what it was.
+    for (const rule of Object.keys(rules).sort()) {
+      console.log(`  ${String(rules[rule]).padStart(4)}  ${rule}`);
+    }
+    console.log(`\n${total} warning(s), ${errors} error(s).`);
     // The same partial-run hazard the header describes for `.eslintcache`,
     // on the other path. A file ESLint cannot parse arrives as one fatal
     // message with no rule results, so its warnings go uncounted; adopting
@@ -113,8 +120,10 @@ if (process.argv[1] && import.meta.url.endsWith(process.argv[1].split("/").pop()
     // The old order wrote first and reported the errors afterwards, by which
     // time the file was already on disk.
     if (errors > 0) {
+      const failing = report.filter((file) => (file.errorCount ?? 0) > 0).map((file) => file.filePath);
       console.error(
-        `Lint reported ${errors} error(s), so this run did not measure the whole tree.\n` +
+        `\nLint reported ${errors} error(s), so this run did not measure the whole tree:\n` +
+          `  ${failing.join("\n  ")}\n\n` +
           `Fix them and record again: a partial run must not become the baseline.`,
       );
       process.exit(1);
