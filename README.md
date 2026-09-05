@@ -16,6 +16,7 @@ subscriptions and investments — with a spreadsheet's mind and a phone's manner
 <a href="https://topraksv.github.io/helix/"><img alt="Helix'i aç" src="https://img.shields.io/badge/Helix'i_aç-BA5B38?style=for-the-badge&logo=expo&logoColor=white"></a>
 
 [![ci](https://github.com/topraksv/helix/actions/workflows/ci.yml/badge.svg)](https://github.com/topraksv/helix/actions/workflows/ci.yml)
+[![sürüm](https://img.shields.io/github/v/release/topraksv/helix?label=s%C3%BCr%C3%BCm&color=BA5B38)](https://github.com/topraksv/helix/releases)
 [![Expo SDK 57](https://img.shields.io/badge/Expo-SDK%2057-0F0F0D?logo=expo&logoColor=white)](https://docs.expo.dev/versions/v57.0.0/)
 [![Node 22](https://img.shields.io/badge/Node-22-0F0F0D?logo=nodedotjs&logoColor=5FA04E)](#geliştirici-kurulumu)
 [![Proprietary](https://img.shields.io/badge/license-proprietary-BA5B38)](LICENSE)
@@ -49,8 +50,9 @@ tekrarları üstlenir.
 - **Yanlış söylemez.** Aynı rakam iki ekranda aynı çıkar; bir satır kendi
   içinde toplanır. Hesaplanmayan bir şey boş bırakılmaz, sıfır da gizlenmez.
 
-Hesap açmak zorunlu değil. Supabase yapılandırılmazsa uygulama **hesapsız**
-açılır ve hiçbir finansal veri cihazdan çıkmaz.
+Helix bir hesapla kullanılır. Kayıtlar yine de **önce cihazda** durur ve
+uygulama internetsiz eksiksiz çalışır; bulut, cihazların arasını eşitlemek
+içindir, çalışmanın şartı değil.
 
 ---
 
@@ -125,8 +127,8 @@ geldiğinde outbox Supabase'e gönderilir ve sunucunun normalize ettiği
   kalır, tek dokunuşla geri döner.
 - **Bozuk satır kuyruğu tıkamaz.** Reddedilen kayıt cursor'ı ilerletmez;
   `sync_dead_letters` içinde karantinaya alınır ve ne olduğu ekranda yazılır.
-- **Hesapsız mod tam moddur.** Supabase yoksa uygulama eksiksiz çalışır, veri
-  cihazdan çıkmaz.
+- **Çevrimdışı tam moddur.** Bağlantı yokken hiçbir ekran beklemez; okuma da
+  yazma da cihazdaki veritabanından karşılanır.
 
 Eşitleme çalışırken uygulama beklemez: yazma önce cihaza gider, ekran anında
 güncellenir, gönderim arkada sırasını bekler.
@@ -135,10 +137,13 @@ güncellenir, gönderim arkada sırasını bekler.
 
 ## Platformlar
 
-| Platform | Durum |
-|---|---|
-| **Web** | [Canlı sürüm](https://topraksv.github.io/helix/) — yetkilendirilmiş bir `main` push'unda risk sınıflandırıcı web yüzeyini seçtiğinde otomatik yayımlanır |
-| **iOS / Android** | Expo Go ile açılan EAS `preview` update'i. **Fiziksel cihaz kabulü henüz yapılmadı**; tarayıcı testleri native SQLite, Keychain, bildirim izni, biyometri ve app-switcher görüntüsünü kanıtlamaz |
+| Platform | Nasıl açılır | Durum |
+|---|---|---|
+| **Web** | [topraksv.github.io/helix](https://topraksv.github.io/helix/) | Yetkilendirilmiş bir `main` push'unda risk sınıflandırıcı web yüzeyini seçtiğinde otomatik yayımlanır |
+| **iOS / Android** | Expo Go → EAS `preview` update'i | **Fiziksel cihaz kabulü henüz yapılmadı.** Tarayıcı testleri native SQLite, Keychain, bildirim izni, biyometri ve app-switcher görüntüsünü kanıtlamaz |
+
+Her sürümün ne getirdiği [Releases](https://github.com/topraksv/helix/releases)
+sayfasında, tag'iyle birlikte duruyor.
 
 EAS Build, development client, TestFlight ve store submission bu teslim yolunun
 parçası **değil**. Mobil kullanım Expo Go'nun SDK 57 ile sunduğu native
@@ -170,12 +175,14 @@ satır anatomisi her listede aynı — mark, ad, değer, eylem.
 
 ## Gizlilik ve güvenlik
 
-- **Hesapsız mod:** bütün finansal veri cihazdaki SQLite dosyasında kalır.
+- **Önce cihaz:** her kayıt cihazdaki SQLite dosyasına yazılır; buluta giden şey o dosyanın eşitlenmiş kopyasıdır.
 - **Hesaplı mod:** her tablo owner-only RLS ile korunur; yetki sınırı sunucudadır,
   istemci kontrolü değildir.
 - **Anahtarlar:** istemci yalnız publishable anon anahtarı taşır.
 - **Dış istekler:** kur, piyasa ve logo istekleri salt okunur; boyut, şekil,
-  tarih ve host doğrulamasından geçer.
+  tarih ve host doğrulamasından geçer. Logo isteği, adını yazdığın kurumun alan
+  adını o servise gösterir — hepsi uygulama içindeki Aydınlatma Metni'nde
+  alıcısıyla birlikte yazılı.
 - **Loglama:** production'da token, tutar, not veya e-posta persist edilmez.
 - **Hata mesajları** yer söyler, değer söylemez: reddedilen bir yedek hangi
   bölümün kaçıncı kaydında hangi kurala takıldığını yazar; tutarı yazmaz.
@@ -190,7 +197,7 @@ satır anatomisi her listede aynı — mark, ad, değer, eylem.
 git clone https://github.com/topraksv/helix.git
 cd helix
 npm ci
-cp .env.example .env             # boş bırakılırsa uygulama hesapsız açılır
+cp .env.example .env             # boş bırakılırsa: yerel-yalnız geliştirme derlemesi
 
 npm run web                      # tarayıcıda aç
 npx expo start --tunnel --clear  # Expo Go için QR
@@ -204,7 +211,7 @@ npx expo start --tunnel --clear  # Expo Go için QR
 ### Kalite kapısı
 
 ```bash
-npm run verify        # typecheck + kapsamlı Vitest + lint
+npm run verify        # typecheck + kapsamlı Vitest + lint ratchet
 npm run test:e2e      # Playwright: tarayıcı senaryolarının tamamı
 npm run verify:full   # + production export, bundle bütçesi, tüm Playwright
 ```

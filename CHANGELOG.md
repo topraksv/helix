@@ -8,25 +8,18 @@ sürüm defterinde yazılıdır ve bu depoya dahil değildir.
 
 ### Patch Changes
 
-- **Aydınlatma Metni artık uygulamanın konuştuğu her yeri sayıyor.** Metin dört alıcı adı geçiriyordu; ölçüldüğünde dokuz taneydi.
-
-  - Eklenenler: döviz kuru için **TCMB** ve **exchangerate-api**, piyasa kotasyonu için **Binance**'in halka açık verisi, ve bir abonelik ya da ödeme yöntemine tanınan bir kurum adı yazıldığında logosunu getiren **Google**, **DuckDuckGo** ve **icon.horse**.
-  - Sonuncusunda gidenin ne olduğu da yazıyor: bağlantı bilgisi ve yazılan adın karşılık geldiği alan adı — yani hangi bankayı yazdığınız — ve bu isteğin siz kaydetmeden, yazarken gittiği.
-  - Geri bildirim satırı e-postanızın da gönderildiğini söylüyor. Uygulamanın geri bildirim ekranı bunu zaten yazıyordu; Aydınlatma Metni yazmıyordu.
-
-- **"Hesap açmadan kullanabilirsiniz" çıkışı kalktı, çünkü öyle bir mod yok.** Helix bir hesapla kullanılıyor: oturumu olmayan bir okuyucuyu `resolveRootGuard` giriş ekranına yolluyor ve hesapsız çalışma alanı yalnızca Supabase yapılandırması taşımayan derlemede — yani yayınlanmayan test artefaktında — açılıyor. Metin artık aktarımı kabul etmemenin tek yolunun hesap açmamak olduğunu söylüyor, ve bu kural artık guard'ın kendisine karşı test ediliyor.
-
-- **180 günlük hata kaydı saklama süresinin nasıl uygulandığı düzeltildi.** Silmeyi uygulama her eşitlemede başlatıyor; uygulamayı bir daha açmazsanız çağrı da yapılmıyor. Metin bunu veritabanının kendiliğinden yaptığı izlenimi veriyordu.
-
-- **Aydınlatma Metni ekranı kaydırma alanını kendisi klavyeye açıyor.** 655 piksellik pencerede 3594 piksel metin, içinde odaklanabilir hiçbir şey olmadan duruyordu; `scrollable-region-focusable` ihlali buradan geliyordu. Chromium ve Firefox bu alanı kendiliğinden odaklıyor, ama uygulama artık bu nezakete güvenmiyor. Aynı taramaya daha önce hiç bakılmamış altı rota eklendi.
-
-- **Yayımlanan depodaki iki kırık bağlantı kaldırıldı.** CHANGELOG ve README, bu depoya dahil olmayan dosyalara link veriyordu; ikisi de ziyaretçi için 404'tü.
+- Aydınlatma Metni'ne uygulamanın gerçekten istek attığı alıcılar eklendi: TCMB, exchangerate-api, Binance, ve marka logosu için Google / DuckDuckGo / icon.horse. Sonuncular yazdığın kurumun alan adını görüyor.
+- Geri bildirim satırı, e-posta adresinin de gönderildiğini söylüyor.
+- "Hesap açmadan kullanabilirsiniz" cümlesi kaldırıldı — Helix hesapsız kullanılamıyor.
+- 180 günlük hata kaydı süresini eşitlemenin tetiklediği yazıldı.
+- Aydınlatma Metni ekranı klavyeyle kaydırılabiliyor (`scrollable-region-focusable`).
+- CHANGELOG ve README'deki iki kırık bağlantı kaldırıldı.
 
 ### Internal
 
-- Yirmi ekranın tekrar ettiği "veri hazır değilken ne göster" bloğu tek bir `DataGateScreen` bileşenine indi; her ekranın kendi başlığı ve genişliği korunarak.
-- Lint artık bir ratchet: `lint-baseline.json` kayıtlı sayıları tutuyor ve bir kural daha sık tetiklenirse push düşüyor. Bugünkü taban 262 uyarı, 0 hata.
-- Gecelik iş artık yayındaki paketin sürümünü `app.json` ile karşılaştırıyor. "main yeşil, üretim eski" durumunun bugüne kadar hiçbir alarmı yoktu.
+- `DataGateScreen`: 20 ekranın tekrar ettiği yükleniyor çerçevesi tek bileşende.
+- Lint ratchet (`lint-baseline.json`) ve gecelik "yayındaki sürüm" karşılaştırması.
+- Tag'lerden otomatik GitHub Release.
 
 ## 1.4.1
 
