@@ -143,19 +143,25 @@ describe("change classification", () => {
   });
 
   /**
-   * Every `node scripts/...` a workflow can reach.
+   * Every `node scripts/...` one workflow can reach.
    *
-   * Followed rather than listed: the `run:` lines in `.github/workflows/`,
-   * each `npm run` target they name resolved through `package.json` (and its
-   * own `npm run` chains), and the config files those commands load — which is
-   * how `serve-static.mjs` counts, since nothing runs it by name and
+   * Followed rather than listed: that workflow's `run:` lines, each `npm run`
+   * target they name resolved through `package.json` (and its own `npm run`
+   * chains), and the config files those commands load — which is how
+   * `serve-static.mjs` counts, since nothing runs it by name and
    * `playwright.config.ts` starts it as the E2E web server.
    *
    * Only command position matters. A script NAMED in a comment is not a script
    * the gate runs, and several are named that way; matching `node scripts/...`
    * is what tells the two apart.
+   *
+   * One workflow at a time rather than all of them, because the question the
+   * classifier answers is what a push to `main` must prove BEFORE it deploys,
+   * and only `ci.yml` decides that. The two tests below use the same walk to
+   * ask both halves: what the gate runs must escalate, and what only a tag or
+   * schedule runs must not.
    */
-  function scriptsReachableFromCi(): Set<string> {
+  function scriptsReachableFrom(workflow: string): Set<string> {
     const packageScripts: Record<string, string> = JSON.parse(readFileSync("package.json", "utf8")).scripts;
     // A command may load a config that starts a process of its own.
     const configFor: Record<string, string[]> = {
@@ -180,14 +186,12 @@ describe("change classification", () => {
       }
     };
 
-    for (const file of readdirSync(".github/workflows")) {
-      scan(readFileSync(`.github/workflows/${file}`, "utf8"), 0);
-    }
+    scan(readFileSync(`.github/workflows/${workflow}`, "utf8"), 0);
     return found;
   }
 
-  it("escalates exactly the scripts a workflow can run, and no more", () => {
-    const reachable = scriptsReachableFromCi();
+  it("escalates exactly the scripts the delivery gate can run, and no more", () => {
+    const reachable = scriptsReachableFrom("ci.yml");
 
     // The floor: a scan that found nothing would make every claim below vacuous.
     expect(reachable.size).toBeGreaterThan(3);
@@ -203,10 +207,45 @@ describe("change classification", () => {
     expect([...CI_EXECUTED_SCRIPTS].sort()).toEqual([...reachable].sort());
   });
 
+  /**
+   * The other half of the same narrowing, and the one that was inconsistent.
+   *
+   * `release-notes.mjs` escalated every main push that touched it while
+   * `release.yml`, the only workflow able to run it, stayed light — and it runs
+   * on a tag push, which does not trigger `ci.yml` at all. `check-advisories`
+   * had the same shape in `security.yml`, which states in its own header that
+   * it stays off the delivery path on purpose. A script neither reachable from
+   * the gate nor able to change what it proves must not buy coverage, mutation
+   * and a three-shard browser run.
+   *
+   * Asserted with the reachability walk rather than by naming the scripts light,
+   * so this stays a decision instead of becoming an oversight: each one must
+   * still be provably run by ITS workflow and provably not by `ci.yml`.
+   */
+  it("leaves a script only an off-delivery workflow runs on the light tier", () => {
+    const gate = scriptsReachableFrom("ci.yml");
+    for (const [workflow, script] of [
+      ["release.yml", "scripts/release-notes.mjs"],
+      ["security.yml", "scripts/check-advisories.mjs"],
+    ] as const) {
+      expect([...scriptsReachableFrom(workflow)], `${workflow} must still run ${script}`).toContain(script);
+      expect(gate.has(script), `${script} is reachable from the delivery gate after all`).toBe(false);
+      expect(classify([script]).full_gate, script).toBe(false);
+    }
+  });
+
   it("keeps a local tool and a workflow this gate does not read on the light tier", () => {
     // The point of the narrowing, stated as behaviour. Neither of these can
     // change what a push proves or what either target publishes.
-    for (const file of ["scripts/subset-fonts.mjs", "scripts/audit-brand-marks.mjs", ".github/workflows/nightly.yml", ".github/dependabot.yml"]) {
+    for (const file of [
+      "scripts/subset-fonts.mjs",
+      "scripts/audit-brand-marks.mjs",
+      ".github/workflows/nightly.yml",
+      // Tag-triggered, so it cannot change what a push to main proves — the
+      // same answer the script it runs now gets.
+      ".github/workflows/release.yml",
+      ".github/dependabot.yml",
+    ]) {
       expect(classify([file]), file).toMatchObject({
         run_ci: true,
         light_gate: true,

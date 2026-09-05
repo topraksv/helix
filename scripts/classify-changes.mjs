@@ -15,36 +15,44 @@ import { fileURLToPath } from "node:url";
 import { resolve } from "node:path";
 
 /**
- * The scripts a CI job actually executes.
+ * The scripts THIS gate executes.
  *
  * `scripts/` used to escalate as a whole, and the cost of that was paid by
  * files no runner ever loads: editing the font subsetter or the brand-mark
  * auditor bought coverage, mutation and a three-shard browser run for a change
  * that cannot reach either delivered artifact. What decides risk is not the
- * directory, it is whether a workflow can run the file.
+ * directory, it is whether the gate that certifies this push can run the file.
+ *
+ * Scoped to `ci.yml`, for the same reason `.github/` is narrowed to `ci.yml`
+ * below, and the two rationales have to agree or one of them is wrong. They
+ * disagreed once: `release-notes.mjs` was listed here and escalated every main
+ * push that touched it, while `release.yml` — the only workflow that can run
+ * it, and only on a tag push, which never triggers this gate at all — stayed
+ * on the light tier. `check-advisories.mjs` was the same shape, in
+ * `security.yml`, whose own header states it deliberately "stays off the
+ * delivery path". Neither can change what a main push proves before it
+ * deploys, so neither escalates one. Their own workflows still run them, and
+ * the light tier still typechecks, lints and unit-tests them.
  *
  * Reachability is proven rather than asserted. `tests/change-classification`
- * walks every `run:` line in `.github/workflows/`, follows each `npm run`
+ * walks every `run:` line in `.github/workflows/ci.yml`, follows each `npm run`
  * target through `package.json`, reads the config files those commands load,
  * and fails if it finds a `node scripts/...` command that is missing here — so
  * a script that becomes part of the gate cannot stay on the light tier by
  * being forgotten. Everything under `scripts/` that is NOT here is a local
- * tool, and `NOT_SHIPPED` already keeps the whole directory out of both
- * deployments whichever tier it lands on.
+ * tool or another workflow's, and `NOT_SHIPPED` already keeps the whole
+ * directory out of both deployments whichever tier it lands on.
  *
- * `.github/` is narrowed on the same reasoning and in the same place: only
- * `ci.yml` decides what a push proves, and it is already delivery control.
- * The other workflows carry their own triggers and cannot change this one's
- * answer.
+ * `.github/` is narrowed on the same reasoning: only `ci.yml` decides what a
+ * push proves, and it is already delivery control. The other workflows carry
+ * their own triggers and cannot change this one's answer.
  */
 const CI_EXECUTED_SCRIPTS = [
-  "scripts/check-advisories.mjs",
   "scripts/check-lint-ratchet.mjs",
   "scripts/check-mutation-ratchet.mjs",
   "scripts/check-web-budget.mjs",
   "scripts/classify-changes.mjs",
   "scripts/export-e2e-web.mjs",
-  "scripts/release-notes.mjs",
   "scripts/serve-static.mjs",
 ];
 

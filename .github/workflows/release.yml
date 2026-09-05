@@ -24,6 +24,14 @@ on:
 permissions:
   contents: read
 
+# One publish per tag at a time, and a second run waits rather than racing the
+# first: both would otherwise call `gh release create` for the same tag and one
+# would lose. Never cancel-in-progress — a run killed between creating the
+# release and finishing is the state that needs the least help.
+concurrency:
+  group: release-${{ github.ref_name }}
+  cancel-in-progress: false
+
 jobs:
   publish:
     runs-on: ubuntu-latest
@@ -53,4 +61,17 @@ jobs:
             exit 1
           fi
           node scripts/release-notes.mjs "$version" > /tmp/notes.md
-          gh release create "$TAG" --title "$TAG" --notes-file /tmp/notes.md --verify-tag
+          # `gh release create` is not idempotent, and this job has every reason
+          # to run twice: a transient `gh` failure after the release was already
+          # created, a manual re-run, a tag re-pushed at a corrected commit. A
+          # bare create fails those permanently with `release already exists`,
+          # leaving the one workflow that holds `contents: write` red until
+          # someone deletes the release by hand. Converge instead: the notes are
+          # derived from the changelog, so rewriting them is the same answer
+          # arrived at twice, not a second publication.
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release edit "$TAG" --title "$TAG" --notes-file /tmp/notes.md
+            echo "release $TAG already existed; its notes now match the changelog"
+          else
+            gh release create "$TAG" --title "$TAG" --notes-file /tmp/notes.md --verify-tag
+          fi

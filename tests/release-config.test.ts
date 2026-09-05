@@ -739,21 +739,46 @@ describe("published documentation", () => {
    * shape every unpublished-working-material line has here. A link into
    * something ignored by a wildcard would slip past, and that is an acceptable
    * gap: the failure this catches is a link into the owner's own notes.
+   *
+   * A negation (`!/docs/.obsidian/app.json`) begins with `!` and therefore
+   * fails the anchor test above it — re-included paths are not prefixes of
+   * anything unpublished, which is the answer wanted, arrived at by the one
+   * condition rather than by a second one that could never be reached.
    */
   function unpublishedPrefixes(): string[] {
     return read(".gitignore")
       .split("\n")
       .map((line) => line.trim())
-      .filter((line) => line.startsWith("/") && !line.includes("*") && !line.startsWith("!"))
+      .filter((line) => line.startsWith("/") && !line.includes("*"))
       .map((line) => line.slice(1).replace(/\/$/, ""));
   }
 
-  const markdown = readdirSync(".", { recursive: true, encoding: "utf8" })
-    .filter((file) => file.endsWith(".md"))
-    .filter((file) => !file.startsWith("node_modules") && !unpublishedPrefixes().some((prefix) => file === prefix || file.startsWith(`${prefix}/`)));
+  /**
+   * Every `.md` a clone actually receives, found without walking what it does not.
+   *
+   * `readdirSync(".", { recursive: true })` returned 112,219 entries in 2.18s on
+   * this tree, 5,737 of them Markdown and essentially all of those inside
+   * `node_modules`; the filter behind it then re-read and re-parsed `.gitignore`
+   * once per surviving file. All of it sat at module scope, so it was paid on
+   * every collection of this file — `npm test`, `npm run test:coverage`, and
+   * each Stryker run — to answer a question about three files. Pruning at the
+   * directory descends only into what ships.
+   */
+  function publishedMarkdown(excluded: string[]): string[] {
+    const skip = new Set(excluded);
+    const walk = (directory: string): string[] =>
+      readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+        const path = directory === "." ? entry.name : `${directory}/${entry.name}`;
+        if (skip.has(path) || entry.name === "node_modules" || entry.name === ".git") return [];
+        if (entry.isDirectory()) return walk(path);
+        return entry.name.endsWith(".md") ? [path] : [];
+      });
+    return walk(".");
+  }
 
   it("links only to files the published repository contains", () => {
     const excluded = unpublishedPrefixes();
+    const markdown = publishedMarkdown(excluded);
     // Floors first, because both lists are built by parsing: an empty ignore
     // list would let every link through, and an empty file list would check
     // nothing while passing.

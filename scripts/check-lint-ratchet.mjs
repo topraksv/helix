@@ -105,9 +105,23 @@ if (process.argv[1] && import.meta.url.endsWith(process.argv[1].split("/").pop()
 
   const record = process.argv.includes("--record");
   if (record) {
+    // The same partial-run hazard the header describes for `.eslintcache`,
+    // on the other path. A file ESLint cannot parse arrives as one fatal
+    // message with no rule results, so its warnings go uncounted; adopting
+    // that undercount writes a floor nobody measured, and every run after the
+    // parse error is fixed then fails `WORSE` on a tree nobody made worse.
+    // The old order wrote first and reported the errors afterwards, by which
+    // time the file was already on disk.
+    if (errors > 0) {
+      console.error(
+        `Lint reported ${errors} error(s), so this run did not measure the whole tree.\n` +
+          `Fix them and record again: a partial run must not become the baseline.`,
+      );
+      process.exit(1);
+    }
     writeFileSync(BASELINE, `${JSON.stringify({ total, rules }, null, 2)}\n`);
     console.log(`Recorded ${total} warning(s) across ${Object.keys(rules).length} rule(s) in ${BASELINE}.`);
-    process.exit(errors > 0 ? 1 : 0);
+    process.exit(0);
   }
 
   if (!existsSync(BASELINE)) {

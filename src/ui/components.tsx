@@ -716,7 +716,6 @@ export function EmptyState({
   );
 }
 
-/** Distinguishes first-load failure from a genuine empty account. */
 /**
  * The frame a data-backed screen shows before its rows exist.
  *
@@ -761,6 +760,7 @@ export function DataGateScreen({
   );
 }
 
+/** Distinguishes first-load failure from a genuine empty account. */
 export function DataStateNotice({
   status,
   retry,

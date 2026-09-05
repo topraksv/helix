@@ -98,23 +98,64 @@ const LOCAL_STATIC_ROUTES = [
   "/helix/settings/incomes", "/helix/settings/budgets", "/helix/settings/opening-balance",
   "/helix/transaction", "/helix/installment-new", "/helix/subscription-form", "/helix/bulk-entry",
   "/helix/columns-editor", "/helix/import-wizard", "/helix/opening-balance",
-  "/helix/reconciliation", "/helix/upcoming", "/helix/workspace-template", "/helix/account-security",
-  // Six routes this sweep did not know about until 2026-09-05, and one of them
-  // was carrying a violation the whole time: `/helix/privacy` is 3594px of
-  // legal text in a 655px window with nothing focusable in it, so its scroll
-  // region failed `scrollable-region-focusable` — the app was leaning on
-  // Chromium's and Firefox's own focusable-scroller behaviour to make its
-  // legal text readable, which is a bet rather than an affordance. A route
-  // list is a claim about what has been checked, and these six made it a
-  // false one.
+  "/helix/reconciliation", "/helix/upcoming", "/helix/workspace-template",
+  // Routes this sweep did not know about until 2026-09-05, and one of them was
+  // carrying a violation the whole time: `/helix/privacy` is 3594px of legal
+  // text in a 655px window with nothing focusable in it, so its scroll region
+  // failed `scrollable-region-focusable` — the app was leaning on Chromium's
+  // and Firefox's own focusable-scroller behaviour to make its legal text
+  // readable, which is a bet rather than an affordance. A route list is a
+  // claim about what has been checked, and these made it a false one.
   "/helix/privacy", "/helix/feedback", "/helix/attention", "/helix/sync-issues",
-  "/helix/data-reset", "/helix/statement-import",
+  "/helix/statement-import",
+  // DELIBERATELY ABSENT: `/helix/account-security` and `/helix/data-reset`.
+  // Both open with `if (!isSupabaseConfigured) return <Redirect href="/(tabs)/
+  // settings" />`, and every browser build is exactly that case —
+  // `scripts/export-e2e-web.mjs` exports with blank Supabase values on purpose.
+  // Measured on 2026-09-05: each lands on `/helix/settings` two animation
+  // frames after `#root` appears. Listed here they audited Settings a second
+  // time under two cloud screens' names, which is worse than an omission — a
+  // clean bill of health for a screen nothing looked at. `visitAuditedRoute`
+  // below now refuses to let that happen quietly to anything on this list.
   // Carries its instrument in the query string: without one it is the "unknown
   // instrument" card, which audits a screen nobody reaches. The feed is refused
   // for every browser test, so this is the empty state of the real layout — the
   // quote card, the range switch and the offer to fetch the history again.
   "/helix/market-detail?code=ALTIN",
 ];
+
+/**
+ * Navigate, and prove the app stayed where it was sent.
+ *
+ * A guard that redirects turns "this route was audited" into a claim about
+ * somewhere else, and the sweep cannot tell on its own: it finds a rendered
+ * `#root`, runs axe against whatever screen it landed on, and reports the
+ * route it asked for as clean. Two cloud-only routes did exactly that until
+ * 2026-09-05.
+ *
+ * The wait is the load-bearing half. `<Redirect>` fires from an effect one or
+ * two animation frames AFTER `#root` becomes visible — measured at 35-47ms on
+ * this machine — so reading the URL straight after the navigation returns the
+ * route's own path and this check would pass on precisely the routes it exists
+ * to catch. Waiting for the path to hold still instead of for a fixed number
+ * of frames keeps that from being a bet on a number measured once.
+ */
+async function visitAuditedRoute(page: Page, route: string): Promise<void> {
+  await page.goto(route);
+  await expect(page.locator("#root")).toBeVisible();
+  await page.evaluate(async () => {
+    const frame = () => new Promise<void>((resolve) => { requestAnimationFrame(() => resolve()); });
+    let path = location.pathname;
+    for (let elapsed = 0, held = 0; elapsed < 30 && held < 5; elapsed += 1) {
+      await frame();
+      if (location.pathname === path) held += 1;
+      else { path = location.pathname; held = 0; }
+    }
+  });
+  const landed = new URL(page.url()).pathname;
+  expect(landed, `${route} redirected to ${landed}: it is not reachable in this build`)
+    .toBe(new URL(route, page.url()).pathname);
+}
 
 async function localReachableRoutes(page: Page): Promise<string[]> {
   await page.goto("/helix/cash-flow");
@@ -131,15 +172,19 @@ async function localReachableRoutes(page: Page): Promise<string[]> {
 }
 
 test("every local-mode reachable route stays accessible with real data", async ({ page }, testInfo) => {
-  test.setTimeout(180_000);
+  // Per route this costs a navigation, a full-page `[role]` walk and an axe run
+  // over five WCAG tag sets — the expensive one. The budget has to come from
+  // the number of routes rather than stay where it was set when the list was
+  // shorter, or the tail of the sweep races the clock on a loaded runner and
+  // the failure arrives as a timeout instead of as the violation it found.
+  test.setTimeout(300_000);
   const errors = collectRuntimeErrors(page);
   await onboard(page);
   await addMarketExpense(page, "A11y taraması");
   const routes = await localReachableRoutes(page);
   const problems: string[] = [];
   for (const route of routes) {
-    await page.goto(route);
-    await expect(page.locator("#root")).toBeVisible();
+    await visitAuditedRoute(page, route);
     if (route === "/helix/cash-flow") {
       // The app shell is visible before the async ledger bundle and measured
       // matrix viewport are ready. Audit the real populated table, not whichever
@@ -158,8 +203,22 @@ test("every local-mode reachable route stays accessible with real data", async (
         if (style.display === "none" || style.visibility === "hidden") continue;
         const box = element.getBoundingClientRect();
         if (box.width === 0 || box.height === 0) continue;
+        // SC 2.5.8 carries its own Inline exception: a target that sits in a
+        // sentence, whose height is simply what the surrounding text's
+        // line-height makes it. `/helix/feedback` has the only one in the app —
+        // the notice link inside the sentence that says what gets sent, 172x19
+        // in a 23px line box — and padding it to 24 would push the words around
+        // it apart to satisfy a rule that exempts it. Deliberately narrow: an
+        // inline box AND non-target text around it, so a control standing on
+        // its own cannot claim the exception. It reads as new only because the
+        // sweep now waits for the entrance animation to settle; before that
+        // this element was measured at zero height and skipped entirely.
+        const parent = element.parentElement;
+        const inlineInSentence = style.display === "inline"
+          && parent != null
+          && (parent.textContent ?? "").trim() !== (element.textContent ?? "").trim();
         // WCAG 2.2 SC 2.5.8 (AA) — 24x24 CSS px minimum.
-        if (box.width < 24 || box.height < 24) {
+        if (!inlineInSentence && (box.width < 24 || box.height < 24)) {
           found.push(`${role} "${(element.getAttribute("aria-label") ?? element.textContent ?? "").trim().slice(0, 30)}" ${Math.round(box.width)}x${Math.round(box.height)}`);
         }
       }
@@ -188,7 +247,9 @@ test("every local-mode reachable route stays accessible with real data", async (
  * wrapped controls and asserts it finds all three.
  */
 test("layout non-negotiables hold on every route in both widths", async ({ page, context }, testInfo) => {
-  test.setTimeout(180_000);
+  // Every route twice, once per width, each with a full-document scan. Same
+  // reasoning as the sweep above: the budget follows the route list.
+  test.setTimeout(240_000);
   await isolateExternalData(context);
   // This audit owns settled geometry; entrance-motion behavior has a separate
   // regression test. Waiting for fonts plus two paint frames prevents the app
@@ -296,8 +357,7 @@ test("layout non-negotiables hold on every route in both widths", async ({ page,
   for (const width of [390, 1440]) {
     await page.setViewportSize({ width, height: 900 });
     for (const route of routes) {
-      await page.goto(route);
-      await expect(page.locator("#root")).toBeVisible();
+      await visitAuditedRoute(page, route);
       await waitForSettledLayout();
       const found = await scan(false);
       const tag = `${width}px ${route}`;

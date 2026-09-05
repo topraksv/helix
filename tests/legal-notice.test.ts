@@ -159,16 +159,38 @@ describe("KVKK notice", () => {
     "schema.org": null,
   };
 
+  /**
+   * Origins the policy builds from an identifier instead of spelling out.
+   *
+   * Written down here so that an interpolation is SKIPPED BY DECISION rather
+   * than missed by a pattern. The discovery regex below accepted only host
+   * characters, and `$` and `{` are not among them, so `https://${…}` produced
+   * no match at all — which made the guard that claimed to skip interpolations
+   * unreachable code and turned the whole scan into a trap: a new
+   * `https://${someProcessorHost}` in the CSP would have been dropped silently,
+   * leaving `undecided` and `undisclosed` both empty and this test green while
+   * the notice shipped without naming a recipient the app contacts.
+   *
+   * The Supabase origin is not here because it never reaches the pattern: it is
+   * substituted whole, `https://` and all, from configuration. It is disclosed
+   * by name in the notice.
+   */
+  const INTERPOLATED_HOSTS: Record<string, string> = { MARKET_DATA_HOST };
+
   function hostsTheCodeCanReach(): string[] {
     const found = new Set<string>();
     // The policy is the ceiling on the web build: a host that is not in it is
     // a host the browser refuses.
     for (const file of ["src/app/+html.tsx", "src/services/fx-fetch.ts"]) {
-      for (const match of read(file).matchAll(/https:\/\/([A-Za-z0-9*.-]+)/g)) {
-        const host = match[1]!;
-        // The Supabase origin is interpolated from configuration rather than
-        // written down, and it is disclosed by name already.
-        if (!host.includes("${")) found.add(host);
+      for (const match of read(file).matchAll(/https:\/\/(?:\$\{([^}]+)\}|([A-Za-z0-9*.-]+))/g)) {
+        const [, expression, literal] = match;
+        if (expression === undefined) {
+          found.add(literal!);
+          continue;
+        }
+        const resolved = INTERPOLATED_HOSTS[expression.trim()];
+        expect(resolved, `${file} builds a URL from \`${expression}\`, which nothing here resolves`).toBeDefined();
+        found.add(resolved!);
       }
     }
     // Native has no CSP, so the mark URLs are read from the builder itself.

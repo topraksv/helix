@@ -123,10 +123,22 @@ jobs:
           expected=$(node -p "require('./app.json').expo.version")
           base="https://topraksv.github.io/helix"
           echo "main says $expected"
-          curl -sS -L --retry 3 --retry-delay 5 -o /tmp/root.html "$base/"
-          bundle=$(grep -o '/_expo/static/js/web/[^"]*\.js' /tmp/root.html | head -1)
+          # `-f` is what separates "the site is down" from "the site is stale".
+          # Without it curl exits 0 having written Pages' own error body, and the
+          # search below then reports a malformed deploy for a site that is not
+          # being served at all. The message is spelled out because `set -e`
+          # would otherwise end the step on the curl alone.
+          curl -fsS -L --retry 3 --retry-delay 5 -o /tmp/root.html "$base/" \
+            || { echo "::error::$base/ served no page at all — the site is unreachable or returning an HTTP error"; exit 1; }
+          # `grep` exits 1 when it matches nothing, and 141 when `head` closes
+          # the pipe on it. Under `pipefail` either ends the step before the
+          # diagnostic on the next line can print, which is exactly the case
+          # this check exists to report. Contained, so its status cannot.
+          bundle=$({ grep -o '/_expo/static/js/web/[^"]*\.js' /tmp/root.html || true; } | head -1)
           [ -n "$bundle" ] || { echo "::error::the served shell references no entry bundle"; exit 1; }
-          curl -sS -L --retry 3 --retry-delay 5 -o /tmp/entry.js "$base$bundle"
+          curl -fsS -L --retry 3 --retry-delay 5 -o /tmp/entry.js "$base$bundle" \
+            || { echo "::error::the shell references $bundle and the site does not serve it"; exit 1; }
+
           # The Expo manifest is embedded as a JSON STRING inside the bundle, so
           # every quote in it arrives escaped and a plain `"version":"x"` grep
           # finds nothing whether the version matches or not — which is a check
@@ -137,6 +149,10 @@ jobs:
             echo "live bundle carries $expected"
             exit 0
           fi
-          served=$(grep -o '"version":"[0-9]*\.[0-9]*\.[0-9]*"' /tmp/flat.js | head -3 | tr '\n' ' ')
+          # Contained for the same reason as the bundle search above: a bundle
+          # carrying no version string at all is the total-staleness case the
+          # fallback below names, and a bare pipeline would abort the step
+          # instead of printing it.
+          served=$({ grep -o '"version":"[0-9]*\.[0-9]*\.[0-9]*"' /tmp/flat.js || true; } | head -3 | tr '\n' ' ')
           echo "::error::production is not serving $expected. The live bundle carries: ${served:-no version string at all}"
           exit 1

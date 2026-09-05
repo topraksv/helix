@@ -423,11 +423,17 @@ test("the legal notice can be read to the end with a keyboard @cross-browser", a
  * would put an unexplained stop in front of every form. These four all have
  * focusable content of their own and must therefore have gained nothing.
  */
-test("screens with their own controls gain no extra tab stop", async ({ page }) => {
+test("screens with their own controls gain no extra tab stop", async ({ page }, testInfo) => {
+  // A count of zero is what a broken screen also produces: an error boundary
+  // firing on any of these four leaves no scroll region to mark, and this was
+  // the only test in the file walking routes without watching the console for
+  // it. `/helix/feedback` is not visited by any other test here.
+  const errors = collectRuntimeErrors(page);
   await onboard(page);
   for (const route of ["/helix/", "/helix/settings", "/helix/transaction", "/helix/feedback"]) {
     await page.goto(route);
     await expect(page.locator("#root")).toBeVisible();
     await expect(page.locator("[data-helix-scroll-focus]"), route).toHaveCount(0);
   }
+  await assertNoRuntimeErrors(errors, testInfo);
 });
