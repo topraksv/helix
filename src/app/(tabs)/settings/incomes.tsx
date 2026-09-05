@@ -14,7 +14,7 @@ import { deleteRecurringIncomeWithExpected, restoreDeletedRule, upsertRecurringI
 import { scheduleSync } from "../../../sync/engine";
 import { shortDateLabel, tr } from "../../../i18n/tr";
 import { categoryIconComponent } from "../../../ui/category-icon";
-import { Body, Button, Card, CardList, ChipPicker, DataStateNotice, EmptyState, FadeIn, Field, Label, MoneyField, PanelHeader, Row, Screen, SectionHeader, Select } from "../../../ui/components";
+import { Body, Button, Card, CardList, ChipPicker, DataGateScreen, DataStateNotice, EmptyState, FadeIn, Field, Label, MoneyField, PanelHeader, Row, Screen, SectionHeader, Select } from "../../../ui/components";
 import { RuleRow } from "../../../ui/rule-row";
 import { useUndo } from "../../../ui/undo";
 import { font, radius, spacing, type, useTheme } from "../../../ui/theme";
@@ -250,13 +250,7 @@ export default function IncomeRulesScreen() {
     }
   };
 
-  if (!dataReady) {
-    return (
-      <Screen>
-        <DataStateNotice status={dataStatus} retry={retryData} />
-      </Screen>
-    );
-  }
+  if (!dataReady) return <DataGateScreen status={dataStatus} retry={retryData} />;
 
   return (
     <Screen width="workspace">

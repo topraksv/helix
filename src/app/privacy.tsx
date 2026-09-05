@@ -15,6 +15,11 @@
  * `src/domain/app-guard.ts` classifies this route as `public`. Without that it
  * read as protected account UI and the guard bounced signed-out readers to
  * sign-in, which is the one audience the notice exists for.
+ *
+ * `readable` is set because this screen is 3594px of text with no control in
+ * it, so its scroll region is the only thing a keyboard could move and there
+ * was nothing for Tab to land on. It is the only screen in the app with that
+ * shape; see `useKeyboardReachableScroller`.
  */
 
 import { View } from "react-native";
@@ -24,7 +29,7 @@ import { spacing } from "../ui/theme";
 
 export default function PrivacyScreen() {
   return (
-    <Screen width="form">
+    <Screen width="form" readable>
       <LegalNoticeBody />
       <View style={{ height: spacing.xxl }} />
     </Screen>

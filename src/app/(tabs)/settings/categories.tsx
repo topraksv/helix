@@ -19,7 +19,7 @@ import LayoutTemplate from "lucide-react-native/icons/layout-template";
 import Pencil from "lucide-react-native/icons/pencil";
 import Plus from "lucide-react-native/icons/plus";
 import Trash2 from "lucide-react-native/icons/trash-2";
-import { Badge, Body, Button, Card, ChipPicker, DataStateNotice, Divider, EmptyState, FadeIn, Field, IconButton, PanelHeader, Row, Screen, Spread, Toggle } from "../../../ui/components";
+import { Badge, Body, Button, Card, ChipPicker, DataGateScreen, DataStateNotice, Divider, EmptyState, FadeIn, Field, IconButton, PanelHeader, Row, Screen, Spread, Toggle } from "../../../ui/components";
 import { CategoryDeleteSheet, UNCATEGORIZED_CHOICE } from "../../../ui/category-delete-sheet";
 import { DraggableList, ReorderGrip } from "../../../ui/draggable-list";
 import { placeholderPools, useRotatingPlaceholder } from "../../../ui/placeholders";
@@ -200,10 +200,9 @@ export default function CategoriesScreen({ header }: { header?: ReactNode } = {}
 
   if (!dataReady) {
     return (
-      <Screen>
+      <DataGateScreen status={dataStatus} retry={retryData}>
         {header}
-        <DataStateNotice status={dataStatus} retry={retryData} />
-      </Screen>
+      </DataGateScreen>
     );
   }
 

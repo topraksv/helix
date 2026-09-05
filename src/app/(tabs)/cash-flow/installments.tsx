@@ -23,7 +23,7 @@ import {
   useAllTransactionsState,
 } from "../../../data/hooks";
 import { combineLiveStates } from "../../../data/live-state";
-import { Amount, Badge, Body, Button, Card, CardList, DataStateNotice, EmptyState, MonthStepper, Screen, SectionHeader, SegmentBar, Select } from "../../../ui/components";
+import { Amount, Badge, Body, Button, Card, CardList, DataGateScreen, DataStateNotice, EmptyState, MonthStepper, Screen, SectionHeader, SegmentBar, Select } from "../../../ui/components";
 import { font, radius, spacing, type, useTheme } from "../../../ui/theme";
 import { WorkspaceSplit } from "../../../ui/workspace-layout";
 
@@ -191,13 +191,7 @@ export default function InstallmentsScreen() {
 
   const nothingThisMonth = selfPlans.length === 0 && otherPlans.length === 0;
 
-  if (!dataReady) {
-    return (
-      <Screen>
-        <DataStateNotice status={dataStatus} retry={retryData} />
-      </Screen>
-    );
-  }
+  if (!dataReady) return <DataGateScreen status={dataStatus} retry={retryData} />;
 
   return (
     <Screen width="workspace">

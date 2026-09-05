@@ -89,7 +89,7 @@ export const tr = {
   legal: {
     title: "Aydınlatma Metni",
     subtitle: "Kişisel verilerinizin nasıl işlendiğine ilişkin bilgilendirme",
-    updated: "Son güncelleme: 3 Eylül 2026",
+    updated: "Son güncelleme: 5 Eylül 2026",
     controllerName: "Ömer Toprak Şavlı",
     contactEmail: "topraksavli@hotmail.com",
     intro: "Bu metin, 6698 sayılı Kişisel Verilerin Korunması Kanunu'nun 10. maddesi uyarınca hazırlanmıştır. Helix'i kullandığınızda hangi kişisel verilerinizin işlendiğini, bunların hangi amaçla ve hangi hukuki sebebe dayanarak işlendiğini, kimlere aktarıldığını, ne kadar süreyle saklandığını ve Kanunun size tanıdığı hakları açıklar.",
@@ -101,7 +101,7 @@ export const tr = {
     collectedTitle: "2. İşlenen kişisel verileriniz",
     collectedIntro: "Aşağıdaki veriler dışında hiçbir kişisel veri işlenmemektedir. Uygulamada reklam, analitik, davranışsal takip veya profilleme amacıyla veri toplayan hiçbir bileşen bulunmamaktadır.",
     collected: [
-      "**Kimlik ve iletişim verisi:** Yalnızca e-posta adresiniz ve şifrenizin doğrulama özeti (parolanın kendisi hiçbir yerde saklanmaz). Bunlar kimlik doğrulama hizmetinde tutulur. Hesap oluşturmadan kullandığınızda bu veriler hiç oluşmaz.",
+      "**Kimlik ve iletişim verisi:** Yalnızca e-posta adresiniz ve şifrenizin doğrulama özeti (parolanın kendisi hiçbir yerde saklanmaz). Bunlar kimlik doğrulama hizmetinde tutulur. Helix bir hesap olmadan kullanılamadığı için bu iki veri her kullanıcı için oluşur.",
       "**Finansal veriler:** Kaydettiğiniz işlemler, kategoriler, bütçeler, taksitler, abonelikler, düzenli gelirler, yatırımlar, hücre notları ve döviz kuru anlık görüntüleri. Bunlar sizin girdiğiniz verilerdir; hiçbir banka, kart veya ödeme kuruluşuna bağlanılmaz ve hiçbir hesap hareketi otomatik olarak çekilmez.",
       "**Belge verisi:** İşlemlerinize eklediğiniz fiş, fatura ve garanti belgeleri.",
       "**İşlem güvenliği ve hata kaydı verisi:** Bir hata oluştuğunda; hatanın zamanı, uygulamanın hangi bölümünde oluştuğu, önem derecesi, altı sabit hata sınıfından biri, cihaz platformu, uygulama sürümü, hatanın teknik sınıf adı, hata mesajının yalnızca harflerden oluşan izi ve en çok sekiz satırlık kırpılmış yığın izi. Hata mesajının kendisi, tutar, tarih, isim, not veya herhangi bir tanımlayıcı bu kayda giremez; içinde adres, dosya yolu veya Türkçe karakter geçen bir mesaj kırpılmadan bütünüyle atılır.",
@@ -120,20 +120,24 @@ export const tr = {
     ],
 
     transferTitle: "5. Aktarım ve yurt dışına aktarım",
-    transferIntro: "Hesap açarak kullandığınızda verileriniz, hizmetin sunulabilmesi için Türkiye dışında yerleşik hizmet sağlayıcıların sunucularında işlenir. Aktarılan alıcı grupları ve her birine aktarılan veri şunlardır:",
+    transferIntro: "Helix bir hesapla kullanılır; kayıt olmadan kullanılabilen bir sürümü yoktur. Bu nedenle aşağıdaki aktarımların hepsi sizin için geçerlidir. Her satır alıcıyı, aktarılan veriyi ve aktarımın hangi anda yapıldığını söyler:",
     transfers: [
-      "**Supabase** — barındırma altyapısı Amazon Web Services, **Frankfurt / Almanya**. Aktarılan veri: kimlik ve iletişim, finansal veriler, belgeler ve hata kayıtları. Verilerinizin bulunduğu asıl yer burasıdır.",
-      "**Resend** — Amerika Birleşik Devletleri. Aktarılan veri: yalnızca geri bildirim mesajınız ve varsa ekran görüntünüz, e-posta olarak iletilirken.",
-      "**GitHub Pages** — Amerika Birleşik Devletleri. Aktarılan veri: web sürümünü açtığınızda oluşan bağlantı bilgisi (IP adresi, tarayıcı bilgisi). Finansal veri aktarılmaz.",
-      "**Expo (EAS)** — Amerika Birleşik Devletleri. Aktarılan veri: mobil uygulamanın güncelleme sorgusu. Finansal veri aktarılmaz.",
+      "**Supabase** — barındırma altyapısı Amazon Web Services, **Frankfurt / Almanya**. Yalnızca hesap açtığınızda. Aktarılan veri: kimlik ve iletişim, finansal veriler, belgeler ve hata kayıtları. Verilerinizin bulunduğu asıl yer burasıdır.",
+      "**Resend** — Amerika Birleşik Devletleri. Yalnızca geri bildirim gönderdiğinizde. Aktarılan veri: mesajınız, seçtiğiniz kategori, varsa ekran görüntüleriniz, size dönülebilmesi için hesabınızın e-posta adresi ve raporun geldiği cihazın platformu ile uygulama sürümü.",
+      "**GitHub Pages** — Amerika Birleşik Devletleri. Web sürümünü açtığınız her seferde, giriş yapmadan önce de. Aktarılan veri: bağlantı bilgisi (IP adresi, tarayıcı bilgisi). Finansal veri aktarılmaz.",
+      "**Expo (EAS)** — Amerika Birleşik Devletleri. Mobil uygulama güncelleme sorduğunda. Aktarılan veri: güncelleme sorgusu. Finansal veri aktarılmaz.",
+      "**TCMB** — Türkiye. Mobil uygulamada günlük döviz kurları buradan okunur. Aktarılan veri: yalnızca bağlantı bilgisi. Yurt içinde kaldığı için yurt dışına aktarım değildir.",
+      "**exchangerate-api (open.er-api.com)** — Amerika Birleşik Devletleri. Döviz kurunun ikinci kaynağı; web sürümünde tek kaynaktır. Aktarılan veri: yalnızca bağlantı bilgisi.",
+      "**Binance halka açık piyasa verisi (data-api.binance.vision)** — yurt dışı. Altın, dolar ve euro kotasyonları buradan okunur. Aktarılan veri: yalnızca bağlantı bilgisi; hangi yatırımlarınız olduğu gönderilmez.",
+      "**Google, DuckDuckGo ve icon.horse** — Amerika Birleşik Devletleri; icon.horse'un sunucu konumu hizmet sağlayıcı tarafından açıklanmamıştır. Bir aboneliğe ya da ödeme yöntemine tanınan bir kurum adı yazdığınızda, o kurumun logosunu getirmek için bu üçünden birine istek gider — siz daha kaydetmeden, yazarken. Aktarılan veri: bağlantı bilgisi ve yazdığınız adın karşılık geldiği alan adı; yani hangi bankayı ya da hangi aboneliği yazdığınız bu servis tarafından görülebilir. Tutar, tarih, not ve diğer kayıtlarınız gönderilmez.",
     ],
-    transferNote: "Bu aktarımlar KVKK m. 9 kapsamındaki yurt dışına aktarım hükümlerine tabidir. Aktarımı istemiyorsanız uygulamayı hesap açmadan kullanabilirsiniz; bu durumda hiçbir veriniz cihazınızdan çıkmaz ve yukarıdaki alıcıların hiçbirine aktarım gerçekleşmez.",
+    transferNote: "Türkiye dışına yapılan bu aktarımlar KVKK m. 9 hükümlerine tabidir. Helix hesap açmadan kullanılamadığı için bu aktarımların dışında kalmanın bir yolu yoktur; kabul etmiyorsanız hesap oluşturmamanız gerekir. Aktarımın kapsamı ise sınırlıdır: kayıtlarınız ve belgeleriniz yalnızca Supabase'e, geri bildiriminiz yalnızca Resend'e gider. Kur, piyasa ve logo servislerine giden isteklerde kayıtlarınız yoktur — yalnızca bağlantı bilginiz ve, logo isteğinde, yazdığınız kurumun alan adı.",
 
     retentionTitle: "6. Saklama ve imha",
     retention: [
       "**Cihazınızdaki veriler**, uygulamayı kaldırana veya çalışma alanını sıfırlayana kadar saklanır.",
       "**Buluttaki finansal veriler ve belgeler**, hesabınızı silene kadar saklanır. Hesabınızı sildiğinizde kimliğiniz, kayıtlarınız ve belgeleriniz aynı işlemde silinir.",
-      "**Hata kayıtları en fazla 180 gün saklanır.** Bu süre bir taahhütten ibaret değildir; veritabanı tarafından uygulanır ve uygulama her eşitlemede süresi dolmuş kayıtları siler.",
+      "**Hata kayıtları en fazla 180 gün saklanır.** Silmeyi uygulama başlatır: her eşitlemede, süresi geçmiş kayıtları silen veritabanı işlevi çağrılır ve o işlev 180 günden yenisine erişemez. Uygulamayı bir daha hiç açmazsanız bu çağrı da yapılmaz; hesabınızı sildiğinizde bu kayıtlar kimliğinizle birlikte aynı işlemde gider.",
       "**Geri bildirim e-postaları**, talebiniz sonuçlandıktan sonra e-posta kutusunda kalır; silinmesini talep etmeniz hâlinde silinir.",
     ],
 

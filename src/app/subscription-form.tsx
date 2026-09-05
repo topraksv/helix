@@ -21,7 +21,7 @@ import { scheduleSync } from "../sync/engine";
 import { categoryIconComponent } from "../ui/category-icon";
 import { Logo, PaymentSourceLogo } from "../ui/logo";
 import { CurrencyPicker } from "../ui/currency-picker";
-import { Amount, Body, Button, Card, ChipPicker, DataStateNotice, FadeIn, Field, FieldNote, InlineDisclosure, Label, MoneyField, PanelHeader, Row, Screen, Select, Spread, Toggle } from "../ui/components";
+import { Amount, Body, Button, Card, ChipPicker, DataGateScreen, DataStateNotice, FadeIn, Field, FieldNote, InlineDisclosure, Label, MoneyField, PanelHeader, Row, Screen, Select, Spread, Toggle } from "../ui/components";
 import { useSubmitOnEnter } from "../ui/keyboard";
 import { appAlert } from "../ui/dialog";
 import { DateField } from "../ui/calendar";
@@ -382,13 +382,7 @@ function SubscriptionForm({ existing }: { existing?: ReturnType<typeof useSubscr
   useSubmitOnEnter(() => void save(), baseValid && !busy);
 
   const namePlaceholder = useRotatingPlaceholder(placeholderPools.subscription);
-  if (!dataReady) {
-    return (
-      <Screen>
-        <DataStateNotice status={dataStatus} retry={retryData} />
-      </Screen>
-    );
-  }
+  if (!dataReady) return <DataGateScreen status={dataStatus} retry={retryData} />;
 
   return (
     <Screen width="workspace">

@@ -1,7 +1,7 @@
-/** Shared focus behavior for modal surfaces. */
+/** Shared focus behavior for modal surfaces and scroll regions. */
 
 import { useEffect, useRef, type RefObject } from "react";
-import { AccessibilityInfo, findNodeHandle, Platform, type View } from "react-native";
+import { AccessibilityInfo, findNodeHandle, Platform, type ScrollView, type View } from "react-native";
 import { pushOverlay } from "./keyboard";
 
 type FocusTarget = View;
@@ -105,4 +105,86 @@ export function useModalAccessibility(
   }, [open, returnFocusRef, focusKey, focusHeading]);
 
   return titleRef;
+}
+
+/**
+ * The DOM element that actually scrolls, behind a react-native ScrollView ref.
+ *
+ * `getScrollableNode` is react-native-web's own accessor and is what the
+ * library guarantees; `findNodeHandle` is the fallback for a ref that has been
+ * forwarded through a wrapper which does not re-expose it.
+ */
+function scrollableNode(instance: ScrollView | null): HTMLElement | null {
+  if (Platform.OS !== "web" || instance == null || typeof document === "undefined") return null;
+  const candidate = instance as unknown as { getScrollableNode?: () => unknown };
+  const node = typeof candidate.getScrollableNode === "function"
+    ? candidate.getScrollableNode()
+    : findNodeHandle(instance as never);
+  return node instanceof HTMLElement ? node : null;
+}
+
+/** Our own mark, so a tab stop this hook added is the only one it removes. */
+const SCROLL_FOCUS_MARK = "data-helix-scroll-focus";
+
+/**
+ * Make a scroll region a keyboard can actually move.
+ *
+ * A browser scrolls an inner container with the arrow keys only when focus is
+ * inside it, and Tab reaches a container through something focusable it
+ * contains. `/privacy` contains nothing focusable at all: 3594px of KVKK text
+ * in a 655px window, one Back button above it, and no control anywhere in the
+ * notice itself.
+ *
+ * WHAT WAS AND WAS NOT MEASURED, because the first version of this comment got
+ * it wrong. Current Chromium and Firefox make an overflowing container
+ * focusable on their own, so on both of them Tab already reaches this region
+ * and End already reaches the end of the notice — checked on 2026-09-05 with
+ * the hook removed. The defect is therefore not "a keyboard cannot read the
+ * notice in the browsers this app is tested in"; it is that the app was
+ * relying on a browser courtesy of the last few releases to make its legal
+ * text readable, and said so nowhere. Anything older, and any engine that has
+ * not adopted it, gets a notice that stops after one screen —
+ * `scrollable-region-focusable` is axe's name for exactly that bet, and it
+ * fires on this route in both themes.
+ *
+ * So the affordance is stated in the markup instead of assumed — on the one
+ * screen shaped that way. `enabled` comes from `Screen`'s `readable` prop and
+ * is set by `privacy.tsx` alone: a focusable region is a tab stop, and an
+ * effect that touches the DOM inside the app's most-used primitive is not
+ * something forty screens should carry to fix one. Even then the stop appears
+ * only while it is earned — the content overflows AND holds nothing else
+ * focusable — and disappears again when either stops being true.
+ *
+ * Written to the DOM rather than through React state: this changes no layout
+ * and must not re-render a screen whose content is still loading.
+ */
+export function useKeyboardReachableScroller(ref: RefObject<ScrollView | null>, enabled: boolean): void {
+  useEffect(() => {
+    if (!enabled || Platform.OS !== "web") return;
+    const node = scrollableNode(ref.current);
+    if (!node) return;
+
+    const sync = () => {
+      const overflows = node.scrollHeight > node.clientHeight + 1;
+      const needsStop = overflows && focusableElements(node).length === 0;
+      if (needsStop) {
+        if (!node.hasAttribute(SCROLL_FOCUS_MARK)) {
+          node.setAttribute(SCROLL_FOCUS_MARK, "true");
+          node.tabIndex = 0;
+        }
+      } else if (node.hasAttribute(SCROLL_FOCUS_MARK)) {
+        node.removeAttribute(SCROLL_FOCUS_MARK);
+        node.removeAttribute("tabindex");
+      }
+    };
+
+    sync();
+    // Content arrives after the first paint on every screen that loads data,
+    // and a one-shot check would answer for the empty frame.
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(sync);
+    observer.observe(node);
+    for (const child of Array.from(node.children)) observer.observe(child);
+    return () => observer.disconnect();
+  }, [ref, enabled]);
 }

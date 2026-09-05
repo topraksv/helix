@@ -29,7 +29,7 @@ import {
   useTxLike,
 } from "../../../data/hooks";
 import { combineLiveStates } from "../../../data/live-state";
-import { Amount, Badge, Body, Button, Card, CardList, DataStateNotice, Divider, EmptyState, Field, FieldNote, Heading, IconButton, ListRow, MetricStrip, Row, Screen, SectionHeader, Segmented, Select, Spread } from "../../../ui/components";
+import { Amount, Badge, Body, Button, Card, CardList, DataGateScreen, DataStateNotice, Divider, EmptyState, Field, FieldNote, Heading, IconButton, ListRow, MetricStrip, Row, Screen, SectionHeader, Segmented, Select, Spread } from "../../../ui/components";
 import { Bars, ChartFrame, Donut, Lines, distributionDonutData, useSeriesColors } from "../../../ui/charts";
 import { Collapse } from "../../../ui/motion-primitives";
 import { StickyTable } from "../../../ui/sticky-table";
@@ -732,12 +732,9 @@ export default function AnalysisScreen() {
     // Same `Screen`, same width, same scroll mode as the ready state. It used
     // to differ in all three, so the page arrived without its heading, then
     // re-mounted WITH one the moment data landed and pushed everything below
-    // it down the screen.
-    return (
-      <Screen scroll={false} width="workspace">
-        <DataStateNotice status={dataStatus} retry={retryData} />
-      </Screen>
-    );
+    // it down the screen. `DataGateScreen` forwards these props for that
+    // reason — it is a frame this screen chooses, not one it inherits.
+    return <DataGateScreen status={dataStatus} retry={retryData} scroll={false} width="workspace" />;
   }
 
   return (

@@ -1,7 +1,7 @@
 {
   "name": "helix",
   "main": "expo-router/entry",
-  "version": "1.4.1",
+  "version": "1.4.2",
   "author": "Ömer Toprak Şavlı",
   "license": "UNLICENSED",
   "engines": {
@@ -69,6 +69,8 @@
     "ios": "expo run:ios",
     "web": "node scripts/web-dev-notice.mjs && npm run web:preview",
     "lint": "expo lint",
+    "lint:ratchet": "node scripts/check-lint-ratchet.mjs",
+    "lint:record": "node scripts/check-lint-ratchet.mjs --record",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --config vitest.coverage.config.ts",
@@ -79,7 +81,7 @@
     "test:e2e:only": "playwright test",
     "typecheck": "tsc --noEmit",
     "db:generate": "drizzle-kit generate",
-    "verify": "npm run typecheck && npm run test:coverage && npx expo lint",
+    "verify": "npm run typecheck && npm run test:coverage && npm run lint:ratchet",
     "bundle:check": "node scripts/check-web-budget.mjs dist --require-supabase-config",
     "test:e2e:smoke": "npm run test:e2e:export && playwright test --grep @smoke",
     "verify:full": "npm run verify && npx expo export -p web --clear && npm run bundle:check && npm run test:e2e",

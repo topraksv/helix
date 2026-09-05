@@ -14,7 +14,7 @@ import CalendarRange from "lucide-react-native/icons/calendar-range";
 import ChevronLeft from "lucide-react-native/icons/chevron-left";
 import ChevronRight from "lucide-react-native/icons/chevron-right";
 import ListPlus from "lucide-react-native/icons/list-plus";
-import { Badge, Body, Button, Card, DataStateNotice, EmptyState, Heading, IconButton, MoneyField, OperationStatusNotice, PanelHeader, Screen, Spread } from "../ui/components";
+import { Badge, Body, Button, Card, DataGateScreen, DataStateNotice, EmptyState, Heading, IconButton, MoneyField, OperationStatusNotice, PanelHeader, Screen, Spread } from "../ui/components";
 import { appAlert } from "../ui/dialog";
 import { scheduleSync } from "../sync/engine";
 import { userMessage } from "../domain/user-error";
@@ -103,13 +103,7 @@ export default function BulkEntryModal() {
     });
   };
 
-  if (!dataReady) {
-    return (
-      <Screen>
-        <DataStateNotice status={dataStatus} retry={retryData} />
-      </Screen>
-    );
-  }
+  if (!dataReady) return <DataGateScreen status={dataStatus} retry={retryData} />;
 
   return (
     <Screen width="workspace">

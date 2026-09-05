@@ -28,7 +28,7 @@ import ReceiptText from "lucide-react-native/icons/receipt-text";
 import Trash2 from "lucide-react-native/icons/trash-2";
 import WalletCards from "lucide-react-native/icons/wallet-cards";
 import type { LucideIcon } from "lucide-react-native";
-import { Amount, Badge, Body, Button, Card, CardList, ChipPicker, ChoiceTile, DataStateNotice, EmptyState, Field, IconButton, PanelHeader, Row, Screen, SectionHeader, Spread } from "../../../ui/components";
+import { Amount, Badge, Body, Button, Card, CardList, ChipPicker, ChoiceTile, DataGateScreen, DataStateNotice, EmptyState, Field, IconButton, PanelHeader, Row, Screen, SectionHeader, Spread } from "../../../ui/components";
 import { placeholderPools, useRotatingPlaceholder } from "../../../ui/placeholders";
 import { useUndo } from "../../../ui/undo";
 import { spacing, type, useTheme } from "../../../ui/theme";
@@ -303,13 +303,7 @@ export default function SourcesScreen() {
   const replacementOptions = resolving ? eligibleReplacements(resolving.source.id, resolving.usage) : [];
   const cardReplacementRequired = Boolean(resolving && resolving.usage.cardInstallmentPlans > 0);
 
-  if (!dataReady) {
-    return (
-      <Screen>
-        <DataStateNotice status={dataStatus} retry={retryData} />
-      </Screen>
-    );
-  }
+  if (!dataReady) return <DataGateScreen status={dataStatus} retry={retryData} />;
 
   return (
     <Screen width="workspace">

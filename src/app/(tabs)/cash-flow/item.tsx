@@ -25,7 +25,7 @@ import {
 } from "../../../data/hooks";
 import { combineLiveStates } from "../../../data/live-state";
 import { monthLabel, tr } from "../../../i18n/tr";
-import { Amount, Card, DataStateNotice, EmptyState, Screen } from "../../../ui/components";
+import { Amount, Card, DataGateScreen, DataStateNotice, EmptyState, Screen } from "../../../ui/components";
 import { interactionSurface } from "../../../ui/interaction";
 import { controlSize, font, spacing, type, useTheme } from "../../../ui/theme";
 
@@ -163,10 +163,9 @@ function ItemBreakdown({
 
   if (!dataReady) {
     return (
-      <Screen>
+      <DataGateScreen status={dataStatus} retry={retryData}>
         <Stack.Screen options={{ title: label ?? tr.cashflow.monthDetail }} />
-        <DataStateNotice status={dataStatus} retry={retryData} />
-      </Screen>
+      </DataGateScreen>
     );
   }
 

@@ -29,7 +29,7 @@ import { categoryTableEntryType, signedBalanceEffectOf } from "../domain/transac
 import { transactionDateText } from "../ui/transaction-date";
 import { monthLabel, tr } from "../i18n/tr";
 import { scheduleSync } from "../sync/engine";
-import { Amount, Body, Button, Card, DataStateNotice, EmptyState, Field, MoneyField, PanelHeader, Row, Screen, SectionHeader } from "../ui/components";
+import { Amount, Body, Button, Card, DataGateScreen, DataStateNotice, EmptyState, Field, MoneyField, PanelHeader, Row, Screen, SectionHeader } from "../ui/components";
 import { TransactionRow } from "../ui/transaction-row";
 import { placeholderPools, useRotatingPlaceholder } from "../ui/placeholders";
 import { useUndo } from "../ui/undo";
@@ -258,10 +258,9 @@ function CellEditor({ month, categoryId }: { month: string; categoryId: string }
 
   if (!dataReady) {
     return (
-      <Screen>
+      <DataGateScreen status={dataStatus} retry={retryData}>
         <Stack.Screen options={{ title: monthLabel(rangeMonth) }} />
-        <DataStateNotice status={dataStatus} retry={retryData} />
-      </Screen>
+      </DataGateScreen>
     );
   }
 

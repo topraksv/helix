@@ -156,7 +156,11 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run typecheck
-      - run: npx expo lint
+      # The ratchet runs ESLint itself and gates on `lint-baseline.json`, so
+      # this is the lint step rather than a second one after it. Errors still
+      # fail outright; a rule that fires more often than the baseline records
+      # fails too, which a warning-tolerant `expo lint` never could.
+      - run: npm run lint:ratchet
       # On a full-gate push `test:coverage` runs this same suite under the
       # per-file thresholds, so running it here too would execute every unit
       # test twice for one commit.

@@ -39,10 +39,12 @@ import { resolve } from "node:path";
  */
 const CI_EXECUTED_SCRIPTS = [
   "scripts/check-advisories.mjs",
+  "scripts/check-lint-ratchet.mjs",
   "scripts/check-mutation-ratchet.mjs",
   "scripts/check-web-budget.mjs",
   "scripts/classify-changes.mjs",
   "scripts/export-e2e-web.mjs",
+  "scripts/release-notes.mjs",
   "scripts/serve-static.mjs",
 ];
 

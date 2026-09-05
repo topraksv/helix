@@ -22,7 +22,7 @@ import { AMOUNT_LABELS, needsVariableAmountEntry, isVariableSubscriptionOccurren
 import { dateLabel, tr } from "../i18n/tr";
 import { scheduleSync } from "../sync/engine";
 import { devError } from "../services/logger";
-import { Badge, Body, Button, Card, DataStateNotice, EmptyState, MoneyField, Row, Screen, Spread } from "../ui/components";
+import { Badge, Body, Button, Card, DataGateScreen, DataStateNotice, EmptyState, MoneyField, Row, Screen, Spread } from "../ui/components";
 import { appAlert } from "../ui/dialog";
 import { useUndo } from "../ui/undo";
 import { errorNotice } from "../ui/haptics";
@@ -132,10 +132,9 @@ export default function CatchUpScreen() {
 
   if (!dataReady) {
     return (
-      <Screen>
+      <DataGateScreen status={dataStatus} retry={retryData}>
         <Stack.Screen options={{ title: tr.catchup.title }} />
-        <DataStateNotice status={dataStatus} retry={retryData} />
-      </Screen>
+      </DataGateScreen>
     );
   }
 

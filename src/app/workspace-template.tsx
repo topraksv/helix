@@ -17,7 +17,7 @@ import { combineLiveStates } from "../data/live-state";
 import { tr } from "../i18n/tr";
 import { scheduleSync } from "../sync/engine";
 import { categoryIconComponent } from "../ui/category-icon";
-import { Button, DataStateNotice, EmptyState, Screen, SectionHeader, SelectionGrid } from "../ui/components";
+import { Button, DataGateScreen, DataStateNotice, EmptyState, Screen, SectionHeader, SelectionGrid } from "../ui/components";
 import { navigateBack } from "../ui/navigation";
 import { useOperationGuard } from "../ui/operation-guard";
 import { appAlert } from "../ui/dialog";
@@ -68,13 +68,7 @@ export default function WorkspaceTemplateModal() {
     });
   };
 
-  if (!dataReady) {
-    return (
-      <Screen>
-        <DataStateNotice status={dataStatus} retry={retryData} />
-      </Screen>
-    );
-  }
+  if (!dataReady) return <DataGateScreen status={dataStatus} retry={retryData} />;
 
   return (
     <Screen width="workspace">

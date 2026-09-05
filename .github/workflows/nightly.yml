@@ -93,3 +93,50 @@ jobs:
             test-results
             playwright-report
           retention-days: 7
+
+  # Is the site serving what `main` says it should be?
+  #
+  # Nothing has ever asked. A green `main` and a stale production are the same
+  # picture from inside this repository, and the two have come apart for a real
+  # reason rather than a hypothetical one: a failed gate on an app-bearing push
+  # followed by a test-only fix classifies light, skips the deploy, and leaves
+  # the site on the previous version with every check green above it. That was
+  # recovered by hand, after someone happened to look.
+  #
+  # This is the cheapest possible detector: fetch the shell, follow it to the
+  # entry bundle, and look for the version `app.json` claims. It runs in the
+  # nightly because a red nightly is a bug report and this is exactly that —
+  # it publishes nothing and rolls nothing back.
+  published-version:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+      - name: Compare the live bundle against app.json
+        run: |
+          set -euo pipefail
+          expected=$(node -p "require('./app.json').expo.version")
+          base="https://topraksv.github.io/helix"
+          echo "main says $expected"
+          curl -sS -L --retry 3 --retry-delay 5 -o /tmp/root.html "$base/"
+          bundle=$(grep -o '/_expo/static/js/web/[^"]*\.js' /tmp/root.html | head -1)
+          [ -n "$bundle" ] || { echo "::error::the served shell references no entry bundle"; exit 1; }
+          curl -sS -L --retry 3 --retry-delay 5 -o /tmp/entry.js "$base$bundle"
+          # The Expo manifest is embedded as a JSON STRING inside the bundle, so
+          # every quote in it arrives escaped and a plain `"version":"x"` grep
+          # finds nothing whether the version matches or not — which is a check
+          # that fails identically on a healthy site. Dropping backslashes first
+          # makes the two cases distinguishable again.
+          tr -d '\\' < /tmp/entry.js > /tmp/flat.js
+          if grep -q "\"version\":\"$expected\"" /tmp/flat.js; then
+            echo "live bundle carries $expected"
+            exit 0
+          fi
+          served=$(grep -o '"version":"[0-9]*\.[0-9]*\.[0-9]*"' /tmp/flat.js | head -3 | tr '\n' ' ')
+          echo "::error::production is not serving $expected. The live bundle carries: ${served:-no version string at all}"
+          exit 1

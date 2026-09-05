@@ -27,7 +27,7 @@ import { monthLabel, tr } from "../i18n/tr";
 import { collectInstallmentPlans, MAX_WORKBOOK_BYTES, parseWorkbookBytes, type CellData, type ParsedSheet, type ParsedWorkbook } from "../services/spreadsheet-import";
 import { scheduleSync } from "../sync/engine";
 import { userMessage } from "../domain/user-error";
-import { Amount, Body, Button, Card, DataStateNotice, FieldNote, OperationStatusNotice, PanelHeader, Row, Screen, SectionHeader, SelectionGrid, Spread, Toggle } from "../ui/components";
+import { Amount, Body, Button, Card, DataGateScreen, DataStateNotice, FieldNote, OperationStatusNotice, PanelHeader, Row, Screen, SectionHeader, SelectionGrid, Spread, Toggle } from "../ui/components";
 import { circle, font, radius, spacing, type, type Palette, useTheme } from "../ui/theme";
 import { navigateBack } from "../ui/navigation";
 import { OperationCancelledError, useTrackedOperation, type TrackedOperationContext } from "../ui/operation-guard";
@@ -364,11 +364,7 @@ export default function ImportWizardModal() {
   };
 
   if (!dataReady) {
-    return (
-      <Screen scrollRef={scrollRef} width="workspace">
-        <DataStateNotice status={dataStatus} retry={retryData} />
-      </Screen>
-    );
+    return <DataGateScreen status={dataStatus} retry={retryData} scrollRef={scrollRef} width="workspace" />;
   }
 
   if (doneCount != null) {

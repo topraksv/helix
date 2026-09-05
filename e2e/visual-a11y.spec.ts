@@ -99,6 +99,16 @@ const LOCAL_STATIC_ROUTES = [
   "/helix/transaction", "/helix/installment-new", "/helix/subscription-form", "/helix/bulk-entry",
   "/helix/columns-editor", "/helix/import-wizard", "/helix/opening-balance",
   "/helix/reconciliation", "/helix/upcoming", "/helix/workspace-template", "/helix/account-security",
+  // Six routes this sweep did not know about until 2026-09-05, and one of them
+  // was carrying a violation the whole time: `/helix/privacy` is 3594px of
+  // legal text in a 655px window with nothing focusable in it, so its scroll
+  // region failed `scrollable-region-focusable` — the app was leaning on
+  // Chromium's and Firefox's own focusable-scroller behaviour to make its
+  // legal text readable, which is a bet rather than an affordance. A route
+  // list is a claim about what has been checked, and these six made it a
+  // false one.
+  "/helix/privacy", "/helix/feedback", "/helix/attention", "/helix/sync-issues",
+  "/helix/data-reset", "/helix/statement-import",
   // Carries its instrument in the query string: without one it is the "unknown
   // instrument" card, which audits a screen nobody reaches. The feed is refused
   // for every browser test, so this is the empty state of the real layout — the

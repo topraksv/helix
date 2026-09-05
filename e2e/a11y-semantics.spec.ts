@@ -351,3 +351,83 @@ test("Enter belongs to the focused control, not the form's primary save", async 
 
   await assertNoRuntimeErrors(errors, testInfo);
 });
+
+/**
+ * A screen that is only text states its own keyboard affordance.
+ *
+ * The honest version of this test, after the first one was written against a
+ * measurement that did not hold. `/helix/privacy` holds 3594px of KVKK text
+ * with nothing focusable in it, and current Chromium and Firefox make such a
+ * container focusable by themselves — so a test that tabs to the region and
+ * presses End passes with this app's fix removed, which makes it worth
+ * nothing. It was written, it passed against a build with the fix reverted,
+ * and it is not in this file for that reason.
+ *
+ * What the app actually decides is whether the affordance is its own or
+ * borrowed. `visual-a11y.spec.ts` is what fails when it is borrowed: axe's
+ * `scrollable-region-focusable` fires on this route, and that route is in the
+ * sweep now. This test states the other half — that the notice is reachable
+ * and readable in the browsers the suite drives — so a regression that breaks
+ * the reading rather than the attribute is still caught.
+ */
+test("the legal notice can be read to the end with a keyboard @cross-browser", async ({ page }, testInfo) => {
+  const errors = collectRuntimeErrors(page);
+  await onboard(page);
+  await page.goto("/helix/privacy");
+  await expect(page.getByRole("heading", { name: "Aydınlatma Metni" })).toBeVisible();
+
+  const geometry = await page.evaluate(() => {
+    const region = [...document.querySelectorAll<HTMLElement>("div")].find(
+      (element) => element.scrollHeight > element.clientHeight + 50
+        && ["auto", "scroll"].includes(getComputedStyle(element).overflowY),
+    );
+    (window as unknown as { __region?: HTMLElement }).__region = region;
+    return region
+      ? { visible: region.clientHeight, total: region.scrollHeight, tabIndex: region.getAttribute("tabindex") }
+      : null;
+  });
+  // A floor: if the notice ever stopped overflowing, everything below would
+  // pass while proving nothing about a keyboard.
+  expect(geometry, "the notice must have a scroll region to test").not.toBeNull();
+  expect(geometry!.total, "the notice must be taller than one screen").toBeGreaterThan(geometry!.visible * 2);
+  // The app's own affordance, not the engine's. This is the assertion that
+  // fails when the conditional tab stop is removed.
+  expect(geometry!.tabIndex, "the notice's scroll region must carry its own tab stop").toBe("0");
+
+  let focused = false;
+  for (let step = 0; step < 8 && !focused; step += 1) {
+    focused = await page.evaluate(() =>
+      document.activeElement === (window as unknown as { __region?: HTMLElement }).__region);
+    if (!focused) await page.keyboard.press("Tab");
+  }
+  expect(focused, "Tab never reaches the notice's scroll region").toBe(true);
+
+  const scrollTop = () => page.evaluate(() => (window as unknown as { __region: HTMLElement }).__region.scrollTop);
+  await page.keyboard.press("End");
+  await expect
+    .poll(scrollTop, { message: "End must reach the end of the notice" })
+    .toBeGreaterThan(geometry!.total - geometry!.visible - 50);
+
+  await page.keyboard.press("Home");
+  await expect.poll(scrollTop, { message: "Home must return to the top" }).toBe(0);
+  await page.keyboard.press("PageDown");
+  await expect.poll(scrollTop, { message: "PageDown must advance the notice" }).toBeGreaterThan(0);
+
+  await assertNoRuntimeErrors(errors, testInfo);
+});
+
+/**
+ * And the stop is only where it is needed.
+ *
+ * A focusable scroll region is a tab stop, so handing one to every screen
+ * would put an unexplained stop in front of every form. These four all have
+ * focusable content of their own and must therefore have gained nothing.
+ */
+test("screens with their own controls gain no extra tab stop", async ({ page }) => {
+  await onboard(page);
+  for (const route of ["/helix/", "/helix/settings", "/helix/transaction", "/helix/feedback"]) {
+    await page.goto(route);
+    await expect(page.locator("#root")).toBeVisible();
+    await expect(page.locator("[data-helix-scroll-focus]"), route).toHaveCount(0);
+  }
+});

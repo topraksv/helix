@@ -1,5 +1,5 @@
 import { existsSync, readFileSync, readdirSync } from "node:fs";
-import { resolve } from "node:path";
+import { dirname, relative, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 const read = (path: string) => readFileSync(resolve(process.cwd(), path), "utf8");
@@ -172,7 +172,10 @@ describe("release contract", () => {
   it("runs each light and full release check once in its owning job", () => {
     for (const command of [
       "npm run typecheck",
-      "npx expo lint",
+      // The lint step is the ratchet, which runs ESLint itself and gates on
+      // `lint-baseline.json`. A bare `npx expo lint` beside it would be a
+      // second full lint that no longer decides anything.
+      "npm run lint:ratchet",
       "npx vitest run",
       "npm run test:coverage",
       "npm run test:mutation",
@@ -216,7 +219,7 @@ describe("release contract", () => {
     expect(light).toContain("needs: classify");
     expect(light).not.toContain("needs.classify.outputs.full_gate == 'true'");
     expect(light).toContain("npm run typecheck");
-    expect(light).toContain("npx expo lint");
+    expect(light).toContain("npm run lint:ratchet");
     expect(light).toContain("npx vitest run");
 
     const full = ci.slice(ci.indexOf("  full-gate:"), ci.indexOf("  web-build:"));
@@ -700,5 +703,92 @@ describe("social and search metadata", () => {
     const tr = read("src/i18n/tr.ts");
     const title = /title: "(Helix[^"]*)"/.exec(tr)?.[1] ?? "";
     expect(title.length, "a title of one word says nothing to a stranger").toBeGreaterThan("Helix".length);
+  });
+});
+
+/**
+ * What a visitor to the published repository can actually open.
+ *
+ * This repository keeps its working material — `AGENTS.md`, `CLAUDE.md`,
+ * `docs/`, `.claude/`, `.agents/` — out of the published tree on purpose. That
+ * makes a Markdown link into any of them a link that resolves on the owner's
+ * disk and 404s for everybody else, and neither the author nor a reviewer with
+ * the files present can see it.
+ *
+ * Two were shipping that way: `CHANGELOG.md` pointed at `docs/RELEASE.md` for
+ * how a version is chosen, and `README.md` at `docs/ARCHITECTURE.md` for why
+ * `npm run web` builds an export. Both read perfectly here and were dead ends
+ * on GitHub.
+ *
+ * The rule is about LINKS, not mentions: a comment or a sentence naming an
+ * internal document is a note to whoever has it, and prose like that stays.
+ */
+describe("published documentation", () => {
+  /**
+   * The directories this repository deliberately does not publish.
+   *
+   * Read from `.gitignore` rather than asked of `git`, and the reason is a
+   * failure this very test caused: Stryker copies the tree into a sandbox that
+   * is not a git checkout, so `git ls-files` returned nothing there, the floor
+   * assertion fired, and the whole mutation dry run died before mutating
+   * anything. `tests/change-classification.test.ts` solves the same problem by
+   * building its own throwaway repository; this one does not need git at all,
+   * because the question is which paths are excluded and that is written down.
+   *
+   * Only anchored entries are read — `/docs/`, `/AGENTS.md` — which is the
+   * shape every unpublished-working-material line has here. A link into
+   * something ignored by a wildcard would slip past, and that is an acceptable
+   * gap: the failure this catches is a link into the owner's own notes.
+   */
+  function unpublishedPrefixes(): string[] {
+    return read(".gitignore")
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line.startsWith("/") && !line.includes("*") && !line.startsWith("!"))
+      .map((line) => line.slice(1).replace(/\/$/, ""));
+  }
+
+  const markdown = readdirSync(".", { recursive: true, encoding: "utf8" })
+    .filter((file) => file.endsWith(".md"))
+    .filter((file) => !file.startsWith("node_modules") && !unpublishedPrefixes().some((prefix) => file === prefix || file.startsWith(`${prefix}/`)));
+
+  it("links only to files the published repository contains", () => {
+    const excluded = unpublishedPrefixes();
+    // Floors first, because both lists are built by parsing: an empty ignore
+    // list would let every link through, and an empty file list would check
+    // nothing while passing.
+    expect(excluded, "the ignore file no longer names the unpublished tree").toContain("docs");
+    expect(excluded.length).toBeGreaterThan(5);
+    expect(markdown.length, "the published tree must still have Markdown in it").toBeGreaterThanOrEqual(3);
+
+    const problems: string[] = [];
+    let seen = 0;
+    for (const file of markdown) {
+      const text = read(file);
+      for (const match of text.matchAll(/(!?)\[[^\]]*\]\(([^)\s]+)\)/g)) {
+        const [, image, rawTarget] = match;
+        if (image === "!") continue;
+        seen += 1;
+        const target = rawTarget!;
+        if (/^(https?:|mailto:|#)/.test(target)) continue;
+        const path = relative(process.cwd(), resolve(process.cwd(), dirname(file), target.split("#")[0]!));
+        const unpublished = excluded.some((prefix) => path === prefix || path.startsWith(`${prefix}/`));
+        if (unpublished) problems.push(`${file} → ${target} (not published)`);
+        else if (!existsSync(path)) problems.push(`${file} → ${target} (missing)`);
+      }
+    }
+    // A floor on every link the scan SEES, not on the repository-relative ones
+    // it keeps: the published tree carries three Markdown files and one
+    // relative link between them, so counting only those would make the floor
+    // a second thing to maintain. What has to be caught is a regex that
+    // stopped matching, and that shows up as zero links of any kind.
+    expect(seen, "no Markdown links were found at all").toBeGreaterThanOrEqual(5);
+    expect(problems, "these links 404 for every visitor who is not the author").toEqual([]);
+  });
+
+  it("still tells a reader where the runbook lives, without linking into it", () => {
+    // The fix must not be "delete the sentence". A reader of the changelog is
+    // owed the fact that version choice has an owner somewhere.
+    expect(read("CHANGELOG.md")).toMatch(/sürüm defteri|RELEASE/i);
   });
 });

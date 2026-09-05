@@ -32,7 +32,7 @@ import { signedBalanceEffectOf } from "../../../domain/transactions";
 import { transactionDateText } from "../../../ui/transaction-date";
 import { CategoryIcon } from "../../../ui/category-icon";
 import { monthLabel, tr } from "../../../i18n/tr";
-import { Amount, Body, Button, Card, DataStateNotice, DisclosureChevron, EmptyState, Field, Heading, Row, Screen, Spread } from "../../../ui/components";
+import { Amount, Body, Button, Card, DataGateScreen, DataStateNotice, DisclosureChevron, EmptyState, Field, Heading, Row, Screen, Spread } from "../../../ui/components";
 import { useDrawIn } from "../../../ui/motion-primitives";
 import { TransactionRow } from "../../../ui/transaction-row";
 import { useUndo } from "../../../ui/undo";
@@ -445,10 +445,9 @@ export default function MonthDetailScreen() {
 
   if (!dataReady) {
     return (
-      <Screen>
+      <DataGateScreen status={dataStatus} retry={retryData}>
         <Stack.Screen options={{ title: monthLabel(rangeMonth) }} />
-        <DataStateNotice status={dataStatus} retry={retryData} />
-      </Screen>
+      </DataGateScreen>
     );
   }
 

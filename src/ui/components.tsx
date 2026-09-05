@@ -10,7 +10,7 @@
 
 
 
-import React, { useRef, type ReactNode } from "react";
+import React, { useRef, type ComponentProps, type ReactNode } from "react";
 import {
   Animated,
   Platform,
@@ -49,6 +49,7 @@ import { shouldStackListActions, shouldStackPanelAction, shouldUseWideGutter } f
 import { useContentWidth, useNavigationSpace } from "./viewport";
 import { OperationFlow, type OperationFlowKind } from "./operation-flow";
 import { KeyboardSafeScrollView } from "./keyboard-safe";
+import { useKeyboardReachableScroller } from "./accessibility";
 import { ScreenVisitContext, useScreenVisitController } from "./motion-primitives";
 
 export {
@@ -164,6 +165,7 @@ export function Screen({
   leading,
   width: widthName = "form",
   scrollRef,
+  readable = false,
 }: {
   children: ReactNode;
   scroll?: boolean;
@@ -182,6 +184,15 @@ export function Screen({
   width?: ContentWidth;
   /** Access to the vertical scroller for explicit workflow navigation. */
   scrollRef?: React.RefObject<ScrollView | null>;
+  /**
+   * This screen is a long read with no controls in it.
+   *
+   * Set only where that is true. It makes the scroll region focusable on web
+   * so a keyboard can move it, which is a tab stop the screen would not
+   * otherwise have — worth it on a legal notice nobody can act on without
+   * reading, and noise on a form.
+   */
+  readable?: boolean;
 }) {
   const { palette } = useTheme();
   const insets = useSafeAreaInsets();
@@ -199,6 +210,15 @@ export function Screen({
   const ownScrollRef = useRef<ScrollView>(null);
   const activeScrollRef = scrollRef ?? ownScrollRef;
   useScrollToTop(activeScrollRef);
+  // Opt-in, and deliberately not automatic. A screen made of nothing but text
+  // has no keyboard route into its own scroll region, which is what
+  // `readable` fixes — but the fix is a DOM effect and an extra tab stop, and
+  // the screens that need it are countable on one hand. Applying it to all
+  // forty to catch the one would put an effect in the app's most-used
+  // primitive to solve a problem thirty-nine of them do not have. The route
+  // sweep in `e2e/visual-a11y.spec.ts` is what catches the next screen that
+  // does need it.
+  useKeyboardReachableScroller(activeScrollRef, readable);
   // A screen that fills its column still needs a margin to read as a page
   // rather than as content pressed against the window. The phone gutter is the
   // one the thumb expects; a pointer-sized viewport gets a real one.
@@ -697,6 +717,50 @@ export function EmptyState({
 }
 
 /** Distinguishes first-load failure from a genuine empty account. */
+/**
+ * The frame a data-backed screen shows before its rows exist.
+ *
+ * Twenty screens were writing this by hand:
+ *
+ *     if (!dataReady) {
+ *       return (
+ *         <Screen>
+ *           <DataStateNotice status={dataStatus} retry={retryData} />
+ *         </Screen>
+ *       );
+ *     }
+ *
+ * Eight of them byte for byte, and the other twelve with one thing added — a
+ * `Stack.Screen` carrying the title so the native header is not blank while
+ * the query runs, a `{header}` block, a different `width`. Those differences
+ * are the reason this is a component with children and screen props rather
+ * than a fixed frame: `analytics.tsx` records what happens when the loading
+ * frame and the ready frame disagree, so flattening them into one shape would
+ * reintroduce a bug this repository has already paid for once.
+ *
+ * The early return stays at the call site. It is what stops the ready branch's
+ * JSX from being built out of data that is not there yet, and no wrapper can
+ * take that over without evaluating exactly what the guard exists to skip.
+ */
+export function DataGateScreen({
+  status,
+  retry,
+  children,
+  ...screen
+}: {
+  status: LiveQueryStatus;
+  retry: () => void;
+  /** Chrome this screen needs while loading too — a title, a header block. */
+  children?: ReactNode;
+} & Omit<ComponentProps<typeof Screen>, "children">) {
+  return (
+    <Screen {...screen}>
+      {children}
+      <DataStateNotice status={status} retry={retry} />
+    </Screen>
+  );
+}
+
 export function DataStateNotice({
   status,
   retry,

@@ -197,10 +197,9 @@ npx expo start --tunnel --clear  # Expo Go için QR
 ```
 
 > `npm run web`, Expo'nun web geliştirme sunucusunu değil üretim export'unu
-> derleyip sunar; sebebini çalışırken kendisi yazıyor ve
-> [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) "Non-obvious toolchain
-> constraints" bölümünde kayıtlı. Baktığın şey yayına gidenin aynısı olur;
-> karşılığında fast refresh yoktur, değişiklikten sonra yeniden çalıştır.
+> derleyip sunar; sebebini komut çalışırken kendisi yazıyor. Baktığın şey
+> yayına gidenin aynısı olur; karşılığında fast refresh yoktur, değişiklikten
+> sonra yeniden çalıştır.
 
 ### Kalite kapısı
 
@@ -215,6 +214,11 @@ ekran görüntüsü değiştiyse hızlı kontrol, para hesabına dokunulduysa
 tarayıcı senaryolarının tamamı ve mutasyon testi. Mutasyon testi kodu kasıtlı
 olarak bozar ve testlerin bunu fark edip etmediğini ölçer;
 `mutation-baseline.json` her dosyanın en son ne kadarını yakaladığını tutar.
+
+İki kapı da aynı biçimde çalışır: bir sayıyı eşik değil, geçmiş olarak tutar.
+`lint-baseline.json` her lint kuralının kaç kez tetiklendiğini kaydeder ve daha
+sık tetiklenmesi push'u düşürür — mevcut bulguları temizlemeden yenisinin
+eklenmesini engellemenin, herkesi bugün durduran bir eşik koymadan tek yolu.
 
 ### Kod haritası
 

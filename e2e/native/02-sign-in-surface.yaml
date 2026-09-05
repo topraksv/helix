@@ -67,11 +67,19 @@ appId: com.toprak.helix
 - extendedWaitUntil:
     visible: "Aydınlatma Metni"
     timeout: 20000
+# 60 seconds, and the number is a measurement rather than a round-up. The
+# notice grew 18% in 1.4.2 — four transfer recipients became eight, because the
+# app talks to eight — and at this scroll speed the flow reached the consent
+# control just as a 30-second budget expired. The failure screenshot showed the
+# control on screen and fully rendered, so what ran out was the clock and not
+# the page. Consent sits at the END of the notice on purpose (reaching it IS
+# the reading), which means every honest addition to the disclosure costs
+# scrolling here; the budget has to be set from the document's real length.
 - scrollUntilVisible:
     element:
       text: ".*Okudum, anladım.*"
     direction: DOWN
-    timeout: 30000
+    timeout: 60000
 # Consent is given at the END of the notice, so reaching it is the reading.
 - tapOn: ".*Okudum, anladım.*"
 - extendedWaitUntil:

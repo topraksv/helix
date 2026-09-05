@@ -21,7 +21,7 @@ import Pencil from "lucide-react-native/icons/pencil";
 import Plus from "lucide-react-native/icons/plus";
 import Trash2 from "lucide-react-native/icons/trash-2";
 import UserRound from "lucide-react-native/icons/user-round";
-import { Badge, Body, Button, Card, CardList, ChipPicker, DataStateNotice, FadeIn, Field, IconButton, PanelHeader, Row, Screen, SectionHeader, Spread } from "../../../ui/components";
+import { Badge, Body, Button, Card, CardList, ChipPicker, DataGateScreen, DataStateNotice, FadeIn, Field, IconButton, PanelHeader, Row, Screen, SectionHeader, Spread } from "../../../ui/components";
 import { appAlert, appConfirm } from "../../../ui/dialog";
 import { placeholderPools, useRotatingPlaceholder } from "../../../ui/placeholders";
 import { useUndo } from "../../../ui/undo";
@@ -229,13 +229,7 @@ export default function PersonsScreen() {
       ].filter(([, count]) => Number(count) > 0)
     : [];
 
-  if (!dataReady) {
-    return (
-      <Screen>
-        <DataStateNotice status={dataStatus} retry={retryData} />
-      </Screen>
-    );
-  }
+  if (!dataReady) return <DataGateScreen status={dataStatus} retry={retryData} />;
 
   return (
     <Screen width="workspace">

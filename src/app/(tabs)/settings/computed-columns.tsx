@@ -38,7 +38,7 @@ import { formatMinorCompact } from "../../../domain/money";
 import { scheduleSync } from "../../../sync/engine";
 import { tr } from "../../../i18n/tr";
 import { categoryIconComponent } from "../../../ui/category-icon";
-import { Amount, Body, Button, Card, ChipPicker, DataStateNotice, Divider, EmptyState, FadeIn, Field, IconButton, Label, PanelHeader, Row, Screen, SelectionGrid, Spread, Toggle } from "../../../ui/components";
+import { Amount, Body, Button, Card, ChipPicker, DataGateScreen, DataStateNotice, Divider, EmptyState, FadeIn, Field, IconButton, Label, PanelHeader, Row, Screen, SelectionGrid, Spread, Toggle } from "../../../ui/components";
 import { DraggableList, ReorderGrip } from "../../../ui/draggable-list";
 import { useUndo } from "../../../ui/undo";
 import { interactionSurface } from "../../../ui/interaction";
@@ -274,10 +274,9 @@ export default function ComputedColumnsScreen({ header }: { header?: ReactNode }
 
   if (!dataReady) {
     return (
-      <Screen>
+      <DataGateScreen status={dataStatus} retry={retryData}>
         {header}
-        <DataStateNotice status={dataStatus} retry={retryData} />
-      </Screen>
+      </DataGateScreen>
     );
   }
 

@@ -41,7 +41,7 @@ import { PaymentSourceLogo } from "../ui/logo";
 import { CurrencyPicker } from "../ui/currency-picker";
 import { scheduleSync } from "../sync/engine";
 import { dateLabel, monthLabel, tr } from "../i18n/tr";
-import { Amount, Badge, Body, Button, Card, ChipPicker, ChoiceTile, DataStateNotice, Divider, Field, FieldNote, HeroCard, InlineDisclosure, Label, MoneyField, MonthStepper, PanelHeader, Row, Screen, SectionHeader, Select, Toggle } from "../ui/components";
+import { Amount, Badge, Body, Button, Card, ChipPicker, ChoiceTile, DataGateScreen, DataStateNotice, Divider, Field, FieldNote, HeroCard, InlineDisclosure, Label, MoneyField, MonthStepper, PanelHeader, Row, Screen, SectionHeader, Select, Toggle } from "../ui/components";
 import { useSubmitOnEnter } from "../ui/keyboard";
 import { appAlert } from "../ui/dialog";
 import { DateField } from "../ui/calendar";
@@ -597,10 +597,9 @@ function TransactionForm({ existing, investmentRefund = false }: { existing?: Ex
 
   if (!dataReady) {
     return (
-      <Screen>
+      <DataGateScreen status={dataStatus} retry={retryData}>
         <Stack.Screen options={{ title: isEdit ? tr.tx.edit : tr.tx.new }} />
-        <DataStateNotice status={dataStatus} retry={retryData} />
-      </Screen>
+      </DataGateScreen>
     );
   }
 

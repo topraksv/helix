@@ -15,6 +15,8 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { classifyRootRoute, resolveRootGuard } from "../src/domain/app-guard";
+import { markUrl, type MarkProvider } from "../src/domain/brand-marks";
+import { MARKET_DATA_HOST } from "../src/domain/market";
 import { tr } from "../src/i18n/tr";
 
 const read = (path: string) => readFileSync(resolve(process.cwd(), path), "utf8");
@@ -118,6 +120,140 @@ describe("KVKK notice", () => {
       expect(transfers, `${processor} receives data and must be named`).toContain(processor);
     }
     expect(transfers, "the location of the main store must be stated").toMatch(/Frankfurt/);
+  });
+
+  /**
+   * The four names above were the whole disclosure, and the app was reaching
+   * NINE hosts.
+   *
+   * Measured in a browser on 2026-09-05: opening the app with no account at
+   * all already called `open.er-api.com` and `data-api.binance.vision`, and
+   * typing "Netflix" into a subscription name — before saving anything —
+   * called `www.google.com/s2/favicons?domain=netflix.com`. That last one is
+   * the one that matters, because the request itself is the disclosure: the
+   * domain IS which bank or which service the person just named.
+   *
+   * A hand-written list is what let that happen, so this one is DERIVED. The
+   * hosts come out of the code that builds the URLs and out of the policy that
+   * has to allow them; the map below is the only hand-written part, and its
+   * job is to fail when a host appears that nobody has decided about. Adding a
+   * host to the CSP or to a `fetch` therefore forces a line in the notice, or
+   * an explicit `null` here saying why the host is not a network contact.
+   */
+  const DISCLOSED_AS: Record<string, string | null> = {
+    // Delivery surfaces and processors, each named in the notice.
+    "topraksv.github.io": "GitHub Pages",
+    "open.er-api.com": "open.er-api.com",
+    "www.tcmb.gov.tr": "TCMB",
+    [MARKET_DATA_HOST]: MARKET_DATA_HOST,
+    "www.google.com": "Google",
+    // Google's favicon endpoint 301s here, so the policy allows it and the
+    // browser follows it. Same recipient, so the same name discloses it.
+    "*.gstatic.com": "Google",
+    "icons.duckduckgo.com": "DuckDuckGo",
+    "icon.horse": "icon.horse",
+    // Not a network contact: a JSON-LD `@context` is a vocabulary identifier
+    // that nothing fetches. It is mapped rather than filtered so that the rule
+    // stays "every host was decided about" instead of "every host we bothered
+    // to look at".
+    "schema.org": null,
+  };
+
+  function hostsTheCodeCanReach(): string[] {
+    const found = new Set<string>();
+    // The policy is the ceiling on the web build: a host that is not in it is
+    // a host the browser refuses.
+    for (const file of ["src/app/+html.tsx", "src/services/fx-fetch.ts"]) {
+      for (const match of read(file).matchAll(/https:\/\/([A-Za-z0-9*.-]+)/g)) {
+        const host = match[1]!;
+        // The Supabase origin is interpolated from configuration rather than
+        // written down, and it is disclosed by name already.
+        if (!host.includes("${")) found.add(host);
+      }
+    }
+    // Native has no CSP, so the mark URLs are read from the builder itself.
+    for (const provider of ["google", "duckduckgo", "iconhorse"] as MarkProvider[]) {
+      found.add(new URL(markUrl("example.com", provider)).hostname);
+    }
+    found.add(MARKET_DATA_HOST);
+    return [...found].sort();
+  }
+
+  it("names every third-party host the code can reach", () => {
+    const hosts = hostsTheCodeCanReach();
+    // A floor, because both discovery paths are regex-shaped: a pattern that
+    // stopped matching would leave this suite asserting nothing while passing.
+    expect(hosts.length, "host discovery stopped finding the URLs").toBeGreaterThanOrEqual(8);
+    expect(hosts, "the favicon services must be discovered, not assumed")
+      .toEqual(expect.arrayContaining(["icon.horse", "icons.duckduckgo.com", "www.google.com"]));
+
+    const undecided = hosts.filter((host) => !(host in DISCLOSED_AS));
+    expect(undecided, "a host the code reaches with no decision recorded for it").toEqual([]);
+
+    const transfers = tr.legal.transfers.join(" ");
+    const undisclosed = hosts
+      .map((host) => DISCLOSED_AS[host])
+      .filter((name): name is string => name != null)
+      .filter((name) => !transfers.includes(name));
+    expect(undisclosed, "reached by the code and absent from the notice").toEqual([]);
+  });
+
+  /**
+   * The escape hatch the notice offered did not exist.
+   *
+   * For as long as there has been a transfer section, it ended with "if you do
+   * not want the transfer, use the app without an account". `resolveRootGuard`
+   * says otherwise and always has: with no `userId`, every route that is not
+   * the auth screen, the recovery screen or this notice redirects to sign-in.
+   * The account-less workspace in `session.ts` is reached only when the build
+   * carries NO Supabase configuration, which is true of exactly one artifact —
+   * the E2E export, which is never deployed.
+   *
+   * So the guard is asserted here beside the sentence. A notice that promises
+   * a way out of a transfer is making a claim about the product's front door,
+   * and this is the code that owns that door.
+   */
+  it("does not offer an account-less route the guard refuses to open", () => {
+    const signedOut = {
+      ready: true,
+      locked: false,
+      userId: null,
+      onboarded: null,
+      frozen: null,
+      awaitingFirstPull: false,
+    } as const;
+    // The product's actual answer to "can I use this without an account".
+    expect(resolveRootGuard({ ...signedOut, route: "protected" }))
+      .toEqual({ view: "wait", redirect: "/(auth)/sign-in" });
+    expect(resolveRootGuard({ ...signedOut, route: "onboarding" }))
+      .toEqual({ view: "wait", redirect: "/(auth)/sign-in" });
+
+    // Therefore the notice may not say the opposite.
+    const note = tr.legal.transferNote;
+    // The offer, not the denial: "kullanabilirsiniz" is the sentence that has
+    // to be gone, while "kullanılamadığı" is the sentence that replaced it.
+    expect(note, "there is no account-less mode to send a reader to").not.toMatch(/hesap açmadan kullanabil/i);
+    expect(note, "the old absolute claim must stay gone").not.toMatch(/hiçbir veriniz cihazınızdan çıkmaz/);
+    expect(note, "a reader is owed the fact that the account is the condition of use")
+      .toMatch(/hesap açmadan kullanılamadığı|hesap oluşturmamanız/i);
+  });
+
+  it("names what each recipient actually receives, not merely that it receives", () => {
+    // The half of the disclosure that stops it from being a list of logos: a
+    // reader can tell records from connection information, and can tell which
+    // of the two goes where.
+    expect(tr.legal.transferNote).toMatch(/Supabase/);
+    expect(tr.legal.transferNote).toMatch(/bağlantı bilgi/i);
+  });
+
+  it("says the logo lookup happens while the name is being typed", () => {
+    // `logo.tsx` resolves the domain from the name on every render, so the
+    // request goes out during entry rather than on save. A person reading the
+    // notice would otherwise reasonably assume an abandoned draft sent nothing.
+    const marks = tr.legal.transfers.find((entry) => entry.includes("icon.horse")) ?? "";
+    expect(marks, "the mark services need their own entry").not.toBe("");
+    expect(marks).toMatch(/alan ad/);
+    expect(marks).toMatch(/yazarken|kaydetmeden/);
   });
 
   it("gives every store the app writes to a stated end", () => {
@@ -256,11 +392,13 @@ describe("KVKK notice against Article 10", () => {
     expect(tr.legal.methodBody).toMatch(/[Üü]çüncü kişilerden veri temin edilmez/);
   });
 
-  it("offers the way out of the transfer alongside the transfer itself", () => {
-    // The app genuinely works with no account and no transfer at all. A notice
-    // that lists four processors and omits that is technically complete and
-    // practically misleading.
-    expect(tr.legal.transferNote).toMatch(/hesap açmadan/);
+  it("states the consequence of the transfer instead of a way around it", () => {
+    // This used to require the notice to offer account-less use as the way out
+    // of the transfer. The app has no such mode — see the guard assertion in
+    // the suite above — so what the notice owes a reader is the honest version:
+    // the account is the condition of use, and declining the transfer means
+    // declining the account.
+    expect(tr.legal.transferNote).toMatch(/hesap oluşturmamanız|hesap açmadan kullanılamadığı/i);
     expect(tr.legal.transferNote).toMatch(/m\. 9/);
   });
 

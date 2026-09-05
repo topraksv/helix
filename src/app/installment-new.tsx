@@ -20,7 +20,7 @@ import Trash2 from "lucide-react-native/icons/trash-2";
 import type { LucideIcon } from "lucide-react-native";
 import { categoryIconComponent,  } from "../ui/category-icon";
 import { PaymentSourceLogo } from "../ui/logo";
-import { Badge, Body, Button, Card, ChoiceTile, DataStateNotice, FadeIn, Field, Heading, IconButton, Label, MetricStrip, MoneyField, PanelHeader, Row, Screen, SegmentBar, Select, Spread } from "../ui/components";
+import { Badge, Body, Button, Card, ChoiceTile, DataGateScreen, DataStateNotice, FadeIn, Field, Heading, IconButton, Label, MetricStrip, MoneyField, PanelHeader, Row, Screen, SegmentBar, Select, Spread } from "../ui/components";
 import { useSubmitOnEnter } from "../ui/keyboard";
 import { appAlert, appConfirm } from "../ui/dialog";
 import { placeholderPools, useRotatingPlaceholder } from "../ui/placeholders";
@@ -317,10 +317,9 @@ function PlanForm({ existing }: { existing?: ReturnType<typeof usePlansState>["d
 
   if (!dataReady) {
     return (
-      <Screen>
+      <DataGateScreen status={dataStatus} retry={retryData}>
         <Stack.Screen options={{ title: isEdit ? tr.installments.editTitle : tr.installments.newTitle }} />
-        <DataStateNotice status={dataStatus} retry={retryData} />
-      </Screen>
+      </DataGateScreen>
     );
   }
 

@@ -1,0 +1,56 @@
+# A GitHub Release for every version tag, with the changelog as its body.
+#
+# The tags were already here and the Releases page was empty, so the repository
+# published five versions that a visitor could only read by opening a file. A
+# release is where GitHub puts the "what changed" question, and leaving it
+# unanswered while the answer sits in `CHANGELOG.md` is a formatting accident
+# rather than a decision.
+#
+# Notes come from the changelog rather than from the commit range: the commits
+# are how the work happened and the changelog is what it means, and only one of
+# those is worth a reader's time. `scripts/release-notes.mjs` fails when the
+# section is missing, so a tag pushed without its entry stops here instead of
+# publishing an empty release.
+#
+# This deploys nothing. `ci.yml` triggers on pushes to `main`, and a tag push
+# does not match that, so the two never race for the same artifact.
+name: release
+
+on:
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+"
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      # The one job in this repository that writes to the repository itself.
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+      - name: Publish the release from the changelog
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          version="${TAG#v}"
+          # `app.json` is the version of record, so a tag that does not match it
+          # is a tagging mistake and must not become a release.
+          shipped=$(node -p "require('./app.json').expo.version")
+          if [ "$version" != "$shipped" ]; then
+            echo "::error::tag $TAG does not match app.json's $shipped"
+            exit 1
+          fi
+          node scripts/release-notes.mjs "$version" > /tmp/notes.md
+          gh release create "$TAG" --title "$TAG" --notes-file /tmp/notes.md --verify-tag

@@ -1,0 +1,11 @@
+{
+  "total": 262,
+  "rules": {
+    "complexity": 100,
+    "react-hooks/refs": 134,
+    "react-hooks/set-state-in-effect": 21,
+    "react-hooks/preserve-manual-memoization": 5,
+    "react-hooks/globals": 1,
+    "react-hooks/static-components": 1
+  }
+}
