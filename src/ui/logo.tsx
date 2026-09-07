@@ -10,7 +10,7 @@
  */
 
 import { useState } from "react";
-import { PixelRatio, Text, View } from "react-native";
+import { Text, View } from "react-native";
 import { Image } from "expo-image";
 import Building2 from "lucide-react-native/icons/building-2";
 import Car from "lucide-react-native/icons/car";
@@ -29,7 +29,6 @@ import { paymentSourceIconComponent } from "./category-icon";
 import type { PaymentSourceType } from "../domain/types";
 import { font, useTheme } from "./theme";
 import { BRAND, brandPlate } from "./brand-colors";
-import { SMALL_MARK_PX } from "../domain/brand-marks";
 import { MIN_PREFIX_MATCH, foldForMatch, nameMentions, nameStartsWord, normalizeLogoDomain, remoteFaviconUrl } from "../domain/logo-domain";
 
 /** One shared frameless tile: near-square, rounded, no border — every variant
@@ -61,45 +60,24 @@ function tileStyle(size: number) {
 const FAVICON_FILL = 0.82;
 
 /**
- * How far a mark may be enlarged past its own resolution.
+ * Every mark fills the same fraction of its tile, whatever it cost to get there.
  *
- * Thirty-one of the 180 domains in the catalogue publish a mark smaller than
- * the tile it is drawn in, and nineteen of those publish only 16px. That is
- * not a service picking badly: `worldcard.com.tr` and `vakifbank.com.tr` serve
- * a single 16x16 entry inside their `.ico`, `turktelekom.com.tr` serves a 16px
- * PNG, and none of them links an apple-touch-icon or a manifest icon. Three
- * independent services were asked; none has anything larger, and there is no
- * free logo API left that does.
+ * This used to cap enlargement at the source's own resolution, so the
+ * twenty-eight domains that publish only a 16px icon drew at about 18pt beside
+ * neighbours at 33pt. That IS the sharper picture and the owner rejected it
+ * outright: a list where some logos are half the size of others reads as
+ * broken, and blur reads as a bad logo — which it is, and which is the site's
+ * doing rather than the app's.
  *
- * So the softness the owner reported is ours. Painting a 16px source across a
- * 44pt tile on a 3x screen is an eightfold enlargement, which is a smear. This
- * caps it at three, which is the point where a mark still reads as its own
- * shape. A 16px logo then draws at about 16pt inside a 44pt tile: smaller than
- * its neighbours, and sharp. A small sharp logo is a better picture of a brand
- * than a large soft one, and the alternative — dropping the brand for its
- * initials — is the one the owner already rejected.
- *
- * Marks at or above the tile's own resolution are untouched, which is 149 of
- * the 180.
+ * The measurement that produced the cap still stands and is still recorded in
+ * `brand-marks.ts`, because it is the answer to "why is this one soft" and it
+ * is the thing to check before anyone tries a better source again. Seven
+ * services, each brand's own site, their sibling domains and Wikipedia were
+ * asked; nothing larger exists for these names. What changed is what to do
+ * about it, and the owner's answer is: one size, and live with it.
  */
-const MAX_MARK_UPSCALE = 3;
-
-/**
- * The floor a capped mark cannot go under, as a fraction of the tile.
- *
- * Sharpness is not worth a logo nobody can identify. At 0.45 a 16px mark on a
- * 3x phone lands at about 20pt in a 44pt tile — a 3.7x enlargement rather than
- * the 6.8x it was, and still unmistakably the brand.
- */
-const MIN_MARK_FILL = 0.45;
-
-/** How large this domain's mark may be drawn in a tile of `size`. */
-function markFill(domain: string | null, size: number): number {
-  const full = Math.round(size * FAVICON_FILL);
-  const real = domain ? SMALL_MARK_PX[domain] : undefined;
-  if (real == null) return full;
-  const sharp = (real * MAX_MARK_UPSCALE) / PixelRatio.get();
-  return Math.round(Math.max(Math.min(full, sharp), size * MIN_MARK_FILL));
+function markFill(_domain: string | null, size: number): number {
+  return Math.round(size * FAVICON_FILL);
 }
 
 /** Utility/service keywords → icon + accent (checked before brand lookup). */
@@ -331,12 +309,14 @@ const BANK_DOMAIN: Record<string, string> = {
   anadolubank: "anadolubank.com.tr",
   aktifbank: "aktifbank.com.tr",
   "aktif bank": "aktifbank.com.tr",
-  adabank: "adabank.com.tr",
+  // `.com.tr` serves 16px; the `.com` of the same bank serves 152px.
+  adabank: "adabank.com",
   turkishbank: "turkishbank.com",
   "turkish bank": "turkishbank.com",
   turklandbank: "tbank.com.tr",
   "turkland bank": "tbank.com.tr",
-  icbc: "icbc.com.tr",
+  // The Turkish arm publishes 16px; the group's own domain publishes 256px.
+  icbc: "icbc.com.cn",
   // Participation banks
   "kuveyt turk": "kuveytturk.com.tr",
   kuveytturk: "kuveytturk.com.tr",
@@ -351,6 +331,12 @@ const BANK_DOMAIN: Record<string, string> = {
   // one they think of — "Bonus" and "Garanti" are the same plastic — and
   // because the programme has its own mark, which is the one printed on the
   // card in the drawer.
+  // Tried and REVERTED: `yapikredi.com.tr` publishes 180px where
+  // `worldcard.com.tr` publishes 16, so pointing World at the bank would have
+  // fixed the blur reported on "WorldEko". It is refused by an older and
+  // better rule — a card programme never wears its bank's mark, because the
+  // owner names the source after whichever of the two they think of and the
+  // two are different pictures. `tests/payment-source-logo` holds the line.
   world: "worldcard.com.tr",
   worldcard: "worldcard.com.tr",
   "world card": "worldcard.com.tr",

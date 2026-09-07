@@ -54,11 +54,11 @@ import { devError } from "../../../services/logger";
 import { kv } from "../../../services/kv";
 import { Amount, Button, Card, DataStateNotice, EmptyState, FadeIn, IconButton, Row, Screen, Segmented, Spread } from "../../../ui/components";
 import { useScrollToTop } from "expo-router";
-import { StickyTable, STICKY_HEADER_HEIGHT, STICKY_ROW_HEIGHT } from "../../../ui/sticky-table";
+import { CURRENT_TINT, StickyTable, STICKY_HEADER_HEIGHT, STICKY_ROW_HEIGHT } from "../../../ui/sticky-table";
 import { MatrixColorSheet } from "../../../ui/matrix-color-sheet";
 import { buildColorIndex, matrixColorLabel, MATRIX_COLOR_TOKENS, parseMatrixColorLabels, resolveCellToken, type MatrixColorLabels, type MatrixColorScope, type MatrixColorToken } from "../../../domain/matrix-colors";
 import { interactionSurface } from "../../../ui/interaction";
-import { circle, controlSize, iconSize, matrixColorStyle, radius, spacing, type, useTheme } from "../../../ui/theme";
+import { circle, controlSize, iconSize, matrixColorStyle, radius, spacing, type, useTheme, type Palette } from "../../../ui/theme";
 import { ledgerCellWidth, shouldStartTableDetailsOpen, shouldUseWideWorkspace } from "../../../ui/responsive";
 import { useContentWidth } from "../../../ui/viewport";
 import { CategoryIcon } from "../../../ui/category-icon";
@@ -1150,7 +1150,13 @@ const MatrixTable = React.memo(function MatrixTable({
           labelHighlight: slot.month === currentMonth,
           rowHighlight: slot.month === currentMonth,
           markEdge: columnMarkEdge(slot.month),
-          cells: columns.map((c) => cellNode(c, slot.month, false)),
+          // The month is highlighted per CELL in both orientations, not by the
+              // row underneath it. The row wash sits below a marked cell's own
+              // fill, so a marked cell in the current month lost the wash
+              // entirely — while the same cell in the other orientation kept
+              // it, because there the cell painted it itself. One painter, one
+              // answer, whichever way the pivot is turned.
+              cells: columns.map((c) => cellNode(c, slot.month, slot.month === currentMonth)),
         })),
       };
     }
@@ -1237,6 +1243,10 @@ function hasPrintableValue(value: number | null, zeroIsMeaningful: boolean): val
 // its own props change. `onCellPress` is the one non-primitive prop — it must
 // stay referentially stable (see MatrixTable's `useCallback`) or this memo is
 // a no-op.
+/** A figure's colour in the grid: only a debt is coloured, and only one way. */
+const matrixValueColor = (value: number | null, palette: Palette): string =>
+  value != null && value < 0 ? palette.negativeText : palette.text;
+
 const MatrixCell = React.memo(function MatrixCell({
   columnKey,
   month,
@@ -1303,20 +1313,33 @@ const MatrixCell = React.memo(function MatrixCell({
           justifyContent: "center",
           paddingHorizontal: fontSize <= type.caption.fontSize ? 2 : spacing.sm,
         },
-        // The mark sits UNDER the current-month highlight: a marked cell in
-        // the current month has to keep reading as the current month.
         mark && { backgroundColor: mark.fill, borderLeftWidth: 3, borderLeftColor: mark.edge },
-        highlighted && { backgroundColor: palette.primarySoft + "55" },
         interactionSurface(palette, state, { enabled: Boolean(onPress) }),
       ]}
     >
+      {/* The current-month wash is a LAYER, not a background.
+          A second `backgroundColor` in the style array above does not composite
+          with the first — it replaces it — so a colour-marked cell in the
+          current month lost its mark entirely and read as an ordinary current
+          cell. Drawn as an overlay it does what the old comment always claimed:
+          the mark shows through underneath, and the month still reads as the
+          month. It is behind the value because a wash over the digits would
+          tint the one thing the grid exists to show. */}
+      {highlighted ? (
+        <View
+          pointerEvents="none"
+          accessibilityElementsHidden
+          importantForAccessibility="no-hide-descendants"
+          style={[StyleSheet.absoluteFill, { backgroundColor: palette.primary + CURRENT_TINT }]}
+        />
+      ) : null}
       {hasPrintableValue(value, zeroIsMeaningful) ? (
         <View style={{ width: "100%", minWidth: 0, alignItems: "flex-end" }}>
           <Amount
             testID="matrix-value"
             minor={value}
             colorized={false}
-            color={value < 0 ? palette.negativeText : palette.text}
+            color={matrixValueColor(value, palette)}
             style={[type.amountSm, { maxWidth: "100%", fontSize, textAlign: "right" }]}
           />
         </View>

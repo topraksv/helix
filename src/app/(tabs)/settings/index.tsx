@@ -41,7 +41,8 @@ import { useSettingsMapState, settingValue, useSyncDeadLettersState, useUserId }
 import { combineLiveStates } from "../../../data/live-state";
 import { asyncFieldState } from "../../../domain/form-state";
 import { pendingSyncChangeCount, setPendingTableVisibility, setReminderDays } from "../../../data/repo";
-import { buildExportText, buildTransactionsCsv, importBundle, MAX_BACKUP_BYTES, parseExportBundleText, saveTextFile } from "../../../services/export-import";
+import { buildExportText, buildWorkbookBytes, importBundle, MAX_BACKUP_BYTES, parseExportBundleText, saveBinaryFile, saveTextFile } from "../../../services/export-import";
+import { WORKBOOK_MIME } from "../../../services/workbook-export";
 import { disableNotifications, enableNotifications, rescheduleAll, updateNotificationDetails } from "../../../services/notifications";
 import { syncNow } from "../../../sync/engine";
 import { useSyncStatus } from "../../../sync/status";
@@ -406,10 +407,10 @@ export default function SettingsScreen() {
   // error looked exactly like an operation still running. The shared guard
   // serialises them, the busy row reports progress, and every failure surfaces.
   const dataOps = useTrackedOperation();
-  const [dataBusy, setDataBusy] = useState<"export" | "csv" | "import" | null>(null);
+  const [dataBusy, setDataBusy] = useState<"export" | "workbook" | "import" | null>(null);
 
   const runDataOperation = async (
-    kind: "export" | "csv" | "import",
+    kind: "export" | "workbook" | "import",
     operation: (context: TrackedOperationContext) => Promise<void>,
   ) => {
     await dataOps.run(async (context) => {
@@ -440,15 +441,15 @@ export default function SettingsScreen() {
       if (path && (await Sharing.isAvailableAsync())) await Sharing.shareAsync(path, { mimeType: "application/json" });
     });
 
-  const exportCsv = () =>
-    runDataOperation("csv", async ({ signal }) => {
-      const path = await saveTextFile(
-        `helix-islemler-${new Date().toISOString().slice(0, 10)}.csv`,
-        await buildTransactionsCsv(userId, signal),
-        "text/csv",
+  const exportWorkbook = () =>
+    runDataOperation("workbook", async ({ signal }) => {
+      const path = await saveBinaryFile(
+        `helix-${new Date().toISOString().slice(0, 10)}.xlsx`,
+        await buildWorkbookBytes(userId, signal),
+        WORKBOOK_MIME,
       );
       if (signal.aborted) throw signal.reason;
-      if (path && (await Sharing.isAvailableAsync())) await Sharing.shareAsync(path, { mimeType: "text/csv" });
+      if (path && (await Sharing.isAvailableAsync())) await Sharing.shareAsync(path, { mimeType: WORKBOOK_MIME });
     });
 
   const importJson = async () => {
@@ -807,11 +808,11 @@ export default function SettingsScreen() {
         />
         <ListRow
           icon={FileSpreadsheet}
-          title={tr.settings.exportCsv}
-          subtitle={tr.settings.exportCsvDesc}
-          chevron={dataBusy !== "csv"}
-          right={dataBusy === "csv" ? <DelayedLoadingIndicator size={7} label={tr.settings.exportCsv} /> : undefined}
-          onPress={() => void exportCsv()}
+          title={tr.settings.exportWorkbook}
+          subtitle={tr.settings.exportWorkbookDesc}
+          chevron={dataBusy !== "workbook"}
+          right={dataBusy === "workbook" ? <DelayedLoadingIndicator size={7} label={tr.settings.exportWorkbook} /> : undefined}
+          onPress={() => void exportWorkbook()}
         />
         <ListRow
           icon={FileUp}
@@ -829,8 +830,8 @@ export default function SettingsScreen() {
         label={
           dataBusy === "export"
             ? tr.settings.export
-            : dataBusy === "csv"
-              ? tr.settings.exportCsv
+            : dataBusy === "workbook"
+              ? tr.settings.exportWorkbook
               : tr.settings.import
         }
         onCancel={dataOps.cancel}

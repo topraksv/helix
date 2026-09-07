@@ -9,7 +9,7 @@
 
 import { Platform, type PressableStateCallbackType, type ViewStyle } from "react-native";
 import { isReducedMotion } from "./motion";
-import { density, motion, type Palette } from "./theme";
+import { density, motion, spacing, type Palette } from "./theme";
 
 /**
  * Whether a pointer is resting on this control.
@@ -162,16 +162,24 @@ export function interactionSurface(
  * The inset is given back as padding, so nothing moves and only the lit area
  * grows.
  *
- * The DEFAULT is the standard card's own padding, because that is what makes
- * the fill reach the card edge — the whole point. Pass a different inset only
- * when the row sits in a container with different padding, and pass that
- * container's padding rather than a number that looks about right.
+ * The DEFAULT is the standard card's own padding LESS `HOVER_GUTTER`. The
+ * padding alone is what the fill used to take, and it put the lit edge exactly
+ * on the card's inner edge: reported on Abonelikler as the band reading welded
+ * to the card, with generous air above and below it and none beside it. The
+ * gutter is the smallest step on the scale, so the fill still clears the last
+ * glyph by two thirds of the padding and merely stops short of the wall.
+ *
+ * Pass a different inset only when the row sits in a container with different
+ * padding, and pass that container's padding rather than a number that looks
+ * about right.
  *
  * This exists as one exported rule because it was six numbers before: rows in
  * identical cards bled by 4, 8 or 12 depending on which screen they were
  * written on, so the same gesture lit a different shape in each. `spacing.sm`
  * was the common wrong answer, and it lands 4px short on both sides.
  */
-export function interactionBleed(inset: number = density.list.cardPadding): ViewStyle {
+const HOVER_GUTTER = spacing.xs;
+
+export function interactionBleed(inset: number = density.list.cardPadding - HOVER_GUTTER): ViewStyle {
   return { marginHorizontal: -inset, paddingHorizontal: inset };
 }

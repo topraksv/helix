@@ -28,7 +28,7 @@ import ReceiptText from "lucide-react-native/icons/receipt-text";
 import Trash2 from "lucide-react-native/icons/trash-2";
 import WalletCards from "lucide-react-native/icons/wallet-cards";
 import type { LucideIcon } from "lucide-react-native";
-import { Amount, Badge, Body, Button, Card, CardList, ChipPicker, ChoiceTile, DataGateScreen, DataStateNotice, EmptyState, Field, IconButton, PanelHeader, Row, Screen, SectionHeader, Spread } from "../../../ui/components";
+import { Amount, Badge, Body, Button, Card, CardList, ChipPicker, ChoiceTile, DataGateScreen, DataStateNotice, EmptyState, Field, IconButton, PanelHeader, Row, Screen, SectionHeader, Spread, useLedeAlignment } from "../../../ui/components";
 import { placeholderPools, useRotatingPlaceholder } from "../../../ui/placeholders";
 import { useUndo } from "../../../ui/undo";
 import { spacing, type, useTheme } from "../../../ui/theme";
@@ -46,6 +46,8 @@ import { shouldUseTripleTileGrid } from "../../../ui/responsive";
 
 const TYPES = PAYMENT_SOURCE_TYPES.map((value) => ({ value, label: tr.sources[value] }));
 const NO_SOURCE = "__none__";
+/** The list mark's size, shared by the logo and the alignment that centres it. */
+const SOURCE_MARK = 44;
 
 const sourceIcon = (value: PaymentSourceType): LucideIcon =>
   value === "cash"
@@ -94,6 +96,81 @@ function SourceTypePicker({ value, onChange }: { value: PaymentSourceType; onCha
         );
       })}
     </View>
+  );
+}
+
+/**
+ * One payment source, with its mark level with its NAME.
+ *
+ * A row in this list is one to four lines tall — name, type, owner, and a
+ * credit card's cycle badges — and centring a 44px mark against all of that
+ * dropped it beside the third line on a card and beside the first on cash, so
+ * no two rows in the list agreed on where a logo sits. `useLedeAlignment` is
+ * the rule the rest of the app already uses: centre against the text while it
+ * is short, and stop travelling past three lines.
+ *
+ * It is a component rather than a branch inside `renderItem` because that hook
+ * cannot run in a render callback the list calls once per item.
+ */
+function PaymentSourceRow({
+  source,
+  ownerName,
+  onEdit,
+  onDelete,
+}: {
+  source: {
+    name: string;
+    type: PaymentSourceType;
+    logoRef: string | null;
+    statementDay: number | null;
+    dueDay: number | null;
+  };
+  /** Null when the workspace has one person and the line would say nothing. */
+  ownerName: string | null;
+  onEdit: () => void;
+  onDelete: () => void;
+}) {
+  const lede = useLedeAlignment(SOURCE_MARK);
+  return (
+    <Spread style={{ paddingVertical: spacing.sm, alignItems: "flex-start" }}>
+      <Row gap={spacing.md} style={{ flex: 1, alignItems: "flex-start" }}>
+        <View style={lede.markStyle}>
+          <PaymentSourceLogo name={source.name} type={source.type} logoRef={source.logoRef} size={SOURCE_MARK} />
+        </View>
+        <View style={{ flex: 1, minWidth: 0, ...lede.textStyle }} onLayout={lede.onBlockLayout}>
+          <Body onLayout={lede.onLineLayout}>{source.name}</Body>
+          <Body muted style={{ marginTop: 1 }}>{TYPES.find((t) => t.value === source.type)?.label}</Body>
+          {ownerName ? (
+            <Body muted style={{ marginTop: 1 }}>
+              {tr.sources.owner}: {ownerName}
+            </Body>
+          ) : null}
+          {source.type === "credit_card" ? (
+            <Row gap={spacing.xs} style={{ flexWrap: "wrap", marginTop: spacing.xs, alignItems: "center" }}>
+              {source.statementDay && source.dueDay ? (
+                <>
+                  {/* The ring answers what the two numbers leave open:
+                      whether a purchase made now lands on the statement
+                      about to close or the next one. Side by side it
+                      also says which card is freshest. */}
+                  <CardCycleRing statementDay={source.statementDay} dueDay={source.dueDay} />
+                  <Badge text={`${tr.sources.statementDayShort}: ${monthDayLabel(source.statementDay)}`} />
+                  <Badge text={`${tr.sources.dueDayShort}: ${monthDayLabel(source.dueDay)}`} tone="primary" />
+                </>
+              ) : (
+                <Badge text={tr.sources.cycleMissing} tone="warning" />
+              )}
+            </Row>
+          ) : null}
+        </View>
+      </Row>
+      <View onLayout={lede.onTrailingLayout} style={lede.blockStyle}>
+        <Row gap={spacing.sm}>
+          <IconButton icon={Pencil} label={`${tr.common.edit} · ${source.name}`} onPress={onEdit} />
+          <IconButton icon={Trash2} tone="danger" label={`${tr.common.delete} · ${source.name}`} haptic="none" onPress={onDelete} />
+        </Row>
+      </View>
+    </Spread>
   );
 }
 
@@ -321,19 +398,21 @@ export default function SourcesScreen() {
         />
         {/* The mark resolves from the name as it is typed, so "Garanti"
             becoming a Garanti mark is visible at the moment it happens rather
-            than after saving. Same live preview the subscription form gives. */}
-        <Row gap={spacing.md} style={{ alignItems: "center", marginBottom: spacing.sm }}>
-          <PaymentSourceLogo name={name || tr.sources.formTitle} type={sourceType} size={46} />
-          <View style={{ flex: 1, minWidth: 0 }}>
-            <Field
-              noMargin
-              label={tr.onboarding.addSource}
-              value={name}
-              onChangeText={setName}
-              placeholder={sourcePlaceholder}
-            />
-          </View>
-        </Row>
+            than after saving. Same live preview the subscription form gives.
+
+            It is the FIELD's leading mark rather than a row wrapping the
+            field: wrapping centred it against the label and the input
+            together, which put it above the box it names. */}
+        <View style={{ marginBottom: spacing.sm }}>
+          <Field
+            noMargin
+            leading={<PaymentSourceLogo name={name || tr.sources.formTitle} type={sourceType} size={46} />}
+            label={tr.onboarding.addSource}
+            value={name}
+            onChangeText={setName}
+            placeholder={sourcePlaceholder}
+          />
+        </View>
         <SourceTypePicker value={sourceType} onChange={setSourceType} />
         <PersonAssignment people={persons} value={personId} onChange={setPersonChoice} />
         {sourceType === "credit_card" ? (
@@ -461,41 +540,12 @@ export default function SourcesScreen() {
                 items={sources}
                 keyExtractor={(s) => s.id}
                 renderItem={(s) => (
-          <Spread style={{ paddingVertical: spacing.sm, alignItems: "center" }}>
-            <Row style={{ flex: 1, alignItems: "center" }}>
-              <PaymentSourceLogo name={s.name} type={s.type} logoRef={s.logoRef} size={44} />
-              <View style={{ flex: 1 }}>
-                <Body>{s.name}</Body>
-                <Body muted style={{ marginTop: 1 }}>{TYPES.find((t) => t.value === s.type)?.label}</Body>
-                {persons.length > 1 ? (
-                  <Body muted style={{ marginTop: 1 }}>
-                    {tr.sources.owner}: {persons.find((p) => p.id === s.personId)?.name ?? tr.common.none}
-                  </Body>
-                ) : null}
-                {s.type === "credit_card" ? (
-                  <Row gap={spacing.xs} style={{ flexWrap: "wrap", marginTop: spacing.xs, alignItems: "center" }}>
-                    {s.statementDay && s.dueDay ? (
-                      <>
-                        {/* The ring answers what the two numbers leave open:
-                            whether a purchase made now lands on the statement
-                            about to close or the next one. Side by side it
-                            also says which card is freshest. */}
-                        <CardCycleRing statementDay={s.statementDay} dueDay={s.dueDay} />
-                        <Badge text={`${tr.sources.statementDayShort}: ${monthDayLabel(s.statementDay)}`} />
-                        <Badge text={`${tr.sources.dueDayShort}: ${monthDayLabel(s.dueDay)}`} tone="primary" />
-                      </>
-                    ) : (
-                      <Badge text={tr.sources.cycleMissing} tone="warning" />
-                    )}
-                  </Row>
-                ) : null}
-              </View>
-            </Row>
-            <Row gap={spacing.sm}>
-              <IconButton icon={Pencil} label={`${tr.common.edit} · ${s.name}`} onPress={() => startEdit(s)} />
-              <IconButton icon={Trash2} tone="danger" label={`${tr.common.delete} · ${s.name}`} haptic="none" onPress={() => void remove(s)} />
-            </Row>
-          </Spread>
+                  <PaymentSourceRow
+                    source={s}
+                    ownerName={persons.length > 1 ? persons.find((p) => p.id === s.personId)?.name ?? tr.common.none : null}
+                    onEdit={() => startEdit(s)}
+                    onDelete={() => void remove(s)}
+                  />
                 )}
               />
             </>

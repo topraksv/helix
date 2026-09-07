@@ -192,6 +192,15 @@ export function useValueFlash(value: number, enabled = true): Animated.Value {
 }
 
 /**
+ * Where an arrival's count-up starts, as a fraction of the settled figure.
+ *
+ * Not a duration, so it does not belong in `motion`: it is the SHAPE of one
+ * hook's compromise between "money climbs" and "a balance must never look
+ * stale", and there is exactly one figure per screen that uses it.
+ */
+const ARRIVAL_APPROACH = 0.92;
+
+/**
  * A figure that counts to its value instead of appearing at it.
  *
  * Only a surface's ONE hero figure uses this — the balance on Durum, the free
@@ -199,21 +208,23 @@ export function useValueFlash(value: number, enabled = true): Animated.Value {
  * a table of six hundred cells neither runs this hook nor subscribes to
  * navigation to feed it.
  *
- * It counts when the FIGURE changes, not when the screen is looked at again.
+ * Three starting points, and the distance between them is the whole design.
  *
- * It used to restart from zero on every arrival, and that is what made coming
- * back to a tab feel like a page reload: measured on the dashboard, returning
- * to Durum put ₺18.971,07 on screen and spent 1.6 s climbing back to the
- * ₺81.580,95 that had never changed. A number that animates says "this moved";
- * a balance that moves every time you glance at it says the app is still
- * loading, which is the one thing an offline-first ledger should never
- * suggest. It is also the app's own rule — motion carries meaning — applied to
- * the figure it matters most on.
+ * The first sight of a figure counts from zero. A real change counts from the
+ * old value, so the movement is the change. A return with nothing new counts
+ * from `ARRIVAL_APPROACH` of the settled figure — it moves, but only across
+ * the last stretch.
  *
- * So: the first sight of a figure counts up from zero, a real change counts
- * from the old value, and a return with nothing new shows the settled number
- * at once. The screen's entrance still replays around it; only the digits
- * stop pretending.
+ * That third case was once a full climb from zero, and it was reported three
+ * times as "girip çıkınca yenileniyor": returning to Durum put ₺18.971,07 on
+ * screen and spent 1.6 s reaching the ₺81.580,95 that had never changed, which
+ * reads as the app reloading. Removing the motion outright fixed that and cost
+ * the owner the thing they liked — money climbing. The short approach keeps
+ * both: at 92% the figure is legibly the right order of magnitude the whole
+ * way, so nothing ever looks like a stale balance, and the digits still move.
+ *
+ * Tuning it is a one-line decision. Lower reads as a reload again; 1 is no
+ * motion at all.
  *
  * The animation is on a plain number, not on a native driver, because the text
  * content itself changes; `format` is called on every frame, so it must stay
@@ -221,13 +232,19 @@ export function useValueFlash(value: number, enabled = true): Animated.Value {
  */
 export function useCountUp(value: number, duration = motion.figure): number {
   const reducedMotion = useReducedMotion();
+  const visit = useScreenVisit();
   const [shown, setShown] = useState(value);
   // Nothing has been shown yet, so the first pass counts up from zero. After
   // that this holds whatever the reader last saw, which is what a change
   // should be measured from.
   const previous = useRef(0);
   useEffect(() => {
-    const from = previous.current;
+    // `previous` already equalling the value means nothing about the figure
+    // changed, so this run is an arrival rather than an update, and it starts
+    // near the answer instead of at zero. Rounding keeps the first frame a
+    // whole minor unit, like every frame after it.
+    const settled = previous.current === value;
+    const from = settled ? Math.round(value * ARRIVAL_APPROACH) : previous.current;
     previous.current = value;
     if (reducedMotion || from === value) {
       setShown(value);
@@ -251,7 +268,7 @@ export function useCountUp(value: number, duration = motion.figure): number {
       driver.removeListener(listener);
       setShown(value);
     };
-  }, [value, duration, reducedMotion]);
+  }, [value, duration, reducedMotion, visit]);
   return shown;
 }
 

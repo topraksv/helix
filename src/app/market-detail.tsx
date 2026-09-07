@@ -22,19 +22,20 @@
  */
 
 import { useCallback, useEffect, useState } from "react";
-import { Text, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 import { useLocalSearchParams } from "expo-router";
 import TrendingDown from "lucide-react-native/icons/trending-down";
 import TrendingUp from "lucide-react-native/icons/trending-up";
+import type { LucideIcon } from "lucide-react-native";
 import { INVESTMENT_MARKET_TITLES } from "../domain/investment-catalog";
 import { historyDelta, historyExtent, type MarketHistoryPoint, type MarketRange } from "../domain/market";
 import { fetchMarketHistory, useMarkets } from "../services/markets";
 import { clockOrDateTimeLabel, marketRateLabel, tr } from "../i18n/tr";
-import { Body, Button, Card, Label, Row, Screen, Segmented, Spread, Title } from "../ui/components";
+import { Body, Button, Card, Label, Row, Screen, Segmented, Title } from "../ui/components";
 import { ChartFrame, Lines, useSeriesColors } from "../ui/charts";
 import { useScreenFocus } from "../ui/motion-primitives";
 import { DelayedLoadingIndicator } from "../ui/loading-indicator";
-import { spacing, type, useTheme } from "../ui/theme";
+import { radius, spacing, type, useTheme } from "../ui/theme";
 import { WorkspaceGrid } from "../ui/workspace-layout";
 
 const RANGES: readonly MarketRange[] = ["day", "week", "month", "year"];
@@ -68,6 +69,115 @@ function pointLabel(at: number, range: MarketRange): string {
     ? `${month} ${String(when.getFullYear()).slice(2)}`
     : `${when.getDate()} ${month}`;
 }
+
+/**
+ * The three things a price chart leaves unanswered, as one block.
+ *
+ * There is no bar here, and that is the design.
+ *
+ * Two attempts drew one. The first filled a track from the period's floor up to
+ * the last close; the second put a mark on that track. Both were read as a
+ * picture of the CHANGE — which raised the fair question of what a bar does
+ * past 100% — and neither survived contact with the person reading it. A bar
+ * beside a line chart is a second, weaker chart competing with the real one
+ * directly above it, and the quantity it drew (where the price sits in its
+ * range) is worth one glance, not a third of the card.
+ *
+ * So the card is figures. The move leads because it is what a chart is opened
+ * for, in per cent and in lira, and it never becomes a shape: 3% and 300% are
+ * the same layout. Under it the range is three numbers in a row, divided like a
+ * table, because three numbers side by side already say which is largest.
+ *
+ * The arrow is drawn straight onto the card at 22px rather than inside a tinted
+ * pill. The pill put `positive` on `positiveText` — `#82A68A` on `#B0CFB5` in
+ * the dark themes, two greens a step apart — and the owner reported the arrow
+ * as barely visible. On the card's own ground the semantic colour has the
+ * contrast it was chosen for.
+ */
+function RangeSummary({
+  low,
+  high,
+  current,
+  changeLabel,
+  delta,
+  changeColor,
+  ChangeIcon,
+}: {
+  low: number;
+  high: number;
+  current: number;
+  changeLabel: string;
+  /** Null when the period holds one quote, so there is no move to state. */
+  delta: { absoluteTry: number; ratio: number } | null;
+  changeColor: string;
+  ChangeIcon: LucideIcon | null;
+}) {
+  const { palette } = useTheme();
+  // Formatted here rather than at the call site: two ternaries there pushed
+  // the screen function past the complexity the lint ratchet records, and
+  // they are this card's own business either way.
+  const percentText = delta == null ? tr.markets.unchanged : `%${marketRateLabel(delta.ratio * 100)}`;
+  const absoluteText = delta == null
+    ? null
+    : `${delta.absoluteTry > 0 ? "+" : ""}${marketRateLabel(delta.absoluteTry)} ₺`;
+  const figures: [label: string, value: number, tone: string][] = [
+    [tr.markets.rangeLow, low, palette.text],
+    [tr.markets.rangeNow, current, changeColor],
+    [tr.markets.rangeHigh, high, palette.text],
+  ];
+  return (
+    <View
+      style={{
+        marginTop: spacing.md,
+        backgroundColor: palette.surfaceAlt,
+        borderRadius: radius.md,
+        overflow: "hidden",
+      }}
+    >
+      <View style={{ padding: spacing.md }}>
+        <Body muted style={{ fontSize: type.caption.fontSize, letterSpacing: 0.6, textTransform: "uppercase" }}>
+          {changeLabel}
+        </Body>
+        <Row gap={spacing.xs} style={{ alignItems: "center", marginTop: 2 }}>
+          {ChangeIcon ? <ChangeIcon accessible={false} size={CHANGE_ARROW} color={changeColor} strokeWidth={2.5} /> : null}
+          {/* Between `amount` and the screen's own 30pt price hero: the move is
+              the most important thing in THIS card and not the most important
+              thing on the screen, and both sizes are in the scale. */}
+          <Text selectable style={[type.moneyInput, { color: changeColor }]}>{percentText}</Text>
+        </Row>
+        {absoluteText ? (
+          <Text selectable style={[type.amountSm, { color: palette.textSecondary, marginTop: 2 }]}>
+            {absoluteText}
+          </Text>
+        ) : null}
+      </View>
+
+      <View style={{ flexDirection: "row", borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: palette.border }}>
+        {figures.map(([label, value, tone], index) => (
+          <View
+            key={label}
+            style={{
+              flex: 1,
+              paddingVertical: spacing.sm,
+              paddingHorizontal: spacing.md,
+              // Rules BETWEEN the figures only. A rule on the outside would
+              // draw a box inside a card that already has one.
+              borderLeftWidth: index === 0 ? 0 : StyleSheet.hairlineWidth,
+              borderLeftColor: palette.border,
+            }}
+          >
+            <Body muted style={{ fontSize: type.caption.fontSize }}>{label}</Body>
+            <Text selectable style={[type.amountSm, { color: tone, marginTop: 1 }]}>
+              {`${marketRateLabel(value)} ₺`}
+            </Text>
+          </View>
+        ))}
+      </View>
+    </View>
+  );
+}
+
+const CHANGE_ARROW = 22;
 
 export default function MarketDetailScreen() {
   const params = useLocalSearchParams<{ code?: string }>();
@@ -211,36 +321,18 @@ export default function MarketDetailScreen() {
               </ChartFrame>
               {/* The figures belong UNDER the shape they describe. They sat
                   above it, so one answer took three glances: the range picker,
-                  then a percentage, then the plot. The floor and ceiling come
-                  first because they are what say whether today's price is
-                  high; the move over the range comes last, in lira as well as
-                  per cent, because a percentage alone does not say how much
-                  money — 0,4% of a Cumhuriyet altını is not a rounding error. */}
+                  then a percentage, then the plot. */}
               {extent ? (
-                <Spread style={{ marginTop: spacing.md, alignItems: "flex-start" }}>
-                  <View>
-                    <Body muted style={{ fontSize: type.small.fontSize }}>{tr.markets.rangeLow}</Body>
-                    <Text style={[type.amountSm, { color: palette.text }]}>{`${marketRateLabel(extent.low)} ₺`}</Text>
-                  </View>
-                  <View style={{ alignItems: "flex-end" }}>
-                    <Body muted style={{ fontSize: type.small.fontSize }}>{tr.markets.rangeHigh}</Body>
-                    <Text style={[type.amountSm, { color: palette.text }]}>{`${marketRateLabel(extent.high)} ₺`}</Text>
-                  </View>
-                </Spread>
+                <RangeSummary
+                  low={extent.low}
+                  high={extent.high}
+                  current={points[points.length - 1]?.valueTry ?? extent.high}
+                  changeLabel={tr.markets.rangeChange(tr.markets.range[range])}
+                  delta={delta}
+                  changeColor={changeColor}
+                  ChangeIcon={ChangeIcon}
+                />
               ) : null}
-              <Spread style={{ marginTop: spacing.sm, alignItems: "center" }}>
-                <Body muted style={{ fontSize: type.small.fontSize }}>
-                  {tr.markets.rangeChange(tr.markets.range[range])}
-                </Body>
-                <Row gap={spacing.xs} style={{ alignItems: "center" }}>
-                  {ChangeIcon ? <ChangeIcon accessible={false} size={14} color={changeColor} /> : null}
-                  <Body style={{ color: changeColor }}>
-                    {delta == null
-                      ? tr.markets.unchanged
-                      : `${delta.absoluteTry > 0 ? "+" : ""}${marketRateLabel(delta.absoluteTry)} ₺ · %${marketRateLabel(delta.ratio * 100)}`}
-                  </Body>
-                </Row>
-              </Spread>
             </>
           )}
           <Body muted style={{ fontSize: type.small.fontSize, marginTop: spacing.md }}>

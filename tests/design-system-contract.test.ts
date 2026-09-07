@@ -772,11 +772,21 @@ describe("a press lights the control it is on", () => {
     expect(offenders, "use interactionBleed() rather than a hand-written inset").toEqual([]);
   });
 
-  /** The rule has to be reachable, and it has to be the card's own padding. */
+  /**
+   * The rule has to be reachable, and it has to be DERIVED from the card's own
+   * padding rather than typed as a number.
+   *
+   * It is the padding less one gutter, not the padding: taking the whole thing
+   * put the lit edge exactly on the card's inner edge, which was reported on
+   * Abonelikler as the band looking welded to the card — air above and below
+   * it, none beside it. The gutter is the smallest step on the spacing scale,
+   * so the fill still clears the last glyph by most of the padding.
+   */
   it("derives that inset from the card padding rather than a constant", () => {
     const interaction = readFileSync(join(root, "src/ui/interaction.ts"), "utf8");
     expect(interaction).toContain("export function interactionBleed");
-    expect(interaction).toContain("inset: number = density.list.cardPadding");
+    expect(interaction).toContain("inset: number = density.list.cardPadding - HOVER_GUTTER");
+    expect(interaction, "the gutter is a scale step, not a typed number").toContain("const HOVER_GUTTER = spacing.");
   });
 
   /**
@@ -1128,14 +1138,35 @@ describe("only a hero figure counts", () => {
     expect(figure).not.toContain("useCountUp");
   });
 
-  it("is asked for on exactly the two hero figures and nowhere else", () => {
+  /**
+   * The list is enumerated rather than counted so that adding a screen to it
+   * is a decision someone made, not a habit that spread. One figure per
+   * surface: Durum's balance, Yatırımlar' free cash, and Taksitler's monthly
+   * obligation, which the owner asked for by name after the first two.
+   *
+   * A second counted figure on the SAME screen is what this really guards —
+   * Taksitler' watched-balance card is deliberately not one — and a file with
+   * two of them still passes here, which is why the per-file check below
+   * exists as well.
+   */
+  it("is asked for on exactly the three hero figures and nowhere else", () => {
+    const withCount = (path: string): number =>
+      (readFileSync(join(root, path), "utf8").match(/<Amount[^>]*\scount(\s|\n|\/|>)/g) ?? []).length;
     const askers = sourceFiles("src", { atLeast: 150 })
       .filter((path) => path.endsWith(".tsx"))
-      .filter((path) => /<Amount[^>]*\scount(\s|\n|\/|>)/.test(readFileSync(join(root, path), "utf8")));
+      .filter((path) => withCount(path) > 0);
     expect(askers.sort()).toEqual([
+      "src/app/(tabs)/cash-flow/installments.tsx",
       "src/app/(tabs)/index.tsx",
       "src/app/(tabs)/investments/index.tsx",
     ]);
+    for (const path of askers) {
+      // Investments animates one figure at two widths, so it is the one file
+      // allowed a second occurrence — see the suite below that holds it to a
+      // single motion path.
+      const allowed = path.endsWith("investments/index.tsx") ? 2 : 1;
+      expect(withCount(path), `${path}: one counting figure per surface`).toBeLessThanOrEqual(allowed);
+    }
   });
 });
 
@@ -1243,21 +1274,34 @@ describe("screen motion replays consistently", () => {
     expect(visit).toContain("createScreenVisitStore");
     expect(visit).toContain("useSyncExternalStore(store.subscribe");
     expect(visit).not.toContain("unsubscribes.push");
-    // A drawing replays on every visit; a figure does not.
+    // A drawing and a figure both replay on every visit, and the difference is
+    // where each one starts.
     //
-    // They look like one rule and are two. `useDrawIn` reveals a shape that is
-    // already correct, so replaying it costs nothing and reads as the screen
-    // arriving. `useCountUp` replaces the number on screen: counting from zero
-    // on return meant a returning reader saw ₺18.971,07 climb to ₺81.580,95
-    // over 1.6s, and a balance that is briefly wrong is the single strongest
-    // cue that the app reloaded — reported as "girip çıkınca yenileniyor".
-    // The figure now animates from what the reader last saw, so an unchanged
-    // balance does not move at all and a changed one shows the change.
+    // `useDrawIn` reveals a shape that is already correct, so it replays whole.
+    // `useCountUp` replaces the number on screen, so a full replay from zero
+    // meant a returning reader saw ₺18.971,07 climb to ₺81.580,95 over 1.6s —
+    // a briefly wrong balance, the single strongest cue that the app reloaded,
+    // reported as "girip çıkınca yenileniyor". Removing the arrival motion
+    // fixed that and cost the owner the climb they wanted kept, so an arrival
+    // now starts at ARRIVAL_APPROACH of the settled figure: the number is the
+    // right order of magnitude in every frame, and it still moves.
+    //
+    // A real change is the case this must not swallow — it still counts from
+    // the value the reader last saw, not from the approach.
     const drawIn = motionPrimitives.slice(motionPrimitives.indexOf("export function useDrawIn("));
     expect(drawIn.slice(0, 1_400), "a drawing replays per visit").toContain("const visit = useScreenVisit();");
     const countUp = motionPrimitives.slice(motionPrimitives.indexOf("export function useCountUp("));
-    expect(countUp.slice(0, 1_400), "a figure must not restart on arrival").not.toContain("useScreenVisit()");
-    expect(countUp.slice(0, 1_400), "a figure counts from what was last shown").toContain("const from = previous.current;");
+    expect(countUp.slice(0, 1_400), "a figure replays on arrival").toContain("const visit = useScreenVisit();");
+    expect(countUp.slice(0, 1_400), "an arrival starts near the answer").toContain(
+      "const from = settled ? Math.round(value * ARRIVAL_APPROACH) : previous.current;",
+    );
+    expect(countUp.slice(0, 1_400), "a change counts from what was last shown").toContain(
+      "const settled = previous.current === value;",
+    );
+    // A near-1 approach is no motion and a low one is the reload cue again.
+    const approach = /const ARRIVAL_APPROACH = (0\.\d+);/.exec(motionPrimitives)?.[1];
+    expect(Number(approach), "the approach stays a short climb").toBeGreaterThanOrEqual(0.85);
+    expect(Number(approach), "the approach stays visible").toBeLessThanOrEqual(0.95);
     // The focus right after mount is the first entrance, not a return; only a
     // focus that follows a real blur increments the counter.
     expect(visit).toContain("if (blurredSinceMount) store.increment()");

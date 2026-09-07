@@ -17,7 +17,12 @@ import FileSpreadsheet from "lucide-react-native/icons/file-spreadsheet";
 import Scale from "lucide-react-native/icons/scale";
 import { ImportArtwork, ImportJourney } from "../ui/import-journey";
 import TableProperties from "lucide-react-native/icons/table-properties";
+import Download from "lucide-react-native/icons/download";
 import Upload from "lucide-react-native/icons/upload";
+import * as Sharing from "expo-sharing";
+import { saveBinaryFile } from "../services/export-import";
+import { buildTemplateBytes, WORKBOOK_MIME } from "../services/workbook-export";
+import { appAlert } from "../ui/dialog";
 import { ImportBatchUnreadableError, importSheets, importedYears, openingBalanceFromSheets } from "../data/repo";
 import { settingValue, usePersonsState, useSettingsMapState, useSourcesState, useUserId } from "../data/hooks";
 import { combineLiveStates } from "../data/live-state";
@@ -178,6 +183,75 @@ function FormatGuide({ wide }: { wide: boolean }) {
   );
 }
 
+/**
+ * The way in for someone who has no spreadsheet to import yet.
+ *
+ * The wizard's whole guide above is about recognising a budget sheet the owner
+ * ALREADY keeps. That leaves the other half of the room with nothing to do,
+ * and "make a table we will accept" is not an instruction anyone can follow
+ * from prose. So the shape is handed over as a file instead: three named
+ * sheets, a hint under every heading, and one worked row.
+ *
+ * It is deliberately three lines and a button. The file explains itself once
+ * it is open, so explaining it twice here would be the longer, worse version
+ * of the same thing.
+ */
+function TemplateCard() {
+  const { palette } = useTheme();
+  const [busy, setBusy] = useState(false);
+  const download = async () => {
+    setBusy(true);
+    try {
+      const path = await saveBinaryFile("helix-sablon.xlsx", await buildTemplateBytes(), WORKBOOK_MIME);
+      if (path && (await Sharing.isAvailableAsync())) await Sharing.shareAsync(path, { mimeType: WORKBOOK_MIME });
+    } catch (error) {
+      devError("importer.template", error);
+      void appAlert(tr.errors.requestFailed, tr.errors.title);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Card style={{ marginTop: spacing.md }}>
+      <SectionHeader>{tr.importer.templateTitle}</SectionHeader>
+      <Body muted style={{ marginBottom: spacing.lg }}>{tr.importer.templateLead}</Body>
+      <View style={{ gap: spacing.sm, marginBottom: spacing.lg }}>
+        {tr.importer.templateSteps.map((step, index) => (
+          <Row key={step} gap={spacing.sm} style={{ alignItems: "flex-start" }}>
+            <View
+              style={{
+                width: STEP_MARK,
+                height: STEP_MARK,
+                borderRadius: radius.full,
+                backgroundColor: palette.primarySoft,
+                alignItems: "center",
+                justifyContent: "center",
+                marginTop: 1,
+              }}
+            >
+              <Text style={[type.small, { color: palette.primaryText }]}>{index + 1}</Text>
+            </View>
+            <Text style={[type.small, { color: palette.textSecondary, flex: 1 }]}>{step}</Text>
+          </Row>
+        ))}
+      </View>
+      <Body muted style={{ fontSize: type.small.fontSize, marginBottom: spacing.md }}>
+        {tr.importer.templateNote}
+      </Body>
+      <Button
+        icon={Download}
+        label={tr.importer.templateDownload}
+        variant="secondary"
+        onPress={() => void download()}
+        loading={busy}
+        disabled={busy}
+      />
+    </Card>
+  );
+}
+
+const STEP_MARK = 20;
+
 const hasBreakdown = (c: CellData) => Boolean(c.formulaParts || c.comment);
 
 // --- screen ----------------------------------------------------------------
@@ -225,8 +299,12 @@ export default function ImportWizardModal() {
         setError(null);
         setReimportYears(null);
         const picked = await DocumentPicker.getDocumentAsync({
+          // Excel only. The screen is called "Excel'den İçe Aktar" and the
+          // template it hands out is an `.xlsx`, so offering CSV in the file
+          // dialog invited a format the wizard is no longer documented to take.
+          // The PARSER still reads a CSV — nothing was removed from it — so a
+          // file picked another way (a share sheet, a drag) still works.
           type: [
-            "text/csv",
             "application/vnd.ms-excel",
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             "application/vnd.ms-excel.sheet.macroEnabled.12", // xlsm
@@ -446,6 +524,7 @@ export default function ImportWizardModal() {
       {!workbook ? (
         <View style={{ marginTop: spacing.md }}>
           <FormatGuide wide={wide} />
+          <TemplateCard />
         </View>
       ) : (
         <>

@@ -112,7 +112,7 @@ içindir, çalışmanın şartı değil.
 | **Bir işlemi bulmak** | **Mali Tablo → Analiz** | Metin, tutar, tür, kategori ve ödeme yöntemiyle arama |
 | **Karar bekleyenler** | **Bekleyenler** | Onay bekleyen ödemeler, biten denemeler, bakiye kontrolü — bitince satır kaybolur |
 | **Hesap ve kur** | **Ayarlar → Hızlı Hesaplamalar** | Hesap makinesi ve 22 para birimi arasında çevirici |
-| **Verini taşımak** | **Ayarlar** | JSON yedek/geri yükleme, CSV çıktısı, sihirbazlı Excel/CSV içe aktarma, PDF ekstre okuma |
+| **Verini taşımak** | **Ayarlar** | JSON tam yedek/geri yükleme, üç sayfalık Excel çıktısı, sihirbazlı Excel içe aktarma, PDF ekstre okuma |
 
 ---
 

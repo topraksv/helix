@@ -203,7 +203,13 @@ export default function InstallmentsScreen() {
             <MonthStepper value={viewMonth} onChange={setViewMonth} min={firstPlanMonth} max={lastPlanMonth} />
             <Card>
               <Body muted>{tr.installments.thisMonthTotal} · {monthLabel(viewMonth)}</Body>
-              <Amount minor={monthObligationMinor} large colorized={false} />
+              {/* This screen's ONE hero figure, so it counts — the same rule
+                  Durum and Yatırımlar follow. Stepping to another month is a
+                  real change, so it counts from the figure just left rather
+                  than from zero, which is what makes the step read as a step.
+                  The watched-balance card below deliberately does NOT count:
+                  two figures moving at once is noise, not emphasis. */}
+              <Amount minor={monthObligationMinor} large count colorized={false} />
               <View style={{ marginTop: spacing.md }}>
                 <Select
                   label={tr.installments.cardFilter}

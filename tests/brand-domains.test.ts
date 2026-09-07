@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { BRAND_MARK_AUDIT, PLACEHOLDER_MARK_SHA } from "../src/domain/brand-mark-audit";
-import { SMALL_MARK_PX, markProvider } from "../src/domain/brand-marks";
+import { markProvider } from "../src/domain/brand-marks";
 import { remoteFaviconUrl } from "../src/domain/logo-domain";
 
 const root = process.cwd();
@@ -109,24 +109,24 @@ describe("brand marks", () => {
 
   it("knows exactly which marks are too small to enlarge", () => {
     // The list the app draws by. Nineteen of these brands publish only 16px,
-    // and no service has anything larger — `worldcard.com.tr` and
-    // `vakifbank.com.tr` serve a single 16x16 entry inside their `.ico`, and
-    // `turktelekom.com.tr` serves a 16px PNG. So the softness is ours, from
-    // painting 16px across a 44pt tile, and `logo.tsx` stops enlarging past
-    // three times the source. That only works while this list agrees with
-    // what was measured: a refreshed audit that finds a bigger mark must drop
-    // the domain from here, or the app keeps drawing it small for ever.
+    // and no service has anything larger — `vakifbank.com.tr` serves a single
+    // 16x16 entry inside its `.ico`, `turktelekom.com.tr` a 16px PNG, and
+    // seven services, their own sites and their sibling domains all agree.
+    //
+    // The app no longer sizes by that. It capped enlargement once, and the
+    // owner rejected the result: a list where some marks are half the size of
+    // others reads as broken, and blur is the site's doing rather than the
+    // app's. So this asserts the measurement is still RECORDED — the answer to
+    // "why is this one soft", and the thing to read before anyone hunts for a
+    // better source again — not that anything acts on it.
     const measuredSmall = Object.entries(BRAND_MARK_AUDIT)
       .filter(([, mark]) => mark.px > 0 && mark.px < 48)
-      .map(([domain, mark]) => `${domain}=${mark.px}`)
-      .sort();
-    const declaredSmall = Object.entries(SMALL_MARK_PX)
-      .map(([domain, px]) => `${domain}=${px}`)
-      .sort();
-    expect(declaredSmall, "run scripts/audit-brand-marks.mjs").toEqual(measuredSmall);
-    // A floor rule: an empty table would make every assertion above pass while
-    // the app quietly went back to enlarging everything.
-    expect(declaredSmall.length).toBeGreaterThan(20);
+      .map(([domain]) => domain);
+    expect(measuredSmall, "run scripts/audit-brand-marks.mjs").toContain("turktelekom.com.tr");
+    expect(measuredSmall, "run scripts/audit-brand-marks.mjs").toContain("vakifbank.com.tr");
+    // A floor: an empty audit would make every assertion above pass while the
+    // record quietly emptied out.
+    expect(measuredSmall.length).toBeGreaterThan(20);
   });
 
   it("keeps the names it has no mark for on the record", () => {

@@ -25,6 +25,22 @@ import { font, maxFontScale, spacing, stateOpacity, type, useTheme, type Palette
 /** Default fixed metrics; exported so callers can size a table to its content. */
 export const STICKY_ROW_HEIGHT = 52;
 export const STICKY_HEADER_HEIGHT = 56;
+/**
+ * The current month's wash: a hex alpha over `palette.primary`.
+ *
+ * `primary`, not `primarySoft`. Soft is already a near-black in the dark
+ * themes — `#3C2A22` against a `#191512` surface — so a third of it composites
+ * to `#241C17`, about ten values of red away from the ground it sits on. That
+ * is why the month "was not coloured at all" in a screenshot where the code
+ * plainly coloured it: the fill was there and it was invisible. The accent is
+ * the one warm colour in the palette bright enough to read as a wash at low
+ * alpha in both themes.
+ *
+ * One constant because it is one fact: a row and a column carrying the same
+ * month must not disagree about how much it stands out.
+ */
+export const CURRENT_TINT = "26";
+
 /** Fixed right-hand strip holding a header's pin. */
 const STICKY_MARKER_W = 24;
 /**
@@ -573,7 +589,7 @@ export function StickyTable({
   }, [focusRowKey, bodyViewH, rows.length, rowHeightsSignature]);
 
   const rowBg = (_i: number, highlight?: boolean) =>
-    highlight ? palette.primarySoft + "38" : "transparent";
+    highlight ? palette.primary + CURRENT_TINT : "transparent";
 
   // Body horizontal scroll drives the header's offset (native + web).
   const onBodyScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
@@ -768,7 +784,12 @@ export function StickyTable({
         style={{
           width: cellWidth,
           justifyContent: "center",
-          backgroundColor: isCurrent ? palette.primarySoft + "2E" : "transparent",
+          // The wash belongs to the CELL, which paints it above its own colour
+          // mark; painting it here as well tinted the current month twice in
+          // this orientation and once in the other. The rules stay: they say
+          // where the month ENDS, which a row gets for free from the table's
+          // own edge.
+          backgroundColor: "transparent",
           borderLeftWidth: isCurrent ? 1 : 0,
           borderRightWidth: isCurrent ? 1 : 0,
           borderColor: palette.primary + "70",
@@ -941,7 +962,14 @@ export function StickyTable({
                     // pixel — every row, so the first column and the months
                     // beside it were very slightly out of step all the way down.
                     height: resolvedRowHeights[ri],
-                    backgroundColor: rowBg(ri, r.rowHighlight),
+                    // The row does NOT wash itself. A row-wide background sits
+                    // UNDER a marked cell's own fill, so a colour-tagged cell
+                    // in the current month lost the wash entirely — while the
+                    // same cell in the other orientation kept it, because
+                    // there the cell painted it. The cell is now the only
+                    // painter in both orientations; this leaves the wash to it
+                    // and keeps only the label pane's own tint (above).
+                    backgroundColor: "transparent",
                     borderBottomWidth: ri === rows.length - 1 ? 0 : 1,
                     borderColor: palette.border,
                   }}

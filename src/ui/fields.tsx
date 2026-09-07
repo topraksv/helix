@@ -10,7 +10,7 @@
  * deferred `require()` to avoid a cycle.
  */
 
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import {
   Animated,
   Platform,
@@ -103,11 +103,38 @@ export function Field({
   secure,
   style,
   noMargin = false,
+  leading,
   ...props
-}: TextInputProps & { label?: string; error?: string | null; secure?: boolean; noMargin?: boolean }) {
+}: TextInputProps & {
+  label?: string;
+  error?: string | null;
+  secure?: boolean;
+  noMargin?: boolean;
+  /**
+   * A mark that belongs to the INPUT, not to the field.
+   *
+   * Two forms grow a live preview beside the name they are typing — a payment
+   * source's card mark, a subscription's brand mark — and both had built it as
+   * a row wrapping the whole `Field`. That centres the mark against the label
+   * AND the input together, so a 46px mark lands about ten pixels above the
+   * box it belongs to and reads as sitting on the label instead: reported on
+   * Ödeme Yöntemleri as the name and its mark not sharing a line.
+   *
+   * Passed here instead, the mark is centred on the input's own height and the
+   * label keeps its place above the text the person is typing. It works for
+   * any mark size because the field centres it rather than being told an
+   * offset.
+   */
+  leading?: ReactNode;
+}) {
   const { palette } = useTheme();
   const fieldId = useId();
   const labelId = `${fieldId}-label`;
+  // How far down the input starts, so a leading mark can be centred on it
+  // without anyone writing the label's height as a number. Measured rather
+  // than derived: the type scale sets `fontSize` only, so the line box is a
+  // different height on iOS, Android and the web.
+  const [labelBlock, setLabelBlock] = useState(0);
   const [focused, setFocused] = useState(false);
   const [hidden, setHidden] = useState(secure === true);
   const numericPlaceholder = props.keyboardType === "number-pad"
@@ -126,18 +153,30 @@ export function Field({
             ? INPUT_LIMITS.numeric
             : INPUT_LIMITS.text
   );
-  return (
-    <View style={{ marginBottom: noMargin ? 0 : spacing.md }}>
-      {label ? (
-        <Label
-          nativeID={labelId}
-          accessible={Platform.OS === "web" ? undefined : false}
-          accessibilityElementsHidden={Platform.OS === "web" ? undefined : true}
-          importantForAccessibility={Platform.OS === "web" ? undefined : "no-hide-descendants"}
-        >
-          {label}
-        </Label>
-      ) : null}
+  const labelNode = label ? (
+    // Measured only when something is BESIDE the input, and only when the
+    // number actually moved. Attached unconditionally it ran a setState on
+    // every layout pass of every text field in the app — most of which have no
+    // leading mark and no use for the answer.
+    <View
+      onLayout={leading
+        ? (event) => {
+            const height = event.nativeEvent.layout.height;
+            setLabelBlock((current) => (current === height ? current : height));
+          }
+        : undefined}
+    >
+      <Label
+        nativeID={labelId}
+        accessible={Platform.OS === "web" ? undefined : false}
+        accessibilityElementsHidden={Platform.OS === "web" ? undefined : true}
+        importantForAccessibility={Platform.OS === "web" ? undefined : "no-hide-descendants"}
+      >
+        {label}
+      </Label>
+    </View>
+  ) : null;
+  const control = (
       <View>
         <TextInput
           {...props}
@@ -191,6 +230,31 @@ export function Field({
           </Pressable>
         ) : null}
       </View>
+  );
+  return (
+    <View style={{ marginBottom: noMargin ? 0 : spacing.md }}>
+      {leading ? (
+        <View style={{ flexDirection: "row", gap: spacing.md, alignItems: "flex-start" }}>
+          <View
+            style={{
+              marginTop: labelBlock,
+              minHeight: controlSize.regular,
+              justifyContent: "center",
+            }}
+          >
+            {leading}
+          </View>
+          <View style={{ flex: 1, minWidth: 0 }}>
+            {labelNode}
+            {control}
+          </View>
+        </View>
+      ) : (
+        <>
+          {labelNode}
+          {control}
+        </>
+      )}
       <FieldError message={error} />
     </View>
   );

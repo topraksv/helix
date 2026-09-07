@@ -1,5 +1,5 @@
 /**
- * JSON export/import (backup) + CSV export of transactions. Not an
+ * JSON export/import (backup) + the Excel workbook. Not an
  * integration: manual backup/restore only (user decision — history is
  * entered in-app, these are safety valves).
  */
@@ -15,13 +15,17 @@ import { UserFacingError } from "../domain/user-error";
 import { tr } from "../i18n/tr";
 import {
   bundleSourceUserId,
-  csvCell,
   ExportTextBuilder,
   validateBundleRelationships,
   validateExportBundle,
   type ExistingImportIds,
 } from "./backup-validation";
 import { applyIdRemap, buildIdRemap } from "./backup-remap";
+import { normalizedMonthlyLoadMinor } from "../domain/analytics";
+import { isSupportedMinorAmount } from "../domain/money";
+import { composeWorkbook } from "./workbook-export";
+import { buildLedgerGrids } from "../domain/workbook-format";
+import type { InvestmentRow, SubscriptionRow } from "../domain/workbook-format";
 import { normalizeMatrixColorToken } from "../domain/matrix-colors";
 export { MAX_BACKUP_BYTES, parseExportBundleText } from "./backup-validation";
 
@@ -55,49 +59,6 @@ export async function buildExportText(userId: string, signal?: AbortSignal): Pro
     builder.addTable(table, rows);
   }
   return builder.finish();
-}
-
-export async function buildTransactionsCsv(userId: string, signal?: AbortSignal): Promise<string> {
-  const sqlite = await getSqliteAsync();
-  throwIfAborted(signal);
-  const rows = await sqlite.getAllAsync<Record<string, unknown>>(
-    `SELECT t.purchase_date, t.effective_date, t.entry_date, t.type, t.status, t.amount_minor, t.currency, t.amount_try_minor,
-            c.name as category, ps.name as source, p.name as person, t.installment_no, t.is_aggregate, t.note,
-            cs.period_month, cs.statement_date
-     FROM transactions t
-     LEFT JOIN categories c ON c.id = t.category_id AND c.user_id = t.user_id
-     LEFT JOIN payment_sources ps ON ps.id = t.payment_source_id AND ps.user_id = t.user_id
-     LEFT JOIN persons p ON p.id = t.person_id AND p.user_id = t.user_id
-     LEFT JOIN credit_card_statements cs ON cs.id = t.card_statement_id AND cs.user_id = t.user_id AND cs.deleted_at IS NULL
-     WHERE t.user_id = ? AND t.deleted_at IS NULL
-     ORDER BY t.effective_date`,
-    [userId],
-  );
-  throwIfAborted(signal);
-  const header = "harcama_tarihi;odeme_tarihi;ekstre_donemi;ekstre_kesim_tarihi;giris_tarihi;tur;durum;tutar;para_birimi;tutar_try;kategori;kaynak;kisi;taksit_no;toplu;not";
-  const lines = rows.map((r) =>
-    [
-      r.purchase_date ?? "",
-      r.effective_date,
-      r.period_month ?? "",
-      r.statement_date ?? "",
-      r.entry_date,
-      r.type,
-      r.status,
-      ((r.amount_minor as number) / 100).toFixed(2).replace(".", ","),
-      r.currency,
-      ((r.amount_try_minor as number) / 100).toFixed(2).replace(".", ","),
-      csvCell(r.category),
-      csvCell(r.source),
-      csvCell(r.person),
-      r.installment_no ?? "",
-      r.is_aggregate ? "evet" : "",
-      csvCell(r.note),
-    ].join(";"),
-  );
-  // UTF-8 BOM: without it, Excel on Windows opens the file as ANSI and mangles
-  // Turkish characters (ğ/ş/İ…) in category and person names.
-  return "\ufeff" + [header, ...lines].join("\n");
 }
 
 /** Write content to a shareable file (native) or trigger a download (web). Returns the file path or null on web. */
@@ -231,4 +192,161 @@ export async function importBundle(
   }
   options?.onProgress?.(3, RESTORE_PHASE_COUNT);
   return { imported, skipped };
+}
+
+const str = (value: unknown): string => (value == null ? "" : String(value));
+const num = (value: unknown): number => (typeof value === "number" ? value : Number(value) || 0);
+
+/**
+ * The ledger as month grids — one sheet per year, the shape the app both SHOWS
+ * and READS.
+ *
+ * The first version of this export was a flat list of transactions, and the
+ * result was a file the app could not take back: the import wizard parses a
+ * month grid, so it answered the export with "Ay adlarını bulamadık". A backup
+ * you cannot restore is not a backup, and the owner asked for one they could
+ * edit in Excel and re-import.
+ *
+ * A grid is not a compromise for that. Mali Tablo IS a month-by-item matrix on
+ * screen, so this is the same table the owner already reads, written down.
+ *
+ * Three deliberate losses, none of them silent:
+ *   - A month's cell is the category's TOTAL, so individual transactions, their
+ *     notes and their dates do not survive. The JSON backup is what carries
+ *     those, and `settings` says so.
+ *   - Amounts are written positive. The importer decides income from the column
+ *     HEADING, not the sign, and it shows that guess for review — so a category
+ *     the hints do not recognise is corrected by a person rather than by a rule
+ *     nobody can see.
+ *   - Opening and closing balances are omitted. The importer excludes
+ *     balance-like columns by default precisely because importing a sum of the
+ *     columns beside it counts the month twice.
+ */
+async function ledgerGridsByYear(userId: string, signal?: AbortSignal): Promise<[year: number, grid: string[][]][]> {
+  const sqlite = await getSqliteAsync();
+  throwIfAborted(signal);
+  const rows = await sqlite.getAllAsync<Record<string, unknown>>(
+    `SELECT COALESCE(c.name, ?) AS item,
+            substr(t.effective_date, 1, 7) AS month,
+            SUM(ABS(t.amount_try_minor)) AS total
+     FROM transactions t
+     LEFT JOIN categories c ON c.id = t.category_id AND c.user_id = t.user_id
+     WHERE t.user_id = ? AND t.deleted_at IS NULL
+     GROUP BY item, month
+     ORDER BY month`,
+    [tr.cashflow.uncategorized, userId],
+  );
+  throwIfAborted(signal);
+  return buildLedgerGrids(
+    rows.map((row) => ({ item: str(row.item) || tr.cashflow.uncategorized, month: str(row.month), minor: num(row.total) })),
+    tr.months,
+  );
+}
+
+async function subscriptionRows(userId: string, signal?: AbortSignal): Promise<SubscriptionRow[]> {
+  const sqlite = await getSqliteAsync();
+  throwIfAborted(signal);
+  const rows = await sqlite.getAllAsync<Record<string, unknown>>(
+    `SELECT s.name, s.amount_minor, s.currency, s.amount_mode, s.cycle, s.interval_months,
+            s.billing_day, s.next_due_date, s.trial_end_date, s.auto_pay, s.is_active,
+            s.website_domain, c.name as category, ps.name as source, p.name as person
+     FROM subscriptions s
+     LEFT JOIN categories c ON c.id = s.category_id AND c.user_id = s.user_id
+     LEFT JOIN payment_sources ps ON ps.id = s.payment_source_id AND ps.user_id = s.user_id
+     LEFT JOIN persons p ON p.id = s.person_id AND p.user_id = s.user_id
+     WHERE s.user_id = ? AND s.deleted_at IS NULL
+     ORDER BY s.is_active DESC, s.name`,
+    [userId],
+  );
+  return rows.map((r) => {
+    const amountMinor = num(r.amount_minor);
+    const intervalMonths = num(r.interval_months) || 1;
+    return {
+      name: str(r.name),
+      amountMinor,
+      currency: str(r.currency),
+      amountMode: str(r.amount_mode),
+      cycle: str(r.cycle),
+      intervalMonths,
+      billingDay: num(r.billing_day),
+      nextDueDate: str(r.next_due_date),
+      trialEndDate: str(r.trial_end_date),
+      category: str(r.category),
+      source: str(r.source),
+      person: str(r.person),
+      autoPay: Boolean(r.auto_pay),
+      isActive: Boolean(r.is_active),
+      websiteDomain: str(r.website_domain),
+      // A derived figure, so a stored amount the domain will not accept costs
+      // this ONE cell rather than the whole export. `assertSupportedMinorAmount`
+      // throws a bare `Error`, and letting that escape turned a single odd row
+      // into "işlem başarısız" for a file the owner was told they could take.
+      monthlyLoadMinor: isSupportedMinorAmount(amountMinor)
+        ? normalizedMonthlyLoadMinor(amountMinor, intervalMonths)
+        : 0,
+    };
+  });
+}
+
+async function investmentRows(userId: string, signal?: AbortSignal): Promise<InvestmentRow[]> {
+  const sqlite = await getSqliteAsync();
+  throwIfAborted(signal);
+  const rows = await sqlite.getAllAsync<Record<string, unknown>>(
+    `SELECT pr.name as product, pr.asset_type, pr.market_code, o.operation_date, o.kind,
+            o.quantity, o.unit_price_minor, o.total_minor, o.note
+     FROM investment_operations o
+     JOIN investment_products pr ON pr.id = o.product_id AND pr.user_id = o.user_id
+     WHERE o.user_id = ? AND o.deleted_at IS NULL AND pr.deleted_at IS NULL
+     ORDER BY o.operation_date, pr.name`,
+    [userId],
+  );
+  return rows.map((r) => ({
+    product: str(r.product),
+    assetType: str(r.asset_type),
+    marketCode: str(r.market_code),
+    operationDate: str(r.operation_date),
+    kind: str(r.kind),
+    quantity: str(r.quantity).replace(".", ","),
+    unitPriceMinor: num(r.unit_price_minor),
+    totalMinor: num(r.total_minor),
+    note: str(r.note),
+  }));
+}
+
+
+/** The owner's whole workspace as one `.xlsx`: Mali Tablo, Abonelikler, Yatırımlar. */
+export async function buildWorkbookBytes(userId: string, signal?: AbortSignal): Promise<Uint8Array<ArrayBuffer>> {
+  const [years, subscriptions, investments] = await Promise.all([
+    ledgerGridsByYear(userId, signal),
+    subscriptionRows(userId, signal),
+    investmentRows(userId, signal),
+  ]);
+  throwIfAborted(signal);
+  return composeWorkbook({ years, subscriptions, investments });
+}
+
+/**
+ * Hand bytes to the platform: a download on the web, a shareable file natively.
+ *
+ * The text sibling in `export-import.ts` cannot be reused — a `Blob` of a
+ * string and a `Blob` of bytes are different constructions, and `File.write`
+ * takes one or the other. Returns the native path, or null on the web where
+ * the browser has already taken the file.
+ */
+export async function saveBinaryFile(filename: string, bytes: Uint8Array<ArrayBuffer>, mime: string): Promise<string | null> {
+  if (Platform.OS === "web") {
+    const blob = new Blob([bytes], { type: mime });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = filename;
+    anchor.click();
+    URL.revokeObjectURL(url);
+    return null;
+  }
+  const file = new File(Paths.cache, filename);
+  if (file.exists) file.delete();
+  file.create();
+  file.write(bytes);
+  return file.uri;
 }

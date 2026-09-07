@@ -4,6 +4,31 @@ Yayımlanan her sürümde neyin değiştiği, en yeni üstte. Sürüm numarası
 `app.json` içindeki `expo.version`'dır; nasıl seçildiği geliştiricinin kendi
 sürüm defterinde yazılıdır ve bu depoya dahil değildir.
 
+## 1.5.0
+
+### Minor Changes
+
+- CSV çıktısı yerini Excel çıktısına bıraktı. Mali tablon her yıl kendi sayfasında, aboneliklerin ve yatırımların ayrı sayfalarda iniyor; Mali Tablo sayfasını Excel'de düzenleyip aynı sihirbazdan geri yükleyebiliyorsun. Abonelik ve yatırım sayfaları okumak için.
+- İçe aktarma sihirbazına şablon indirme geldi: bir yıllık boş bütçe tablosu, örnek rakamlarla. Doldurup geri yüklenebiliyor — elinde uygun bir tablo yoksa başlangıç noktası.
+- İçe aktarma artık yalnız Excel kabul ediyor; ekranın adı da "Excel'den İçe Aktar".
+
+### Patch Changes
+
+- Durum ve Yatırımlar'daki ana tutar her girişte yeniden canlanıyor, ama sıfırdan değil — yerleşmiş rakamın hemen altından. Taksitler'deki aylık tutar da artık sayıyor.
+- Mali Tablo'da içinde bulunulan ay, satır odaklı ve kolon odaklı görünümde aynı şekilde boyanıyor. Renk işareti taşıyan bir hücre de artık ayını gösteriyor: vurgu işaretin yerine geçiyordu, artık üstünde duruyor.
+- Abonelik satırında imleç üzerine gelince yanan alan kartın kenarına yapışmıyor; iki yanında da eşit bir boşluk kalıyor.
+- İzlenen bir aboneliğin kimin olduğu, "Sonraki" ile aynı şeritte rozet olarak yazıyor.
+- Canlı piyasa detayında dönem değişimi, aralık ve kapanış tek blokta; değişim en büyük figür ve tek renkli olan.
+- Ödeme Yöntemleri formunda marka işareti, ismin hizasında duruyor — etiketle input'un ortasında değil.
+- Marka logoları tek boyutta çiziliyor. Yedi servis, markaların kendi siteleri, kardeş alan adları ve Wikipedia ölçüldü: 16 piksellik logo yayımlayan kurumlar için daha iyi bir kaynak yok, o yüzden küçük ama keskin yerine aynı boyda tercih edildi. Ada Bank ve ICBC kendi `.com` adreslerinden tam boy geliyor.
+
+### Internal
+
+- Marka işareti denetimi yenilendi; birkaç alan adının en iyi kaynağı değişmişti.
+- CSV'nin formül enjeksiyonu koruması silinmedi, `domain`'e taşındı ve tersine çevrilebilir yapıldı — dışa aktarılan dosya geri okunduğu için.
+- Dışa aktarmaya satır tavanı eklendi; JSON yedeğinin hep vardı, bunun yoktu.
+- `.claude/rules/export-import-contract.md`: yeni bir alanın dışa aktarma yüzeyine de inmesini şart koşan duran kural.
+
 ## 1.4.3
 
 ### Patch Changes

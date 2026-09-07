@@ -12,6 +12,7 @@ import RefreshCw from "lucide-react-native/icons/refresh-cw";
 import Repeat from "lucide-react-native/icons/repeat";
 import TrendingDown from "lucide-react-native/icons/trending-down";
 import TrendingUp from "lucide-react-native/icons/trending-up";
+import User from "lucide-react-native/icons/user";
 import Wallet from "lucide-react-native/icons/wallet";
 import Zap from "lucide-react-native/icons/zap";
 import { normalizedMonthlyLoadMinor } from "../../domain/analytics";
@@ -460,9 +461,18 @@ export default function SubscriptionsScreen() {
     const inTrial = s.trialEndDate != null && s.trialEndDate >= today;
     const lastCharge = lastChargeBySubscription.get(s.id);
     const amountUnknown = s.amountMode === "variable" && s.amountMinor === 0;
+    // A watched rule is somebody else's subscription, and the list groups them
+    // under one heading — which says that they are watched, not WHOSE they
+    // are. Two people's Netflix rows were indistinguishable. The name rides in
+    // the same badge strip as the due date because that strip is already where
+    // a row answers "which one is this".
+    const watchedPersonName = selfIds.has(s.personId)
+      ? null
+      : persons.find((person) => person.id === s.personId)?.name ?? null;
     const badges: RuleBadge[] = s.isActive
       ? [
           { text: tr.subs.nextDue(shortDateLabel(s.nextDueDate)) },
+          ...(watchedPersonName ? [{ text: watchedPersonName, tone: "muted" as const, icon: User }] : []),
           ...(lastCharge ? [{ text: tr.subs.lastCharged(shortDateLabel(lastCharge)), tone: "muted" as const }] : []),
           ...(s.amountMode === "variable" ? [{ text: tr.subs.variableAmountBadge, tone: "warning" as const, icon: Activity }] : []),
           ...(inTrial ? [{ text: tr.subs.trialEnds(shortDateLabel(s.trialEndDate!)), tone: "warning" as const }] : []),

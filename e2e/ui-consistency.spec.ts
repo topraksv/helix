@@ -2704,11 +2704,19 @@ test("paired month-day fields keep one baseline when a day is taken", async ({ p
  *
  * The fill is painted on the pressable, so the pressable has to be as wide as
  * the space it occupies. It bled `spacing.sm` past its own text while the card
- * around it padded by `density.list.cardPadding` — 8 against 12 — which left a
- * 4px unlit strip down both sides of every hovered settings row. Four pixels
- * does not read as a margin; it reads as a fill that missed.
+ * around it padded by `density.list.cardPadding` — 8 against 12 — which left an
+ * accidental unlit strip down both sides of every hovered settings row: a gap
+ * nobody chose, different on every screen, reading as a fill that missed.
+ *
+ * The fill later reached the card's inner edge exactly, and the owner reported
+ * THAT as welded — generous air above and below the band, none beside it. So
+ * the rule is now a deliberate gutter rather than either accident: the fill
+ * bleeds the card's padding LESS `HOVER_GUTTER`, one step on the spacing scale,
+ * the same on every row because `interactionBleed` is the only place it is
+ * decided. This test holds that shape: symmetric, small, and never back to the
+ * first glyph.
  */
-test("a held list row lights its card from edge to edge", async ({ page }) => {
+test("a held list row lights its card to a deliberate gutter, not to the glyph", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await onboard(page);
   await page.goto("/helix/settings");
@@ -2731,11 +2739,16 @@ test("a held list row lights its card from edge to edge", async ({ page }) => {
   // Still wider than its own words, which is what the fill is for.
   expect(geometry.textLeft - geometry.left, "left inset").toBeGreaterThanOrEqual(8);
   expect(geometry.right - geometry.textRight, "right inset").toBeGreaterThanOrEqual(8);
-  // And now flush with the card itself on both sides — the row's negative
-  // margin gives back exactly the padding the card took, so the only gap left
-  // is the card's hairline border.
-  expect(Math.abs(geometry.left - geometry.cardLeft), "left edge of the card").toBeLessThanOrEqual(2);
-  expect(Math.abs(geometry.right - geometry.cardRight), "right edge of the card").toBeLessThanOrEqual(2);
+  // One gutter short of the card on both sides, and the SAME on both — a lit
+  // band that is off-centre inside its own card is the defect this replaced.
+  const leftGap = geometry.left - geometry.cardLeft;
+  const rightGap = geometry.cardRight - geometry.right;
+  for (const [side, gap] of [["left", leftGap], ["right", rightGap]] as const) {
+    expect(gap, `${side} gutter is real`).toBeGreaterThan(2);
+    // `HOVER_GUTTER` is `spacing.xs`; the card's hairline border rides on top.
+    expect(gap, `${side} gutter stays a hairline's width of one scale step`).toBeLessThanOrEqual(6);
+  }
+  expect(Math.abs(leftGap - rightGap), "the band is centred in its card").toBeLessThanOrEqual(1);
 });
 
 /**
