@@ -272,6 +272,28 @@ describe("signIn", () => {
     expect(harness.startSyncSession).not.toHaveBeenCalled();
   });
 
+  /**
+   * The matrix pin is the entry form's problem again, one key family over.
+   * `togglePin` stores a COLUMN KEY, and `src/domain/cash-flow-matrix.ts`
+   * builds those from `category.id` and `column.id` — row ids that exist only
+   * inside one account's workspace. Nothing removed them, so on web a shared
+   * browser carried the previous account's ids past sign-out, exactly as
+   * `helix.last.*` did before it was fixed.
+   */
+  it("clears the previous account's pinned matrix ids on an account switch", async () => {
+    harness.supabase.auth.signInWithPassword.mockResolvedValue({ data: { user: USER_A }, error: null });
+    harness.store.set(OWNER_KEY, "user-b");
+    harness.store.set("helix.matrix.pinned.rows", "b-category-id");
+    harness.store.set("helix.matrix.pinned.columns", "b-computed-column-id");
+    harness.store.set("helix.matrix.pinned", "b-legacy-pin-id");
+
+    expect(await useSession.getState().signIn("a@example.com", "pw")).toBeNull();
+
+    expect(harness.store.get("helix.matrix.pinned.rows")).toBeUndefined();
+    expect(harness.store.get("helix.matrix.pinned.columns")).toBeUndefined();
+    expect(harness.store.get("helix.matrix.pinned")).toBeUndefined();
+  });
+
   it("clears the freeze flag, because signing in IS the password check the gate asks for", async () => {
     harness.supabase.auth.signInWithPassword.mockResolvedValue({ data: { user: USER_A }, error: null });
 

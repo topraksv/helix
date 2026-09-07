@@ -73,6 +73,25 @@ const LOCAL_WIPE_PENDING_OWNER = "__helix_wipe_pending__";
 const ENTRY_DEFAULT_KEYS = ["helix.last.income", "helix.last.expense", "helix.last.transfer"];
 
 /**
+ * Cash-flow matrix pin keys (`helix.matrix.pinned*`), written by
+ * `src/app/(tabs)/cash-flow/index.tsx`.
+ *
+ * The same mistake as the entry defaults, one key family over, and it survived
+ * the fix for those because it looks even more like a layout preference than
+ * they did. What `togglePin` stores is a COLUMN KEY, and
+ * `src/domain/cash-flow-matrix.ts` builds those from `category.id` and
+ * `column.id` — ids that exist only inside one account's workspace. Only the
+ * `opening`/`closing` system rows are account-independent.
+ *
+ * The reader validates a pin against the live columns, so a stale one is never
+ * shown to the next account; it was still the previous account's id sitting in
+ * a store the session no longer owned. `helix.matrix.pinned` is the pre-split
+ * single key, cleared too because a device that never opened the matrix after
+ * the migration still holds it.
+ */
+const MATRIX_PIN_KEYS = ["helix.matrix.pinned", "helix.matrix.pinned.rows", "helix.matrix.pinned.columns"];
+
+/**
  * Device-local state that belongs to the ACCOUNT rather than the device.
  *
  * The sync banner reports the last result of the account that produced it —
@@ -89,7 +108,9 @@ async function clearAccountScopedDeviceState(): Promise<void> {
   // next owner of this device would silently skip every incident recorded
   // before they signed in.
   await resetDiagnosticUploads();
-  await Promise.all(ENTRY_DEFAULT_KEYS.map((key) => kv.remove(key).catch(() => {})));
+  await Promise.all(
+    [...ENTRY_DEFAULT_KEYS, ...MATRIX_PIN_KEYS].map((key) => kv.remove(key).catch(() => {})),
+  );
 }
 
 /**

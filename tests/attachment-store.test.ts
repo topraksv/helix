@@ -133,10 +133,21 @@ vi.mock("../src/services/logger", () => logger);
  * the call returns, exactly as a browser allows; a transaction completes one
  * microtask later so its own `oncomplete` lands after the writes it carries.
  */
-function installFakeIndexedDB(): { store: Map<string, Blob>; failNext: (times?: number) => void } {
+function installFakeIndexedDB(): {
+  store: Map<string, Blob>;
+  failNext: (times?: number) => void;
+  /** What a browser does when it evicts storage or another tab upgrades the
+   *  schema: the OPEN connection dies, and only a fresh `open()` revives it.
+   *  A browser signals that with a `DOMException`; `"untyped"` is the same
+   *  condition reaching us from a runtime that has no such class. */
+  closeConnection: (as?: "domexception" | "untyped") => void;
+  opens: () => number;
+} {
   const store = new Map<string, Blob>();
   const names = new Set<string>();
   let failures = 0;
+  let closed: "domexception" | "untyped" | null = null;
+  let opens = 0;
   const takeFailure = () => (failures > 0 ? (failures -= 1, true) : false);
 
   const request = <T>(produce: () => T) => {
@@ -180,6 +191,11 @@ function installFakeIndexedDB(): { store: Map<string, Blob>; failNext: (times?: 
       return storeFor("readwrite");
     },
     transaction: (name: string, mode = "readonly") => {
+      // A closed connection throws here, synchronously, on every later use.
+      if (closed === "domexception") {
+        throw new DOMException("The database connection is closing.", "InvalidStateError");
+      }
+      if (closed === "untyped") throw new Error("InvalidStateError: the connection is closing");
       if (!names.has(name)) throw new Error(`NotFoundError: no object store named ${name}`);
       const tx: Record<string, unknown> = {
         oncomplete: null,
@@ -203,6 +219,7 @@ function installFakeIndexedDB(): { store: Map<string, Blob>; failNext: (times?: 
   };
   (globalThis as Record<string, unknown>).indexedDB = {
     open: (name: string) => {
+      opens += 1;
       const req: Record<string, unknown> = { result: database, error: null, onsuccess: null, onerror: null, onupgradeneeded: null };
       queueMicrotask(() => {
         if (name !== "helix-attachments") {
@@ -210,13 +227,20 @@ function installFakeIndexedDB(): { store: Map<string, Blob>; failNext: (times?: 
           (req.onerror as (() => void) | null)?.();
           return;
         }
+        // A new connection is a healthy one.
+        closed = null;
         (req.onupgradeneeded as (() => void) | null)?.();
         (req.onsuccess as (() => void) | null)?.();
       });
       return req;
     },
   };
-  return { store, failNext: (times = 1) => { failures = times; } };
+  return {
+    store,
+    failNext: (times = 1) => { failures = times; },
+    closeConnection: (as: "domexception" | "untyped" = "domexception") => { closed = as; },
+    opens: () => opens,
+  };
 }
 
 let webBoundary: ReturnType<typeof installFakeIndexedDB> | null = null;
@@ -548,6 +572,66 @@ describe("browser store specifics", () => {
     expect(handed.revoked).toEqual([]);
     thumbnail!.release();
     expect(handed.revoked).toEqual([thumbnail!.uri]);
+  });
+
+  /**
+   * The cached connection has to survive the browser dropping it.
+   *
+   * `attachment-store.web.ts` keeps ONE `IDBDatabase` for the page's lifetime,
+   * and its own comment promises the handle is "re-opened if the browser ever
+   * closes it". It was not: `connect()` clears the cache only when `open()`
+   * itself rejects, so a connection that dies AFTER a successful open stays
+   * cached forever. The browser closes one on storage eviction or when another
+   * tab upgrades the schema, and every later call then throws
+   * `InvalidStateError` — which `presentAttachments` catches and reports as an
+   * empty set. The owner's documents read as missing for the rest of the page,
+   * recoverable only by a reload nothing asks them to do.
+   */
+  it("re-opens a connection the browser closed under it", async () => {
+    const store = await load();
+    await store.writeAttachmentBytes(NAME, bytes(1));
+    expect(await store.presentAttachments([NAME])).toEqual(new Set([NAME]));
+    const opensBefore = webBoundary!.opens();
+
+    webBoundary!.closeConnection();
+
+    // The bytes never went anywhere; only the handle to them did.
+    expect(await store.presentAttachments([NAME])).toEqual(new Set([NAME]));
+    expect(webBoundary!.opens()).toBeGreaterThan(opensBefore);
+  });
+
+  /**
+   * The same condition without the browser's error class.
+   *
+   * A `DOMException` is what Safari and Chrome throw, and it is what the check
+   * reads first. React Native Web and the test runners do not all provide one,
+   * so the message is the fallback — and a fallback nothing exercises is a
+   * branch that only runs in the environment nobody tested.
+   */
+  it("re-opens when the closed connection reports no error class", async () => {
+    const store = await load();
+    await store.writeAttachmentBytes(NAME, bytes(1));
+    const opensBefore = webBoundary!.opens();
+
+    webBoundary!.closeConnection("untyped");
+
+    expect(await store.presentAttachments([NAME])).toEqual(new Set([NAME]));
+    expect(webBoundary!.opens()).toBeGreaterThan(opensBefore);
+  });
+
+  /**
+   * The retry is for a dead handle and nothing else. A refused operation must
+   * reach the caller as itself — retrying it would only reach the same refusal
+   * twice, and would hide a real failure behind a second attempt.
+   */
+  it("does not retry an operation the store refused", async () => {
+    const store = await load();
+    await store.writeAttachmentBytes(NAME, bytes(1));
+    const opensBefore = webBoundary!.opens();
+
+    webBoundary!.failNext(1);
+    expect(await store.presentAttachments([NAME])).toEqual(new Set());
+    expect(webBoundary!.opens()).toBe(opensBefore);
   });
 
   /** No browser storage at all is a workspace that cannot hold documents. */

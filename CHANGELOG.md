@@ -4,6 +4,21 @@ Yayımlanan her sürümde neyin değiştiği, en yeni üstte. Sürüm numarası
 `app.json` içindeki `expo.version`'dır; nasıl seçildiği geliştiricinin kendi
 sürüm defterinde yazılıdır ve bu depoya dahil değildir.
 
+## 1.4.3
+
+### Patch Changes
+
+- Site verisine izin vermeyen bir tarayıcıda (Safari gizli mod, "tüm çerezleri engelle") giriş yapılamıyordu: hesap aslında doğrulanmış oluyor, ekran "İşlem tamamlanamadı" diyor ve her deneme aynı yerde aynı şekilde başarısız oluyordu.
+- Cihaz, çalışma alanının hangi hesaba ait olduğunu kaydedemediğinde giriş artık sürdürülmüyor; gerçek sebebi söyleyerek reddediyor. Bu kayıt, cihazdaki verinin başka bir hesaba açılmamasını sağlayan tek işaret.
+- Hesap değiştirildiğinde tabloda sabitlenen satır ve kolon, önceki hesabın kaydı olarak cihazda kalıyordu. Yeni hesaba hiç gösterilmiyordu, ama artık hesapla birlikte siliniyor.
+- Tarayıcı belge deposunu kapattığında (depolama temizliği ya da başka bir sekmenin şema yükseltmesi) ekler, sayfa yenilenene kadar kalıcı olarak kayıp görünüyordu.
+- Klavyeyle kaydırılabilen alanlar tab durağı almıyordu; bunu kuran kanca hiç çalışmıyormuş.
+
+### Internal
+
+- Yönlendirme ve hedef-boyut e2e denetimleri artık gerçekten ölçüyor: sabit kalan bir yolu "yönlendirme olmadı" sanan bekleme kaldırıldı, SC 2.5.8 istisnası yalnızca yüksekliği kapsıyor.
+- `src/services/kv.ts` mutation taban kaydı eklendi; `release.yml` artık `gh release create`'in kendi hatasına bakıyor.
+
 ## 1.4.2
 
 ### Patch Changes

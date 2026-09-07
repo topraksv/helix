@@ -30,7 +30,14 @@ function open(): Promise<IDBDatabase> {
     request.onupgradeneeded = () => {
       if (!request.result.objectStoreNames.contains(STORE)) request.result.createObjectStore(STORE);
     };
-    request.onsuccess = () => resolve(request.result);
+    request.onsuccess = () => {
+      // The browser can close a connection it already gave us — storage
+      // eviction is the common way — and it announces that here. Dropping the
+      // cache is what lets the next call open a new one instead of reusing a
+      // handle that now throws on every use.
+      request.result.onclose = () => { connection = null; };
+      resolve(request.result);
+    };
     request.onerror = () => reject(request.error ?? new Error("Attachment storage is unavailable"));
   });
 }
@@ -51,13 +58,46 @@ function connect(): Promise<IDBDatabase> {
   return connection;
 }
 
-async function transact<T>(mode: IDBTransactionMode, run: (store: IDBObjectStore) => IDBRequest<T>): Promise<T> {
-  const database = await connect();
+/**
+ * A connection the browser has closed, as opposed to an operation that failed.
+ *
+ * Narrow on purpose. Every other failure — a refused write, a missing store —
+ * is the caller's answer and must reach it unchanged; only a dead handle is
+ * worth retrying, because retrying anything else would turn one refusal into
+ * two attempts at the same refusal.
+ */
+function isDeadConnection(error: unknown): boolean {
+  const name = (error as { name?: unknown })?.name;
+  if (name === "InvalidStateError") return true;
+  return error instanceof Error && error.message.includes("InvalidStateError");
+}
+
+function runTransaction<T>(
+  database: IDBDatabase,
+  mode: IDBTransactionMode,
+  run: (store: IDBObjectStore) => IDBRequest<T>,
+): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     const request = run(database.transaction(STORE, mode).objectStore(STORE));
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => reject(request.error ?? new Error("Attachment storage failed"));
   });
+}
+
+async function transact<T>(mode: IDBTransactionMode, run: (store: IDBObjectStore) => IDBRequest<T>): Promise<T> {
+  try {
+    return await runTransaction(await connect(), mode, run);
+  } catch (error) {
+    // `onclose` above is the announcement; this is the case where there was
+    // none. A handle closed by a schema upgrade in another tab throws
+    // `InvalidStateError` on every later use, and the cached promise would
+    // keep handing that same dead handle out for the life of the page — which
+    // `presentAttachments` reports as "no documents", permanently. One retry
+    // on a fresh connection is what this file's header already promised.
+    if (!isDeadConnection(error)) throw error;
+    connection = null;
+    return runTransaction(await connect(), mode, run);
+  }
 }
 
 /**

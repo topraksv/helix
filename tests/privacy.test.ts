@@ -62,6 +62,33 @@ describe("sensitive UI cover policy", () => {
    * were never displayed to the next account; they were still that account's
    * data sitting in a store the session no longer owned.
    */
+  /**
+   * The same rule, for the key family that survived the entry-default fix.
+   *
+   * The cash-flow matrix remembers which column is pinned. That reads as a
+   * layout preference and is not one: `src/domain/cash-flow-matrix.ts` builds
+   * every non-system column key from `category.id` or `column.id`, so the
+   * stored value is a row id out of one account's workspace. Asserted against
+   * the WRITER's own constants so a renamed key breaks here rather than
+   * quietly stopping being cleared.
+   */
+  it("clears the matrix pin's account-scoped ids with the account", () => {
+    const session = readFileSync(join(process.cwd(), "src/auth/session.ts"), "utf8");
+    const matrix = readFileSync(join(process.cwd(), "src/app/(tabs)/cash-flow/index.tsx"), "utf8");
+    const declared = session.match(/const MATRIX_PIN_KEYS = \[([^\]]+)\]/)?.[1] ?? "";
+    // Every pin key the screen writes, taken from the screen, not retyped here.
+    const written = [...matrix.matchAll(/const (?:LEGACY_PIN_KEY|ROW_PIN_KEY|COLUMN_PIN_KEY) = "([^"]+)"/g)]
+      .map((match) => match[1]!);
+    expect(written).toHaveLength(3);
+    for (const key of written) {
+      expect(declared, `${key} must be cleared on sign-out`).toContain(`"${key}"`);
+    }
+    // The pin is only account-scoped because the key IS a row id; if that ever
+    // stops being true this test is measuring nothing.
+    const domain = readFileSync(join(process.cwd(), "src/domain/cash-flow-matrix.ts"), "utf8");
+    expect(domain).toContain("key: category.id");
+  });
+
   it("clears the entry form's account-scoped defaults with the account", () => {
     const session = readFileSync(join(process.cwd(), "src/auth/session.ts"), "utf8");
     const form = readFileSync(join(process.cwd(), "src/app/transaction.tsx"), "utf8");
