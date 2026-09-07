@@ -6,6 +6,9 @@ import {
   WORKBOOK_COLUMNS,
   writeDate,
   writeFlag,
+  toInvestmentRow,
+  toLedgerTotal,
+  toSubscriptionRow,
   writeMoney,
   type InvestmentRow,
   type SubscriptionRow,
@@ -111,5 +114,60 @@ describe("workbook format", () => {
   it("drops a row whose month is not a month rather than inventing a sheet", () => {
     expect(buildLedgerGrids([{ item: "X", month: "kayıp", minor: 1 }], MONTHS)).toEqual([]);
     expect(buildLedgerGrids([{ item: "X", month: "2026-13", minor: 1 }], MONTHS)).toEqual([]);
+  });
+
+  /**
+   * The step between a query and a sheet.
+   *
+   * It lived beside the SQL, where no node test could reach it, and the mutation
+   * gate reported the file detecting less than it had — which is what a hundred
+   * untested lines look like from the outside. Moved here it is ordinary logic
+   * with ordinary tests.
+   */
+  describe("database rows into sheet rows", () => {
+    it("reads a subscription row, and does not divide by a missing interval", () => {
+      const row = toSubscriptionRow({
+        name: "Netflix", amount_minor: 22999, currency: "TRY", amount_mode: "fixed",
+        cycle: "monthly", interval_months: 1, billing_day: 12, next_due_date: "2026-04-12",
+        trial_end_date: null, category: "Abonelik", source: "Worldcard", person: "Toprak",
+        auto_pay: 1, is_active: 1, website_domain: "netflix.com",
+      });
+      expect(row.name).toBe("Netflix");
+      expect(row.autoPay, "SQLite says 1, not true").toBe(true);
+      expect(row.trialEndDate, "a null column is an empty cell, never \"null\"").toBe("");
+      expect(row.monthlyLoadMinor).toBe(22999);
+
+      // A yearly charge spreads across the year.
+      expect(toSubscriptionRow({ amount_minor: 120000, interval_months: 12 }).monthlyLoadMinor).toBe(10000);
+      // A missing interval is monthly, not a division by zero.
+      expect(toSubscriptionRow({ amount_minor: 12000, interval_months: 0 }).intervalMonths).toBe(1);
+      expect(toSubscriptionRow({ amount_minor: 12000, interval_months: null }).monthlyLoadMinor).toBe(12000);
+    });
+
+    it("costs one cell, not the whole export, when a stored amount is out of range", () => {
+      const row = toSubscriptionRow({ name: "Bozuk", amount_minor: Number.MAX_SAFE_INTEGER, interval_months: 1 });
+      expect(row.name, "the row still exports").toBe("Bozuk");
+      expect(row.monthlyLoadMinor, "only the derived figure is given up").toBe(0);
+    });
+
+    it("reads an investment row with the app's decimal comma", () => {
+      const row = toInvestmentRow({
+        product: "Gram Altın", asset_type: "metal", market_code: null,
+        operation_date: "2026-02-01", kind: "buy", quantity: "12.5",
+        unit_price_minor: 480000, total_minor: 6000000, note: null,
+      });
+      expect(row.quantity, "stored with a dot, read with a comma").toBe("12,5");
+      expect(row.marketCode).toBe("");
+      expect(row.note).toBe("");
+      expect(row.totalMinor).toBe(6000000);
+    });
+
+    it("names an uncategorised total instead of leaving the column blank", () => {
+      expect(toLedgerTotal({ item: null, month: "2026-01", total: 100 }, "Kategorisiz"))
+        .toEqual({ item: "Kategorisiz", month: "2026-01", minor: 100 });
+      expect(toLedgerTotal({ item: "Market", month: "2026-01", total: 100 }, "Kategorisiz").item).toBe("Market");
+      // A total arriving as a string still counts.
+      expect(toLedgerTotal({ item: "Market", month: "2026-01", total: "250" }, "Kategorisiz").minor).toBe(250);
+    });
   });
 });

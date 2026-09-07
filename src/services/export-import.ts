@@ -21,10 +21,8 @@ import {
   type ExistingImportIds,
 } from "./backup-validation";
 import { applyIdRemap, buildIdRemap } from "./backup-remap";
-import { normalizedMonthlyLoadMinor } from "../domain/analytics";
-import { isSupportedMinorAmount } from "../domain/money";
 import { composeWorkbook } from "./workbook-export";
-import { buildLedgerGrids } from "../domain/workbook-format";
+import { buildLedgerGrids, toInvestmentRow, toLedgerTotal, toSubscriptionRow } from "../domain/workbook-format";
 import type { InvestmentRow, SubscriptionRow } from "../domain/workbook-format";
 import { normalizeMatrixColorToken } from "../domain/matrix-colors";
 export { MAX_BACKUP_BYTES, parseExportBundleText } from "./backup-validation";
@@ -194,8 +192,6 @@ export async function importBundle(
   return { imported, skipped };
 }
 
-const str = (value: unknown): string => (value == null ? "" : String(value));
-const num = (value: unknown): number => (typeof value === "number" ? value : Number(value) || 0);
 
 /**
  * The ledger as month grids — one sheet per year, the shape the app both SHOWS
@@ -237,10 +233,7 @@ async function ledgerGridsByYear(userId: string, signal?: AbortSignal): Promise<
     [tr.cashflow.uncategorized, userId],
   );
   throwIfAborted(signal);
-  return buildLedgerGrids(
-    rows.map((row) => ({ item: str(row.item) || tr.cashflow.uncategorized, month: str(row.month), minor: num(row.total) })),
-    tr.months,
-  );
+  return buildLedgerGrids(rows.map((row) => toLedgerTotal(row, tr.cashflow.uncategorized)), tr.months);
 }
 
 async function subscriptionRows(userId: string, signal?: AbortSignal): Promise<SubscriptionRow[]> {
@@ -258,34 +251,7 @@ async function subscriptionRows(userId: string, signal?: AbortSignal): Promise<S
      ORDER BY s.is_active DESC, s.name`,
     [userId],
   );
-  return rows.map((r) => {
-    const amountMinor = num(r.amount_minor);
-    const intervalMonths = num(r.interval_months) || 1;
-    return {
-      name: str(r.name),
-      amountMinor,
-      currency: str(r.currency),
-      amountMode: str(r.amount_mode),
-      cycle: str(r.cycle),
-      intervalMonths,
-      billingDay: num(r.billing_day),
-      nextDueDate: str(r.next_due_date),
-      trialEndDate: str(r.trial_end_date),
-      category: str(r.category),
-      source: str(r.source),
-      person: str(r.person),
-      autoPay: Boolean(r.auto_pay),
-      isActive: Boolean(r.is_active),
-      websiteDomain: str(r.website_domain),
-      // A derived figure, so a stored amount the domain will not accept costs
-      // this ONE cell rather than the whole export. `assertSupportedMinorAmount`
-      // throws a bare `Error`, and letting that escape turned a single odd row
-      // into "işlem başarısız" for a file the owner was told they could take.
-      monthlyLoadMinor: isSupportedMinorAmount(amountMinor)
-        ? normalizedMonthlyLoadMinor(amountMinor, intervalMonths)
-        : 0,
-    };
-  });
+  return rows.map(toSubscriptionRow);
 }
 
 async function investmentRows(userId: string, signal?: AbortSignal): Promise<InvestmentRow[]> {
@@ -300,17 +266,7 @@ async function investmentRows(userId: string, signal?: AbortSignal): Promise<Inv
      ORDER BY o.operation_date, pr.name`,
     [userId],
   );
-  return rows.map((r) => ({
-    product: str(r.product),
-    assetType: str(r.asset_type),
-    marketCode: str(r.market_code),
-    operationDate: str(r.operation_date),
-    kind: str(r.kind),
-    quantity: str(r.quantity).replace(".", ","),
-    unitPriceMinor: num(r.unit_price_minor),
-    totalMinor: num(r.total_minor),
-    note: str(r.note),
-  }));
+  return rows.map(toInvestmentRow);
 }
 
 

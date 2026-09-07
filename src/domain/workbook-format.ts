@@ -24,6 +24,8 @@
  * has a column here.
  */
 import { neutralizeFormula } from "./workbook-format-guard";
+import { normalizedMonthlyLoadMinor } from "./analytics";
+import { isSupportedMinorAmount } from "./money";
 
 export { neutralizeFormula, deneutralizeFormula } from "./workbook-format-guard";
 
@@ -279,4 +281,68 @@ export function buildLedgerGrids(
       ];
       return [year, grid] as [number, string[][]];
     });
+}
+
+/* ------------------------------------------------------- database → sheet */
+
+/**
+ * The step between a query and a sheet, kept here and not beside the query.
+ *
+ * `services/export-import.ts` imports `react-native` and SQLite, so nothing in
+ * it can be loaded by the node test environment — and a hundred lines of row
+ * mapping living there is a hundred lines nothing measures. It showed up as the
+ * mutation gate reporting that file detecting LESS than it used to, which is
+ * exactly what an untested addition looks like from the outside.
+ *
+ * So the file keeps the SQL and this keeps the decisions.
+ */
+const str = (value: unknown): string => (value == null ? "" : String(value));
+const num = (value: unknown): number => (typeof value === "number" ? value : Number(value) || 0);
+
+export function toLedgerTotal(row: Record<string, unknown>, uncategorized: string): LedgerTotal {
+  return { item: str(row.item) || uncategorized, month: str(row.month), minor: num(row.total) };
+}
+
+export function toSubscriptionRow(row: Record<string, unknown>): SubscriptionRow {
+  const amountMinor = num(row.amount_minor);
+  // A subscription with no interval is monthly, not divided by zero.
+  const intervalMonths = num(row.interval_months) || 1;
+  return {
+    name: str(row.name),
+    amountMinor,
+    currency: str(row.currency),
+    amountMode: str(row.amount_mode),
+    cycle: str(row.cycle),
+    intervalMonths,
+    billingDay: num(row.billing_day),
+    nextDueDate: str(row.next_due_date),
+    trialEndDate: str(row.trial_end_date),
+    category: str(row.category),
+    source: str(row.source),
+    person: str(row.person),
+    autoPay: Boolean(row.auto_pay),
+    isActive: Boolean(row.is_active),
+    websiteDomain: str(row.website_domain),
+    // A derived figure, so a stored amount the domain will not accept costs
+    // this ONE cell rather than the whole export.
+    monthlyLoadMinor: isSupportedMinorAmount(amountMinor)
+      ? normalizedMonthlyLoadMinor(amountMinor, intervalMonths)
+      : 0,
+  };
+}
+
+export function toInvestmentRow(row: Record<string, unknown>): InvestmentRow {
+  return {
+    product: str(row.product),
+    assetType: str(row.asset_type),
+    marketCode: str(row.market_code),
+    operationDate: str(row.operation_date),
+    kind: str(row.kind),
+    // Quantities are stored with a decimal dot and read with a comma, like
+    // every other number on the sheet.
+    quantity: str(row.quantity).replace(".", ","),
+    unitPriceMinor: num(row.unit_price_minor),
+    totalMinor: num(row.total_minor),
+    note: str(row.note),
+  };
 }
