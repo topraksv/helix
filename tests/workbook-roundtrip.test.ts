@@ -21,11 +21,6 @@ import {
  * in a column table or a type; only handing the written bytes back to the real
  * parser catches it, which is what every test here does.
  */
-const MONTHS = [
-  "Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran",
-  "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık",
-];
-
 const subscription: SubscriptionRow = {
   name: "Netflix", amountMinor: 22999, currency: "TRY", amountMode: "fixed", cycle: "monthly",
   intervalMonths: 1, billingDay: 12, nextDueDate: "2026-04-12", trialEndDate: "",
@@ -45,7 +40,7 @@ const year2026 = buildLedgerGrids([
   { item: "Market", month: "2026-02", minor: 880000 },
   { item: "Kira", month: "2026-01", minor: 1800000 },
   { item: "Kira", month: "2026-02", minor: 1800000 },
-], MONTHS);
+]);
 
 function grid(bytes: Uint8Array, sheet: string): string[][] {
   const book = XLSX.read(bytes, { type: "array" });
@@ -93,7 +88,7 @@ describe("workbook round trip", () => {
       { item: "Market", month: "2025-11", minor: 500000 },
       { item: "Market", month: "2025-12", minor: 510000 },
       { item: "Market", month: "2026-01", minor: 920000 },
-    ], MONTHS);
+    ]);
     const bytes = await composeWorkbook({ years: twoYears, subscriptions: [], investments: [] });
     const book = XLSX.read(bytes, { type: "array" });
     expect(book.SheetNames.slice(0, 2)).toEqual(["Mali Tablo 2025", "Mali Tablo 2026"]);

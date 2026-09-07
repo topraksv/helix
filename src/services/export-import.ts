@@ -233,7 +233,7 @@ async function ledgerGridsByYear(userId: string, signal?: AbortSignal): Promise<
     [tr.cashflow.uncategorized, userId],
   );
   throwIfAborted(signal);
-  return buildLedgerGrids(rows.map((row) => toLedgerTotal(row, tr.cashflow.uncategorized)), tr.months);
+  return buildLedgerGrids(rows.map((row) => toLedgerTotal(row, tr.cashflow.uncategorized)));
 }
 
 async function subscriptionRows(userId: string, signal?: AbortSignal): Promise<SubscriptionRow[]> {

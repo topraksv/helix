@@ -26,6 +26,7 @@
 import { neutralizeFormula } from "./workbook-format-guard";
 import { normalizedMonthlyLoadMinor } from "./analytics";
 import { isSupportedMinorAmount } from "./money";
+import { tr } from "../i18n/tr";
 
 export { neutralizeFormula, deneutralizeFormula } from "./workbook-format-guard";
 
@@ -37,8 +38,6 @@ export const WORKBOOK_SHEETS = {
   investments: "Yatırımlar",
 } as const;
 
-export type WorkbookSheetKey = keyof typeof WORKBOOK_SHEETS;
-
 /**
  * A cell's value as the workbook carries it.
  *
@@ -49,7 +48,7 @@ export type WorkbookSheetKey = keyof typeof WORKBOOK_SHEETS;
  * spreadsheet round-trip it through binary floating point is how ₺1.234,56
  * comes back as ₺1.234,5599999999999.
  */
-export type WorkbookCell = string;
+type WorkbookCell = string;
 
 export interface WorkbookColumn<Row> {
   /** The heading a person sees. */
@@ -167,17 +166,29 @@ const enumeration = <Row>(
   write: (row) => labels[get(row)] ?? get(row),
 });
 
-export const AMOUNT_MODES = { fixed: "Sabit", variable: "Değişken" } as const;
-export const SUBSCRIPTION_CYCLES = { monthly: "Aylık", yearly: "Yıllık", custom: "Özel" } as const;
-export const ASSET_TYPES = {
-  metal: "Metal",
-  currency: "Döviz",
-  equity: "Hisse",
-  fund: "Fon",
-  crypto: "Kripto",
-  pension: "Emeklilik",
+/**
+ * The labels a closed set is written with, taken from the app's own vocabulary
+ * wherever the app already has one.
+ *
+ * `ASSET_TYPES` did not, and it cost: this file had invented "Metal", "Hisse"
+ * and "Emeklilik" while every screen says "Kıymetli Maden", "Borsa" and "BES".
+ * A workbook that names a holding differently from the screen it was exported
+ * from is a second vocabulary for one concept, and the owner is the person who
+ * has to reconcile them.
+ *
+ * `OPERATION_KINDS` is the deliberate exception. `tr.investments` has labels
+ * for these, but they are ACTIONS — "Mevcut yatırımı ekle", "Alış ekle" — and a
+ * table column holds a noun. Sentences in a cell would be the same mistake from
+ * the other side.
+ */
+const AMOUNT_MODES = { fixed: "Sabit", variable: "Değişken" } as const;
+const SUBSCRIPTION_CYCLES = {
+  monthly: tr.subs.monthly,
+  yearly: tr.subs.yearly,
+  custom: tr.subs.custom,
 } as const;
-export const OPERATION_KINDS = {
+const ASSET_TYPES = tr.investments.types;
+const OPERATION_KINDS = {
   existing: "Mevcut",
   buy: "Alış",
   sell: "Satış",
@@ -241,13 +252,10 @@ export interface LedgerTotal {
  * the export is importable can be tested without a database — which is the
  * check the first version of this feature did not have and needed.
  *
- * `monthNames` is passed in rather than imported so this module stays free of
- * the translation table; the wizard matches "Ocak 2026" by name.
+ * The wizard matches "Ocak 2026" by name, so the month names come from the
+ * same table the wizard reads.
  */
-export function buildLedgerGrids(
-  totals: readonly LedgerTotal[],
-  monthNames: readonly string[],
-): [year: number, grid: string[][]][] {
+export function buildLedgerGrids(totals: readonly LedgerTotal[]): [year: number, grid: string[][]][] {
   const byYear = new Map<number, { months: Set<string>; items: Map<string, Map<string, number>> }>();
   for (const total of totals) {
     const year = Number(total.month.slice(0, 4));
@@ -272,7 +280,7 @@ export function buildLedgerGrids(
         // months, so a label there would become an extra item column.
         ["", ...items.map(neutralizeFormula)],
         ...months.map((month) => [
-          `${monthNames[Number(month.slice(5, 7)) - 1] ?? month} ${year}`,
+          `${tr.months[Number(month.slice(5, 7)) - 1] ?? month} ${year}`,
           ...items.map((item) => {
             const value = bucket.items.get(item)?.get(month);
             return value == null ? "" : writeMoney(value);

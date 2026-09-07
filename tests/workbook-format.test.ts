@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { tr } from "../src/i18n/tr";
 import {
   buildLedgerGrids,
   INVESTMENT_COLUMNS,
@@ -14,11 +15,6 @@ import {
   type SubscriptionRow,
   type WorkbookColumn,
 } from "../src/domain/workbook-format";
-
-const MONTHS = [
-  "Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran",
-  "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık",
-];
 
 const subscription: SubscriptionRow = {
   name: "Netflix", amountMinor: 22999, currency: "TRY", amountMode: "fixed", cycle: "monthly",
@@ -48,7 +44,7 @@ describe("workbook format", () => {
   it("writes an investment row the way a person reads it", () => {
     const cells = Object.fromEntries(INVESTMENT_COLUMNS.map((c) => [c.header, c.write(investment)]));
     expect(cells["Ürün"]).toBe("Gram Altın");
-    expect(cells["Varlık Türü"]).toBe("Metal");
+    expect(cells["Varlık Türü"]).toBe(tr.investments.types.metal);
     expect(cells["İşlem"]).toBe("Alış");
     expect(cells["Toplam"]).toBe("60000,00");
     expect(cells["İşlem Tarihi"]).toBe("01.02.2026");
@@ -65,7 +61,7 @@ describe("workbook format", () => {
   it("reads its own field in every column", () => {
     const subscriptionCells = SUBSCRIPTION_COLUMNS.map((column) => column.write(subscription));
     expect(subscriptionCells).toEqual([
-      "Netflix", "229,99", "TRY", "Sabit", "Aylık", "1", "12", "12.04.2026", "",
+      "Netflix", "229,99", "TRY", "Sabit", tr.subs.monthly, "1", "12", "12.04.2026", "",
       "Abonelik", "Worldcard", "Toprak", "evet", "evet", "netflix.com", "229,99",
     ]);
     // Each number column moves on its own, so none of them can be reading
@@ -79,12 +75,34 @@ describe("workbook format", () => {
 
     const investmentCells = INVESTMENT_COLUMNS.map((column) => column.write(investment));
     expect(investmentCells).toEqual([
-      "Gram Altın", "Metal", "", "01.02.2026", "Alış", "12,5", "4800,00", "60000,00", "",
+      "Gram Altın", tr.investments.types.metal, "", "01.02.2026", "Alış", "12,5", "4800,00", "60000,00", "",
     ]);
     const byInvestmentHeader = (header: string, row: InvestmentRow): string =>
       INVESTMENT_COLUMNS.find((column) => column.header === header)!.write(row);
     expect(byInvestmentHeader("Birim Fiyat", { ...investment, unitPriceMinor: 111 })).toBe("1,11");
     expect(byInvestmentHeader("Toplam", { ...investment, totalMinor: 222 })).toBe("2,22");
+  });
+
+  /**
+   * One vocabulary, not two.
+   *
+   * This file once wrote "Metal", "Hisse" and "Emeklilik" while every screen in
+   * the app said "Kıymetli Maden", "Borsa" and "BES" — a workbook naming a
+   * holding differently from the screen it came from, which leaves the owner to
+   * reconcile two names for one thing. `knip` found the unused export that hid
+   * it; this keeps it found.
+   */
+  it("names an asset type and a cycle the way the app names them", () => {
+    const assetColumn = INVESTMENT_COLUMNS.find((column) => column.header === "Varlık Türü")!;
+    for (const [stored, label] of Object.entries(tr.investments.types)) {
+      expect(assetColumn.write({ ...investment, assetType: stored }), stored).toBe(label);
+    }
+    const cycleColumn = SUBSCRIPTION_COLUMNS.find((column) => column.header === "Döngü")!;
+    expect(cycleColumn.write({ ...subscription, cycle: "yearly" })).toBe(tr.subs.yearly);
+    expect(cycleColumn.write({ ...subscription, cycle: "custom" })).toBe(tr.subs.custom);
+    // An unrecognised value passes through rather than becoming blank: a cell
+    // the owner can see is worth more than a cell that lost its answer.
+    expect(cycleColumn.write({ ...subscription, cycle: "zart" })).toBe("zart");
   });
 
   it("gives every column a heading and a hint, and repeats no heading on a sheet", () => {
@@ -127,7 +145,7 @@ describe("workbook format", () => {
       { item: "Maaş", month: "2026-01", minor: 6500000 },
       { item: "Market", month: "2026-02", minor: 880000 },
       { item: "Market", month: "2025-12", minor: 810000 },
-    ], MONTHS);
+    ]);
 
     expect(grids.map(([year]) => year), "a year per sheet, oldest first").toEqual([2025, 2026]);
 
@@ -146,7 +164,7 @@ describe("workbook format", () => {
       { item: "Market", month: "2026-03", minor: 300 },
       { item: "Market", month: "2026-01", minor: 100 },
       { item: "Market", month: "2026-02", minor: 200 },
-    ], MONTHS)[0]![1];
+    ])[0]![1];
     // The query orders them, but a grid that trusted that would put a sheet's
     // months in insertion order the day anything else built one.
     expect(grid.slice(1).map((row) => row[0])).toEqual(["Ocak 2026", "Şubat 2026", "Mart 2026"]);
@@ -156,7 +174,7 @@ describe("workbook format", () => {
   it("reads a total that arrives as a string, and a missing one as nothing", () => {
     const grid = buildLedgerGrids([
       { item: "Market", month: "2026-01", minor: Number("250") },
-    ], MONTHS)[0]![1];
+    ])[0]![1];
     expect(grid[1]).toEqual(["Ocak 2026", "2,50"]);
   });
 
@@ -164,13 +182,13 @@ describe("workbook format", () => {
     const grid = buildLedgerGrids([
       { item: "Market", month: "2026-01", minor: 100 },
       { item: "Market", month: "2026-01", minor: 250 },
-    ], MONTHS)[0]![1];
+    ])[0]![1];
     expect(grid[1]).toEqual(["Ocak 2026", "3,50"]);
   });
 
   it("drops a row whose month is not a month rather than inventing a sheet", () => {
-    expect(buildLedgerGrids([{ item: "X", month: "kayıp", minor: 1 }], MONTHS)).toEqual([]);
-    expect(buildLedgerGrids([{ item: "X", month: "2026-13", minor: 1 }], MONTHS)).toEqual([]);
+    expect(buildLedgerGrids([{ item: "X", month: "kayıp", minor: 1 }])).toEqual([]);
+    expect(buildLedgerGrids([{ item: "X", month: "2026-13", minor: 1 }])).toEqual([]);
   });
 
   /**

@@ -11,11 +11,6 @@ import {
 import { composeWorkbook } from "../src/services/workbook-export";
 import { UserFacingError } from "../src/domain/user-error";
 
-const MONTHS = [
-  "Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran",
-  "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık",
-];
-
 /**
  * The export's cell boundary, which moved but did not go away.
  *
@@ -81,7 +76,7 @@ describe("workbook cell safety", () => {
   });
 
   it("guards a hostile category name in the ledger grid's own heading", () => {
-    const grid = buildLedgerGrids([{ item: "=1+1", month: "2026-01", minor: 100 }], MONTHS)[0]![1];
+    const grid = buildLedgerGrids([{ item: "=1+1", month: "2026-01", minor: 100 }])[0]![1];
     expect(grid[0], "the heading is where a category name lands").toEqual(["", "'=1+1"]);
     // A month label and an amount are app-generated and must NOT be guarded:
     // an apostrophe there would break the wizard's own month matching.
@@ -135,7 +130,6 @@ describe("workbook cell safety", () => {
     await expect(composeWorkbook({
       years: buildLedgerGrids(
         Array.from({ length: 12 }, (_, index) => ({ item: "Market", month: `2026-${String(index + 1).padStart(2, "0")}`, minor: 1 })),
-        MONTHS,
       ),
       subscriptions: Array.from({ length: 24_995 }, () => blank),
       investments: [],

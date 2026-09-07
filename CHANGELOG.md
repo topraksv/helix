@@ -4,6 +4,17 @@ Yayımlanan her sürümde neyin değiştiği, en yeni üstte. Sürüm numarası
 `app.json` içindeki `expo.version`'dır; nasıl seçildiği geliştiricinin kendi
 sürüm defterinde yazılıdır ve bu depoya dahil değildir.
 
+## 1.5.1
+
+### Patch Changes
+
+- Excel çıktısındaki varlık türleri, uygulamanın kendi adlarını kullanıyor: "Kıymetli Maden", "Borsa", "BES" — dosya artık aktarıldığı ekranla aynı şeyi söylüyor. Önceki sürümde "Metal", "Hisse" ve "Emeklilik" yazıyordu.
+
+### Internal
+
+- Canlı Piyasa ekranına e2e kapsamı geldi. Ekran iki kez baştan yazılmış ama CI'da hiçbir tarayıcı açmamıştı; artık beslemeye ulaşılamadığında sebebini söylediği, cevap geldiğinde fiyatı, grafiği ve aralık bloğunu çizdiği ve dört aralık seçeneğinin de cevap verdiği ölçülüyor.
+- `knip`'in gösterdiği altı gereksiz export kaldırıldı ve ay adları `buildLedgerGrids`'e dışarıdan geçirilmiyor; denetim artık hiçbir şey bulmuyor.
+
 ## 1.5.0
 
 ### Minor Changes
