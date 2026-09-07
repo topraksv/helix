@@ -340,6 +340,7 @@ export const tr = {
     },
     backupTooLarge: "Yedek dosyası güvenli içe aktarma sınırını aşıyor.",
     workspaceResetFailed: "Cihazdaki önceki hesabın verileri temizlenemedi; giriş yapılamadı. Lütfen tekrar dene.",
+    workspaceOwnerUnrecorded: "Bu cihaz çalışma alanının kime ait olduğunu kaydedemedi; giriş yapılamadı. Tarayıcı ayarlarında site verilerine izin ver ya da cihazı yeniden başlatıp tekrar dene.",
     fxUnavailable: "Döviz kuru henüz alınamadı. İnternete bağlanınca tekrar dene.",
     saveFailed: "Kaydedilemedi. Lütfen tekrar dene.",
     deleteFailed: "Silinemedi. Lütfen tekrar dene.",

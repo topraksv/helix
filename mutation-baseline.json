@@ -486,6 +486,15 @@
       "measuredOn": "88fa1e6829d1768dc5f157450b21bd87739cb721",
       "measuredDate": "2026-09-04"
     },
+    "src/services/kv.ts": {
+      "score": 88.89,
+      "killed": 24,
+      "timeout": 0,
+      "survived": 3,
+      "noCoverage": 0,
+      "measuredOn": "fdfca1186799949675cc5d2ec681fb344a0eb5a0",
+      "measuredDate": "2026-09-07"
+    },
     "src/services/logger.ts": {
       "score": 54.39,
       "killed": 31,

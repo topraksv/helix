@@ -118,7 +118,19 @@ async function discardForeignSupabaseSession(): Promise<void> {
  * owner marker would go stale).
  */
 async function ensureWorkspaceFor(userId: string): Promise<string | null> {
-  const owner = await kv.get(LOCAL_OWNER_KEY);
+  /**
+   * Read, write and verify — all three, because this marker is the only record
+   * that the wipe below happened, and the local database outlives the store
+   * that holds it. A read that FAILS must not be read as "no previous owner":
+   * that is the answer that skips the wipe, so guessing it would hand the
+   * previous account's rows to this one.
+   */
+  let owner: string | null;
+  try {
+    owner = await kv.get(LOCAL_OWNER_KEY);
+  } catch {
+    return tr.errors.workspaceOwnerUnrecorded;
+  }
   if (owner && owner !== userId) {
     await stopSyncSession();
     disconnectMarkets();
@@ -131,7 +143,24 @@ async function ensureWorkspaceFor(userId: string): Promise<string | null> {
       return tr.errors.workspaceResetFailed;
     }
   }
-  if (owner !== userId) await kv.set(LOCAL_OWNER_KEY, userId);
+  if (owner !== userId) {
+    /**
+     * `kv` is best-effort by contract: it drops a write the browser refuses
+     * rather than failing its caller, which is right for a preference and
+     * wrong for this. So prove the marker landed instead of assuming it, and
+     * refuse the sign-in exactly as a failed wipe does when it did not.
+     *
+     * Not a hypothetical: with site data blocked, `kv.get` above already
+     * answered null for a device that HAD an owner, so the wipe was skipped
+     * and only the write's own failure stopped the sign-in. This is the check
+     * that was doing that job by accident.
+     */
+    const recorded = await kv
+      .set(LOCAL_OWNER_KEY, userId)
+      .then(() => kv.get(LOCAL_OWNER_KEY))
+      .catch(() => null);
+    if (recorded !== userId) return tr.errors.workspaceOwnerUnrecorded;
+  }
   return null;
 }
 
@@ -269,14 +298,16 @@ export const useSession = create<SessionStore>((set, get) => ({
           set({ userId: null, ready: true, isOnlineSession: false });
           return;
         }
-        await kv.set(LAST_USER_KEY, data.session.user.id);
-        if (data.session.user.email) await kv.set(LAST_EMAIL_KEY, data.session.user.email);
+        await kv.set(LAST_USER_KEY, data.session.user.id).catch(() => {});
+        if (data.session.user.email) {
+          await kv.set(LAST_EMAIL_KEY, data.session.user.email).catch(() => {});
+        }
         await seedCurrentLogin(
           kv,
           data.session.user.id,
           data.session.user.last_sign_in_at ?? new Date().toISOString(),
-        );
-        const previousLoginAt = await loadPreviousLogin(kv, data.session.user.id);
+        ).catch(() => {});
+        const previousLoginAt = await loadPreviousLogin(kv, data.session.user.id).catch(() => null);
         startSyncSession(data.session.user.id);
         set({ userId: data.session.user.id, email: data.session.user.email ?? null, ready: true, isOnlineSession: true, isNewSignup: false, previousLoginAt });
         return;
@@ -308,13 +339,20 @@ export const useSession = create<SessionStore>((set, get) => ({
       await supabase.auth.signOut({ scope: "local" }).catch(() => {});
       return wsError;
     }
-    await kv.set(LAST_USER_KEY, data.user.id);
-    await kv.set(LAST_EMAIL_KEY, data.user.email ?? email);
+    // Past this line the account is authenticated and the workspace is proven
+    // its own. Everything below is device-local convenience — who to re-open
+    // offline, and a timestamp to show — so a store that refuses it costs a
+    // convenience, never the session that was just granted. Before these
+    // guards a keychain error surfaced as the sign-in screen's generic "istek
+    // basarisiz", which refused an account that had in fact signed in, blamed
+    // the wrong thing, and failed identically on every retry.
+    await kv.set(LAST_USER_KEY, data.user.id).catch(() => {});
+    await kv.set(LAST_EMAIL_KEY, data.user.email ?? email).catch(() => {});
     const previousLoginAt = await recordSuccessfulLogin(
       kv,
       data.user.id,
       data.user.last_sign_in_at ?? new Date().toISOString(),
-    );
+    ).catch(() => null);
     // Signing in IS the password check, so it unfreezes a frozen account: clear
     // the synced flag (a newer LWW write than the freeze) so the reactivation
     // gate never reappears after a successful login.
@@ -340,9 +378,9 @@ export const useSession = create<SessionStore>((set, get) => ({
       await supabase.auth.signOut({ scope: "local" }).catch(() => {});
       return { status: "error", message: wsError };
     }
-    await kv.set(LAST_USER_KEY, data.user.id);
-    await kv.set(LAST_EMAIL_KEY, data.user.email ?? email);
-    await startLoginHistory(kv, data.user.id, new Date().toISOString());
+    await kv.set(LAST_USER_KEY, data.user.id).catch(() => {});
+    await kv.set(LAST_EMAIL_KEY, data.user.email ?? email).catch(() => {});
+    await startLoginHistory(kv, data.user.id, new Date().toISOString()).catch(() => {});
     // A brand-new account has no cloud data to pull → go straight to onboarding
     // (isNewSignup), skipping the "await first pull" hold used for existing
     // accounts syncing onto a fresh device.

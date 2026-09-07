@@ -43,6 +43,13 @@ const harness = vi.hoisted(() => {
     resetLocalWorkspace: vi.fn(async () => {}),
     writeSetting: vi.fn(async () => {}),
     configured: { value: true },
+    // Device-local writes that refuse, chosen by key. On native this is a
+    // keychain error from SecureStore; on web a browser told to block site
+    // data. Null by default, so every other case sees the plain map above.
+    kvWriteFails: { pattern: null as RegExp | null },
+    // A store that resolves the write and keeps nothing — what `kv` now does
+    // on web when the browser refuses it.
+    kvDropsWrites: { pattern: null as RegExp | null },
   };
 });
 
@@ -84,6 +91,8 @@ vi.mock("../src/services/kv", () => ({
   kv: {
     get: vi.fn(async (key: string) => harness.store.get(key) ?? null),
     set: vi.fn(async (key: string, value: string) => {
+      if (harness.kvWriteFails.pattern?.test(key)) throw new Error("keychain unavailable");
+      if (harness.kvDropsWrites.pattern?.test(key)) return;
       harness.store.set(key, value);
     }),
     remove: vi.fn(async (key: string) => {
@@ -114,6 +123,8 @@ function reset(): void {
   harness.resetLocalWorkspace.mockReset();
   harness.resetLocalWorkspace.mockResolvedValue(undefined);
   harness.writeSetting.mockClear();
+  harness.kvWriteFails.pattern = null;
+  harness.kvDropsWrites.pattern = null;
   useSession.setState({
     userId: null,
     email: null,
@@ -272,6 +283,58 @@ describe("signIn", () => {
       isOnlineSession: true,
       isNewSignup: false,
     });
+  });
+
+  /**
+   * The remembered-user and login-history writes are conveniences for the NEXT
+   * cold start; the account is already authenticated by the time they run.
+   * Letting one reject loses the session that was just granted, and the
+   * sign-in screen turns the rejection into "istek basarisiz" — so the user is
+   * refused, told the wrong reason, and refused again on every retry, because
+   * the retry fails at the same write. Offline re-open degrades; the sign-in
+   * itself must not.
+   */
+  it("keeps a session the account already earned when the device cannot remember it", async () => {
+    harness.supabase.auth.signInWithPassword.mockResolvedValue({ data: { user: USER_A }, error: null });
+    harness.kvWriteFails.pattern = /^helix\.(last_|login\.)/;
+
+    expect(await useSession.getState().signIn("a@example.com", "pw")).toBeNull();
+
+    expect(useSession.getState()).toMatchObject({ userId: USER_A.id, isOnlineSession: true });
+    expect(harness.startSyncSession).toHaveBeenCalledWith(USER_A.id);
+  });
+
+  /**
+   * The owner marker is the opposite case, and it is why the writes above are
+   * softened one by one rather than by making the store swallow everything. It
+   * is the only record that this device's rows belong to this account, so a
+   * marker that cannot be stored means the NEXT account would skip the wipe
+   * and open them. Refuse, and say which thing failed.
+   */
+  it("refuses a sign-in whose workspace owner the device cannot record", async () => {
+    harness.supabase.auth.signInWithPassword.mockResolvedValue({ data: { user: USER_A }, error: null });
+    harness.kvWriteFails.pattern = /^helix\.local_owner$/;
+
+    expect(await useSession.getState().signIn("a@example.com", "pw"))
+      .toBe(tr.errors.workspaceOwnerUnrecorded);
+
+    expect(useSession.getState().userId).toBeNull();
+    expect(harness.startSyncSession).not.toHaveBeenCalled();
+  });
+
+  /**
+   * A store that accepts the write and keeps nothing is the web half of the
+   * same failure, and the one a rejection-only check misses entirely.
+   */
+  it("refuses a sign-in when the owner marker is accepted but not kept", async () => {
+    harness.supabase.auth.signInWithPassword.mockResolvedValue({ data: { user: USER_A }, error: null });
+    harness.kvDropsWrites.pattern = /^helix\.local_owner$/;
+
+    expect(await useSession.getState().signIn("a@example.com", "pw"))
+      .toBe(tr.errors.workspaceOwnerUnrecorded);
+
+    expect(useSession.getState().userId).toBeNull();
+    expect(harness.startSyncSession).not.toHaveBeenCalled();
   });
 });
 
