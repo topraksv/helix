@@ -137,5 +137,36 @@ describe("workbook round trip", () => {
     const xml = Buffer.from(bytes).toString("latin1");
     expect(xml, "column widths reach the file").toContain("cols>");
     expect(xml, "the header row is a filter row").toContain("autoFilter");
+    const book = XLSX.read(bytes, { type: "array" });
+    const filter = book.Sheets[WORKBOOK_SHEETS.subscriptions]!["!autofilter"] as { ref: string } | undefined;
+    // Over the header AND the record, not the header alone.
+    expect(filter?.ref, "the filter covers the rows it filters").toBe("A1:P2");
+  });
+
+  /**
+   * A sheet with a header and nothing under it gets no filter.
+   *
+   * A filter over one row is a control that does nothing, and Excel draws the
+   * dropdowns anyway — so an empty Abonelikler sheet would look like a table
+   * whose contents had gone missing rather than one that was never filled.
+   */
+  it("leaves a header-only sheet without a filter", async () => {
+    const bytes = await composeWorkbook({ years: year2026, subscriptions: [], investments: [] });
+    const book = XLSX.read(bytes, { type: "array" });
+    expect(book.Sheets[WORKBOOK_SHEETS.subscriptions]!["!autofilter"]).toBeUndefined();
+    // The headings are still there, so the sheet says what it would hold.
+    expect(grid(bytes, WORKBOOK_SHEETS.subscriptions)).toHaveLength(1);
+  });
+
+  it("widens a column to its widest cell, not to its heading", async () => {
+    const long = { ...subscription, name: "Çok Uzun Bir Abonelik Adı Buraya" };
+    const bytes = await composeWorkbook({ years: [], subscriptions: [long], investments: [] });
+    const book = XLSX.read(bytes, { type: "array" });
+    // `!cols` does not survive SheetJS's own reader, so the file is the
+    // evidence: the width written must exceed the heading's own length.
+    const xml = Buffer.from(bytes).toString("latin1");
+    const width = /<col[^>]*width="([0-9.]+)"/.exec(xml)?.[1];
+    expect(Number(width), "sized to the name, not to \"Abonelik\"").toBeGreaterThan(long.name.length);
+    expect(book.SheetNames).toContain(WORKBOOK_SHEETS.subscriptions);
   });
 });

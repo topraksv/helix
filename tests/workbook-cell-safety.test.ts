@@ -44,6 +44,23 @@ describe("workbook cell safety", () => {
     }
   });
 
+  /**
+   * The anchor is the guard.
+   *
+   * Without `^` the test matches anywhere, and then every amount with a minus
+   * inside it, every note with an equals sign mid-sentence and every "Ali - Su
+   * payı" would collect an apostrophe it never needed. Mutation testing found
+   * this: dropping the anchor survived every case above.
+   */
+  it("guards only the FIRST character, never a sign in the middle", () => {
+    for (const value of ["Market -5 iade", "toplam = 900", "Ali - Su payı", "a+b", "x@y.com"]) {
+      expect(neutralizeFormula(value), value).toBe(value);
+    }
+    expect(deneutralizeFormula("Market -5 iade"), "and nothing is stripped back").toBe("Market -5 iade");
+    // A cell that is only an apostrophe keeps it: nothing follows it to guard.
+    expect(deneutralizeFormula("'")).toBe("'");
+  });
+
   it("leaves ordinary Turkish text untouched", () => {
     for (const value of ["Market alışverişi", "Öğle yemeği (İş)", "1.234,56 TL ödendi", "Yemek; İçecek", ""]) {
       expect(neutralizeFormula(value), value).toBe(value);
@@ -110,8 +127,18 @@ describe("workbook cell safety", () => {
     await expect(composeWorkbook({
       years: [], subscriptions: Array.from({ length: 25_001 }, () => blank), investments: [],
     })).rejects.toBeInstanceOf(UserFacingError);
+    // The boundary itself, so the comparison cannot quietly become `>=`.
     await expect(composeWorkbook({
-      years: [], subscriptions: Array.from({ length: 100 }, () => blank), investments: [],
+      years: [], subscriptions: Array.from({ length: 25_000 }, () => blank), investments: [],
     })).resolves.toBeInstanceOf(Uint8Array);
-  }, 30_000);
+    // And it counts the three sheets TOGETHER, not each on its own.
+    await expect(composeWorkbook({
+      years: buildLedgerGrids(
+        Array.from({ length: 12 }, (_, index) => ({ item: "Market", month: `2026-${String(index + 1).padStart(2, "0")}`, minor: 1 })),
+        MONTHS,
+      ),
+      subscriptions: Array.from({ length: 24_995 }, () => blank),
+      investments: [],
+    })).rejects.toBeInstanceOf(UserFacingError);
+  }, 60_000);
 });

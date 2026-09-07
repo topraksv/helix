@@ -54,6 +54,39 @@ describe("workbook format", () => {
     expect(cells["İşlem Tarihi"]).toBe("01.02.2026");
   });
 
+  /**
+   * Every column, not a sample of them.
+   *
+   * The two tests above check the cells a reader would notice first, and
+   * mutation testing showed what that misses: replacing a column's accessor
+   * with `() => undefined` survived on five of them, because nothing asserted
+   * that "Ödeme Günü" reads `billingDay` rather than some other number.
+   */
+  it("reads its own field in every column", () => {
+    const subscriptionCells = SUBSCRIPTION_COLUMNS.map((column) => column.write(subscription));
+    expect(subscriptionCells).toEqual([
+      "Netflix", "229,99", "TRY", "Sabit", "Aylık", "1", "12", "12.04.2026", "",
+      "Abonelik", "Worldcard", "Toprak", "evet", "evet", "netflix.com", "229,99",
+    ]);
+    // Each number column moves on its own, so none of them can be reading
+    // another's field.
+    const bySubscriptionHeader = (header: string, row: SubscriptionRow): string =>
+      SUBSCRIPTION_COLUMNS.find((column) => column.header === header)!.write(row);
+    expect(bySubscriptionHeader("Kaç Ayda Bir", { ...subscription, intervalMonths: 12 })).toBe("12");
+    expect(bySubscriptionHeader("Ödeme Günü", { ...subscription, billingDay: 28 })).toBe("28");
+    expect(bySubscriptionHeader("Aylık Yük", { ...subscription, monthlyLoadMinor: 1917 })).toBe("19,17");
+    expect(bySubscriptionHeader("Aktif", { ...subscription, isActive: false })).toBe("");
+
+    const investmentCells = INVESTMENT_COLUMNS.map((column) => column.write(investment));
+    expect(investmentCells).toEqual([
+      "Gram Altın", "Metal", "", "01.02.2026", "Alış", "12,5", "4800,00", "60000,00", "",
+    ]);
+    const byInvestmentHeader = (header: string, row: InvestmentRow): string =>
+      INVESTMENT_COLUMNS.find((column) => column.header === header)!.write(row);
+    expect(byInvestmentHeader("Birim Fiyat", { ...investment, unitPriceMinor: 111 })).toBe("1,11");
+    expect(byInvestmentHeader("Toplam", { ...investment, totalMinor: 222 })).toBe("2,22");
+  });
+
   it("gives every column a heading and a hint, and repeats no heading on a sheet", () => {
     for (const key of Object.keys(WORKBOOK_COLUMNS) as (keyof typeof WORKBOOK_COLUMNS)[]) {
       const columns = WORKBOOK_COLUMNS[key] as WorkbookColumn<unknown>[];
@@ -74,6 +107,11 @@ describe("workbook format", () => {
     expect(writeMoney(0)).toBe("0,00");
     expect(writeDate("2026-03-15")).toBe("15.03.2026");
     expect(writeDate("")).toBe("");
+    // A date missing any of its three parts is not a date. Written as one it
+    // would land in the sheet as "undefined.03.2026".
+    expect(writeDate("2026-03"), "no day").toBe("");
+    expect(writeDate("2026"), "no month").toBe("");
+    expect(writeDate("--"), "nothing at all").toBe("");
     expect(writeFlag(true)).toBe("evet");
     expect(writeFlag(false)).toBe("");
   });
@@ -101,6 +139,25 @@ describe("workbook format", () => {
     // February has no salary, and the cell is blank rather than "0,00" — a zero
     // is a figure the owner never entered.
     expect(grid[2]).toEqual(["Şubat 2026", "", "8800,00"]);
+  });
+
+  it("puts the months in calendar order however they arrive", () => {
+    const grid = buildLedgerGrids([
+      { item: "Market", month: "2026-03", minor: 300 },
+      { item: "Market", month: "2026-01", minor: 100 },
+      { item: "Market", month: "2026-02", minor: 200 },
+    ], MONTHS)[0]![1];
+    // The query orders them, but a grid that trusted that would put a sheet's
+    // months in insertion order the day anything else built one.
+    expect(grid.slice(1).map((row) => row[0])).toEqual(["Ocak 2026", "Şubat 2026", "Mart 2026"]);
+    expect(grid.slice(1).map((row) => row[1])).toEqual(["1,00", "2,00", "3,00"]);
+  });
+
+  it("reads a total that arrives as a string, and a missing one as nothing", () => {
+    const grid = buildLedgerGrids([
+      { item: "Market", month: "2026-01", minor: Number("250") },
+    ], MONTHS)[0]![1];
+    expect(grid[1]).toEqual(["Ocak 2026", "2,50"]);
   });
 
   it("sums a repeated cell instead of losing one of them", () => {
