@@ -184,6 +184,12 @@ export default function MarketDetailScreen() {
   const code = typeof params.code === "string" ? params.code : "";
   const title = INVESTMENT_MARKET_TITLES.find((item) => item.code === code);
   const price = useMarkets((state) => state.prices[code]);
+  // The chart's failure is usually a symptom of the FEED's failure, and this
+  // screen used to show neither — only "geçmiş veriye ulaşılamıyor", which
+  // reads as a chart bug. The dashboard card has said "Çevrimdışı" all along;
+  // the screen the owner opens to look closer said less than the card they
+  // came from.
+  const feedLive = useMarkets((state) => state.status === "live");
   const { palette } = useTheme();
   const colors = useSeriesColors();
 
@@ -277,6 +283,17 @@ export default function MarketDetailScreen() {
               <Body muted style={{ fontSize: type.small.fontSize, marginTop: spacing.md }}>
                 {tr.markets.updatedAt(clockOrDateTimeLabel(price.receivedAt))}
               </Body>
+              {feedLive ? null : (
+                <Row gap={spacing.xs} style={{ alignItems: "center", marginTop: spacing.xs }}>
+                  <View
+                    accessible={false}
+                    style={{ width: 7, height: 7, borderRadius: radius.full, backgroundColor: palette.textSecondary }}
+                  />
+                  <Body muted style={{ fontSize: type.small.fontSize, flexShrink: 1 }}>
+                    {tr.markets.snapshotNote}
+                  </Body>
+                </Row>
+              )}
             </>
           ) : (
             <Body muted style={{ marginTop: spacing.sm }}>{tr.markets.noData}</Body>
@@ -296,7 +313,9 @@ export default function MarketDetailScreen() {
             </View>
           ) : points == null ? (
             <View style={{ minHeight: 220, alignItems: "center", justifyContent: "center", gap: spacing.md }}>
-              <Body muted>{tr.markets.historyUnavailable}</Body>
+              <Body muted style={{ textAlign: "center" }}>
+                {feedLive ? tr.markets.historyUnavailable : tr.markets.historyFeedDown}
+              </Body>
               <Button label={tr.markets.retryNow} variant="secondary" onPress={retry} />
             </View>
           ) : (

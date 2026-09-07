@@ -22,6 +22,27 @@ import {
 } from "../src/domain/market";
 import { boundedScheduledNotifications, createNotificationReplacementQueue, normalizeReminderDays, privateNotificationContent, uniqueNotifications } from "../src/domain/notifications";
 
+/**
+ * The market proxy's client half.
+ *
+ * `viaProxy` only runs when a direct request has already failed, so the mock
+ * records whether it was reached at all — which is the property that matters
+ * as much as the fallback working: a device that can reach the source must
+ * never pay for the hop.
+ */
+const proxyCalls: { name: string; body: unknown }[] = [];
+let proxyAnswer: { data: unknown; error: unknown } = { data: null, error: new Error("not deployed") };
+vi.mock("../src/sync/supabase", () => ({
+  getSupabase: () => ({
+    functions: {
+      invoke: async (name: string, options: { body: unknown }) => {
+        proxyCalls.push({ name, body: options.body });
+        return proxyAnswer;
+      },
+    },
+  }),
+}));
+
 const kvStore = new Map<string, string>();
 vi.mock("../src/services/kv", () => ({
   kv: {
@@ -467,6 +488,45 @@ describe("reading the books over the network", () => {
     vi.stubGlobal("fetch", impl);
     return impl;
   };
+
+  it("asks the proxy only after the direct request has failed", async () => {
+    proxyCalls.length = 0;
+    proxyAnswer = { data: bookTicker, error: null };
+    // A direct answer: the hop must not happen at all.
+    withFetch(respond(bookTicker));
+    await pollMarkets();
+    expect(proxyCalls, "a reachable source never pays for the proxy").toEqual([]);
+    expect(useMarkets.getState().status).toBe("live");
+
+    // Now the source is unreachable, which is the owner's own case: two
+    // devices, two connections, a name that does not resolve.
+    disconnectMarkets();
+    proxyCalls.length = 0;
+    withFetch(respond(null, false));
+    await pollMarkets();
+    expect(proxyCalls.map((call) => call.name)).toEqual(["market-proxy"]);
+    expect(proxyCalls[0]!.body).toEqual({ kind: "ticker" });
+    expect(useMarkets.getState().status, "and the quotes arrive anyway").toBe("live");
+  });
+
+  it("asks the proxy for candles too, naming the symbol and interval it wants", async () => {
+    proxyCalls.length = 0;
+    proxyAnswer = { data: [[1, "1", "1", "1", "40", "1", 2, "1", 1, "1", "1", "0"]], error: null };
+    withFetch(respond(null, false));
+    const points = await fetchMarketHistory("USDTRY", "month");
+    expect(points, "a chart the direct request could not draw").not.toBeNull();
+    expect(proxyCalls[0]!.body).toEqual({ kind: "klines", symbol: "USDTTRY", interval: "1d", limit: 30 });
+  });
+
+  it("fails exactly as before when the proxy is not deployed", async () => {
+    proxyCalls.length = 0;
+    proxyAnswer = { data: null, error: new Error("Function not found") };
+    withFetch(respond(null, false));
+    expect(await fetchMarketHistory("USDTRY", "month"), "no history, and no exception").toBeNull();
+    disconnectMarkets();
+    await pollMarkets();
+    expect(useMarkets.getState().status, "the same offline state the app already had").not.toBe("live");
+  });
 
   afterEach(() => {
     vi.unstubAllGlobals();

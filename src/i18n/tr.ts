@@ -128,7 +128,7 @@ export const tr = {
       "**Expo (EAS)** — Amerika Birleşik Devletleri. Mobil uygulama güncelleme sorduğunda. Aktarılan veri: güncelleme sorgusu. Finansal veri aktarılmaz.",
       "**TCMB** — Türkiye. Mobil uygulamada günlük döviz kurları buradan okunur. Aktarılan veri: yalnızca bağlantı bilgisi. Yurt içinde kaldığı için yurt dışına aktarım değildir.",
       "**exchangerate-api (open.er-api.com)** — Amerika Birleşik Devletleri. Döviz kurunun ikinci kaynağı; web sürümünde tek kaynaktır. Aktarılan veri: yalnızca bağlantı bilgisi.",
-      "**Binance halka açık piyasa verisi (data-api.binance.vision)** — yurt dışı. Altın, dolar ve euro kotasyonları buradan okunur. Aktarılan veri: yalnızca bağlantı bilgisi; hangi yatırımlarınız olduğu gönderilmez.",
+      "**Binance halka açık piyasa verisi (data-api.binance.vision)** — yurt dışı. Altın, dolar ve euro kotasyonları buradan okunur. Aktarılan veri: yalnızca bağlantı bilgisi; hangi yatırımlarınız olduğu gönderilmez. Bu adrese cihazınızdan ulaşılamadığında aynı istek Supabase üzerinden yapılır; taşınan şey yine yalnızca bir sembol adıdır.",
       "**Google, DuckDuckGo ve icon.horse** — Amerika Birleşik Devletleri; icon.horse'un sunucu konumu hizmet sağlayıcı tarafından açıklanmamıştır. Bir aboneliğe ya da ödeme yöntemine tanınan bir kurum adı yazdığınızda, o kurumun logosunu getirmek için bu üçünden birine istek gider — siz daha kaydetmeden, yazarken. Aktarılan veri: bağlantı bilgisi ve yazdığınız adın karşılık geldiği alan adı; yani hangi bankayı ya da hangi aboneliği yazdığınız bu servis tarafından görülebilir. Tutar, tarih, not ve diğer kayıtlarınız gönderilmez.",
     ],
     transferNote: "Türkiye dışına yapılan bu aktarımlar KVKK m. 9 hükümlerine tabidir. Helix hesap açmadan kullanılamadığı için bu aktarımların dışında kalmanın bir yolu yoktur; kabul etmiyorsanız hesap oluşturmamanız gerekir. Aktarımın kapsamı ise sınırlıdır: kayıtlarınız ve belgeleriniz yalnızca Supabase'e, geri bildiriminiz yalnızca Resend'e gider. Kur, piyasa ve logo servislerine giden isteklerde kayıtlarınız yoktur — yalnızca bağlantı bilginiz ve, logo isteğinde, yazdığınız kurumun alan adı.",
@@ -1818,6 +1818,12 @@ export const tr = {
     rangeChange: (range: string) => `${range} değişimi`,
     historyLoading: "Geçmiş yükleniyor",
     historyUnavailable: "Geçmiş veriye şu an ulaşılamıyor.",
+    /* When the whole feed is down, the chart's own failure is a symptom and
+       saying only "geçmiş veriye ulaşılamıyor" sends the reader looking for a
+       chart bug. It cost three rounds of investigation to find that the screen
+       was hiding the one fact that explained it. */
+    historyFeedDown: "Piyasa servisine ulaşılamıyor, bu yüzden geçmiş de çizilemiyor. Fiyatlar son bilinen değerler.",
+    snapshotNote: "Son bilinen fiyat; canlı bağlantı şu an yok.",
     sourceNote: "Fiyatlar halka açık borsa emir defterlerinden anlık olarak alınır.",
     rangeLow: "En düşük",
     rangeNow: "Kapanış",

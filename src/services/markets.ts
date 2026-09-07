@@ -35,6 +35,7 @@ import {
   type MarketRange,
 } from "../domain/market";
 import { kv } from "./kv";
+import { getSupabase } from "../sync/supabase";
 import { MARKET_SYMBOLS } from "../domain/investment-catalog";
 
 /**
@@ -202,14 +203,47 @@ export function applyQuotes(quotes: readonly DerivedQuote[], now = Date.now()): 
 }
 
 /** Read the books once. Exported for tests and for the manual retry. */
+
+/**
+ * The same public request, made from Supabase instead of from this device.
+ *
+ * `data-api.binance.vision` does not resolve on some networks — reported on two
+ * devices and two connections while the identical requests succeeded from
+ * elsewhere — and a client cannot route around a name that does not resolve.
+ * `supabase/functions/market-proxy` can, because it runs somewhere else.
+ *
+ * Used ONLY after a direct request has already failed, so a device that can
+ * reach the source never pays for the hop and the function costs nothing for
+ * almost everyone. If the function is not deployed, or the workspace has no
+ * Supabase at all, this returns null and the caller fails exactly as it did
+ * before: the fallback can never be worse than no fallback.
+ *
+ * `functions.invoke` rather than a hand-built URL, so the project's origin and
+ * the session token stay the SDK's business — the same reason `feedback.ts`
+ * uses it.
+ */
+async function viaProxy(body: Record<string, string | number>): Promise<unknown | null> {
+  const supabase = getSupabase();
+  if (!supabase) return null;
+  try {
+    const { data, error } = await supabase.functions.invoke("market-proxy", { body });
+    return error ? null : data;
+  } catch {
+    return null;
+  }
+}
+
 export async function pollMarkets(): Promise<void> {
   const attempt = generation;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   try {
-    const response = await fetch(MARKET_TICKER_URL, { signal: controller.signal });
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    const books = parseMarketBooks(await response.json());
+    const direct = await fetch(MARKET_TICKER_URL, { signal: controller.signal })
+      .then((response) => (response.ok ? response.json() : null))
+      .catch(() => null);
+    const payload = direct ?? await viaProxy({ kind: "ticker" });
+    if (!payload) throw new Error("unreachable");
+    const books = parseMarketBooks(payload);
     // A response that arrived after a teardown or a restart belongs to a feed
     // that no longer exists; applying it would resurrect a disconnected card.
     if (attempt !== generation) return;
@@ -349,11 +383,12 @@ export async function fetchMarketHistory(
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   try {
     const closes = await Promise.all(source.symbols.map(async (symbol) => {
-      const response = await fetch(marketKlineUrl(symbol, spec.interval, spec.limit), {
+      const direct = await fetch(marketKlineUrl(symbol, spec.interval, spec.limit), {
         signal: controller.signal,
-      });
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      return parseKlineCloses(await response.json());
+      }).then((response) => (response.ok ? response.json() : null)).catch(() => null);
+      const payload = direct ?? await viaProxy({ kind: "klines", symbol, interval: spec.interval, limit: spec.limit });
+      if (!payload) throw new Error("unreachable");
+      return parseKlineCloses(payload);
     }));
     const usable = closes.filter((series): series is Map<number, number> => series !== null);
     if (usable.length !== source.symbols.length) return null;

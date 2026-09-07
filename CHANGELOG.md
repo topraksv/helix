@@ -4,6 +4,18 @@ Yayımlanan her sürümde neyin değiştiği, en yeni üstte. Sürüm numarası
 `app.json` içindeki `expo.version`'dır; nasıl seçildiği geliştiricinin kendi
 sürüm defterinde yazılıdır ve bu depoya dahil değildir.
 
+## 1.6.0
+
+### Minor Changes
+
+- Canlı piyasa verisi, cihazın ulaşamadığı ağlarda da gelebiliyor. Fiyat kaynağı bazı ağlarda çözümlenmiyor ve uygulamanın buna karşı yapabileceği bir şey yoktu; istek artık önce doğrudan deneniyor, olmazsa Supabase üzerinden yapılıyor. Ulaşabilen bir cihaz bu ek adımı hiç ödemiyor.
+- Piyasa detay ekranı beslemenin durumunu söylüyor. Fiyat son bilinen değerse bunu yazıyor, grafik çizilemiyorsa sebebini — "Piyasa servisine ulaşılamıyor" — söylüyor. Önceden yalnız "geçmiş veriye ulaşılamıyor" diyordu ve bu, okuyanı bir grafik hatası aramaya gönderiyordu.
+
+### Internal
+
+- Canlı Piyasalar ekranına altı e2e testi geldi; bu ekranın daha önce hiç tarayıcı kapsamı yoktu ve iki kez baştan yazılmıştı.
+- `supabase/functions/market-proxy` sıkı bir izin listesiyle yazıldı: URL'i çağıran seçmiyor, fonksiyon kendisi kuruyor. Altı test bu sınırı kaynağından doğruluyor.
+
 ## 1.5.1
 
 ### Patch Changes
