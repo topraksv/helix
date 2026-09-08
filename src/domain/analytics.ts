@@ -119,6 +119,13 @@ export function distributionForRange(
  * Fixed obligations = installment/loan/subscription-linked expenses;
  * variable = everything else. Answers "bu ay bankalara/kurumlara toplam ne
  * kadar ödüyorum" (spec §3.2).
+ *
+ * NO SCREEN CALLS THIS, and that is deliberate. It is a differential oracle:
+ * `fixedMinor + variableMinor` must equal the expense total the dashboard
+ * reaches by a different route, so a test can catch either path drifting
+ * without a third implementation to compare against. A dead-code sweep will
+ * find it exactly once per person who runs one — this note is so the answer
+ * costs a read rather than a re-derivation.
  */
 export function fixedVsVariable(
   transactions: TxLike[],

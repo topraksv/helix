@@ -1,16 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { PaymentSourceType } from "../src/domain/types";
-import { categoryIcon, paymentSourceIcon, suggestCategoryIcon } from "../src/domain/category-icons";
-
-const expectedPaymentSourceIcons: Record<PaymentSourceType, string> = {
-  credit_card: "💳",
-  debit_card: "🏧",
-  virtual_card: "🔒",
-  e_wallet: "📱",
-  cash: "💵",
-  direct_debit: "🔁",
-  bank_transfer: "🏦",
-};
+import { categoryIcon, suggestCategoryIcon } from "../src/domain/category-icons";
 
 describe("category icon policy", () => {
   it("keeps earlier keyword rules ahead of later matching rules", () => {
@@ -41,9 +30,5 @@ describe("category icon policy", () => {
   it("uses a stored category icon before falling back to its suggestion", () => {
     expect(categoryIcon({ name: "Market", kind: "expense", icon: "🧺" })).toBe("🧺");
     expect(categoryIcon({ name: "Market", kind: "expense", icon: null })).toBe("🛒");
-  });
-
-  it.each(Object.entries(expectedPaymentSourceIcons))("uses the expected icon for %s", (type, icon) => {
-    expect(paymentSourceIcon(type as PaymentSourceType)).toBe(icon);
   });
 });

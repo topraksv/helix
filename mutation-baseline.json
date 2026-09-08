@@ -279,6 +279,15 @@
       "measuredOn": "c74ef5673070c2c16a3f021e5a8d6d9296f1ca63",
       "measuredDate": "2026-08-24"
     },
+    "src/domain/category-icons.ts": {
+      "score": 97.4,
+      "killed": 74,
+      "timeout": 1,
+      "survived": 2,
+      "noCoverage": 0,
+      "measuredOn": "f5fbeff2d21f1391122c7455874606aa9462a699",
+      "measuredDate": "2026-09-08"
+    },
     "src/domain/computed-columns.ts": {
       "score": 71.97,
       "killed": 113,

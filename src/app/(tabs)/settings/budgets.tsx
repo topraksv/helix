@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { View } from "react-native";
 import Pencil from "lucide-react-native/icons/pencil";
 import Target from "lucide-react-native/icons/target";
-import Trash2 from "lucide-react-native/icons/trash-2";
+import Trash from "lucide-react-native/icons/trash";
 import { useAllTransactionsState, useCategoryBudgetsState, useCategoriesState, usePersonsState, useTxLike, useUserId } from "../../../data/hooks";
 import { combineLiveStates } from "../../../data/live-state";
 import { deleteCategoryBudget, restoreCategoryBudget, upsertCategoryBudget } from "../../../data/repo";
@@ -201,7 +201,7 @@ export default function BudgetsScreen() {
                   </View>
                   <Row gap={spacing.sm}>
                     <IconButton icon={Pencil} label={`${tr.common.edit} · ${category?.name ?? tr.common.none}`} onPress={() => startEdit(budget)} />
-                    <IconButton icon={Trash2} tone="danger" label={`${tr.common.delete} · ${category?.name ?? tr.common.none}`} haptic="none" onPress={() => void remove(budget)} />
+                    <IconButton icon={Trash} tone="danger" label={`${tr.common.delete} · ${category?.name ?? tr.common.none}`} haptic="none" onPress={() => void remove(budget)} />
                   </Row>
                 </Spread>
                 <View style={{ height: 7, borderRadius: 4, backgroundColor: palette.surfaceAlt, marginTop: spacing.sm, overflow: "hidden" }}>

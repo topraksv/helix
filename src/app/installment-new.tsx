@@ -16,7 +16,7 @@ import ChevronLeft from "lucide-react-native/icons/chevron-left";
 import ChevronRight from "lucide-react-native/icons/chevron-right";
 import CreditCard from "lucide-react-native/icons/credit-card";
 import Landmark from "lucide-react-native/icons/landmark";
-import Trash2 from "lucide-react-native/icons/trash-2";
+import Trash from "lucide-react-native/icons/trash";
 import type { LucideIcon } from "lucide-react-native";
 import { categoryIconComponent,  } from "../ui/category-icon";
 import { PaymentSourceLogo } from "../ui/logo";
@@ -432,7 +432,7 @@ function PlanForm({ existing }: { existing?: ReturnType<typeof usePlansState>["d
             <Button label={tr.common.save} onPress={() => void save()} disabled={!valid} loading={busy} />
             {isEdit ? (
               <View style={{ marginTop: spacing.md }}>
-                <Button icon={Trash2} label={tr.installments.delete} variant="danger" onPress={confirmDelete} />
+                <Button icon={Trash} label={tr.installments.delete} variant="danger" onPress={confirmDelete} />
               </View>
             ) : null}
           </Card>

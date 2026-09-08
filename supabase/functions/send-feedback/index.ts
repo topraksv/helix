@@ -24,6 +24,7 @@
 // toolchain never tries to resolve it — which is also why there is no
 // `@ts-expect-error` here: under Deno the import resolves fine, and the
 // directive itself became the only error `deno check` reported.
+import { feedbackSubject } from "./subject.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const OWNER_EMAIL = "topraksavli@hotmail.com";
@@ -203,7 +204,6 @@ Deno.serve(async (request: Request): Promise<Response> => {
     });
   }
 
-  const subjectSummary = message.replace(/\s+/g, " ").slice(0, 60);
   const html = `
     <div style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;font-size:15px;line-height:1.55">
       <p style="margin:0 0 4px"><strong>Kategori:</strong> ${escapeHtml(CATEGORY_LABEL[category] ?? category)}</p>
@@ -223,7 +223,7 @@ Deno.serve(async (request: Request): Promise<Response> => {
       from: FROM_ADDRESS,
       to: [OWNER_EMAIL],
       reply_to: user.email ? [user.email] : undefined,
-      subject: `[Helix/${category}] ${subjectSummary}`,
+      subject: feedbackSubject(category, message),
       html,
       attachments: attachments.length > 0 ? attachments : undefined,
     }),

@@ -20,7 +20,7 @@ import Flame from "lucide-react-native/icons/flame";
 import GraduationCap from "lucide-react-native/icons/graduation-cap";
 import Phone from "lucide-react-native/icons/phone";
 import Shield from "lucide-react-native/icons/shield";
-import Trash2 from "lucide-react-native/icons/trash-2";
+import Trash from "lucide-react-native/icons/trash";
 import Wifi from "lucide-react-native/icons/wifi";
 import Zap from "lucide-react-native/icons/zap";
 import type { LucideIcon } from "lucide-react-native";
@@ -100,7 +100,7 @@ const UTILITY_ICONS: { match: RegExp; icon: LucideIcon; color: string }[] = [
   { match: /okul|kurs|egitim|universite|yurt\b/, icon: GraduationCap, color: "#d55181" },
   { match: /spor|fitness|gym|salon|pilates|yoga/, icon: Dumbbell, color: "#e34948" },
   { match: /arac|otopark|hgs|ogs|kiralama|servis ucreti/, icon: Car, color: "#2a78d6" },
-  { match: /cop|belediye|temizlik/, icon: Trash2, color: "#5d6579" },
+  { match: /cop|belediye|temizlik/, icon: Trash, color: "#5d6579" },
 ];
 
 /**

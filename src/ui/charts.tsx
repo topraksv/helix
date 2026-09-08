@@ -713,6 +713,37 @@ function segmentsOf(points: (number | null)[]): number[][] {
  * paper — with the value axis labelled down the left and the zero line the one
  * rule drawn at full strength.
  */
+/**
+ * The floating value box a chart shows while a finger is on it.
+ *
+ * Absolutely positioned, and that is the whole point: the chart's box must be
+ * the same height with a finger on it as without, or the chart moves under the
+ * finger reading it — and `e2e/ui-consistency.spec.ts` asserts that nothing in
+ * a chart's ancestry overflows. `Lines` and `Bars` both draw one, and they had
+ * drifted into two copies of the same twenty lines with a comment on the second
+ * saying it had to match the first. One component is that comment, enforced.
+ */
+function ChartReadout({ text }: { text: string }) {
+  const { palette } = useTheme();
+  return (
+    <View pointerEvents="none" style={{ position: "absolute", left: 0, right: 0, top: 0, alignItems: "center" }}>
+      <View
+        style={{
+          backgroundColor: palette.surface,
+          borderRadius: radius.sm,
+          borderWidth: StyleSheet.hairlineWidth,
+          borderColor: palette.border,
+          paddingHorizontal: spacing.sm,
+          paddingVertical: 2,
+          maxWidth: "100%",
+        }}
+      >
+        <Text style={[type.small, { color: palette.text, textAlign: "center" }]}>{text}</Text>
+      </View>
+    </View>
+  );
+}
+
 export function Lines({
   series,
   xLabels,
@@ -989,39 +1020,14 @@ export function Lines({
           </>
         ) : null}
       </Svg>
-      {/* Absolutely positioned so the chart's box is the same height whether
-          or not a finger is on it: `e2e/ui-consistency.spec.ts` asserts that
-          nothing in a chart's ancestry overflows, and a readout that pushed
-          the layout would move the very thing it reports on. */}
       {scrubbed ? (
-        <View
-          pointerEvents="none"
-          style={{
-            position: "absolute",
-            left: 0,
-            right: 0,
-            top: 0,
-            alignItems: "center",
-          }}
-        >
-          <View
-            style={{
-              backgroundColor: palette.surface,
-              borderRadius: radius.sm,
-              borderWidth: StyleSheet.hairlineWidth,
-              borderColor: palette.border,
-              paddingHorizontal: spacing.sm,
-              paddingVertical: 2,
-              maxWidth: "100%",
-            }}
-          >
-            <Text style={[type.small, { color: palette.text, textAlign: "center" }]}>
-              {scrubbed.readings.length === 0
-                ? scrubbed.label
-                : `${scrubbed.label} · ${scrubbed.readings.map((reading) => formatMinorCompact(reading.point)).join(" · ")}`}
-            </Text>
-          </View>
-        </View>
+        <ChartReadout
+          text={
+            scrubbed.readings.length === 0
+              ? scrubbed.label
+              : `${scrubbed.label} · ${scrubbed.readings.map((reading) => formatMinorCompact(reading.point)).join(" · ")}`
+          }
+        />
       ) : null}
     </View>
   );
@@ -1384,26 +1390,7 @@ export function Bars({
           />
         ))}
       </View>
-      {/* Absolutely positioned, exactly as `Lines` places its readout: the box
-          has to be the same height with a finger on it as without, or the
-          chart moves under the finger reading it. */}
-      {readout ? (
-        <View pointerEvents="none" style={{ position: "absolute", left: 0, right: 0, top: 0, alignItems: "center" }}>
-          <View
-            style={{
-              backgroundColor: palette.surface,
-              borderRadius: radius.sm,
-              borderWidth: StyleSheet.hairlineWidth,
-              borderColor: palette.border,
-              paddingHorizontal: spacing.sm,
-              paddingVertical: 2,
-              maxWidth: "100%",
-            }}
-          >
-            <Text style={[type.small, { color: palette.text, textAlign: "center" }]}>{readout}</Text>
-          </View>
-        </View>
-      ) : null}
+      {readout ? <ChartReadout text={readout} /> : null}
       {showValueLedger ? (
         <View
           style={{

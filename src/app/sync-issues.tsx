@@ -35,6 +35,7 @@ import { dismissSyncDeadLetter, retrySyncDeadLetter } from "../data/repo";
 import { buildExportText, saveTextFile } from "../services/export-import";
 import { devError } from "../services/logger";
 import { syncNow } from "../sync/engine";
+import { todayISO } from "../domain/dates";
 import { dateTimeLabel, tr } from "../i18n/tr";
 import {
   Body,
@@ -113,7 +114,7 @@ export default function SyncIssuesScreen() {
     setBusy(true);
     try {
       const path = await saveTextFile(
-        `helix-yedek-${new Date().toISOString().slice(0, 10)}.json`,
+        `helix-yedek-${todayISO()}.json`,
         await buildExportText(userId),
         "application/json",
       );

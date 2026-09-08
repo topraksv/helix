@@ -19,7 +19,7 @@ import ChevronRight from "lucide-react-native/icons/chevron-right";
 import History from "lucide-react-native/icons/rotate-ccw-clock";
 import Info from "lucide-react-native/icons/info";
 import Scale from "lucide-react-native/icons/scale";
-import Trash2 from "lucide-react-native/icons/trash-2";
+import Trash from "lucide-react-native/icons/trash";
 import { deleteBalanceAdjustment, restoreBalanceAdjustment, setBalanceDeclaration, setCurrentBalance, setOpeningBalance } from "../data/repo";
 import { settingValue, useAdjustmentsState, useLedgerState, useSettingsMapState, useTxLike, useUserId } from "../data/hooks";
 import { combineLiveStates } from "../data/live-state";
@@ -330,7 +330,7 @@ export function OpeningBalanceEditor() {
                   <Row gap={spacing.sm}>
                     <Amount minor={adjustment.amountMinor} />
                     <IconButton
-                      icon={Trash2}
+                      icon={Trash}
                       tone="danger"
                       label={`${tr.common.delete} · ${dateLabel(adjustment.date)}`}
                       haptic="none"

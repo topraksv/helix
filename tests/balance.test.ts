@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { buildLedger, currentBalance, projectedBalance, reconciliationDelta } from "../src/domain/balance";
+import { buildLedger, buildLedgerChain, currentBalance, ledgerChainEndYear, projectedBalance, reconciliationDelta, sliceLedgerYear, type LedgerBundle } from "../src/domain/balance";
+import type { ISODate, MonthKey } from "../src/domain/dates";
 import type { TxLike } from "../src/domain/types";
 import { required, tl, tx } from "./helpers";
 
@@ -361,13 +362,30 @@ describe("resolveLedgerAnchor (prior-year history)", async () => {
 });
 
 /**
- * The bundle six screens actually read. It used to be assembled inline inside
- * `useLedgerState`, where none of these four rules could be asserted without a
- * renderer — and where the whole chain was rebuilt on every render rather than
- * when the data changed.
+ * The chain-then-slice pair `useLedgerState` builds, assembled here the same
+ * way it assembles it.
+ *
+ * There used to be a `buildLedgerBundle` in the domain doing this, and its own
+ * comment claimed the rules were "stated once". They were not: `data/hooks.ts`
+ * re-inlined the composition when it gained the chain and slice caches, so the
+ * product never called the wrapper and these tests were pinning a code path
+ * nothing shipped. Composing it here instead keeps the assertions and makes
+ * them mirror the live caller.
  */
-describe("buildLedgerBundle", async () => {
-  const { buildLedgerBundle } = await import("../src/domain/balance");
+function ledgerBundle(input: {
+  configuredStart: MonthKey | null;
+  openingBalanceMinor: number;
+  includePendingInCells: boolean;
+  transactions: TxLike[];
+  adjustments: { date: ISODate; amountMinor: number }[];
+  year: number;
+  today: ISODate;
+}): LedgerBundle | null {
+  const chain = buildLedgerChain({ ...input, endYear: ledgerChainEndYear(input.year, input.today) });
+  return chain ? sliceLedgerYear(chain, input.year) : null;
+}
+
+describe("the ledger bundle a screen reads", () => {
   const base = {
     configuredStart: "2026-01" as const,
     openingBalanceMinor: 1_000_00,
@@ -378,7 +396,7 @@ describe("buildLedgerBundle", async () => {
   };
 
   it("returns nothing at all until an opening month is configured", () => {
-    expect(buildLedgerBundle({ ...base, configuredStart: null, transactions: [] })).toBeNull();
+    expect(ledgerBundle({ ...base, configuredStart: null, transactions: [] })).toBeNull();
   });
 
   it("takes the current balance from the chain's current month, not a second scan", () => {
@@ -389,14 +407,14 @@ describe("buildLedgerBundle", async () => {
       // Future: visible in the table, absent from the balance.
       tx({ type: "expense", amountTryMinor: 999_00, effectiveDate: "2026-08-01" }),
     ];
-    const bundle = required(buildLedgerBundle({ ...base, transactions }));
+    const bundle = required(ledgerBundle({ ...base, transactions }));
     const july = required(bundle.ledger.find((month) => month.month === "2026-07"));
     expect(bundle.actualBalanceMinor).toBe(1_300_00);
     expect(bundle.actualBalanceMinor).toBe(july.closingMinor);
   });
 
   it("back-anchors to earlier data while keeping the balance at the configured start", () => {
-    const bundle = required(buildLedgerBundle({
+    const bundle = required(ledgerBundle({
       ...base,
       transactions: [tx({ type: "expense", amountTryMinor: 300_00, effectiveDate: "2025-11-20" })],
     }));
@@ -409,7 +427,7 @@ describe("buildLedgerBundle", async () => {
   });
 
   it("extends a past year's request to the end of the current year", () => {
-    const bundle = required(buildLedgerBundle({ ...base, transactions: [], year: 2026, today: "2027-03-01" }));
+    const bundle = required(ledgerBundle({ ...base, transactions: [], year: 2026, today: "2027-03-01" }));
     expect(bundle.ledger.at(-1)?.month).toBe("2027-12");
     // The slice still answers the year that was asked for.
     expect(bundle.yearMonths.at(0)?.month).toBe("2026-01");
@@ -418,8 +436,8 @@ describe("buildLedgerBundle", async () => {
 
   it("passes the pending-cell preference through to the category cells", () => {
     const transactions = [tx({ type: "expense", amountTryMinor: 75_00, effectiveDate: "2026-09-01", status: "pending", categoryId: "cat" })];
-    const shown = required(buildLedgerBundle({ ...base, transactions }));
-    const hidden = required(buildLedgerBundle({ ...base, transactions, includePendingInCells: false }));
+    const shown = required(ledgerBundle({ ...base, transactions }));
+    const hidden = required(ledgerBundle({ ...base, transactions, includePendingInCells: false }));
     expect(required(shown.ledger.find((month) => month.month === "2026-09")).byCategory.get("cat")).toBe(75_00);
     expect(required(hidden.ledger.find((month) => month.month === "2026-09")).byCategory.get("cat")).toBeUndefined();
     // Either way a pending row never moves the balance.

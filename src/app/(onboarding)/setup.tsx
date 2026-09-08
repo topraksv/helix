@@ -9,7 +9,7 @@ import ChevronRight from "lucide-react-native/icons/chevron-right";
 import FileSpreadsheet from "lucide-react-native/icons/file-spreadsheet";
 import FileUp from "lucide-react-native/icons/file-up";
 import Pencil from "lucide-react-native/icons/pencil";
-import Trash2 from "lucide-react-native/icons/trash-2";
+import Trash from "lucide-react-native/icons/trash";
 import WalletCards from "lucide-react-native/icons/wallet-cards";
 import { finalizeOnboarding, hasImportedData, seedWorkspace, TEMPLATE_CATEGORIES, TEMPLATE_EXTRA_CATEGORIES, type TemplateCategory } from "../../data/repo";
 import { importBundle, MAX_BACKUP_BYTES, parseExportBundleText } from "../../services/export-import";
@@ -469,7 +469,7 @@ export default function SetupScreen() {
                   <IconButton icon={Pencil} label={`${tr.common.edit} · ${name}`} onPress={() => { setEditingPerson(i); setEditPersonName(name); }} />
                   {i > 0 ? (
                     <IconButton
-                      icon={Trash2}
+                      icon={Trash}
                       tone="danger"
                       label={`${tr.common.delete} · ${name}`}
                       onPress={() => removePerson(i)}
@@ -512,7 +512,7 @@ export default function SetupScreen() {
               <Row gap={spacing.sm} style={{ alignItems: "center" }}>
                 <IconButton icon={Pencil} label={`${tr.common.edit} · ${src.name}`} onPress={() => editSource(i)} />
                 <IconButton
-                  icon={Trash2}
+                  icon={Trash}
                   tone="danger"
                   label={`${tr.common.delete} · ${src.name}`}
                   onPress={() => {

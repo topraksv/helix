@@ -156,7 +156,7 @@ describe("balance chain", () => {
 
   it("agrees with the direct balance calculation over the anchored inputs", () => {
     // Two independent paths to today's balance: the chained ledger and a
-    // single pass. `buildLedgerBundle` serves the first and falls back to the
+    // single pass. `buildLedgerChain` serves the first and falls back to the
     // second, so they must never disagree.
     //
     // The anchor is not optional here. `currentBalance` has no month window at

@@ -25,7 +25,7 @@ import CreditCard from "lucide-react-native/icons/credit-card";
 import Landmark from "lucide-react-native/icons/landmark";
 import Pencil from "lucide-react-native/icons/pencil";
 import ReceiptText from "lucide-react-native/icons/receipt-text";
-import Trash2 from "lucide-react-native/icons/trash-2";
+import Trash from "lucide-react-native/icons/trash";
 import WalletCards from "lucide-react-native/icons/wallet-cards";
 import type { LucideIcon } from "lucide-react-native";
 import { Amount, Badge, Body, Button, Card, CardList, ChipPicker, ChoiceTile, DataGateScreen, DataStateNotice, EmptyState, Field, IconButton, PanelHeader, Row, Screen, SectionHeader, Spread, useLedeAlignment } from "../../../ui/components";
@@ -167,7 +167,7 @@ function PaymentSourceRow({
       <View onLayout={lede.onTrailingLayout} style={lede.blockStyle}>
         <Row gap={spacing.sm}>
           <IconButton icon={Pencil} label={`${tr.common.edit} · ${source.name}`} onPress={onEdit} />
-          <IconButton icon={Trash2} tone="danger" label={`${tr.common.delete} · ${source.name}`} haptic="none" onPress={onDelete} />
+          <IconButton icon={Trash} tone="danger" label={`${tr.common.delete} · ${source.name}`} haptic="none" onPress={onDelete} />
         </Row>
       </View>
     </Spread>
@@ -497,7 +497,7 @@ export default function SourcesScreen() {
           {resolving ? (
             <Card>
           <PanelHeader
-            icon={Trash2}
+            icon={Trash}
             title={tr.references.sourceInUse(resolving.source.name)}
             description={tr.references.resolveBeforeDelete}
           />

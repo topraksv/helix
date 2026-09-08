@@ -9,7 +9,7 @@ import Mail from "lucide-react-native/icons/mail";
 import RefreshCw from "lucide-react-native/icons/refresh-cw";
 import ShieldCheck from "lucide-react-native/icons/shield-check";
 import Snowflake from "lucide-react-native/icons/snowflake";
-import Trash2 from "lucide-react-native/icons/trash-2";
+import Trash from "lucide-react-native/icons/trash";
 import WalletCards from "lucide-react-native/icons/wallet-cards";
 import type { LucideIcon } from "lucide-react-native";
 import { circle, radius, spacing, type, type Palette, useTheme } from "./theme";
@@ -39,7 +39,7 @@ const operationVisuals: Record<OperationFlowKind, Visual> = {
   restore: [RefreshCw, "secondary"],
   "sign-out": [LogOut, "secondary"],
   "local-sign-out": [LogOut, "destructive"],
-  delete: [Trash2, "destructive"],
+  delete: [Trash, "destructive"],
   freeze: [Snowflake, "warning"],
   reactivate: [KeyRound, "success"],
 };
@@ -414,10 +414,10 @@ export function OperationDialogHeader({
         </>
       ) : kind === "delete" ? (
         <>
-          <DialogHeading icon={Trash2} eyebrow={eyebrow} title={title} color={palette.destructive} shape="square" />
+          <DialogHeading icon={Trash} eyebrow={eyebrow} title={title} color={palette.destructive} shape="square" />
           <DialogMessage label={tr.account.deleteDialogSection} message={message} color={palette.destructive} tone="danger" />
           <DialogPlan>
-            <DialogFact icon={Trash2} label={tr.account.deleteDialogListTitle} detail={tr.account.deleteDialogIrreversible} color={palette.destructive} />
+            <DialogFact icon={Trash} label={tr.account.deleteDialogListTitle} detail={tr.account.deleteDialogIrreversible} color={palette.destructive} />
             <DialogFact icon={CircleAlert} label={tr.account.deleteDialogFinalCheckTitle} detail={tr.account.deleteDialogFinalCheckDetail} color={palette.warning} />
           </DialogPlan>
           <View style={{ marginTop: spacing.md, padding: spacing.md, borderRadius: radius.md, borderWidth: 1, borderColor: palette.destructive + "75", backgroundColor: palette.error + "0D", gap: spacing.sm }}>

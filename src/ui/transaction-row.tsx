@@ -9,7 +9,7 @@
 import { Text, View } from "react-native";
 import Paperclip from "lucide-react-native/icons/paperclip";
 import Pencil from "lucide-react-native/icons/pencil";
-import Trash2 from "lucide-react-native/icons/trash-2";
+import Trash from "lucide-react-native/icons/trash";
 import { tr } from "../i18n/tr";
 import { Amount, Badge, Body, Divider, IconButton, Row, Spread } from "./components";
 import { font, spacing, type, useTheme } from "./theme";
@@ -65,7 +65,7 @@ export function TransactionRow({
         <Row gap={spacing.sm}>
           <Amount minor={amountMinor} />
           <IconButton icon={Pencil} label={`${tr.common.edit} · ${dateText}`} onPress={onEdit} />
-          <IconButton icon={Trash2} tone="danger" label={`${tr.common.delete} · ${dateText}`} haptic="none" onPress={onDelete} />
+          <IconButton icon={Trash} tone="danger" label={`${tr.common.delete} · ${dateText}`} haptic="none" onPress={onDelete} />
         </Row>
       </Spread>
       {divider ? <Divider flush /> : null}

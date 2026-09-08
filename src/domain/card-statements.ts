@@ -14,7 +14,8 @@ import {
   yearOf,
   type ISODate,
   type MonthKey,
-  daysBetweenISO,} from "./dates";
+  daysBetweenISO,
+} from "./dates";
 
 export interface CardCycle {
   statementDay: number;

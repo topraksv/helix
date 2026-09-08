@@ -329,11 +329,6 @@ export function historyDelta(
   };
 }
 
-/** The ratio on its own, for callers that only want the percentage. */
-export function historyChange(points: readonly MarketHistoryPoint[]): number | null {
-  return historyDelta(points)?.ratio ?? null;
-}
-
 /**
  * The lowest and highest the range ever reached.
  *

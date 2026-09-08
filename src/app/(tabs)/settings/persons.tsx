@@ -19,7 +19,7 @@ import { tr } from "../../../i18n/tr";
 import Eye from "lucide-react-native/icons/eye";
 import Pencil from "lucide-react-native/icons/pencil";
 import Plus from "lucide-react-native/icons/plus";
-import Trash2 from "lucide-react-native/icons/trash-2";
+import Trash from "lucide-react-native/icons/trash";
 import UserRound from "lucide-react-native/icons/user-round";
 import { Badge, Body, Button, Card, CardList, ChipPicker, DataGateScreen, DataStateNotice, FadeIn, Field, IconButton, PanelHeader, Row, Screen, SectionHeader, Spread } from "../../../ui/components";
 import { appAlert, appConfirm } from "../../../ui/dialog";
@@ -252,7 +252,7 @@ export default function PersonsScreen() {
           {resolving ? (
             <Card>
           <PanelHeader
-            icon={Trash2}
+            icon={Trash}
             title={tr.references.personInUse(resolving.person.name)}
             description={tr.references.resolveBeforeDelete}
           />
@@ -339,7 +339,7 @@ export default function PersonsScreen() {
                     setEditName(p.name);
                   }, editDraftDirty)}
                 />
-                {!p.isSelf ? <IconButton icon={Trash2} tone="danger" label={`${tr.common.delete} · ${p.name}`} haptic="none" onPress={() => void remove(p)} /> : null}
+                {!p.isSelf ? <IconButton icon={Trash} tone="danger" label={`${tr.common.delete} · ${p.name}`} haptic="none" onPress={() => void remove(p)} /> : null}
               </Row>
             </Spread>
           )

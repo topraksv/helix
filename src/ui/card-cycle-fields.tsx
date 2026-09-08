@@ -19,7 +19,8 @@ import {
   refusedCardCycleDays,
   cardCycleProgress,
   daysUntilStatementClose,
-  isValidCardCycle,} from "../domain/card-statements";
+  isValidCardCycle,
+} from "../domain/card-statements";
 import { MONTH_END_DAY, todayISO } from "../domain/dates";
 import { tr } from "../i18n/tr";
 import { Body, Row } from "./components";

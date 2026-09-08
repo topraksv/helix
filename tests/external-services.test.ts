@@ -7,7 +7,6 @@ import {
   COIN_FINE_GRAMS,
   deriveMarketQuotes,
   freshMarketQuote,
-  historyChange,
   historyDelta,
   historyExtent,
   liveMarketSymbol,
@@ -426,15 +425,6 @@ describe("the past of one instrument", () => {
     expect(buildHistorySeries([], 1)).toEqual([]);
   });
 
-  it("measures the move from the first point to the last", () => {
-    expect(historyChange([{ at: 1, valueTry: 100 }, { at: 2, valueTry: 110 }])).toBeCloseTo(0.1, 9);
-    expect(historyChange([{ at: 1, valueTry: 100 }, { at: 2, valueTry: 90 }])).toBeCloseTo(-0.1, 9);
-    // One point is a price, not a change; a zero start has no percentage.
-    expect(historyChange([{ at: 1, valueTry: 100 }])).toBeNull();
-    expect(historyChange([])).toBeNull();
-    expect(historyChange([{ at: 1, valueTry: 0 }, { at: 2, valueTry: 90 }])).toBeNull();
-  })
-
   it("says what a range moved in lira as well as per cent", () => {
     // A percentage answers "how much" and not "how much money", and on an
     // instrument priced in the tens of thousands those are different
@@ -446,8 +436,7 @@ describe("the past of one instrument", () => {
       .toEqual({ absoluteTry: -10, ratio: expect.closeTo(-0.1, 9) });
     expect(historyDelta([{ at: 1, valueTry: 100 }])).toBeNull();
     expect(historyDelta([])).toBeNull();
-    // Same refusal as `historyChange`: a zero opening price has no ratio, so
-    // there is no delta to report either.
+    // A zero opening price has no ratio, so there is no delta to report.
     expect(historyDelta([{ at: 1, valueTry: 0 }, { at: 2, valueTry: 90 }])).toBeNull();
   });
 

@@ -14,7 +14,7 @@
 import { type ReactNode } from "react";
 import { Pressable, View } from "react-native";
 import Pencil from "lucide-react-native/icons/pencil";
-import Trash2 from "lucide-react-native/icons/trash-2";
+import Trash from "lucide-react-native/icons/trash";
 import type { LucideIcon } from "lucide-react-native";
 import { tr } from "../i18n/tr";
 import { Amount, Badge, Body, IconButton, Row } from "./components";
@@ -147,7 +147,7 @@ export function RuleRow({
         </View>
         <Row gap={spacing.sm} style={stackActions ? { marginTop: 2 } : undefined}>
           <IconButton icon={Pencil} label={`${tr.common.edit} · ${title}`} onPress={onEdit} />
-          <IconButton icon={Trash2} tone="danger" label={`${tr.common.delete} · ${title}`} haptic="none" onPress={onDelete} />
+          <IconButton icon={Trash} tone="danger" label={`${tr.common.delete} · ${title}`} haptic="none" onPress={onDelete} />
         </Row>
       </View>
     </View>

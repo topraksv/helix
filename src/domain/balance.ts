@@ -332,29 +332,6 @@ export function sliceLedgerYear(chain: LedgerChain, year: number): LedgerBundle 
 }
 
 /**
- * The whole ledger a screen reads: the back-anchored chain, the requested
- * year's slice and the balance that is true right now.
- *
- * One derivation, so the four rules that used to live inline in the data hook
- * — back-anchoring before the configured start, extending the end month to at
- * least the current year, taking the current balance from the chain rather
- * than a second full scan, and returning nothing at all until an opening month
- * is configured — are stated once and can be tested without a renderer.
- */
-export function buildLedgerBundle(input: {
-  configuredStart: MonthKey | null;
-  openingBalanceMinor: Minor;
-  includePendingInCells: boolean;
-  transactions: TxLike[];
-  adjustments: AdjustmentLike[];
-  year: number;
-  today: ISODate;
-}): LedgerBundle | null {
-  const chain = buildLedgerChain({ ...input, endYear: ledgerChainEndYear(input.year, input.today) });
-  return chain ? sliceLedgerYear(chain, input.year) : null;
-}
-
-/**
  * Actual balance as of `today` (partial current month included).
  *
  * It sums EVERY row that counts, with no month window at all — so

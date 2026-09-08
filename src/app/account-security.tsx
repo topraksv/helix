@@ -11,7 +11,7 @@ import Mail from "lucide-react-native/icons/mail";
 import Eraser from "lucide-react-native/icons/eraser";
 import RotateCcw from "lucide-react-native/icons/rotate-ccw";
 import Snowflake from "lucide-react-native/icons/snowflake";
-import Trash2 from "lucide-react-native/icons/trash-2";
+import Trash from "lucide-react-native/icons/trash";
 import { useSession } from "../auth/session";
 import { performAccountFreeze, type AccountFreezePhase } from "../auth/freeze";
 import { useUserId } from "../data/hooks";
@@ -352,7 +352,7 @@ function CloudAccountSecurityScreen() {
         <Divider flush />
         <View testID="account-delete-action">
           <ListRow
-            icon={Trash2}
+            icon={Trash}
             iconColor={palette.destructive}
             title={tr.account.delete}
             subtitle={tr.account.deleteSignatureDescription}

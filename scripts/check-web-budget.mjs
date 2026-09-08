@@ -188,9 +188,35 @@ const root = process.argv[2] ?? "dist";
 // subscribes. That is the largest remaining lead in this file, and it is a
 // change to how the Supabase client is constructed, which is a sync decision
 // and not a bundle one. Measure it there, not here.
+//
+// 2026-09-08, and the first rise this file records that no feature caused.
+// Routine dependency maintenance: the four SDK 57 patches `expo install
+// --check` asked for by name (expo 57.0.19 -> 57.0.20, expo-router .18 -> .19,
+// expo-notifications .16 -> .17, expo-sharing .17 -> .18), plus
+// `@supabase/supabase-js` 2.114 -> 2.116, `lucide-react-native` 1.39 -> 1.42
+// and `@playwright/test` 1.62 -> 1.63. Everything the Expo matrix owns stayed
+// where `.github/dependabot.yml` holds it.
+//
+// Attributed one variable at a time, because an unattributed rise is what the
+// note above already had to warn about once. HEAD measured 3_253_933 entry /
+// 3_883_596 total; the Expo patches and the icons together are +9_072 on both,
+// and supabase-js alone is +6_436 on both — measured by reverting it and
+// re-exporting, not by subtraction. None of it is this app's own code, which
+// changed only by the icon rename below.
+//
+// `lucide-react-native` 1.42 merged `trash-2` into `trash`, so the deep path
+// `icons/trash-2` stopped existing and sixteen imports moved to `icons/trash`.
+// The drawn glyph is unchanged, and that was checked rather than assumed:
+// 1.39's `trash-2.mjs` and 1.42's `trash.mjs` carry the same five paths with
+// the same keys. `tests/design-system-contract.test.ts` caught the dead
+// specifier before the export did, which is exactly the job it was added for.
+//
+// Both JavaScript ceilings move to measured plus the usual ~1%. Total export
+// measured 7_638_765 and its ceiling does NOT move: it clears by 75_235 bytes,
+// and a limit that passed is not loosened for a rise it absorbed.
 const limits = {
-  entryJavaScript: 3_258_000,
-  totalJavaScript: 3_888_000,
+  entryJavaScript: 3_302_000,
+  totalJavaScript: 3_938_000,
   // Fonts are 1_534_728 of this and the rest is one HTML file per route, so it
   // grows in coarser steps than the JavaScript above it — measured 8_037_112
   // with ~3% of slack rather than the ~1% the JS ceilings carry.

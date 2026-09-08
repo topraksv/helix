@@ -38,6 +38,44 @@ function makePdf(
   return new Uint8Array(Buffer.concat(parts));
 }
 
+/**
+ * A PDF whose ToUnicode CMap is a work bomb.
+ *
+ * `<0000> <FFFF> <0041>` is a single range exactly as wide as the entry cap
+ * allows, so each one is accepted and then walked. Repeating it is what turns
+ * a few KB of deflated stream into billions of refused inserts — the cap on
+ * the map's SIZE never stopped the walking, and the loop is synchronous, so
+ * nothing can interrupt it. Measured before the fix: 1_000 ranges took 131 ms,
+ * 10_000 took 3 s and 50_000 took 16 s, from a CMap under a megabyte.
+ */
+function makeCmapBombPdf(rangeCount: number): Uint8Array {
+  const cmap = `begincmap\nbeginbfrange\n${"<0000> <FFFF> <0041>\n".repeat(rangeCount)}endbfrange\nendcmap`;
+  // Uncompressed on purpose: `inflate` sizes its output buffer at 12x the
+  // compressed length, which truncates a stream that deflates as well as this
+  // one does. That 12x is a real mitigation — it bounds amplification — but it
+  // is not the bound under test, and a ~34 KB deflated CMap still reaches this
+  // size inside a small PDF.
+  const cmapBody = Buffer.from(cmap, "latin1");
+  const content = "BT /F1 10 Tf 40 800 Td <00410042> Tj ET";
+  const contentBody = deflateSync(Buffer.from(content, "latin1"));
+  const parts: Buffer[] = [];
+  const push = (value: string | Buffer) =>
+    parts.push(Buffer.isBuffer(value) ? value : Buffer.from(value, "latin1"));
+  push("%PDF-1.4\n");
+  push("1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n");
+  push("2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n");
+  push("3 0 obj\n<< /Type /Page /Parent 2 0 R /Contents 4 0 R /Resources << /Font << /F1 6 0 R >> >> >>\nendobj\n");
+  push(`4 0 obj\n<< /Length ${contentBody.length} /Filter /FlateDecode >>\nstream\n`);
+  push(contentBody);
+  push("\nendstream\nendobj\n");
+  push("6 0 obj\n<< /Type /Font /Subtype /Type0 /Encoding /Identity-H /ToUnicode 7 0 R >>\nendobj\n");
+  push(`7 0 obj\n<< /Length ${cmapBody.length} >>\nstream\n`);
+  push(cmapBody);
+  push("\nendstream\nendobj\n");
+  push("trailer\n<< /Root 1 0 R >>\n%%EOF\n");
+  return new Uint8Array(Buffer.concat(parts));
+}
+
 describe("reading a PDF's text layer", () => {
   it("reads a compressed text layer without any new dependency", async () => {
     const result = await extractPdfText(makePdf(["MIGROS MARKET", "1.234,56"]));
@@ -115,6 +153,21 @@ describe("refusing what it cannot read, with a reason", () => {
   });
 
   /** A stream that claims to inflate to gigabytes is refused, not allocated. */
+  it("bounds the WORK a CMap can demand, not only the entries it may keep", async () => {
+    // The guarded path is O(1) in the range count — it stops the moment the map
+    // is full — so the count is chosen to make the UNGUARDED path unmistakably
+    // slow rather than to stress the guarded one. Measured: 60_000 ranges is
+    // ~6 s without the guard and ~50 ms with it, so this budget has a wide
+    // margin in both directions and is not a load-sensitive assertion.
+    const started = performance.now();
+    const result = await extractPdfText(makeCmapBombPdf(60_000));
+    const elapsed = performance.now() - started;
+    // Deliberately generous: the point is orders of magnitude, not milliseconds.
+    expect(elapsed).toBeLessThan(1_500);
+    // And it still reads the document rather than bailing out of it.
+    expect(result.ok).toBe(true);
+  });
+
   it("bounds what a single stream may expand to", async () => {
     const bomb = deflateSync(Buffer.alloc(2_000_000, 0x41));
     const parts: Buffer[] = [

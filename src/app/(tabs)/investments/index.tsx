@@ -11,7 +11,7 @@ import PackagePlus from "lucide-react-native/icons/package-plus";
 import Pencil from "lucide-react-native/icons/pencil";
 import Plus from "lucide-react-native/icons/plus";
 import Sparkles from "lucide-react-native/icons/sparkles";
-import Trash2 from "lucide-react-native/icons/trash-2";
+import Trash from "lucide-react-native/icons/trash";
 import Umbrella from "lucide-react-native/icons/umbrella";
 import WalletCards from "lucide-react-native/icons/wallet-cards";
 import type { LucideIcon } from "lucide-react-native";
@@ -738,7 +738,7 @@ export default function InvestmentsScreen() {
                   ) : null}
                   <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", justifyContent: "flex-end", gap: spacing.xs }}>
                     <IconButton label={tr.common.edit} icon={Pencil} onPress={() => router.push({ pathname: "/investments/operation", params: { id: operation.id, kind: operation.kind } })} />
-                    <IconButton label={tr.investments.deleteOperation} icon={Trash2} tone="danger" onPress={() => void deleteOperation(operation.id)} />
+                    <IconButton label={tr.investments.deleteOperation} icon={Trash} tone="danger" onPress={() => void deleteOperation(operation.id)} />
                   </View>
                 </View>
               );

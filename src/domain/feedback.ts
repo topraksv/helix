@@ -161,45 +161,6 @@ export function feedbackImagesBytes(images: readonly { byteLength: number }[]): 
   return images.reduce((sum, image) => sum + image.byteLength, 0);
 }
 
-export interface FeedbackDraft {
-  category: FeedbackCategory;
-  message: string;
-  images: readonly { mimeType: string; byteLength: number }[];
-}
-
-/**
- * Whether the send button may be enabled.
- *
- * The images are optional, but one that is PRESENT and invalid blocks the
- * send — silently dropping it would mean the report arrives without the thing
- * the person was pointing at.
- */
-export function isSubmittableFeedback(draft: FeedbackDraft): boolean {
-  if (!isFeedbackCategory(draft.category)) return false;
-  if (feedbackMessageRejection(draft.message) !== null) return false;
-  if (draft.images.length > MAX_FEEDBACK_IMAGES) return false;
-  if (feedbackImagesBytes(draft.images) > MAX_FEEDBACK_TOTAL_IMAGE_BYTES) return false;
-  return draft.images.every(
-    (image) => feedbackImageRejection(image.mimeType, image.byteLength) === null,
-  );
-}
-
-/**
- * The subject line the report arrives under.
- *
- * Prefixed and categorised so a mail client can file it without being opened,
- * and truncated on a WORD boundary so a subject never ends mid-word — the same
- * rule the rest of this app applies to its own labels.
- */
-export function feedbackSubject(category: FeedbackCategory, message: string): string {
-  const trimmed = message.trim().replace(/\s+/g, " ");
-  const limit = 60;
-  if (trimmed.length <= limit) return `[Helix/${category}] ${trimmed}`;
-  const cut = trimmed.slice(0, limit);
-  const lastSpace = cut.lastIndexOf(" ");
-  return `[Helix/${category}] ${(lastSpace > 20 ? cut.slice(0, lastSpace) : cut).trimEnd()}…`;
-}
-
 /**
  * Bytes as base64, without a platform API.
  *

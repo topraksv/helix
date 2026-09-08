@@ -7,6 +7,7 @@
  */
 
 import { describe, expect, it } from "vitest";
+import { feedbackSubject } from "../supabase/functions/send-feedback/subject";
 import {
   FEEDBACK_CATEGORIES,
   FEEDBACK_IMAGE_MIME_TYPES,
@@ -20,10 +21,8 @@ import {
   feedbackImageRejection,
   feedbackImagesBytes,
   feedbackMessageRejection,
-  feedbackSubject,
   isFeedbackCategory,
   isFeedbackImageMimeType,
-  isSubmittableFeedback,
   toBase64,
 } from "../src/domain/feedback";
 
@@ -95,37 +94,6 @@ describe("the screenshot is an image, and a small one", () => {
   });
 });
 
-describe("what may be sent", () => {
-  const valid = { category: "visual", message: "Buton çalışmıyor gibi.", images: [] } as const;
-  const png = (byteLength: number) => ({ mimeType: "image/png", byteLength });
-
-  it("needs a valid category and a valid message", () => {
-    expect(isSubmittableFeedback(valid)).toBe(true);
-    expect(isSubmittableFeedback({ ...valid, message: "kısa" })).toBe(false);
-    expect(isSubmittableFeedback({ ...valid, category: "nope" as never })).toBe(false);
-  });
-
-  it("treats no image as fine and a broken image as blocking", () => {
-    expect(isSubmittableFeedback({ ...valid, images: [] })).toBe(true);
-    expect(isSubmittableFeedback({ ...valid, images: [png(2048)] })).toBe(true);
-    // Silently dropping it would send a report about a picture that is missing.
-    expect(isSubmittableFeedback({ ...valid, images: [{ mimeType: "application/pdf", byteLength: 2048 }] })).toBe(false);
-    expect(isSubmittableFeedback({ ...valid, images: [png(0)] })).toBe(false);
-  });
-
-  it("accepts a full set and refuses one more", () => {
-    const four = Array.from({ length: MAX_FEEDBACK_IMAGES }, () => png(1024));
-    expect(isSubmittableFeedback({ ...valid, images: four })).toBe(true);
-    expect(isSubmittableFeedback({ ...valid, images: [...four, png(1024)] })).toBe(false);
-  });
-
-  it("refuses a batch over the shared ceiling even when each file clears its own", () => {
-    const big = png(4 * 1024 * 1024);
-    expect(isSubmittableFeedback({ ...valid, images: [big] })).toBe(true);
-    expect(isSubmittableFeedback({ ...valid, images: [big, big] })).toBe(false);
-  });
-});
-
 /**
  * Each refusal names a different remedy — pick another file, shrink it, remove
  * one, or remove a big one — so they have to be distinguishable answers and not
@@ -180,6 +148,13 @@ describe("a size said the way a person reads one", () => {
   });
 });
 
+/**
+ * The subject rule lives in the edge function, because that is the only place
+ * it runs — see the header on the module below. It is imported here rather
+ * than read as source text (the way `tests/market-proxy.test.ts` has to treat
+ * its function) because it was deliberately given its own file with no Deno
+ * global in it, so the behaviour can be asserted instead of the wording.
+ */
 describe("the subject line", () => {
   it("carries the category so a mail client can file it unopened", () => {
     expect(feedbackSubject("visual", "Kısa mesaj")).toBe("[Helix/visual] Kısa mesaj");

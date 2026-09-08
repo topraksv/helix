@@ -14,7 +14,7 @@ import Minus from "lucide-react-native/icons/minus";
 import Pencil from "lucide-react-native/icons/pencil";
 import Plus from "lucide-react-native/icons/plus";
 import Scale from "lucide-react-native/icons/scale";
-import Trash2 from "lucide-react-native/icons/trash-2";
+import Trash from "lucide-react-native/icons/trash";
 import type { LucideIcon } from "lucide-react-native";
 import {
   settingValue,
@@ -439,7 +439,7 @@ export default function ComputedColumnsScreen({ header }: { header?: ReactNode }
                           </View>
                           <Row gap={spacing.sm}>
                             <IconButton icon={Pencil} label={`${tr.common.edit} · ${column.name}`} onPress={() => startEdit(column)} />
-                            <IconButton icon={Trash2} tone="danger" label={`${tr.common.delete} · ${column.name}`} haptic="none" onPress={() => void remove(column)} />
+                            <IconButton icon={Trash} tone="danger" label={`${tr.common.delete} · ${column.name}`} haptic="none" onPress={() => void remove(column)} />
                           </Row>
                         </Spread>
                         <Spread style={{ marginTop: spacing.xs }}>

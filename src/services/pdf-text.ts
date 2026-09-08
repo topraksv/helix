@@ -93,9 +93,31 @@ function hasZlibHeader(bytes: Uint8Array): boolean {
  * Inflate a zlib stream.
  *
  * The uncompressed length is not reliably declared in a PDF, and the inflate
- * available here needs a size to allocate. So it is given a bounded estimate
- * and the result is trimmed: text extraction only scans forward for operators,
- * and trailing padding matches none of them.
+ * available here needs a size to allocate, so the size is estimated at 12x the
+ * compressed length and the surplus is left alone.
+ *
+ * TWO MEASURED DEFECTS LIVE IN THIS ESTIMATE, and neither is fixable without
+ * changing where the inflate comes from — which is a dependency decision, not
+ * a tuning one. They are recorded here so the next person does not rediscover
+ * them the hard way, and does not "fix" one by making the other worse.
+ *
+ * 1. A stream that compresses better than 12:1 is TRUNCATED, silently. A text
+ *    layer repeats merchant names, dates and headers: measured, a 900 KB layer
+ *    that deflated to 2.7 KB (331:1) came back 3.6% complete with the closing
+ *    balance simply gone, reported as `ok`. `_inflateRaw` signals nothing — it
+ *    returns a buffer of the requested size either way.
+ * 2. The surplus is NOT zeroed. It is whatever was in that memory, and the
+ *    extractor scans all of it: measured on a two-line statement, the text came
+ *    back with JavaScript source fragments after it.
+ *
+ * Raising the estimate fixes (1) and makes (2) worse in proportion — at the
+ * 1032:1 ratio zlib documents as its maximum, the same two-line statement
+ * carried 14_287 characters of leaked memory instead of 189. Lowering it does
+ * the reverse. Trailing zeros do not mark the end (a complete inflate can have
+ * none) and neither does comparing two differently-sized inflations (measured:
+ * exact twice, over by 4_029 once, under once). There is no length to trim to.
+ *
+ * The real fix is an inflate that reports how much it wrote.
  */
 function inflate(bytes: Uint8Array, cfb: typeof XlsxTypes.CFB): Uint8Array | null {
   if (!hasZlibHeader(bytes)) return null;
@@ -202,7 +224,17 @@ function hexToString(token: string): string {
   return out;
 }
 
-/** How many entries one CMap may declare, so a crafted file cannot exhaust memory. */
+/**
+ * How many entries one CMap may declare.
+ *
+ * It caps MEMORY, and on its own it did not cap WORK. `add` refuses past this
+ * size but the loops kept walking: a CMap of `<0000> <FFFF> <41>` repeated
+ * 50_000 times is 930 KB — far inside the stream ceiling, and a few KB once
+ * deflated — and it drove 3.3 BILLION refused inserts, 16 seconds of a frozen
+ * JavaScript thread that nothing can interrupt. Scaled to the stream ceiling
+ * that is minutes. So every loop below stops at this size too, and a statement
+ * whose CMap is already full costs nothing more to keep reading.
+ */
 const MAX_CMAP_ENTRIES = 65_536;
 
 /**
@@ -220,7 +252,9 @@ function parseToUnicode(text: string): ToUnicodeMap {
   };
 
   for (const section of text.match(/beginbfchar([\s\S]*?)endbfchar/g) ?? []) {
+    if (map.size >= MAX_CMAP_ENTRIES) break;
     for (const pair of section.match(/<[0-9A-Fa-f\s]+>\s*<[0-9A-Fa-f\s]*>/g) ?? []) {
+      if (map.size >= MAX_CMAP_ENTRIES) break;
       const [source, destination] = pair.match(/<[0-9A-Fa-f\s]*>/g) ?? [];
       const code = source ? hexValue(source) : null;
       if (code == null || destination == null) continue;
@@ -229,10 +263,12 @@ function parseToUnicode(text: string): ToUnicodeMap {
   }
 
   for (const section of text.match(/beginbfrange([\s\S]*?)endbfrange/g) ?? []) {
+    if (map.size >= MAX_CMAP_ENTRIES) break;
     const body = section.replace(/^beginbfrange/, "").replace(/endbfrange$/, "");
     const entry = /<([0-9A-Fa-f\s]+)>\s*<([0-9A-Fa-f\s]+)>\s*(\[[\s\S]*?\]|<[0-9A-Fa-f\s]*>)/g;
     let match: RegExpExecArray | null;
     while ((match = entry.exec(body)) !== null) {
+      if (map.size >= MAX_CMAP_ENTRIES) break;
       const low = hexValue(match[1]!);
       const high = hexValue(match[2]!);
       if (low == null || high == null || high < low || high - low > MAX_CMAP_ENTRIES) continue;
@@ -245,7 +281,9 @@ function parseToUnicode(text: string): ToUnicodeMap {
       const base = hexToString(destination);
       if (base.length !== 1) continue;
       const start = base.charCodeAt(0);
-      for (let code = low; code <= high; code += 1) add(code, String.fromCharCode(start + (code - low)));
+      for (let code = low; code <= high && map.size < MAX_CMAP_ENTRIES; code += 1) {
+        add(code, String.fromCharCode(start + (code - low)));
+      }
     }
   }
   return map;

@@ -18,7 +18,7 @@ import Columns3 from "lucide-react-native/icons/columns-3";
 import LayoutTemplate from "lucide-react-native/icons/layout-template";
 import Pencil from "lucide-react-native/icons/pencil";
 import Plus from "lucide-react-native/icons/plus";
-import Trash2 from "lucide-react-native/icons/trash-2";
+import Trash from "lucide-react-native/icons/trash";
 import { Badge, Body, Button, Card, ChipPicker, DataGateScreen, DataStateNotice, Divider, EmptyState, FadeIn, Field, IconButton, PanelHeader, Row, Screen, Spread, Toggle } from "../../../ui/components";
 import { CategoryDeleteSheet, UNCATEGORIZED_CHOICE } from "../../../ui/category-delete-sheet";
 import { DraggableList, ReorderGrip } from "../../../ui/draggable-list";
@@ -359,7 +359,7 @@ export default function CategoriesScreen({ header }: { header?: ReactNode } = {}
                           label={`${tr.common.edit} · ${c.name}`}
                           onPress={() => startEditing(c)}
                         />
-                        <IconButton icon={Trash2} tone="danger" label={`${tr.common.delete} · ${c.name}`} haptic="none" onPress={() => void remove(c)} />
+                        <IconButton icon={Trash} tone="danger" label={`${tr.common.delete} · ${c.name}`} haptic="none" onPress={() => void remove(c)} />
                       </Row>
                     </Spread>
                     <Spread style={{ marginTop: spacing.xs }}>

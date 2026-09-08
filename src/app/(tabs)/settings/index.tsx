@@ -31,7 +31,7 @@ import Moon from "lucide-react-native/icons/moon";
 import ScanFace from "lucide-react-native/icons/scan-face";
 import Sun from "lucide-react-native/icons/sun";
 import Target from "lucide-react-native/icons/target";
-import Trash2 from "lucide-react-native/icons/trash-2";
+import Trash from "lucide-react-native/icons/trash";
 import Users from "lucide-react-native/icons/users";
 import Wallet from "lucide-react-native/icons/wallet";
 import Wrench from "lucide-react-native/icons/wrench";
@@ -433,7 +433,7 @@ export default function SettingsScreen() {
   const exportJson = () =>
     runDataOperation("export", async ({ signal }) => {
       const path = await saveTextFile(
-        `helix-yedek-${new Date().toISOString().slice(0, 10)}.json`,
+        `helix-yedek-${todayISO()}.json`,
         await buildExportText(userId, signal),
         "application/json",
       );
@@ -444,7 +444,7 @@ export default function SettingsScreen() {
   const exportWorkbook = () =>
     runDataOperation("workbook", async ({ signal }) => {
       const path = await saveBinaryFile(
-        `helix-${new Date().toISOString().slice(0, 10)}.xlsx`,
+        `helix-${todayISO()}.xlsx`,
         await buildWorkbookBytes(userId, signal),
         WORKBOOK_MIME,
       );
@@ -889,7 +889,7 @@ export default function SettingsScreen() {
           <View style={{ paddingHorizontal: spacing.md }}>
             <AccountActionRow
               testID="account-delete-action"
-              icon={Trash2}
+              icon={Trash}
               title={tr.account.delete}
               subtitle={tr.account.deleteSignatureDescription}
               busy={deleting}

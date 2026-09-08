@@ -39,7 +39,8 @@ import {
   type CandidateVerdict,
   type StatementCandidate,
   type StatementParseResult,
-  statementDifferenceMinor,} from "../domain/statement-import";
+  statementDifferenceMinor,
+} from "../domain/statement-import";
 import { formatMinorCompact, formatMinorInput } from "../domain/money";
 import { userMessage } from "../domain/user-error";
 import { dateLabel, tr } from "../i18n/tr";

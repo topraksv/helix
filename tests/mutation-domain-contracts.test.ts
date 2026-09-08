@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { buildLedger, buildLedgerBundle, currentBalance, projectedBalance, resolveLedgerAnchor } from "../src/domain/balance";
+import { buildLedger, buildLedgerChain, currentBalance, ledgerChainEndYear, projectedBalance, resolveLedgerAnchor, sliceLedgerYear } from "../src/domain/balance";
 import { projectInvestmentState } from "../src/domain/investment-projection";
 import { isValidItemParams } from "../src/domain/route-params";
 import {
@@ -73,12 +73,13 @@ describe("mutation-sensitive balance contract", () => {
   });
 
   it("uses the direct current calculation when the ledger begins after today", () => {
-    const bundle = required(buildLedgerBundle({
+    const chain = required(buildLedgerChain({
       configuredStart: "2027-01", openingBalanceMinor: 1_000, includePendingInCells: false,
       transactions: [tx({ type: "income", amountTryMinor: 100, effectiveDate: "2027-01-01", categoryKind: "income" })],
       adjustments: [{ date: "2027-01-01", amountMinor: 50 }],
-      year: 2027, today: "2026-07-18",
+      endYear: ledgerChainEndYear(2027, "2026-07-18"), today: "2026-07-18",
     }));
+    const bundle = sliceLedgerYear(chain, 2027);
     expect(bundle.actualBalanceMinor).toBe(1_000);
     expect(bundle.startMonth).toBe("2027-01");
     expect(bundle.txLike).toHaveLength(1);

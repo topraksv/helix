@@ -5,7 +5,7 @@ import ArrowDownToLine from "lucide-react-native/icons/arrow-down-to-line";
 import ArrowUpFromLine from "lucide-react-native/icons/arrow-up-from-line";
 import Landmark from "lucide-react-native/icons/landmark";
 import Plus from "lucide-react-native/icons/plus";
-import Trash2 from "lucide-react-native/icons/trash-2";
+import Trash from "lucide-react-native/icons/trash";
 import { addInvestmentOperation, updateInvestmentOperation } from "../../../data/repo";
 import {
   useInvestmentOperationsState,
@@ -464,7 +464,7 @@ export default function InvestmentOperationScreen() {
             {tr.investments.removeProductHistoryHint}
           </Text>
           <IconButton
-            icon={Trash2}
+            icon={Trash}
             tone="danger"
             label={tr.investments.removeProductHistory}
             onPress={() => router.push({ pathname: "/investments/correction", params: { productId: editing.productId } })}

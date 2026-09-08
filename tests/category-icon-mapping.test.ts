@@ -111,9 +111,10 @@ describe("no screen renders a raw category or source glyph", () => {
       if (path === "src/domain/category-icons.ts") continue;
       const source = readFileSync(join(root, path), "utf8");
       for (const [index, line] of source.split("\n").entries()) {
-        // The two domain helpers return a glyph string; calling either from a
-        // screen means that string is on its way to a `<Text>`.
-        if (/\b(?:categoryIcon|paymentSourceIcon)\s*\(/.test(line)) {
+        // `categoryIcon` returns a glyph STRING; calling it from a screen means
+        // that string is on its way to a `<Text>`. Its payment-source twin was
+        // deleted once the tile resolved a component from the type instead.
+        if (/\bcategoryIcon\s*\(/.test(line)) {
           offenders.push(`${path}:${index + 1}`);
         }
       }

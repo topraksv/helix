@@ -101,7 +101,7 @@ describe("operation progress language", () => {
     expect(source).toContain('"sign-in": [KeyRound, "primary"]');
     expect(source).toContain('"sign-out": [LogOut, "secondary"]');
     expect(source).toContain('freeze: [Snowflake, "warning"]');
-    expect(source).toContain('delete: [Trash2, "destructive"]');
+    expect(source).toContain('delete: [Trash, "destructive"]');
     // The signature explains an action BEFORE it starts and stays still; a
     // pre-action surface that pulses reads as work already happening. Motion
     // belongs to the waiting view, which is the one moment something really is
