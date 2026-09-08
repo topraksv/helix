@@ -236,8 +236,10 @@ eklenmesini engellemenin, herkesi bugün durduran bir eşik koymadan tek yolu.
 | `src/data/` | `repo.ts` kalıcılık cephesi + canlı sorgu hook'ları. Rotalar `repo/*` içine girmez |
 | `src/db/` | Şema, migration'lar, atomik yazma katmanı |
 | `src/sync/` | Outbox, merge politikası, oturum epoch'u, karantina |
+| `src/auth/` | Oturum, hesap dondurma, doğrulama freni — satırların kime ait olduğu |
 | `src/services/` | Yan etkili entegrasyonlar: dosya, bildirim, piyasa, PDF, Excel |
 | `src/ui/` | Tasarım sistemi ilkelleri ve tokenlar |
+| `src/i18n/` | Arayüzdeki her metin. Bileşende yazılmış Türkçe bir dize buraya taşınır |
 
 Bağımlılık yönü `app → data → db` ve `app → domain`. Rotalar ve UI
 `src/data/repo/*` içine girmez; `src/domain/` React, ağ ve depolama içermez —
