@@ -82,6 +82,14 @@ updates:
         update-types: ["version-update:semver-major"]
       - dependency-name: "@stryker-mutator/*"
         update-types: ["version-update:semver-major"]
+      # `@types/node` follows the RUNTIME, not the registry. `.nvmrc` pins Node
+      # 22 and CI runs it; the types for Node 26 describe APIs that runtime does
+      # not have. Measured 2026-09-09: the inherited 26.x produced 206 typecheck
+      # errors against a tree that compiles cleanly on 22.x, which is why the
+      # version in `package.json` is exact rather than a range. Move it in the
+      # same change as `.nvmrc`, never on its own.
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
 
   - package-ecosystem: github-actions
     directory: /

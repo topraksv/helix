@@ -186,6 +186,53 @@ describe("obligations belonging to a person who is only watched", () => {
     expect(live("expected_payments", "exp-skipped")).toBe(true);
   });
 
+  /**
+   * The same rule, for the other kind of rule. Incomes were the untested half:
+   * a watch-only person's SALARY raised a pending inflow that entered the
+   * owner's forecast, and every assertion above was about subscriptions.
+   */
+  it("removes a pending inflow derived from a watched person's income", async () => {
+    insert("persons", { ...stamps, id: "watched", name: "Kardeşim", is_self: 0 });
+    insert("recurring_incomes", {
+      ...stamps, id: "inc-watched", name: "Maaş", kind: "salary", default_amount_minor: 50_000,
+      currency: "TRY", pay_day: 1, recurrence: "monthly", person_id: "watched", is_active: 1,
+    });
+    insert("recurring_incomes", {
+      ...stamps, id: "inc-self", name: "Maaşım", kind: "salary", default_amount_minor: 60_000,
+      currency: "TRY", pay_day: 1, recurrence: "monthly", person_id: "self", is_active: 1,
+    });
+    for (const [id, ref] of [["exp-watched-income", "inc-watched"], ["exp-self-income", "inc-self"]] as const) {
+      insert("expected_payments", {
+        ...stamps, id, direction: "inflow", kind: "recurring_income", ref_id: ref,
+        due_date: "2026-09-01", amount_minor: 50_000, currency: "TRY", status: "pending",
+        auto_confirmed: 0, amount_is_estimated: 0,
+      });
+    }
+
+    await runMaintenance(USER);
+
+    expect(live("expected_payments", "exp-watched-income")).toBe(false);
+    expect(live("expected_payments", "exp-self-income")).toBe(true);
+  });
+
+  /**
+   * `late` is as mutable as `pending` and is swept with it. An obligation that
+   * has merely gone past its date is still a forecast about money that was
+   * never the owner's, so leaving it would keep the row the sweep exists for.
+   */
+  it("removes a watched obligation that has already gone late", async () => {
+    seedWatchedSubscription();
+    insert("expected_payments", {
+      ...stamps, id: "exp-late", direction: "outflow", kind: "subscription", ref_id: "sub-watched",
+      due_date: "2026-07-15", amount_minor: 10_000, currency: "TRY", status: "late",
+      auto_confirmed: 0, amount_is_estimated: 0,
+    });
+
+    await runMaintenance(USER);
+
+    expect(live("expected_payments", "exp-late")).toBe(false);
+  });
+
   /** The owner's own pending obligations are the whole point of the forecast. */
   it("keeps a pending obligation that belongs to the account holder", async () => {
     insert("subscriptions", {

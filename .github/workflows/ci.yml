@@ -431,7 +431,7 @@ jobs:
       # Publishes the artifact `web-build` produced. No second export: a
       # rebuild here could serve bytes nothing in this run ever checked.
       - id: deployment
-        uses: actions/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128 # v5
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5
         with:
           # The action's 10-minute default is below what the Pages backend
           # actually takes. On `8ac62ab` it sat in `deployment_in_progress`
