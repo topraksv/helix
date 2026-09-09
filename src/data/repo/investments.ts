@@ -80,7 +80,6 @@ export async function setupInvestments(userId: string, input: InvestmentSetupInp
       id,
       startedOn: input.startedOn,
       openingCashMinor: input.openingCashMinor,
-      setupCompleted: true,
       deletedAt: null,
     },
   }];

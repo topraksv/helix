@@ -401,6 +401,14 @@ async function runMaintenanceInner(userId: string): Promise<void> {
         // A missing FX rate must not abort the whole maintenance pass — leave
         // the item pending and auto-confirm it on a later run once a rate is
         // cached. Re-throw anything unexpected.
+        //
+        // Swallowing the rest was tried and reverted on 2026-09-09. A rule that
+        // has drifted out of shape does take every repair after it down with
+        // it, which is worth fixing — but continuing past an unexplained throw
+        // costs this file 16 detected mutants, because a great many of them
+        // were only ever observable AS that throw. The resilience is worth
+        // having with assertions on what the pass produces, and worth nothing
+        // bought by making the pass harder to check.
         if (!(e instanceof FxRateUnavailableError)) throw e;
       }
     }

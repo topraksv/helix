@@ -45,13 +45,21 @@ export function TransactionRow({
   divider: boolean;
 }) {
   const { palette } = useTheme();
+  const title = installmentTitle ?? note;
   return (
     <View>
       <Spread style={{ paddingVertical: spacing.sm }}>
         <View style={{ flex: 1 }}>
-          {installmentTitle ? <Body style={{ fontFamily: font.medium }}>{installmentTitle}</Body> : null}
-          <Body muted={installmentTitle != null}>{dateText}</Body>
-          {note && note !== installmentTitle ? (
+          {/* What it WAS leads; when and what kind it was follows.
+              "Harcama · 3 Ağustos" sat on the first line in the row's ink and
+              "IYZICO*PARIBU" underneath it in the muted small size, so a list
+              of a month's spending read as a column of the word Harcama with
+              the merchants — the only thing that tells two rows apart —
+              demoted beneath them. An instalment already led with its plan
+              title; every other row now leads the same way. */}
+          {title ? <Body style={{ fontFamily: font.medium }}>{title}</Body> : null}
+          <Body muted={title != null}>{dateText}</Body>
+          {note && note !== title ? (
             <Text style={[type.small, { color: palette.textSecondary }]}>{note}</Text>
           ) : null}
           {reversalBadge || pending || hasDocuments ? (

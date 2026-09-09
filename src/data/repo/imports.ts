@@ -31,6 +31,8 @@ export interface ImportRequest {
   excludedLabels: string[];
   /** Only import months in these years; omit to import every year found. */
   selectedYears?: number[];
+  /** Which balance column holds the month-opening figure, when the owner said. */
+  openingColumnLabel?: string | null;
   selfId: string;
   /** How to treat a year that was already imported before. */
   mode: "replace" | "add";
@@ -539,7 +541,13 @@ export async function importSheets(userId: string, req: ImportRequest): Promise<
     metadataWrites.push(await settingWrite(userId, importBatchKey(year), batch));
   }
 
-  metadataWrites.push(...(await openingWritesFromImport(userId, req.sheets, yearAllowed, req.adoptOpeningBalance === true)));
+  metadataWrites.push(...(await openingWritesFromImport(
+    userId,
+    req.sheets,
+    yearAllowed,
+    req.adoptOpeningBalance === true,
+    req.openingColumnLabel ?? null,
+  )));
   const writes = [
     ...cleanupWrites,
     ...catWrites,
@@ -570,7 +578,20 @@ export async function importSheets(userId: string, req: ImportRequest): Promise<
 export function openingBalanceFromSheets(
   sheets: ParsedSheet[],
   yearAllowed: (year: number) => boolean = () => true,
+  columnLabel?: string | null,
 ): { month: MonthKey; minor: Minor } | null {
+  // A named column wins over the parser's own guess, and a named column that
+  // is not in this workbook yields NOTHING rather than falling back to the
+  // guess: a person who answered the question must not be quietly overruled by
+  // the heading rule they were correcting.
+  if (columnLabel != null) {
+    const chosen = sheets
+      .flatMap((sheet) => sheet.openingCandidates.filter((candidate) => candidate.label === columnLabel))
+      .filter((candidate) => yearAllowed(yearOf(candidate.month)))
+      .sort((a, b) => a.month.localeCompare(b.month));
+    const first = chosen[0];
+    return first ? { month: first.month, minor: first.minor } : null;
+  }
   const withOpening = sheets
     .filter((sheet) => sheet.openingBalance && yearAllowed(yearOf(sheet.openingBalance.month)))
     .sort((a, b) => a.openingBalance!.month.localeCompare(b.openingBalance!.month));
@@ -583,8 +604,9 @@ async function openingWritesFromImport(
   sheets: ParsedSheet[],
   yearAllowed: (y: number) => boolean,
   adopt: boolean,
+  columnLabel: string | null,
 ): Promise<RowWrite[]> {
-  const opening = openingBalanceFromSheets(sheets, yearAllowed);
+  const opening = openingBalanceFromSheets(sheets, yearAllowed, columnLabel);
   if (!opening) return [];
   const currentStart = await readSetting<string>(userId, "start_month");
   // Earlier data always wins without being asked: the ledger back-anchors to

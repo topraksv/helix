@@ -18,7 +18,6 @@ import ChevronLeft from "lucide-react-native/icons/chevron-left";
 import ChevronRight from "lucide-react-native/icons/chevron-right";
 import CreditCard from "lucide-react-native/icons/credit-card";
 import Flag from "lucide-react-native/icons/flag";
-import Inbox from "lucide-react-native/icons/inbox";
 import Info from "lucide-react-native/icons/info";
 import Pencil from "lucide-react-native/icons/pencil";
 import Plus from "lucide-react-native/icons/plus";
@@ -35,6 +34,7 @@ import { balanceDeclarationDrift, parseBalanceDeclaration } from "../../../domai
 import {
   settingValue,
   useAllTransactionsState,
+  useBalanceColumns,
   useCellNotesState,
   useCategoriesState,
   useComputedColumnsState,
@@ -52,7 +52,7 @@ import { appAlert } from "../../../ui/dialog";
 import { scheduleSync } from "../../../sync/engine";
 import { devError } from "../../../services/logger";
 import { kv } from "../../../services/kv";
-import { Amount, Button, Card, DataStateNotice, EmptyState, FadeIn, IconButton, Row, Screen, Segmented, Spread } from "../../../ui/components";
+import { Amount, Button, Card, DataStateNotice, FadeIn, IconButton, Row, Screen, Segmented, Spread } from "../../../ui/components";
 import { useScrollToTop } from "expo-router";
 import { CURRENT_TINT, StickyTable, STICKY_HEADER_HEIGHT, STICKY_ROW_HEIGHT } from "../../../ui/sticky-table";
 import { MatrixColorSheet } from "../../../ui/matrix-color-sheet";
@@ -278,7 +278,20 @@ export default function CashflowScreen() {
 
   // Year switcher bounds: back to the earliest data, forward only while there
   // is actual data (e.g. installments spilling into next year).
-  const minYear = bundle ? yearOf(bundle.startMonth) : currentYear;
+  //
+  // The floor is the first month that HOLDS something, not the anchor the
+  // chain starts from. An import writes an anchor, and an owner who brought
+  // one year of a ten-year workbook got the other nine as reachable years of
+  // blank rows with the balance columns filled in — the table said data was
+  // there and every cell said it was not. The chain still starts at the
+  // anchor, so the figures are unchanged; only the years nothing happened in
+  // stop being offered.
+  const firstMonth = bundle
+    ? (bundle.firstRecordedMonth != null && bundle.firstRecordedMonth > bundle.startMonth
+        ? bundle.firstRecordedMonth
+        : bundle.startMonth)
+    : null;
+  const minYear = firstMonth ? yearOf(firstMonth) : currentYear;
   const lastTransaction = allTx.at(-1);
   const lastDataYear = lastTransaction ? yearOf(lastTransaction.effectiveDate) : currentYear;
   const maxYear = Math.max(currentYear, lastDataYear);
@@ -304,6 +317,7 @@ export default function CashflowScreen() {
   // category is missing, without inventing a special non-editable table column.
   const liveCategoryIds = useMemo(() => new Set(categories.map((c) => c.id)), [categories]);
   const today = todayISO();
+  const balanceColumns = useBalanceColumns();
   const tableMatrix = useMemo(
     () => bundle
       ? buildCashFlowMatrixModel({
@@ -315,12 +329,13 @@ export default function CashflowScreen() {
           creditCardIds,
           liveCategoryIds,
           today,
-          openingLabel: tr.cashflow.opening,
-          closingLabel: tr.cashflow.closing,
-          startMonth: bundle.startMonth,
+          openingLabel: balanceColumns.openingLabel,
+          closingLabel: balanceColumns.closingLabel,
+          showOpening: balanceColumns.showOpening,
+          startMonth: firstMonth ?? bundle.startMonth,
         })
       : null,
-    [bundle, year, columnCategories, visibleComputed, txLike, creditCardIds, liveCategoryIds, today],
+    [bundle, firstMonth, year, columnCategories, visibleComputed, txLike, creditCardIds, liveCategoryIds, today, balanceColumns],
   );
 
   const yearSwitcher = (
@@ -420,16 +435,15 @@ export default function CashflowScreen() {
         </Pressable>
       ) : null}
 
-      {!bundle ? (
-        dataStatus === "loading" || dataStatus === "error" ? null : (
-          <EmptyState
-            icon={Inbox}
-            title={tr.cashflow.emptyMonth}
-            hint={tr.cashflow.emptyYearHint}
-            action={<Button icon={Flag} label={tr.cashflow.openingLink} variant="secondary" onPress={() => router.push("/opening-balance")} />}
-          />
-        )
-      ) : (
+      {/* No empty state any more, because there is no longer an "empty" the
+          table cannot draw. It stood here for a null bundle, which used to
+          mean "no opening balance is configured" as well as "still loading" —
+          so a workspace whose ledger had just been cleared was told the month
+          held no records and offered a link to the anchor, while the rows it
+          did hold sat behind that message unread. An unanchored ledger now
+          draws itself at zero, and `DataStateNotice` above owns loading and
+          failure. The anchor keeps its way in: the toolbar's own tool. */}
+      {bundle == null ? null : (
         <View style={{ flex: 1 }}>
           {/* The pivot spans the page and centres its segments, so it sits in
               the same place on a phone, a tablet and a zoomed desktop. The
@@ -537,6 +551,7 @@ function MonthFocusTable({
   const { palette } = useTheme();
   const router = useRouter();
   const today = todayISO();
+  const balanceColumns = useBalanceColumns();
   const monthNumber = Number(month.slice(5, 7));
   const monthData = bundle.yearMonths.find((item) => item.month === month);
   const flows = monthData ? monthFlowTotals(monthData) : null;
@@ -600,7 +615,7 @@ function MonthFocusTable({
         <Card testID="month-focus-card" style={{ padding: spacing.md }}>
           <Spread style={{ alignItems: "center" }}>
             <View>
-              <Text style={[type.small, { color: palette.textSecondary }]}>{tr.cashflow.closing}</Text>
+              <Text style={[type.small, { color: palette.textSecondary }]}>{balanceColumns.closingLabel}</Text>
               <Amount minor={flows.closingMinor} large />
             </View>
             <IconButton icon={ChevronRight} label={tr.cashflow.openMonth} onPress={() => router.push(`/cash-flow/${month}`)} />

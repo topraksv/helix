@@ -26,7 +26,8 @@
  * until a person accepts them.
  */
 
-import { daysBetweenISO, isISODate, type ISODate } from "./dates";
+import { addMonthsToKey, daysBetweenISO, isISODate, type ISODate, type MonthKey } from "./dates";
+import { conceptOf } from "./category-icons";
 import { foldForMatch } from "./logo-domain";
 import type { Minor } from "./money";
 
@@ -378,6 +379,123 @@ export function parseStatementLine(
       sourceLine: trimmed,
     },
   };
+}
+
+
+/**
+ * The instalment plan one statement line implies.
+ *
+ * A statement prints a plan one payment at a time, and the Taksitler screen is
+ * built on the plan rather than the payment — so a line that says `3/9` used
+ * to arrive as a single loose charge and the plan behind it never existed.
+ * This is the whole of the conversion, and it is pure: what a line says, in
+ * the vocabulary the plan writer already takes.
+ *
+ * The start month is derived rather than read, because no statement prints it:
+ * the third payment of a plan billed in this period puts the first two in the
+ * two periods before it. That derivation is also what makes the plan STABLE —
+ * every later statement of the same plan derives the same start month and the
+ * same count, so the identity built from them converges instead of producing a
+ * second plan per statement.
+ *
+ * A line that only says how many payments REMAIN gets a plan that begins here.
+ * Nothing before this statement is known from it, so nothing before it is
+ * invented.
+ */
+export interface StatementPlanSpec {
+  startMonth: MonthKey;
+  installmentCount: number;
+  /** Which payment this statement bills. 1 when only a remainder was printed. */
+  installmentNo: number;
+}
+
+export function statementPlanSpec(
+  candidate: Pick<StatementCandidate, "kind" | "installmentNo" | "installmentCount" | "remainingInstallments">,
+  statementMonth: MonthKey,
+): StatementPlanSpec | null {
+  if (candidate.kind !== "installment") return null;
+  const { installmentNo, installmentCount } = candidate;
+  if (installmentNo != null && installmentCount != null) {
+    return {
+      startMonth: addMonthsToKey(statementMonth, -(installmentNo - 1)),
+      installmentCount,
+      installmentNo,
+    };
+  }
+  if (candidate.remainingInstallments != null && candidate.remainingInstallments >= 1) {
+    return { startMonth: statementMonth, installmentCount: candidate.remainingInstallments, installmentNo: 1 };
+  }
+  return null;
+}
+
+
+/**
+ * Merchants the app's own vocabulary cannot read on its own.
+ *
+ * A statement prints who was paid, not what for, and the biggest Turkish
+ * chains carry no word that says which. Each entry maps a merchant to the
+ * WORDS an owner's column might use, never to a column this app invents — the
+ * whole point is to land in a column the owner already made.
+ *
+ * Both sides are written in the FOLDED alphabet, exactly as `cardPayment`
+ * above is and for a second reason besides: `foldForMatch` is applied to both
+ * inputs, so `[ıi]` and `[sş]` classes would be spelling a case that cannot
+ * arrive — and every one of them is a mutant no test can kill, because both
+ * halves of the class reach the same folded string.
+ *
+ * Deliberately short. Everything a generic word can already reach ("ECZANE",
+ * "AKARYAKIT", "RESTORAN", printed in the merchant line by most acquirers)
+ * goes through `conceptOf` above and needs no entry here.
+ */
+const MERCHANT_ALIASES: readonly (readonly [RegExp, RegExp])[] = [
+  [/migros|carrefour|a101|a 101|\bbim\b/, /market|gida|mutfak/],
+  [/shell|opet|petrol ofisi|aytemiz/, /yakit|arac|benzin|otomobil/],
+  [/yemeksepeti|getir|starbucks|burger/, /restoran|yemek|kafe/],
+  [/netflix|spotify|youtube|icloud/, /abonelik|dijital|eglence/],
+  [/turkcell|vodafone|turk telekom|superonline/, /internet|telefon|iletisim/],
+  [/uber|bitaksi|marti|\bhgs\b/, /ulasim|taksi|otobus/],
+  [/lc waikiki|defacto|koton|\bzara\b/, /giyim|kiyafet|ayakkabi/],
+  [/teknosa|mediamarkt|hepsiburada|trendyol/, /alisveris|elektronik|teknoloji/],
+];
+
+/**
+ * The owner's own column for one statement line, or null.
+ *
+ * Null is a real answer and the important one. Every row used to default to
+ * whichever expense column happened to sort first, so a statement filed a
+ * month of spending under one arbitrary heading and said nothing about it —
+ * a wrong answer that looks exactly like a right one. An unmatched row now
+ * arrives with no column, which the review shows and the ledger stores as
+ * uncategorised until someone says otherwise.
+ *
+ * Nothing here creates a column. A statement is evidence about money, not
+ * about how this workspace is organised.
+ */
+export function matchStatementCategory(
+  description: string,
+  categories: readonly { id: string; name: string }[],
+): string | null {
+  const merchant = foldForMatch(description);
+  // 1. The owner's own heading, printed in the merchant line. The strongest
+  //    evidence there is, and it needs no vocabulary at all. Four characters,
+  //    because "Ev" and "Su" as headings would match half a statement.
+  for (const category of categories) {
+    const name = foldForMatch(category.name);
+    if (name.length >= 4 && merchant.includes(name)) return category.id;
+  }
+  // 2. The same concept under different words: "MIGROS MARKET" and "Gıda".
+  const concept = conceptOf(description);
+  if (concept != null) {
+    const match = categories.find((category) => conceptOf(category.name) === concept);
+    if (match) return match.id;
+  }
+  // 3. A merchant that names no concept of its own.
+  const alias = MERCHANT_ALIASES.find(([merchantPattern]) => merchantPattern.test(merchant));
+  if (alias) {
+    const match = categories.find((category) => alias[1].test(foldForMatch(category.name)));
+    if (match) return match.id;
+  }
+  return null;
 }
 
 /** How many candidates one statement may produce. A statement is not a ledger. */

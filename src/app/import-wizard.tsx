@@ -33,6 +33,7 @@ import { collectInstallmentPlans, MAX_WORKBOOK_BYTES, parseWorkbookBytes, type C
 import { scheduleSync } from "../sync/engine";
 import { userMessage } from "../domain/user-error";
 import { Amount, Body, Button, Card, DataGateScreen, DataStateNotice, FieldNote, OperationStatusNotice, PanelHeader, Row, Screen, SectionHeader, SelectionGrid, Spread, Toggle } from "../ui/components";
+import { Select } from "../ui/selection-controls";
 import { circle, font, radius, spacing, type, type Palette, useTheme } from "../ui/theme";
 import { navigateBack } from "../ui/navigation";
 import { OperationCancelledError, useTrackedOperation, type TrackedOperationContext } from "../ui/operation-guard";
@@ -281,6 +282,15 @@ export default function ImportWizardModal() {
    * workbook. It is stated and it is a choice now.
    */
   const [adoptOpening, setAdoptOpening] = useState(false);
+  /**
+   * Which balance column the month-opening figure comes from.
+   *
+   * `null` means "whatever the heading rule decided". A heading is the one
+   * part of a personal spreadsheet nobody else wrote the rules for, and the
+   * anchor the whole chained balance hangs off is the worst place to be sure
+   * about somebody else's wording.
+   */
+  const [openingColumn, setOpeningColumn] = useState<string | null>(null);
   const [committing, setCommitting] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
   const operation = useTrackedOperation();
@@ -405,6 +415,7 @@ export default function ImportWizardModal() {
       mode,
       informationalCards: workbook?.informationalCards ?? [],
       adoptOpeningBalance: adoptOpening,
+      openingColumnLabel: openingColumn,
       cardCycles: Object.fromEntries(
         installmentCards.map((card) => {
           const cycle = cycleDraft(card);
@@ -479,7 +490,17 @@ export default function ImportWizardModal() {
   // What the workbook says the ledger should start from, and whether adopting
   // it is even a question: data earlier than the current anchor always wins,
   // because the ledger back-anchors to the earliest month it holds.
-  const workbookOpening = openingBalanceFromSheets(activeSheets, (year: number) => selectedYears.includes(year));
+  const openingChoices = [...new Map(
+    activeSheets
+      .flatMap((sheet) => sheet.openingCandidates)
+      .filter((candidate) => selectedYears.includes(yearOf(candidate.month)))
+      .map((candidate) => [candidate.label, candidate]),
+  ).values()];
+  const workbookOpening = openingBalanceFromSheets(
+    activeSheets,
+    (year: number) => selectedYears.includes(year),
+    openingColumn,
+  );
   const currentStartMonth = settingValue<MonthKey | null>(settingsState.data, "start_month", null);
   const openingIsEarlier = workbookOpening != null
     && (currentStartMonth == null || workbookOpening.month < currentStartMonth);
@@ -587,27 +608,54 @@ export default function ImportWizardModal() {
                   only on the first import, so a wrong anchor produced a balance
                   the owner could not explain and re-importing a corrected
                   workbook could never put right. */}
-              {workbookOpening ? (
+              {openingChoices.length > 0 ? (
                 <Card>
                   <PanelHeader
                     icon={Scale}
                     title={tr.importer.openingTitle}
                     description={tr.importer.openingHint}
                   />
-                  <Spread style={{ marginBottom: spacing.sm }}>
-                    <Body>{monthLabel(workbookOpening.month)}</Body>
-                    <Amount minor={workbookOpening.minor} colorized={false} />
-                  </Spread>
-                  {openingIsEarlier ? (
-                    <Body muted>{tr.importer.openingEarlier}</Body>
+                  {/* The card is drawn whenever the sheet HAS columns, not only
+                      when the heading rule recognised one. It used to appear
+                      only on a successful guess, so the workbook whose opening
+                      balance sits under a heading nobody else would read that
+                      way — the whole reason this choice exists — was the one
+                      workbook that never got offered it. */}
+                  <Select
+                    label={tr.importer.openingColumn}
+                    value={openingColumn ?? ""}
+                    options={[
+                      { value: "", label: tr.importer.openingColumnAuto },
+                      // The figure each column would give, beside its name. A
+                      // heading nobody but its author can read is picked by the
+                      // number under it, not by the word above it.
+                      ...openingChoices.map((candidate) => ({
+                        value: candidate.label,
+                        label: `${candidate.label} · ${formatMinorCompact(candidate.minor)}`,
+                      })),
+                    ]}
+                    onChange={(value) => setOpeningColumn(value === "" ? null : value)}
+                  />
+                  {workbookOpening ? (
+                    <>
+                      <Spread style={{ marginTop: spacing.sm, marginBottom: spacing.sm }}>
+                        <Body>{monthLabel(workbookOpening.month)}</Body>
+                        <Amount minor={workbookOpening.minor} colorized={false} />
+                      </Spread>
+                      {openingIsEarlier ? (
+                        <Body muted>{tr.importer.openingEarlier}</Body>
+                      ) : (
+                        <FieldNote note={tr.importer.openingAdoptHint(monthLabel(currentStartMonth ?? workbookOpening.month))}>
+                          <Toggle
+                            label={tr.importer.openingAdopt}
+                            value={adoptOpening}
+                            onValueChange={setAdoptOpening}
+                          />
+                        </FieldNote>
+                      )}
+                    </>
                   ) : (
-                    <FieldNote note={tr.importer.openingAdoptHint(monthLabel(currentStartMonth ?? workbookOpening.month))}>
-                      <Toggle
-                        label={tr.importer.openingAdopt}
-                        value={adoptOpening}
-                        onValueChange={setAdoptOpening}
-                      />
-                    </FieldNote>
+                    <Body muted style={{ marginTop: spacing.sm }}>{tr.importer.openingNone}</Body>
                   )}
                 </Card>
               ) : null}

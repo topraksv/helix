@@ -591,11 +591,12 @@ export const tr = {
       subscriptions: "Abonelikler, fiyat geçmişleri ve bekleyen ödemeleri. Geçmişte ödediğin faturalar Mali Tablo'da kalır.",
       incomes: "Düzenli gelir kuralların ve bekleyen gelirleri. Hesabına geçmiş girişler Mali Tablo'da kalır.",
       budgets: "Seçilen aylara ait bütçe hedeflerin.",
-      investments: "Yatırım işlemlerin. Ürünlerin ve cüzdan ayarların korunur.",
+      investments: "Yatırım işlemlerin. Ürünlerin korunur; tüm işlemleri silersen cüzdanın açılış nakdi de sıfırlanır.",
     },
     undatedNote: "Kural niteliğinde oldukları için tarih aralığı bu kapsama uygulanmaz; hepsi sıfırlanır.",
     investmentTailNote: "Yatırımlarda yalnızca başlangıç tarihi dikkate alınır: o tarihten sonraki tüm işlemler silinir. Ortadan dilim almak alım-satım zincirini bozardı.",
     anchorNote: "Tüm tarihleri seçtiğin için açılış bakiyen ve başlangıç ayın da sıfırlanır.",
+    walletNote: "Tüm yatırım işlemlerini sildiğin için cüzdanın açılış nakdi de sıfırlanır. Mali Tablo'dan yatırıma aktardığın tutarlar duruyorsa serbest bakiyende onlar kalır.",
     straddling: (count: number) =>
       count === 1
         ? "1 taksit planı seçilen aralığı aştığı için korunuyor."
@@ -616,6 +617,8 @@ export const tr = {
     passwordBody: "Seçilen kayıtları kalıcı olarak silmek için şifreni gir. Bu işlem geri alınamaz.",
     running: "Kayıtlar siliniyor",
     done: (count: number) => `${count} kayıt silindi.`,
+    donePartialTidy: (count: number) =>
+      `${count} kayıt silindi. Ekstre ve bekleyen ödeme gibi türetilmiş kayıtların düzenlenmesi tamamlanamadı; uygulamayı bir sonraki açışında kendiliğinden toparlanacak.`,
     doneNothing: "Silinecek kayıt bulunamadı.",
     failed: "Kayıtlar silinemedi. Hiçbir şey silinmedi; tekrar dene.",
     action: "Seçilenleri Sıfırla",
@@ -816,7 +819,8 @@ export const tr = {
     skippedHint: "Bu satırlar okundu ama aktarılmıyor: karta yaptığın ödeme, harcamalarının kendisiyle aynı parayı ikinci kez sayardı.",
     descriptionLabel: "İşyeri adı",
     removeConfirm: "Bu satır listeden çıkarılacak ve aktarılmayacak. Dosyanda bir şey değişmez.",
-    needsCategoryRow: "Bu satır için bir kalem seç.",
+    uncategorizedRow: "Bu satır için bir kalem bulunamadı; kalemsiz aktarılacak. İstersen düzenleyip seç.",
+    noCategory: "Kalemsiz",
     rejectedTitle: "Okunamayan satırlar",
     rejectedHint: "Bu satırlar güvenle okunamadı, bu yüzden hiçbiri aktarılmadı. İstersen elle ekleyebilirsin.",
     reasons: {
@@ -847,8 +851,18 @@ export const tr = {
     clearSelection: "Seçimi Temizle",
     category: "Kalem",
     committed: (count: number) => `${count} işlem aktarıldı.`,
+    plansCommitted: (count: number) =>
+      count === 1 ? "1 taksit planı oluşturuldu." : `${count} taksit planı oluşturuldu.`,
     skipped: (count: number) => `${count} satır zaten kayıtlıydı, atlandı.`,
-    needsCategory: "Aktarmadan önce her satıra bir kalem seç.",
+    periodTitle: "Bu ekstre hangi döneme ait?",
+    periodHint: "Ekstredeki tarihlerden bulundu. Aktarılan her satır bu dönemin ödeme gününe yazılır; satırların üzerindeki tarihler alışverişin yapıldığı gün olarak saklanır.",
+    periodCard: "Ekstrenin kartı",
+    periodNoCard: "Kart yok",
+    periodCardHint: "Kartı seçersen ödeme günü kartın kendi hesap kesim/son ödeme düzeninden gelir ve satırlar o ekstreye bağlanır.",
+    periodChargeDate: (date: string) => `Ödeme günü: ${date}`,
+    planWillCreate: (count: number, month: string) =>
+      `Taksitlerde ${count} taksitlik bir plan açılacak (ilk taksit: ${month}).`,
+    needsAmount: "Aktarmadan önce her satırın adı ve tutarı dolu olmalı.",
     a11yRow: (description: string, amount: string, date: string, state: string) =>
       `${description}, ${amount}, ${date}. ${state}`,
   },
@@ -934,7 +948,6 @@ export const tr = {
     analysis: "Analiz",
     installments: "Taksitler",
     emptyMonth: "Bu ayda kayıt yok",
-    emptyYearHint: "İşlem ekleyerek veya geçmiş ay girişiyle başlayabilirsin.",
     monthsAsRows: productTerms.rowFocused,
     monthsAsColumns: productTerms.columnFocused,
     editColumns: `${productTerms.columns}ı Düzenle`,
@@ -1295,7 +1308,7 @@ export const tr = {
     chartTotal: "Toplam",
     chartLargestShare: (label: string, percent: number) => `En büyük pay · ${label} · %${percent}`,
     chartExpenseDist: "Harcama ve yatırım dağılımı",
-    chartEmpty: "Henüz veri yok; grafik sıfırdan başlıyor.",
+    chartEmpty: "Henüz veri yok.",
     monthlyFlows: "Aylık gelir, gider ve yatırım",
     trendOf: (c: string, months: number) => `${c} · ${months} ay`,
   },
@@ -1441,6 +1454,11 @@ export const tr = {
     /** What a quarantined row is called when `syncQuarantineTypes` has no
      *  entry for it — a dead letter can name a table a newer build added. */
     syncQuarantineTypeFallback: "kayıt",
+    balanceColumnsTitle: "Bakiye kolonları",
+    balanceColumnsHint: "Mali Tablo'nun sonundaki iki kolon. Kendi tablonda başka adlarla anıyorsan burada değiştir; ay başı kolonunu hiç kullanmıyorsan kapatabilirsin.",
+    balanceOpeningLabel: "Ay başı kolonunun adı",
+    balanceClosingLabel: "Bakiye kolonunun adı",
+    balanceColumnsPlaceholder: (fallback: string) => `Boş bırakırsan: ${fallback}`,
     columnVisible: "Mali Tablo'da göster",
     deleteCategoryTitle: "Kalemi sil",
     deleteCategoryBody: (count: number) =>
@@ -1727,6 +1745,9 @@ export const tr = {
     openingTitle: "Başlangıç bakiyesi",
     openingHint: "Mali tablonun tamamı bu tek tutardan zincirlenir. Dosyandaki en erken ayın “ay başında eldeki para” hücresinden okundu.",
     openingEarlier: "Bu ay şu anki başlangıcından daha erken, o yüzden başlangıç buraya alınacak.",
+    openingColumn: "Ay başı bakiyesi hangi kolondan?",
+    openingColumnAuto: "Başlığa göre seç",
+    openingNone: "Bu seçimle açılış bakiyesi okunmuyor; başlangıç ayın ve açılış bakiyen olduğu gibi kalır.",
     openingAdopt: "Başlangıç bakiyesini bu dosyadan güncelle",
     openingAdoptHint: (month: string) =>
       `Kapalı bırakırsan ${month} ayındaki mevcut başlangıcın korunur. Bakiyen tutmuyorsa ve dosyandaki tutar doğruysa aç.`,

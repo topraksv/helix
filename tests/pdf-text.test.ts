@@ -168,6 +168,52 @@ describe("refusing what it cannot read, with a reason", () => {
     expect(result.ok).toBe(true);
   });
 
+  /**
+   * The defect that made this module's inflate a dependency decision.
+   *
+   * The old inflate allocated 12x the compressed length and read the whole
+   * buffer back, so a text layer that deflated better than that was cut off
+   * mid-document and still reported `ok`. A statement's text layer is exactly
+   * the shape that compresses well — the same merchant names, dates and column
+   * headers over and over — and the measured case was a 900 KB layer at 331:1
+   * coming back 3.6% complete with the closing balance gone.
+   *
+   * 4.000 identical lines deflate at roughly 1.000:1 here, which is comfortably
+   * past the old ceiling and inside DEFLATE's documented 1032:1 maximum.
+   */
+  it("reads a text layer that compresses far better than any fixed estimate", async () => {
+    const lines = Array.from({ length: 4_000 }, () => "MIGROS MARKET ODEME 1.234,56");
+    const pdf = makePdf([...lines, "KAPANIS BAKIYESI 9.876,54"]);
+
+    const result = await extractPdfText(pdf);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    // The LAST line is the assertion. Anything that truncates keeps the head of
+    // the document and loses the tail, which is where a statement puts the
+    // figure the whole import exists to read.
+    expect(result.text).toContain("KAPANIS BAKIYESI 9.876,54");
+    expect(result.text.match(/MIGROS MARKET/g)).toHaveLength(4_000);
+  });
+
+  /**
+   * The other half of the same defect: the surplus of that over-allocation was
+   * never zeroed, and everything downstream scanned it. Measured on a two-line
+   * statement, the extracted text carried 189 characters of whatever had been
+   * in that memory — JavaScript source fragments — and raising the estimate to
+   * fix the truncation above made this one worse in proportion.
+   *
+   * There is no surplus to leak now, so the check is exact: what comes out is
+   * what the stream said, and nothing after it.
+   */
+  it("returns the stream's own bytes and nothing that was after them", async () => {
+    const result = await extractPdfText(makePdf(["ILK SATIR", "SON SATIR"]));
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.text.trim()).toBe("ILK SATIR\nSON SATIR");
+  });
+
   it("bounds what a single stream may expand to", async () => {
     const bomb = deflateSync(Buffer.alloc(2_000_000, 0x41));
     const parts: Buffer[] = [

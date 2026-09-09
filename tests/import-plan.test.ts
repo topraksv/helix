@@ -22,6 +22,7 @@ const sheet: ParsedSheet = {
   ],
   skippedColumns: [],
   openingBalance: null,
+  openingCandidates: [],
 };
 
 describe("spreadsheet import planner", () => {

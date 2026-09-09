@@ -1,6 +1,7 @@
 import { newId } from "../../db/ids";
 import { pruneAttentionState, type AttentionState } from "../../domain/attention";
 import { parseMatrixColorLabels, type MatrixColorLabels } from "../../domain/matrix-colors";
+import { parseBalanceColumns, type StoredBalanceColumns } from "../../domain/matrix-preferences";
 import {
   discardSyncDeadLetter as discardLocalSyncDeadLetter,
   pendingOutboxCount,
@@ -63,6 +64,18 @@ export function setMatrixColorLabels(userId: string, labels: MatrixColorLabels):
  */
 export function setBalanceDeclaration(userId: string, minor: number, at: string): Promise<void> {
   return writeSetting(userId, "balance_declared", { minor, at });
+}
+
+/**
+ * What the owner calls the two balance columns, and whether both are drawn.
+ *
+ * Written as one value for the reason the colour labels are: the three parts
+ * are one decision made on one card, and storing them separately would let two
+ * devices sync half of it.
+ */
+export function setBalanceColumns(userId: string, columns: StoredBalanceColumns): Promise<void> {
+  if (parseBalanceColumns(columns) === null) throw new Error("Invalid balance column preference");
+  return writeSetting(userId, "balance_columns", columns);
 }
 
 /**

@@ -68,7 +68,6 @@ export const investmentProfiles = sqliteTable("investment_profiles", {
   ...syncColumns,
   startedOn: text("started_on").notNull(),
   openingCashMinor: integer("opening_cash_minor").notNull(),
-  setupCompleted: integer("setup_completed", { mode: "boolean" }).notNull().default(false),
 });
 
 export const investmentProducts = sqliteTable("investment_products", {

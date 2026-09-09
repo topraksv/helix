@@ -189,4 +189,60 @@ describe("cash-flow matrix model", () => {
     });
     expect(model.months).toHaveLength(12);
   });
+
+  it("drops the month-opening column when the owner has no use for it", () => {
+    const ledger = buildLedger({
+      openingBalanceMinor: 1_000_00,
+      startMonth: "2026-01",
+      endMonth: "2026-12",
+      transactions: [],
+      adjustments: [],
+      today: "2026-12-31",
+    });
+    const build = (showOpening: boolean | undefined) => buildCashFlowMatrixModel({
+      year: 2026,
+      yearMonths: ledger,
+      categories: [],
+      computedColumns: [],
+      transactions: [],
+      creditCardIds: new Set(),
+      liveCategoryIds: new Set(),
+      today: "2026-12-31",
+      openingLabel: "Ay Başı",
+      closingLabel: "Güncel Bakiye",
+      showOpening,
+    });
+
+    // The closing balance has no such switch: it is the figure the whole
+    // ledger exists to produce, so hiding it would empty the table of its
+    // point. Only the repeated one goes.
+    expect(build(false).columns.map((column) => column.key)).toEqual(["closing"]);
+    expect(build(true).columns.map((column) => column.key)).toEqual(["opening", "closing"]);
+    expect(build(undefined).columns.map((column) => column.key)).toEqual(["opening", "closing"]);
+  });
+
+  it("carries the owner's own names onto the balance columns", () => {
+    const ledger = buildLedger({
+      openingBalanceMinor: 0,
+      startMonth: "2026-01",
+      endMonth: "2026-12",
+      transactions: [],
+      adjustments: [],
+      today: "2026-12-31",
+    });
+    const model = buildCashFlowMatrixModel({
+      year: 2026,
+      yearMonths: ledger,
+      categories: [],
+      computedColumns: [],
+      transactions: [],
+      creditCardIds: new Set(),
+      liveCategoryIds: new Set(),
+      today: "2026-12-31",
+      openingLabel: "Ay Sonu",
+      closingLabel: "Toplam",
+    });
+
+    expect(model.columns.map((column) => column.label)).toEqual(["Ay Sonu", "Toplam"]);
+  });
 });

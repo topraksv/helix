@@ -380,9 +380,11 @@ function ledgerBundle(input: {
   adjustments: { date: ISODate; amountMinor: number }[];
   year: number;
   today: ISODate;
-}): LedgerBundle | null {
-  const chain = buildLedgerChain({ ...input, endYear: ledgerChainEndYear(input.year, input.today) });
-  return chain ? sliceLedgerYear(chain, input.year) : null;
+}): LedgerBundle {
+  return sliceLedgerYear(
+    buildLedgerChain({ ...input, endYear: ledgerChainEndYear(input.year, input.today) }),
+    input.year,
+  );
 }
 
 describe("the ledger bundle a screen reads", () => {
@@ -395,8 +397,56 @@ describe("the ledger bundle a screen reads", () => {
     today: "2026-07-15" as const,
   };
 
-  it("returns nothing at all until an opening month is configured", () => {
-    expect(ledgerBundle({ ...base, configuredStart: null, transactions: [] })).toBeNull();
+  /**
+   * The state a workspace is in the moment its ledger is cleared, and the one
+   * this used to answer with `null` — which each screen then read as "still
+   * loading", "no records this month" or "your data could not be read".
+   */
+  describe("with no opening month configured", () => {
+    const unanchored = { ...base, configuredStart: null, openingBalanceMinor: 0 };
+
+    it("opens this month at zero when there is nothing to show", () => {
+      const bundle = ledgerBundle({ ...unanchored, transactions: [] });
+      expect(bundle.startMonth).toBe("2026-07");
+      expect(bundle.actualBalanceMinor).toBe(0);
+    });
+
+    it("starts where the data starts and counts all of it", () => {
+      const bundle = ledgerBundle({
+        ...unanchored,
+        transactions: [
+          tx({ type: "income", amountTryMinor: 900_00, effectiveDate: "2026-03-04" }),
+          tx({ type: "expense", amountTryMinor: 250_00, effectiveDate: "2026-05-20" }),
+        ],
+      });
+      expect(bundle.startMonth).toBe("2026-03");
+      expect(required(bundle.ledger.find((month) => month.month === "2026-03")).openingMinor).toBe(0);
+      expect(bundle.actualBalanceMinor).toBe(650_00);
+    });
+
+    /**
+     * The reset's own failure mode, and the reason this is not merely about a
+     * blank first render: the anchor goes with an unbounded ledger reset, so
+     * every row entered AFTERWARDS was refused before the chain looked at it.
+     */
+    it("shows a row entered after the ledger was cleared", () => {
+      const bundle = ledgerBundle({
+        ...unanchored,
+        transactions: [tx({ type: "income", amountTryMinor: 120_00, effectiveDate: "2026-07-02" })],
+      });
+      expect(bundle.actualBalanceMinor).toBe(120_00);
+      expect(required(bundle.yearMonths.find((month) => month.month === "2026-07")).closingMinor).toBe(120_00);
+    });
+
+    it("keeps a balance adjustment as its own kind of record", () => {
+      const bundle = ledgerBundle({
+        ...unanchored,
+        transactions: [],
+        adjustments: [{ date: "2026-04-10", amountMinor: 500_00 }],
+      });
+      expect(bundle.startMonth).toBe("2026-04");
+      expect(bundle.actualBalanceMinor).toBe(500_00);
+    });
   });
 
   it("takes the current balance from the chain's current month, not a second scan", () => {
@@ -442,5 +492,67 @@ describe("the ledger bundle a screen reads", () => {
     expect(required(hidden.ledger.find((month) => month.month === "2026-09")).byCategory.get("cat")).toBeUndefined();
     // Either way a pending row never moves the balance.
     expect(shown.actualBalanceMinor).toBe(hidden.actualBalanceMinor);
+  });
+});
+
+/**
+ * The floor the Mali Tablo offers as a year, which is not the floor the chain
+ * has to start from.
+ */
+describe("the earliest month that actually holds something", () => {
+  const base = {
+    includePendingInCells: false,
+    adjustments: [] as { date: ISODate; amountMinor: number }[],
+    year: 2026,
+    today: "2026-07-15" as const,
+  };
+
+  it("is null for a workspace with an anchor and nothing in it", () => {
+    const bundle = ledgerBundle({ ...base, configuredStart: "2020-01", openingBalanceMinor: 50_000_00, transactions: [] });
+    expect(bundle.startMonth).toBe("2020-01");
+    expect(bundle.firstRecordedMonth).toBeNull();
+  });
+
+  /**
+   * An import writes an anchor. Bringing one year of a ten-year workbook used
+   * to leave the other nine reachable, each a page of blank rows with the
+   * balance columns carrying the opening figure across them — the table said
+   * data was there and every cell said it was not.
+   */
+  it("is the first recorded month even when the anchor is years earlier", () => {
+    const bundle = ledgerBundle({
+      ...base,
+      configuredStart: "2020-01",
+      openingBalanceMinor: 50_000_00,
+      transactions: [tx({ type: "expense", amountTryMinor: 300_00, effectiveDate: "2026-03-04" })],
+    });
+    expect(bundle.startMonth).toBe("2020-01");
+    expect(bundle.firstRecordedMonth).toBe("2026-03");
+    // The chain is untouched: the balance at the first recorded month is still
+    // the opening figure carried across the empty years, so hiding those years
+    // changes navigation and no arithmetic.
+    expect(required(bundle.yearMonths.find((month) => month.month === "2026-03")).openingMinor).toBe(50_000_00);
+  });
+
+  it("counts a balance correction, not only a transaction", () => {
+    const bundle = ledgerBundle({
+      ...base,
+      configuredStart: "2026-01",
+      openingBalanceMinor: 0,
+      transactions: [tx({ type: "expense", amountTryMinor: 10_00, effectiveDate: "2026-06-01" })],
+      adjustments: [{ date: "2026-02-10", amountMinor: 500_00 }],
+    });
+    expect(bundle.firstRecordedMonth).toBe("2026-02");
+  });
+
+  it("reaches back past the anchor when the data does", () => {
+    const bundle = ledgerBundle({
+      ...base,
+      configuredStart: "2026-01",
+      openingBalanceMinor: 0,
+      transactions: [tx({ type: "expense", amountTryMinor: 10_00, effectiveDate: "2025-11-02" })],
+    });
+    expect(bundle.startMonth).toBe("2025-11");
+    expect(bundle.firstRecordedMonth).toBe("2025-11");
   });
 });

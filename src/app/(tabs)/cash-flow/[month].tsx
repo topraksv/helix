@@ -17,6 +17,7 @@ import { monthFlowTotals } from "../../../domain/balance";
 import { firstDayOf, isMonthKey, lastDayOf, monthKeyOf, todayISO, yearOf } from "../../../domain/dates";
 import {
   useAttachmentsState,
+  useBalanceColumns,
   useCategoriesState,
   useCellNotesState,
   useLedgerState,
@@ -121,6 +122,7 @@ function MonthFlowSummary({
   flows: ReturnType<typeof monthFlowTotals>;
 }) {
   const { palette } = useTheme();
+  const balanceColumns = useBalanceColumns();
   const deltas = [
     {
       key: "income",
@@ -161,19 +163,19 @@ function MonthFlowSummary({
         accessible
         accessibilityRole="image"
         accessibilityLabel={[
-          `${tr.cashflow.opening}: ${formatMinorCompact(flows.openingMinor)}`,
+          `${balanceColumns.openingLabel}: ${formatMinorCompact(flows.openingMinor)}`,
           ...deltas.map((delta) => `${delta.label}: ${formatMinorCompact(delta.minor)}`),
-          `${tr.cashflow.closing}: ${formatMinorCompact(flows.closingMinor)}`,
+          `${balanceColumns.closingLabel}: ${formatMinorCompact(flows.closingMinor)}`,
         ].join(". ")}
       >
         <View>
           <View style={{ flexDirection: "row", alignItems: "flex-start", gap: spacing.sm }}>
             <View testID="month-opening-balance" style={{ flex: 1, minWidth: 0 }}>
-              <Body muted style={{ fontSize: type.caption.fontSize, textAlign: "left" }}>{tr.cashflow.opening}</Body>
+              <Body muted style={{ fontSize: type.caption.fontSize, textAlign: "left" }}>{balanceColumns.openingLabel}</Body>
             </View>
             <View style={{ width: 64, flexShrink: 0 }} />
             <View testID="month-closing-balance" style={{ flex: 1, minWidth: 0, alignItems: "flex-end" }}>
-              <Body muted style={{ fontSize: type.caption.fontSize, textAlign: "right" }}>{tr.cashflow.closing}</Body>
+              <Body muted style={{ fontSize: type.caption.fontSize, textAlign: "right" }}>{balanceColumns.closingLabel}</Body>
             </View>
           </View>
           <View style={{ flexDirection: "row", alignItems: "flex-end", gap: spacing.sm, marginTop: spacing.xs }}>

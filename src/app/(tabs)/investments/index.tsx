@@ -368,7 +368,24 @@ export default function InvestmentsScreen() {
   if (!state) {
     return (
       <Screen title={tr.investments.title}>
-        <DataStateNotice status={status === "ready" ? "error" : status} retry={retry} />
+        {/* Two different failures wore one sentence. `DataStateNotice` says
+            the device's finance data could not be READ, which is true while a
+            query is still failing and false once every query has answered: at
+            that point the rows arrived and the REPLAY refused them — an
+            oversold holding, a wallet that paid out more than it took in.
+            Telling someone their data is unreadable when the ledger has told
+            us exactly what is wrong with it hides the one sentence that could
+            lead anywhere. `userMessage` is the same mapping the delete path
+            above already uses for these codes. */}
+        {status === "ready" ? (
+          <EmptyState
+            icon={Landmark}
+            title={tr.investments.title}
+            hint={userMessage(wallet.error, tr.investments.insufficientCash)}
+          />
+        ) : (
+          <DataStateNotice status={status} retry={retry} />
+        )}
       </Screen>
     );
   }

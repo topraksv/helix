@@ -26,7 +26,9 @@ import { fromDbShape, nowIso, writeRowBatchesAtomically, type RowWrite } from ".
 import type { SyncedTableName } from "../../db/schema";
 import { addMonthsToKey, firstDayOf, lastDayOf, monthKeyOf, type ISODate, type MonthKey } from "../../domain/dates";
 import { assertInvestmentWrites } from "./investment-validation";
+import { runMaintenance } from "./maintenance";
 import { InvestmentDomainError } from "../../domain/investments";
+import { devWarning } from "../../services/logger";
 
 /**
  * What a reset can be asked to clear.
@@ -78,6 +80,8 @@ export interface ResetPreview {
   straddlingPlans: number;
   /** Whether the opening balance and start month go with it. */
   clearsLedgerAnchor: boolean;
+  /** Whether the investment wallet's own opening cash and start day go with it. */
+  clearsInvestmentWallet: boolean;
   /**
    * The investment ledger's own refusal code, or null when it does not object.
    *
@@ -88,6 +92,13 @@ export interface ResetPreview {
 
 export interface ResetOutcome {
   deleted: number;
+  /**
+   * Whether the derived-state sweep that follows the delete also succeeded.
+   *
+   * Reported rather than thrown so the caller can say the true thing: the rows
+   * are gone either way, and only the tidy-up is in question.
+   */
+  tidied: boolean;
 }
 
 interface Predicate {
@@ -155,12 +166,35 @@ function outside(column: string, low: string | null, high: string | null): Predi
 }
 
 /**
+ * A row no LIVE instalment plan claims.
+ *
+ * `installment_plan_id IS NULL` was the whole test, and it left a hole nothing
+ * could reach: a row pointing at a plan that is already tombstoned belongs to
+ * neither scope. The ledger scope refused it because the column was not null,
+ * and the instalment scope refused it because `wholePlansIn` requires a live
+ * plan. Such rows survived every reset, including "everything, all dates" —
+ * so a workspace the owner had just cleared still carried a balance, and the
+ * one screen that would explain it (Taksitler) showed nothing, because the
+ * plan those rows belong to no longer exists.
+ *
+ * `p2` rather than `p`: this predicate is nested inside `wholePlansIn`'s own
+ * `EXISTS (… installment_plans p …)` in the instalment selectors.
+ */
+function unclaimedByLivePlan(alias: string): string {
+  return `(${alias}.installment_plan_id IS NULL OR NOT EXISTS (
+    SELECT 1 FROM installment_plans p2
+    WHERE p2.id = ${alias}.installment_plan_id AND p2.user_id = ${alias}.user_id AND p2.deleted_at IS NULL
+  ))`;
+}
+
+/**
  * Plain ledger rows: what a person typed, imported or confirmed into a month.
  *
- * Instalments are excluded by `installment_plan_id IS NULL`, because a plan is
- * its own scope. Deleting half a schedule would leave a loan whose remaining
- * rows no longer add up to it — a Taksitler screen with holes in it, which is
- * worse than either keeping or removing the whole plan.
+ * Instalments of a LIVE plan are excluded, because a plan is its own scope.
+ * Deleting half a schedule would leave a loan whose remaining rows no longer
+ * add up to it — a Taksitler screen with holes in it, which is worse than
+ * either keeping or removing the whole plan. An orphan is a different thing
+ * and is claimed here; see `unclaimedByLivePlan`.
  *
  * `owner` is how the alias binds to the account: `"?"` at the top level, or the
  * outer alias when this predicate is nested in an `EXISTS`. Passing it in is
@@ -170,7 +204,7 @@ function outside(column: string, low: string | null, high: string | null): Predi
 function ledgerRowsIn(range: ResetRange, alias: string, owner: string): Predicate {
   const bounds = within(`${alias}.effective_date`, range.from, range.to);
   return {
-    sql: `${alias}.user_id = ${owner} AND ${alias}.deleted_at IS NULL AND ${alias}.installment_plan_id IS NULL${bounds.sql}`,
+    sql: `${alias}.user_id = ${owner} AND ${alias}.deleted_at IS NULL AND ${unclaimedByLivePlan(alias)}${bounds.sql}`,
     args: bounds.args,
   };
 }
@@ -392,6 +426,18 @@ function clearsAnchor(selection: ResetSelection): boolean {
 }
 
 /**
+ * Whether the whole investment history is being cleared, wallet and all.
+ *
+ * Only `from` is consulted, because only `from` reaches this scope at all: the
+ * selectors cut a tail, never a slice, and `investmentTailNote` says so on the
+ * screen. A selection with an end date but no start still takes every
+ * operation, so it still empties the wallet.
+ */
+function clearsWallet(selection: ResetSelection): boolean {
+  return selection.scopes.includes("investments") && selection.range.from == null;
+}
+
+/**
  * The opening balance and the month the ledger starts at.
  *
  * They go only with an unbounded ledger reset, and they go TOGETHER: the two
@@ -415,6 +461,48 @@ async function anchorWrites(userId: string): Promise<RowWrite[]> {
     [userId],
   );
   return rows.map((row) => ({ table: "settings" as const, row: { ...fromDbShape("settings", row), deletedAt } }));
+}
+
+/**
+ * The investment wallet's opening cash.
+ *
+ * The exact counterpart of `anchorWrites`, and for a long time the missing
+ * half of it. An unbounded ledger reset clears `opening_balance_minor` because
+ * a declared balance with nothing behind it is a claim about nothing. The
+ * wallet's `opening_cash_minor` is the same kind of claim and was kept, so
+ * clearing every operation left the free balance holding the setup figure and,
+ * with it, the money those operations had spent. What the owner saw was the
+ * products going and the cash that bought them coming back.
+ *
+ * `started_on` deliberately does NOT move with it, and this is the trap worth
+ * writing down. The wallet holds no cash-in rows of its own: it reads transfer
+ * rows out of the Mali Tablo and keeps those dated on or after that day, so
+ * advancing the date to today looks like a tidy way to drop old transfers. It
+ * is not. A transfer OUT dated today would then be subtracted from a wallet
+ * declared empty this morning, the replay would refuse the whole reset as
+ * `insufficient_cash`, and the day a person is most likely to clear their
+ * investments is the day they have just moved the balance out of them.
+ *
+ * Leaving the date alone keeps both directions honest. Clear the ledger too
+ * and the transfers go with it, so the wallet lands at zero — the case that
+ * was reported. Clear investments ALONE and the wallet still holds whatever
+ * the Mali Tablo says was moved into it, which is not a leftover: that money
+ * left the spendable balance and something has to be holding it.
+ *
+ * A wallet already at zero is skipped, so it is not written, not synced, and
+ * not counted in a preview the owner reads as "records to be deleted".
+ */
+async function walletWrites(userId: string): Promise<RowWrite[]> {
+  const sqlite = await getSqliteAsync();
+  const rows = await sqlite.getAllAsync<Record<string, unknown>>(
+    `SELECT * FROM investment_profiles
+     WHERE user_id = ? AND deleted_at IS NULL AND opening_cash_minor != 0`,
+    [userId],
+  );
+  return rows.map((row) => ({
+    table: "investment_profiles" as const,
+    row: { ...fromDbShape("investment_profiles", row), openingCashMinor: 0 },
+  }));
 }
 
 async function countRows(userId: string, table: SyncedTableName, where: string, args: string[]): Promise<number> {
@@ -451,6 +539,7 @@ async function collectWrites(userId: string, selection: ResetSelection): Promise
   }
 
   if (clearsAnchor(selection)) writes.push(...(await anchorWrites(userId)));
+  if (clearsWallet(selection)) writes.push(...(await walletWrites(userId)));
   return writes;
 }
 
@@ -485,12 +574,17 @@ async function straddlingPlanCount(userId: string, range: ResetRange): Promise<n
  */
 async function movesInvestments(userId: string, selection: ResetSelection): Promise<boolean> {
   const chosen = new Set(selection.scopes);
-  // Resetting investments ALONE is never the thing that breaks the replay, so
-  // it is not asked about here. The cut is a suffix by construction, and the
-  // prefix it leaves is the state the account was already in at that date —
-  // valid then, valid now. What can break the replay is money: a ledger row in
-  // a transfer category is what funded the wallet, and taking it back out is
-  // the one selection that can leave the wallet holding what it never paid for.
+  // Deleting operations alone never breaks the replay: the cut is a suffix by
+  // construction, and the prefix it leaves is the state the account was
+  // already in on that date — valid then, valid now.
+  //
+  // Two things CAN break it, and both are money rather than holdings. Taking
+  // back a ledger row in a transfer category removes what funded the wallet.
+  // And clearing the wallet's opening cash removes the other half of the same
+  // funding, which is why an unbounded investments reset now asks: a wallet
+  // that opened with 10.000 and has since sent 8.000 back to the Mali Tablo
+  // cannot be re-declared as having opened with nothing.
+  if (clearsWallet(selection)) return true;
   const transferCategory = `EXISTS (
     SELECT 1 FROM categories c WHERE c.id = t.category_id AND c.user_id = t.user_id AND c.is_transfer = 1
   )`;
@@ -542,6 +636,12 @@ export async function previewDataReset(userId: string, selection: ResetSelection
     counts[selector.scope] += await countRows(userId, selector.table, selector.where, selector.args);
   }
   if (clearsAnchor(selection)) counts.ledger += (await anchorWrites(userId)).length;
+  // Asked once and reported from the answer. A wallet already at zero produces
+  // no write, so the note must not appear either — "your opening cash will be
+  // cleared" about a wallet that has none is noise on a screen whose whole job
+  // is that nothing it says is a surprise.
+  const wallet = clearsWallet(selection) ? await walletWrites(userId) : [];
+  counts.investments += wallet.length;
 
   const blocker = (await movesInvestments(userId, selection))
     ? await investmentBlocker(userId, await collectWrites(userId, selection))
@@ -552,6 +652,7 @@ export async function previewDataReset(userId: string, selection: ResetSelection
     total: Object.values(counts).reduce((sum, value) => sum + value, 0),
     straddlingPlans: await straddlingPlanCount(userId, selection.range),
     clearsLedgerAnchor: clearsAnchor(selection),
+    clearsInvestmentWallet: wallet.length > 0,
     blocker,
   };
 }
@@ -568,7 +669,7 @@ const RESET_BATCH = 400;
  */
 export async function performDataReset(userId: string, selection: ResetSelection): Promise<ResetOutcome> {
   const writes = await collectWrites(userId, selection);
-  if (writes.length === 0) return { deleted: 0 };
+  if (writes.length === 0) return { deleted: 0, tidied: true };
   const batches: RowWrite[][] = [];
   for (let offset = 0; offset < writes.length; offset += RESET_BATCH) {
     batches.push(writes.slice(offset, offset + RESET_BATCH));
@@ -579,5 +680,30 @@ export async function performDataReset(userId: string, selection: ResetSelection
     false,
     (sqlite) => assertInvestmentWrites(sqlite, userId, writes).then(() => undefined),
   );
-  return { deleted: writes.length };
+  // Outside the transaction, and for the same reason `deletePerson` ends this
+  // way: what a bulk delete leaves behind is derived state, and only the
+  // maintenance pass knows how to derive it. Two things here needed it and
+  // neither was getting it until the next foreground, up to a minute later or
+  // a relaunch away.
+  //
+  // A credit-card statement is the clearer one. It is a record of a billed
+  // period and no selector above claims it, so clearing the ledger left every
+  // statement standing over lines that no longer existed — six rows of ₺0 on
+  // the payment-source screen. Reproducing the sweep here would have been a
+  // second copy of a query maintenance already runs, and the two would drift.
+  //
+  // The other is the expected payments this module tombstones on purpose: a
+  // rule that survives its settled obligation is meant to get a fresh pending
+  // one, which the comment on that selector already promises.
+  //
+  // Best-effort, and that is the whole point: the delete is COMMITTED by the
+  // line above. Letting the tidy-up throw out of here made a finished reset
+  // report itself as a failure that had deleted nothing — the owner was told
+  // to try again while every row was already gone. The pass runs on every
+  // foreground anyway, so a failure here costs a minute, not the data.
+  const tidied = await runMaintenance(userId).then(() => true, (error) => {
+    devWarning("reset.maintenance", String(error));
+    return false;
+  });
+  return { deleted: writes.length, tidied };
 }

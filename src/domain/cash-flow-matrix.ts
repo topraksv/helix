@@ -49,6 +49,15 @@ export function buildCashFlowMatrixModel(input: {
   today: ISODate;
   openingLabel: string;
   closingLabel: string;
+  /**
+   * Whether the month-opening column is drawn at all.
+   *
+   * The closing balance has no such switch: it is the figure the whole ledger
+   * exists to produce. The opening one is a convenience — the previous month's
+   * closing, repeated — and a workbook that never carried it should not be
+   * given a column it has no use for.
+   */
+  showOpening?: boolean;
   /** First month the workspace has a ledger for; earlier months never existed. */
   startMonth?: MonthKey;
 }): CashFlowMatrixModel {
@@ -117,14 +126,14 @@ export function buildCashFlowMatrixModel(input: {
     // month showed +30.000 of income beside a balance that never moved — the
     // row did not add up on its own face, and tapping it opened a card that
     // disagreed by the whole planned amount. One accessor, one dataset.
-    {
+    ...(input.showOpening === false ? [] : [{
       key: "opening",
       label: input.openingLabel,
       categoryId: null,
       computed: false,
       system: true,
-      values: new Map(input.yearMonths.map((month) => [month.month, monthFlowTotals(month).openingMinor])),
-    },
+      values: new Map(input.yearMonths.map((month): [MonthKey, number | null] => [month.month, monthFlowTotals(month).openingMinor])),
+    }]),
     {
       key: "closing",
       label: input.closingLabel,

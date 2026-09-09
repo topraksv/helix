@@ -379,13 +379,25 @@ test("a card statement is read locally, reviewed, and only then written", async 
   // Nothing is in the ledger yet.
   await expect(page.getByTestId("statement-commit")).toBeVisible();
 
+  // The period is read off the paper and shown before anything is written: it
+  // is the one month this import may reach, and every accepted line is settled
+  // on its day rather than on the day printed beside the line.
+  await expect(page.getByTestId("statement-period")).toContainText("Ağustos 2026");
+  await expect(page.getByTestId("statement-period")).toContainText("Ödeme günü: 31 Ağustos 2026");
+
   await page.getByTestId("statement-clear-selection").click();
   await expect(page.getByTestId("statement-commit")).toBeDisabled();
   await page.getByTestId("statement-select-new").click();
   await page.getByTestId("statement-commit").click();
 
-  // Written, and reported as written.
-  await expect(page.getByRole("alert").first()).toContainText("2 işlem aktarıldı.");
+  // Written, and reported as written. The instalment line is NOT a charge: it
+  // is one payment of a plan, so it becomes the plan and the Taksitler screen
+  // can finally show it.
+  await expect(page.getByRole("alert").first()).toContainText("1 işlem aktarıldı.");
+  await expect(page.getByRole("alert").first()).toContainText("1 taksit planı oluşturuldu.");
+
+  await page.goto("/helix/cash-flow/installments");
+  await expect(page.getByText("TEKNOSA", { exact: true })).toBeVisible();
 
   // Importing the same statement again recognises every row it already wrote,
   // which is what the stored identity is FOR: re-downloading a statement and
@@ -396,6 +408,10 @@ test("a card statement is read locally, reviewed, and only then written", async 
     "03.08.2026 TEKNOSA 3/9 500,00",
   ]));
   await expect(page.getByText("Bu satır zaten aktarılmış").first()).toBeVisible();
+  // The plan the first import opened is recognised too, by the same title and
+  // count the statement prints — so next month's statement joins that plan
+  // instead of opening a rival one beside it.
+  await expect(page.getByText(/TEKNOSA taksit planı bu ödemeyi zaten oluşturuyor/u)).toBeVisible();
   // And nothing is pre-selected, so accepting the defaults writes nothing.
   await expect(page.getByTestId("statement-commit")).toBeDisabled();
 

@@ -13,6 +13,9 @@ import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 const harness = vi.hoisted(() => ({ db: null as DatabaseSync | null, nextId: 0 }));
 
+// `reset.ts` records a tidy-up it could not finish, and the recorder reaches
+// the device store. Stubbed like the rate services beside it.
+vi.mock("../src/services/logger", () => ({ devWarning: vi.fn(), devError: vi.fn() }));
 vi.mock("react-native", () => ({ Platform: { OS: "ios" } }));
 vi.mock("expo-file-system", () => ({ File: class {}, Paths: { cache: "/tmp" } }));
 vi.mock("../src/db/client", async () => {
@@ -309,6 +312,13 @@ describe("backup round trip", () => {
     const row = (extra: Record<string, unknown>) => ({
       user_id: SOURCE_USER, created_at: now, updated_at: now, deleted_at: null, tombstone_version: 0, ...extra,
     });
+    // `setup_completed` is deliberately still here. Migration 0013 dropped it
+    // from the local schema — it was written once at setup and read by nothing —
+    // and every backup taken before that carries it. `toDbShape` walks the
+    // SCHEMA's columns rather than the row's keys, so a field the schema no
+    // longer has is dropped on the way in instead of reaching the INSERT as a
+    // column that does not exist. This fixture is what proves that, and it is
+    // the reason the drop needed no compatibility shim of its own.
     bundle.tables.investment_profiles = [row({
       id: id(901), started_on: "2026-01-01", opening_cash_minor: 1_000_00, setup_completed: 1,
     })];

@@ -376,11 +376,25 @@ export function Donut({
             paints are. Without it the square around the ring swallowed every
             press — including the one in the hole that means "release". */}
         <Svg accessible={false} pointerEvents="box-none" width={fittedSize} height={fittedSize}>
+          {/* The empty ring, and the ONLY thing this circle ever shows: arcs
+              always sweep a full 360° between them, so the track is covered
+              the moment there is a single slice.
+
+              That is why `surfaceAlt` survived here for so long and why it was
+              wrong. `HeroCard` fills itself with `heroSurface`, which IS
+              `surfaceAlt` in dark mode — so on the investments hero, with a
+              wallet holding nothing, the app drew a ring in exactly its own
+              background colour. A contrast ratio of 1.00, reported as the
+              chart disappearing and leaving a total behind it.
+
+              `border` is the token for a structural line meant to be seen on
+              whichever surface it lands on, which is what an empty track is.
+              `tests/theme-contrast.test.ts` holds it against both. */}
           <Circle
             cx={cx}
             cy={cy}
             r={r}
-            stroke={palette.surfaceAlt}
+            stroke={palette.border}
             strokeWidth={strokeWidth}
             fill="none"
           />
@@ -544,9 +558,15 @@ export function Donut({
             </Text>
           </View>
         ) : null}
+        {/* A ghost legend row, and no sentence. The ring beside it is already
+            drawn empty, so explaining that in words said the same thing twice
+            — and "grafik sıfırdan başlıyor" told the owner about the chart's
+            internals rather than about their money. The bar keeps the legend
+            column its own width so the card does not resize when the first
+            holding arrives; the reading of it stays in the accessible summary
+            above, where there is no ring to look at. */}
         {[...slices, ...supplementalSlices].length === 0 ? (
           <View testID="donut-empty-state" style={{ gap: spacing.sm, marginBottom: 2 }}>
-            <Text style={[type.small, { color: palette.textSecondary }]}>{tr.analysis.chartEmpty}</Text>
             <View style={{ height: 4, borderRadius: 2, backgroundColor: palette.surfaceAlt }} />
           </View>
         ) : null}

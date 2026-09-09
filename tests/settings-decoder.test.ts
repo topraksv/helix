@@ -51,6 +51,11 @@ describe("synced settings runtime decoding", () => {
     expect(decodeSettingValue("matrix_color_labels", '{"purple":"Nope"}', null)).toEqual({ purple: "Nope" });
     expect(parseMatrixColorLabels(decodeSettingValue("matrix_color_labels", '{"purple":"Nope"}', null))).toEqual({});
     expect(decodeSettingValue("matrix_color_labels", '"red"', null)).toBeNull();
+    // What the owner calls the two balance columns, and whether both are drawn.
+    expect(decodeSettingValue("balance_columns", '{"openingLabel":"Ay Sonu","closingLabel":null,"showOpening":false}', null))
+      .toEqual({ openingLabel: "Ay Sonu", closingLabel: null, showOpening: false });
+    expect(decodeSettingValue("balance_columns", '{"openingLabel":"Ay Sonu"}', null)).toBeNull();
+    expect(decodeSettingValue("balance_columns", '"Ay Sonu"', null)).toBeNull();
   });
 
   it("still refuses a malformed declared balance", () => {

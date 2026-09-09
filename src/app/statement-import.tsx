@@ -26,7 +26,7 @@ import FileText from "lucide-react-native/icons/file-text";
 import Check from "lucide-react-native/icons/check";
 import ReceiptText from "lucide-react-native/icons/receipt-text";
 import TriangleAlert from "lucide-react-native/icons/triangle-alert";
-import { useAllTransactionsState, useCategoriesState, usePersonsState, usePlansState, useUserId } from "../data/hooks";
+import { useAllTransactionsState, useCategoriesState, usePersonsState, usePlansState, useSourcesState, useUserId } from "../data/hooks";
 import { combineLiveStates } from "../data/live-state";
 import { commitStatementRows, type AcceptedStatementRow } from "../data/repo";
 import { extractPdfText, MAX_PDF_BYTES, type PdfFailure } from "../services/pdf-text";
@@ -35,15 +35,20 @@ import {
   defaultSelection,
   parseStatement,
   periodFromDates,
+  matchStatementCategory,
   reviewCandidates,
+  statementPlanSpec,
   type CandidateVerdict,
   type StatementCandidate,
   type StatementParseResult,
+  type StatementPlanSpec,
   statementDifferenceMinor,
 } from "../domain/statement-import";
+import { isValidCardCycle, statementPeriod } from "../domain/card-statements";
+import { isMonthKey, lastDayOf, monthKeyOf, todayISO, type MonthKey } from "../domain/dates";
 import { formatMinorCompact, formatMinorInput } from "../domain/money";
 import { userMessage } from "../domain/user-error";
-import { dateLabel, tr } from "../i18n/tr";
+import { dateLabel, monthLabel, tr } from "../i18n/tr";
 import { scheduleSync } from "../sync/engine";
 import { devError } from "../services/logger";
 import {
@@ -57,6 +62,7 @@ import {
   MoneyField,
   PanelHeader,
   Row,
+  MonthStepper,
   Screen,
   SectionHeader,
 } from "../ui/components";
@@ -138,6 +144,7 @@ function StatementGuide({ wide }: { wide: boolean }) {
 function CandidateRow({
   candidate,
   draft,
+  planSpec,
   verdictText,
   selected,
   editing,
@@ -150,6 +157,8 @@ function CandidateRow({
 }: {
   candidate: StatementCandidate;
   draft: Draft;
+  /** The plan this line will open, when it opens one. Said, never assumed. */
+  planSpec: StatementPlanSpec | null;
   verdictText: string;
   selected: boolean;
   editing: boolean;
@@ -234,8 +243,11 @@ function CandidateRow({
           <Select
             label={tr.statement.category}
             value={draft.categoryId ?? ""}
-            options={categories.map((category) => ({ value: category.id, label: category.name }))}
-            onChange={(categoryId) => onChange({ categoryId })}
+            options={[
+              { value: "", label: tr.statement.noCategory },
+              ...categories.map((category) => ({ value: category.id, label: category.name })),
+            ]}
+            onChange={(categoryId) => onChange({ categoryId: categoryId === "" ? null : categoryId })}
           />
           <Row gap={spacing.sm}>
             <Button size="sm" label={tr.common.done} onPress={onCancelEdit} disabled={draft.description.trim() === "" || draft.amountMinor <= 0} />
@@ -247,8 +259,17 @@ function CandidateRow({
           <Button size="sm" variant="ghost" label={tr.common.delete} onPress={onRemove} />
         </Row>
       )}
+      {/* Said, not blocked. A line this cannot place is written without a
+          column and shows up under Kalemsiz in the Mali Tablo, which is a
+          thing the owner can find and fix in one place — unlike a hundred
+          lines quietly filed under whichever column sorted first. */}
       {selected && !editing && !draft.categoryId ? (
-        <Body muted style={{ marginTop: spacing.sm }}>{tr.statement.needsCategoryRow}</Body>
+        <Body muted style={{ marginTop: spacing.sm }}>{tr.statement.uncategorizedRow}</Body>
+      ) : null}
+      {selected && planSpec ? (
+        <Body muted style={{ marginTop: spacing.sm }}>
+          {tr.statement.planWillCreate(planSpec.installmentCount, monthLabel(planSpec.startMonth))}
+        </Body>
       ) : null}
     </Card>
   );
@@ -266,7 +287,8 @@ export default function StatementImportScreen() {
   const personsState = usePersonsState();
   const transactionsState = useAllTransactionsState();
   const plansState = usePlansState();
-  const { status, ready, retry } = combineLiveStates([categoriesState, personsState, transactionsState, plansState]);
+  const sourcesState = useSourcesState();
+  const { status, ready, retry } = combineLiveStates([categoriesState, personsState, transactionsState, plansState, sourcesState]);
 
   const [extracted, setExtracted] = useState<StatementParseResult | null>(null);
   const [failure, setFailure] = useState<PdfFailure | null>(null);
@@ -289,12 +311,33 @@ export default function StatementImportScreen() {
    */
   const [declaredRaw, setDeclaredRaw] = useState("");
   const [declaredMinor, setDeclaredMinor] = useState<number | null>(null);
+  /**
+   * The period this statement bills, and the card it belongs to.
+   *
+   * Seeded from the dates on the paper and then owned by the reader, because
+   * the period is the one fact that decides where every accepted line lands.
+   * It used to be inferred per line — each row took the day printed beside it
+   * — so one statement wrote into every month its purchases were made in.
+   */
+  const [period, setPeriod] = useState<MonthKey>(monthKeyOf(todayISO()));
+  const [cardId, setCardId] = useState<string | null>(null);
 
   const expenseCategories = useMemo(
     () => categoriesState.data.filter((category) => category.kind === "expense"),
     [categoriesState.data],
   );
   const selfPerson = personsState.data.find((person) => person.isSelf);
+  const cards = useMemo(
+    () => sourcesState.data.filter((source) => source.type === "credit_card"),
+    [sourcesState.data],
+  );
+  const card = cards.find((source) => source.id === cardId) ?? null;
+  const cycle = card && isValidCardCycle({ statementDay: card.statementDay, dueDay: card.dueDay })
+    ? { statementDay: card.statementDay!, dueDay: card.dueDay! }
+    : null;
+  // The same rule the writer applies, shown before it is applied. A screen that
+  // moves every row to one day owes the reader that day up front.
+  const chargeDate = cycle ? statementPeriod(period, cycle).dueDate : lastDayOf(period);
 
   const visibleCandidates = useMemo(
     () => (extracted?.candidates ?? []).filter((candidate) => !removed.has(candidate.importKey)),
@@ -362,8 +405,9 @@ export default function StatementImportScreen() {
           setFailure(text.reason);
           return;
         }
-        const period = periodFromDates(parseStatement(text.text, "unknown").candidates.map((candidate) => candidate.date));
-        const parsed = parseStatement(text.text, period);
+        const readPeriod = periodFromDates(parseStatement(text.text, "unknown").candidates.map((candidate) => candidate.date));
+        const parsed = parseStatement(text.text, readPeriod);
+        if (isMonthKey(readPeriod)) setPeriod(readPeriod);
         setExtracted(parsed);
         setRemoved(new Set());
         setEditingKey(null);
@@ -373,7 +417,11 @@ export default function StatementImportScreen() {
             description: candidate.description,
             amountRaw: formatMinorInput(candidate.amountMinor),
             amountMinor: candidate.amountMinor,
-            categoryId: expenseCategories[0]?.id ?? null,
+            // The owner's own column, chosen from what the line says. It used
+            // to be `expenseCategories[0]` — whichever column happened to sort
+            // first — so a whole statement was filed under one arbitrary
+            // heading and nothing on screen admitted the guess.
+            categoryId: matchStatementCategory(candidate.description, expenseCategories),
           },
         ])));
         setSelected(defaultSelection(reviewCandidates({
@@ -421,8 +469,8 @@ export default function StatementImportScreen() {
     for (const candidate of visibleCandidates) {
       if (!selected.has(candidate.importKey)) continue;
       const draft = drafts[candidate.importKey];
-      if (!draft?.categoryId || draft.description.trim() === "" || draft.amountMinor <= 0) {
-        void appAlert(tr.statement.needsCategory, tr.errors.title);
+      if (!draft || draft.description.trim() === "" || draft.amountMinor <= 0) {
+        void appAlert(tr.statement.needsAmount, tr.errors.title);
         return;
       }
       rows.push({
@@ -432,15 +480,23 @@ export default function StatementImportScreen() {
         amountMinor: draft.amountMinor,
         isRefund: candidate.isRefund,
         categoryId: draft.categoryId,
-        paymentSourceId: null,
+        // A refund printed with an instalment marker is not a plan being
+        // opened; it is money coming back off one. It stays a single line.
+        plan: candidate.isRefund ? null : statementPlanSpec(candidate, period),
       });
     }
     setBusy(true);
     try {
-      const result = await commitStatementRows(userId, selfPerson.id, rows);
+      const result = await commitStatementRows(userId, {
+        personId: selfPerson.id,
+        period,
+        paymentSourceId: cardId,
+        rows,
+      });
       scheduleSync(userId);
       undo.show([
         tr.statement.committed(result.writtenIds.length),
+        result.plansWritten > 0 ? tr.statement.plansCommitted(result.plansWritten) : null,
         result.skipped > 0 ? tr.statement.skipped(result.skipped) : null,
       ].filter(Boolean).join(" "));
       router.back();
@@ -511,6 +567,30 @@ export default function StatementImportScreen() {
 
       {extracted && hasCandidates ? (
         <>
+          {/* Before any row is read: which bill is this, and when is it paid.
+              Both are answers the paper does not reliably print, and both
+              decide where every accepted line lands — so they are asked once
+              here rather than guessed once per row. */}
+          <Card testID="statement-period">
+            <PanelHeader icon={ReceiptText} title={tr.statement.periodTitle} description={tr.statement.periodHint} />
+            <MonthStepper value={period} onChange={setPeriod} />
+            <View style={{ marginTop: spacing.md }}>
+              <Select
+                label={tr.statement.periodCard}
+                value={cardId ?? ""}
+                options={[
+                  { value: "", label: tr.statement.periodNoCard },
+                  ...cards.map((source) => ({ value: source.id, label: source.name })),
+                ]}
+                onChange={(value) => setCardId(value === "" ? null : value)}
+              />
+            </View>
+            <Body muted style={{ marginTop: spacing.sm }}>{tr.statement.periodChargeDate(dateLabel(chargeDate))}</Body>
+            {cardId == null ? (
+              <Body muted style={{ marginTop: spacing.xs }}>{tr.statement.periodCardHint}</Body>
+            ) : null}
+          </Card>
+
           <SectionHeader description={tr.statement.reviewHint}>{tr.statement.reviewTitle}</SectionHeader>
           <Body muted style={{ marginBottom: spacing.md }}>
             {[
@@ -557,6 +637,7 @@ export default function StatementImportScreen() {
                 key={candidate.importKey}
                 candidate={candidate}
                 draft={draft}
+                planSpec={candidate.isRefund ? null : statementPlanSpec(candidate, period)}
                 verdictText={verdictText}
                 selected={selected.has(candidate.importKey)}
                 editing={editingKey === candidate.importKey}

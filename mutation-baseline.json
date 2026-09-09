@@ -1,5 +1,41 @@
 {
   "files": {
+    "src/auth/auth-errors.ts": {
+      "score": 75.86,
+      "killed": 22,
+      "timeout": 0,
+      "survived": 7,
+      "noCoverage": 0,
+      "measuredOn": "bac1cd3f15e43c32916b994140dcd6c3ddb11e97",
+      "measuredDate": "2026-09-09"
+    },
+    "src/auth/email-flows.ts": {
+      "score": 90,
+      "killed": 9,
+      "timeout": 0,
+      "survived": 1,
+      "noCoverage": 0,
+      "measuredOn": "bac1cd3f15e43c32916b994140dcd6c3ddb11e97",
+      "measuredDate": "2026-09-09"
+    },
+    "src/auth/freeze.ts": {
+      "score": 97.44,
+      "killed": 38,
+      "timeout": 0,
+      "survived": 0,
+      "noCoverage": 1,
+      "measuredOn": "bac1cd3f15e43c32916b994140dcd6c3ddb11e97",
+      "measuredDate": "2026-09-09"
+    },
+    "src/auth/login-history.ts": {
+      "score": 58.33,
+      "killed": 7,
+      "timeout": 0,
+      "survived": 5,
+      "noCoverage": 0,
+      "measuredOn": "bac1cd3f15e43c32916b994140dcd6c3ddb11e97",
+      "measuredDate": "2026-09-09"
+    },
     "src/auth/recovery.ts": {
       "score": 98.31,
       "killed": 116,
@@ -17,6 +53,24 @@
       "noCoverage": 220,
       "measuredOn": "6b188b7f05384011a6ff7de1486a0f8ec5fec37a",
       "measuredDate": "2026-09-02"
+    },
+    "src/auth/sign-out.ts": {
+      "score": 100,
+      "killed": 20,
+      "timeout": 0,
+      "survived": 0,
+      "noCoverage": 0,
+      "measuredOn": "bac1cd3f15e43c32916b994140dcd6c3ddb11e97",
+      "measuredDate": "2026-09-09"
+    },
+    "src/auth/verification-brake.ts": {
+      "score": 95.65,
+      "killed": 22,
+      "timeout": 0,
+      "survived": 1,
+      "noCoverage": 0,
+      "measuredOn": "bac1cd3f15e43c32916b994140dcd6c3ddb11e97",
+      "measuredDate": "2026-09-09"
     },
     "src/data/repo/accounts.ts": {
       "score": 99.09,
@@ -108,6 +162,15 @@
       "measuredOn": "a9263150c9529d2bdb5552037b378916cbb57f34",
       "measuredDate": "2026-08-21"
     },
+    "src/data/repo/installments.ts": {
+      "score": 72.81,
+      "killed": 166,
+      "timeout": 0,
+      "survived": 62,
+      "noCoverage": 0,
+      "measuredOn": "bac1cd3f15e43c32916b994140dcd6c3ddb11e97",
+      "measuredDate": "2026-09-09"
+    },
     "src/data/repo/investment-validation.ts": {
       "score": 100,
       "killed": 261,
@@ -125,6 +188,15 @@
       "noCoverage": 9,
       "measuredOn": "dc9686a35190aef09ea7be5161bfa5bc3a118575",
       "measuredDate": "2026-09-04"
+    },
+    "src/data/repo/maintenance.ts": {
+      "score": 48.02,
+      "killed": 158,
+      "timeout": 0,
+      "survived": 158,
+      "noCoverage": 13,
+      "measuredOn": "bac1cd3f15e43c32916b994140dcd6c3ddb11e97",
+      "measuredDate": "2026-09-09"
     },
     "src/data/repo/matrix-colors.ts": {
       "score": 93.75,
@@ -162,6 +234,15 @@
       "measuredOn": "0c2881fade9362f7d22692880634afe8e92c4b8c",
       "measuredDate": "2026-08-20"
     },
+    "src/data/repo/rules.ts": {
+      "score": 81.07,
+      "killed": 304,
+      "timeout": 0,
+      "survived": 65,
+      "noCoverage": 6,
+      "measuredOn": "bac1cd3f15e43c32916b994140dcd6c3ddb11e97",
+      "measuredDate": "2026-09-09"
+    },
     "src/data/repo/settings.ts": {
       "score": 100,
       "killed": 35,
@@ -197,6 +278,24 @@
       "noCoverage": 76,
       "measuredOn": "58570d5bfc79c0eec180fcac4978c97dd5bc66c1",
       "measuredDate": "2026-09-03"
+    },
+    "src/db/ids.ts": {
+      "score": 72.41,
+      "killed": 42,
+      "timeout": 0,
+      "survived": 15,
+      "noCoverage": 1,
+      "measuredOn": "bac1cd3f15e43c32916b994140dcd6c3ddb11e97",
+      "measuredDate": "2026-09-09"
+    },
+    "src/db/migrate.ts": {
+      "score": 85,
+      "killed": 17,
+      "timeout": 0,
+      "survived": 2,
+      "noCoverage": 1,
+      "measuredOn": "bac1cd3f15e43c32916b994140dcd6c3ddb11e97",
+      "measuredDate": "2026-09-09"
     },
     "src/db/mutations.ts": {
       "score": 80.16,
@@ -234,6 +333,15 @@
       "measuredOn": "a9263150c9529d2bdb5552037b378916cbb57f34",
       "measuredDate": "2026-08-21"
     },
+    "src/domain/attention.ts": {
+      "score": 89.15,
+      "killed": 115,
+      "timeout": 0,
+      "survived": 14,
+      "noCoverage": 0,
+      "measuredOn": "bac1cd3f15e43c32916b994140dcd6c3ddb11e97",
+      "measuredDate": "2026-09-09"
+    },
     "src/domain/balance-declaration.ts": {
       "score": 94.59,
       "killed": 70,
@@ -260,6 +368,15 @@
       "noCoverage": 0,
       "measuredOn": "0e98c3e3dbf7cc6efa6fe02b183fffeb3a9357c9",
       "measuredDate": "2026-09-07"
+    },
+    "src/domain/budgets.ts": {
+      "score": 100,
+      "killed": 22,
+      "timeout": 0,
+      "survived": 0,
+      "noCoverage": 0,
+      "measuredOn": "bac1cd3f15e43c32916b994140dcd6c3ddb11e97",
+      "measuredDate": "2026-09-09"
     },
     "src/domain/card-statements.ts": {
       "score": 91.18,
@@ -306,6 +423,15 @@
       "measuredOn": "0dda8f4ab515ff54e3f87476074b9cd1c8ec055c",
       "measuredDate": "2026-08-22"
     },
+    "src/domain/dates.ts": {
+      "score": 99.43,
+      "killed": 173,
+      "timeout": 2,
+      "survived": 1,
+      "noCoverage": 0,
+      "measuredOn": "bac1cd3f15e43c32916b994140dcd6c3ddb11e97",
+      "measuredDate": "2026-09-09"
+    },
     "src/domain/diagnostics.ts": {
       "score": 88.11,
       "killed": 126,
@@ -333,6 +459,15 @@
       "measuredOn": "e74e17d4740a531ce1a342a2eeb52f9b7841e0fc",
       "measuredDate": "2026-08-23"
     },
+    "src/domain/form-state.ts": {
+      "score": 100,
+      "killed": 25,
+      "timeout": 0,
+      "survived": 0,
+      "noCoverage": 0,
+      "measuredOn": "bac1cd3f15e43c32916b994140dcd6c3ddb11e97",
+      "measuredDate": "2026-09-09"
+    },
     "src/domain/fx-provider.ts": {
       "score": 94.51,
       "killed": 258,
@@ -341,6 +476,51 @@
       "noCoverage": 0,
       "measuredOn": "93f59856f33f8646f00e988daacb8bddbf3dc29b",
       "measuredDate": "2026-08-24"
+    },
+    "src/domain/fx.ts": {
+      "score": 100,
+      "killed": 39,
+      "timeout": 0,
+      "survived": 0,
+      "noCoverage": 0,
+      "measuredOn": "bac1cd3f15e43c32916b994140dcd6c3ddb11e97",
+      "measuredDate": "2026-09-09"
+    },
+    "src/domain/input.ts": {
+      "score": 100,
+      "killed": 44,
+      "timeout": 0,
+      "survived": 0,
+      "noCoverage": 0,
+      "measuredOn": "bac1cd3f15e43c32916b994140dcd6c3ddb11e97",
+      "measuredDate": "2026-09-09"
+    },
+    "src/domain/installments.ts": {
+      "score": 98.9,
+      "killed": 90,
+      "timeout": 0,
+      "survived": 1,
+      "noCoverage": 0,
+      "measuredOn": "bac1cd3f15e43c32916b994140dcd6c3ddb11e97",
+      "measuredDate": "2026-09-09"
+    },
+    "src/domain/investment-catalog.ts": {
+      "score": 98.72,
+      "killed": 77,
+      "timeout": 0,
+      "survived": 1,
+      "noCoverage": 0,
+      "measuredOn": "bac1cd3f15e43c32916b994140dcd6c3ddb11e97",
+      "measuredDate": "2026-09-09"
+    },
+    "src/domain/investment-projection.ts": {
+      "score": 97.14,
+      "killed": 34,
+      "timeout": 0,
+      "survived": 1,
+      "noCoverage": 0,
+      "measuredOn": "bac1cd3f15e43c32916b994140dcd6c3ddb11e97",
+      "measuredDate": "2026-09-09"
     },
     "src/domain/investments.ts": {
       "score": 98.87,
@@ -378,6 +558,15 @@
       "measuredOn": "a9263150c9529d2bdb5552037b378916cbb57f34",
       "measuredDate": "2026-08-21"
     },
+    "src/domain/matrix-preferences.ts": {
+      "score": 87.5,
+      "killed": 14,
+      "timeout": 0,
+      "survived": 2,
+      "noCoverage": 0,
+      "measuredOn": "bac1cd3f15e43c32916b994140dcd6c3ddb11e97",
+      "measuredDate": "2026-09-09"
+    },
     "src/domain/money.ts": {
       "score": 93.82,
       "killed": 319,
@@ -387,6 +576,33 @@
       "measuredOn": "dc9686a35190aef09ea7be5161bfa5bc3a118575",
       "measuredDate": "2026-09-04"
     },
+    "src/domain/notifications.ts": {
+      "score": 98.91,
+      "killed": 91,
+      "timeout": 0,
+      "survived": 1,
+      "noCoverage": 0,
+      "measuredOn": "bac1cd3f15e43c32916b994140dcd6c3ddb11e97",
+      "measuredDate": "2026-09-09"
+    },
+    "src/domain/onboarding.ts": {
+      "score": 88.89,
+      "killed": 8,
+      "timeout": 0,
+      "survived": 1,
+      "noCoverage": 0,
+      "measuredOn": "bac1cd3f15e43c32916b994140dcd6c3ddb11e97",
+      "measuredDate": "2026-09-09"
+    },
+    "src/domain/privacy.ts": {
+      "score": 100,
+      "killed": 12,
+      "timeout": 0,
+      "survived": 0,
+      "noCoverage": 0,
+      "measuredOn": "bac1cd3f15e43c32916b994140dcd6c3ddb11e97",
+      "measuredDate": "2026-09-09"
+    },
     "src/domain/provenance.ts": {
       "score": 100,
       "killed": 3,
@@ -395,6 +611,42 @@
       "noCoverage": 0,
       "measuredOn": "33ea3a4ac9db4b3571dc4e9e025984d122e4ddf4",
       "measuredDate": "2026-08-19"
+    },
+    "src/domain/recurrence.ts": {
+      "score": 94.68,
+      "killed": 89,
+      "timeout": 0,
+      "survived": 5,
+      "noCoverage": 0,
+      "measuredOn": "bac1cd3f15e43c32916b994140dcd6c3ddb11e97",
+      "measuredDate": "2026-09-09"
+    },
+    "src/domain/route-params.ts": {
+      "score": 96.97,
+      "killed": 64,
+      "timeout": 0,
+      "survived": 2,
+      "noCoverage": 0,
+      "measuredOn": "bac1cd3f15e43c32916b994140dcd6c3ddb11e97",
+      "measuredDate": "2026-09-09"
+    },
+    "src/domain/save-summary.ts": {
+      "score": 100,
+      "killed": 40,
+      "timeout": 0,
+      "survived": 0,
+      "noCoverage": 0,
+      "measuredOn": "bac1cd3f15e43c32916b994140dcd6c3ddb11e97",
+      "measuredDate": "2026-09-09"
+    },
+    "src/domain/serial-queue.ts": {
+      "score": 75,
+      "killed": 6,
+      "timeout": 0,
+      "survived": 2,
+      "noCoverage": 0,
+      "measuredOn": "bac1cd3f15e43c32916b994140dcd6c3ddb11e97",
+      "measuredDate": "2026-09-09"
     },
     "src/domain/settings.ts": {
       "score": 97.35,
@@ -423,6 +675,51 @@
       "measuredOn": "c74ef5673070c2c16a3f021e5a8d6d9296f1ca63",
       "measuredDate": "2026-08-24"
     },
+    "src/domain/transaction-draft.ts": {
+      "score": 92.31,
+      "killed": 48,
+      "timeout": 0,
+      "survived": 4,
+      "noCoverage": 0,
+      "measuredOn": "bac1cd3f15e43c32916b994140dcd6c3ddb11e97",
+      "measuredDate": "2026-09-09"
+    },
+    "src/domain/transaction-search.ts": {
+      "score": 97.75,
+      "killed": 87,
+      "timeout": 0,
+      "survived": 2,
+      "noCoverage": 0,
+      "measuredOn": "bac1cd3f15e43c32916b994140dcd6c3ddb11e97",
+      "measuredDate": "2026-09-09"
+    },
+    "src/domain/transactions.ts": {
+      "score": 100,
+      "killed": 58,
+      "timeout": 0,
+      "survived": 0,
+      "noCoverage": 0,
+      "measuredOn": "bac1cd3f15e43c32916b994140dcd6c3ddb11e97",
+      "measuredDate": "2026-09-09"
+    },
+    "src/domain/types.ts": {
+      "score": 100,
+      "killed": 8,
+      "timeout": 0,
+      "survived": 0,
+      "noCoverage": 0,
+      "measuredOn": "bac1cd3f15e43c32916b994140dcd6c3ddb11e97",
+      "measuredDate": "2026-09-09"
+    },
+    "src/domain/undo-outcome.ts": {
+      "score": 100,
+      "killed": 7,
+      "timeout": 0,
+      "survived": 0,
+      "noCoverage": 0,
+      "measuredOn": "bac1cd3f15e43c32916b994140dcd6c3ddb11e97",
+      "measuredDate": "2026-09-09"
+    },
     "src/domain/upcoming.ts": {
       "score": 98.68,
       "killed": 149,
@@ -431,6 +728,33 @@
       "noCoverage": 0,
       "measuredOn": "a4394d5ebe1055ee856167dd23e77c801b72b071",
       "measuredDate": "2026-08-21"
+    },
+    "src/domain/user-error.ts": {
+      "score": 94.44,
+      "killed": 17,
+      "timeout": 0,
+      "survived": 1,
+      "noCoverage": 0,
+      "measuredOn": "bac1cd3f15e43c32916b994140dcd6c3ddb11e97",
+      "measuredDate": "2026-09-09"
+    },
+    "src/domain/user-id.ts": {
+      "score": 100,
+      "killed": 1,
+      "timeout": 0,
+      "survived": 0,
+      "noCoverage": 0,
+      "measuredOn": "bac1cd3f15e43c32916b994140dcd6c3ddb11e97",
+      "measuredDate": "2026-09-09"
+    },
+    "src/domain/web-security.ts": {
+      "score": 96.88,
+      "killed": 31,
+      "timeout": 0,
+      "survived": 1,
+      "noCoverage": 0,
+      "measuredOn": "bac1cd3f15e43c32916b994140dcd6c3ddb11e97",
+      "measuredDate": "2026-09-09"
     },
     "src/domain/workbook-format-guard.ts": {
       "score": 91.67,
@@ -449,6 +773,15 @@
       "noCoverage": 0,
       "measuredOn": "0e98c3e3dbf7cc6efa6fe02b183fffeb3a9357c9",
       "measuredDate": "2026-09-07"
+    },
+    "src/domain/year-columns.ts": {
+      "score": 95.56,
+      "killed": 43,
+      "timeout": 0,
+      "survived": 2,
+      "noCoverage": 0,
+      "measuredOn": "bac1cd3f15e43c32916b994140dcd6c3ddb11e97",
+      "measuredDate": "2026-09-09"
     },
     "src/services/attachment-store.ts": {
       "score": 80,
@@ -486,6 +819,15 @@
       "measuredOn": "0e98c3e3dbf7cc6efa6fe02b183fffeb3a9357c9",
       "measuredDate": "2026-09-07"
     },
+    "src/services/device-preferences.ts": {
+      "score": 38.1,
+      "killed": 15,
+      "timeout": 1,
+      "survived": 22,
+      "noCoverage": 4,
+      "measuredOn": "bac1cd3f15e43c32916b994140dcd6c3ddb11e97",
+      "measuredDate": "2026-09-09"
+    },
     "src/services/diagnostics.ts": {
       "score": 58.68,
       "killed": 71,
@@ -512,6 +854,15 @@
       "noCoverage": 0,
       "measuredOn": "88fa1e6829d1768dc5f157450b21bd87739cb721",
       "measuredDate": "2026-09-04"
+    },
+    "src/services/fx-fetch.ts": {
+      "score": 12.33,
+      "killed": 18,
+      "timeout": 0,
+      "survived": 26,
+      "noCoverage": 102,
+      "measuredOn": "bac1cd3f15e43c32916b994140dcd6c3ddb11e97",
+      "measuredDate": "2026-09-09"
     },
     "src/services/kv.ts": {
       "score": 88.89,
@@ -540,6 +891,15 @@
       "measuredOn": "2797805dc91c8fdac3b7032b676790cdd21405ab",
       "measuredDate": "2026-08-31"
     },
+    "src/services/notifications.ts": {
+      "score": 0,
+      "killed": 0,
+      "timeout": 0,
+      "survived": 0,
+      "noCoverage": 162,
+      "measuredOn": "bac1cd3f15e43c32916b994140dcd6c3ddb11e97",
+      "measuredDate": "2026-09-09"
+    },
     "src/services/pdf-text.ts": {
       "score": 27.85,
       "killed": 165,
@@ -548,6 +908,15 @@
       "noCoverage": 261,
       "measuredOn": "bca3517b5e0450a62a6c26dfc6a91e0806178646",
       "measuredDate": "2026-08-21"
+    },
+    "src/services/picked-file.ts": {
+      "score": 54.23,
+      "killed": 74,
+      "timeout": 3,
+      "survived": 52,
+      "noCoverage": 13,
+      "measuredOn": "bac1cd3f15e43c32916b994140dcd6c3ddb11e97",
+      "measuredDate": "2026-09-09"
     },
     "src/services/spreadsheet-import.ts": {
       "score": 62.08,
@@ -602,6 +971,51 @@
       "noCoverage": 19,
       "measuredOn": "b9b509660d621bc2b356597b6693b9974b815f3b",
       "measuredDate": "2026-08-21"
+    },
+    "src/sync/secure-chunked-storage.ts": {
+      "score": 77.01,
+      "killed": 64,
+      "timeout": 3,
+      "survived": 17,
+      "noCoverage": 3,
+      "measuredOn": "bac1cd3f15e43c32916b994140dcd6c3ddb11e97",
+      "measuredDate": "2026-09-09"
+    },
+    "src/sync/session-epoch.ts": {
+      "score": 60.29,
+      "killed": 41,
+      "timeout": 0,
+      "survived": 26,
+      "noCoverage": 1,
+      "measuredOn": "bac1cd3f15e43c32916b994140dcd6c3ddb11e97",
+      "measuredDate": "2026-09-09"
+    },
+    "src/sync/status.ts": {
+      "score": 87.5,
+      "killed": 14,
+      "timeout": 0,
+      "survived": 2,
+      "noCoverage": 0,
+      "measuredOn": "bac1cd3f15e43c32916b994140dcd6c3ddb11e97",
+      "measuredDate": "2026-09-09"
+    },
+    "src/sync/supabase.ts": {
+      "score": 45.16,
+      "killed": 28,
+      "timeout": 0,
+      "survived": 29,
+      "noCoverage": 5,
+      "measuredOn": "bac1cd3f15e43c32916b994140dcd6c3ddb11e97",
+      "measuredDate": "2026-09-09"
+    },
+    "src/sync/tombstone-policy.ts": {
+      "score": 91.67,
+      "killed": 11,
+      "timeout": 0,
+      "survived": 1,
+      "noCoverage": 0,
+      "measuredOn": "bac1cd3f15e43c32916b994140dcd6c3ddb11e97",
+      "measuredDate": "2026-09-09"
     }
   }
 }

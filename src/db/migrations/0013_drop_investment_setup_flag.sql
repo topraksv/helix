@@ -1,0 +1,1 @@
+ALTER TABLE `investment_profiles` DROP COLUMN `setup_completed`;

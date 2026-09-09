@@ -393,6 +393,30 @@ describe("semantic theme contrast", () => {
     }
   });
 
+  /**
+   * An empty donut is the one time its track is visible at all — the arcs
+   * cover a full circle whenever there is anything to draw. It was painted in
+   * `surfaceAlt`, which is precisely what `heroSurface` fills a HeroCard with
+   * in dark mode, so a wallet holding nothing drew a ring in its own
+   * background: ratio 1.00, and the chart read as missing.
+   */
+  it("keeps an empty chart track visible on the surface it sits on", () => {
+    for (const { light, dark } of Object.values(PALETTES)) {
+      for (const [palette, scheme] of [[light, "light"], [dark, "dark"]] as const) {
+        // The two surfaces a donut is ever placed on, and no more: `Card`
+        // fills with `surface`, `HeroCard` with `heroSurface`. Asserting
+        // against `surfaceAlt` as well would hold the token to a placement
+        // that does not exist and buy a heavier ring for it.
+        for (const behind of [palette.surface, heroSurface(palette, scheme).fill]) {
+          expect(
+            contrastRatio(palette.border, behind),
+            `${scheme}: empty donut track ${palette.border} on ${behind}`,
+          ).toBeGreaterThanOrEqual(3);
+        }
+      }
+    }
+  });
+
   it("keeps every shipped foreground at WCAG AA", () => {
     for (const palette of shippedPalettes) expectBodyTextContrast(palette);
   });

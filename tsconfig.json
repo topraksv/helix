@@ -1,6 +1,23 @@
 {
   "extends": "expo/tsconfig.base",
   "compilerOptions": {
+    // Named rather than left to the automatic `@types/*` scan, and `@types/node`
+    // is a declared dependency rather than an inherited one. Both halves of that
+    // were accidents until 2026-09-09.
+    //
+    // It arrived only as a transitive dependency of `@stryker-mutator/core`'s
+    // prompt library, and the automatic scan's registration of its ambient
+    // `node:*` module declarations turned out to depend on how the tree happened
+    // to hoist. A clean `npm ci` produced a tree where it did not register at
+    // all: 206 errors across `tests/` and `e2e/`, every one of them
+    // `Cannot find name 'node:fs'` or `Buffer`, on a working tree with the
+    // committed lockfile. Nothing in the repository had changed.
+    //
+    // The version is pinned to the MAJOR the app actually runs. `.nvmrc` and
+    // every CI job say Node 22, and the inherited copy was `@types/node@26` —
+    // so the gate would have accepted an API that does not exist on the runtime,
+    // and said nothing.
+    "types": ["node"],
     "strict": true,
     "noUncheckedIndexedAccess": true,
     "noUnusedLocals": true,

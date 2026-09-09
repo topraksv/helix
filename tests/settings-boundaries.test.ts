@@ -42,6 +42,7 @@ import {
   setAccountFrozen,
   setAttentionState,
   setBalanceDeclaration,
+  setBalanceColumns,
   setMatrixColorLabels,
   setPendingTableVisibility,
   setReminderDays,
@@ -127,6 +128,7 @@ describe("setting repository delegation", () => {
     await setPendingTableVisibility("user-1", false);
     await setBalanceDeclaration("user-1", 123_45, "2026-07-21");
     await setMatrixColorLabels("user-1", { red: "Bankaya sorulacak" });
+    await setBalanceColumns("user-1", { openingLabel: "Ay Sonu", closingLabel: null, showOpening: false });
 
     expect(dependencies.writeSetting.mock.calls).toEqual([
       ["user-1", "account_frozen", true],
@@ -135,7 +137,21 @@ describe("setting repository delegation", () => {
       ["user-1", "show_pending_in_table", false],
       ["user-1", "balance_declared", { minor: 123_45, at: "2026-07-21" }],
       ["user-1", "matrix_color_labels", { red: "Bankaya sorulacak" }],
+      ["user-1", "balance_columns", { openingLabel: "Ay Sonu", closingLabel: null, showOpening: false }],
     ]);
+  });
+
+  /**
+   * The same boundary as the colour labels, for the same reason: a preference
+   * written in a shape the decoder would later refuse is a rename that
+   * silently did nothing.
+   */
+  it("refuses a balance-column preference the decoder could not read back", () => {
+    for (const invalid of [null, "Ay Sonu", 7, { openingLabel: "Ay Sonu" }]) {
+      expect(() => setBalanceColumns("user-1", invalid as never), String(invalid))
+        .toThrow("Invalid balance column preference");
+    }
+    expect(dependencies.writeSetting).not.toHaveBeenCalled();
   });
 
   /**

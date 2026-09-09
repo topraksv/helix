@@ -102,13 +102,22 @@ const MUTATION_RELEVANT = /^src\/(?:domain|data\/repo|db|sync|auth|services)\/.*
  * a throw still throws. `metro.config.js` decides when it is substituted, and
  * `tests/release-config.test.ts` holds the two together.
  *
+ * `src/sync/realtime-absent.js` is the sixth and the second of that kind. It
+ * is what `metro.config.js` resolves `@supabase/realtime-js` to, because
+ * `createClient` builds a socket client whether or not anything subscribes and
+ * nothing here ever does — 65_769 bytes of entry chunk, measured. What it
+ * contains is one empty method and four throws, so a mutant could only assert
+ * that a throw still throws. The premise underneath it is the thing worth
+ * checking and `tests/release-config.test.ts` checks it: the day a `.channel(`
+ * appears in `src`, that suite goes red rather than a device going quiet.
+ *
  * The exclusion stays narrow: everything under `domain`, `data/repo`,
  * `services`, `sync` and `auth` is still mutated, including files whose
  * mutants are mostly static. `domain/statement-import.ts` is 219 static
  * mutants of Turkish month names and amount-splitting regexes — real logic,
  * so it keeps paying for itself.
  */
-const MUTATION_EXCLUDED = /^src\/(?:db\/(?:migrations\/|schema\.ts$|expo-sqlite\.server\.js$)|domain\/brand-mark-audit\.ts$|sync\/database\.types\.ts$)/;
+const MUTATION_EXCLUDED = /^src\/(?:db\/(?:migrations\/|schema\.ts$|expo-sqlite\.server\.js$)|domain\/brand-mark-audit\.ts$|sync\/(?:database\.types\.ts|realtime-absent\.js)$)/;
 
 /**
  * Whether a path is inside the gate at all.

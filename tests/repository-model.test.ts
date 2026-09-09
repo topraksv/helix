@@ -31,6 +31,9 @@ const harness = vi.hoisted(() => ({
   nextId: 0,
 }));
 
+// `reset.ts` records a tidy-up it could not finish, and the recorder reaches
+// the device store. Stubbed like the rate services beside it.
+vi.mock("../src/services/logger", () => ({ devWarning: vi.fn(), devError: vi.fn() }));
 vi.mock("../src/db/client", () => ({
   getSqliteAsync: async () => ({
     getFirstAsync: async (sql: string, args: unknown[] = []) =>

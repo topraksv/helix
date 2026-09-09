@@ -14,6 +14,7 @@ import m0009 from './0009_tiresome_ma_gnuci.sql';
 import m0010 from './0010_retire_legacy_expected_payments.sql';
 import m0011 from './0011_provenance_attachments_colors_targets.sql';
 import m0012 from './0012_matrix_color_slots.sql';
+import m0013 from './0013_drop_investment_setup_flag.sql';
 
   export default {
     journal,
@@ -30,6 +31,8 @@ m0008,
 m0009,
 m0010,
 m0011,
-m0012
+m0012,
+m0013
     }
   }
+  

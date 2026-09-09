@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
+import { inflateSync } from "node:zlib";
 import { join } from "node:path";
 import { BRAND_MARK_AUDIT, PLACEHOLDER_MARK_SHA } from "../src/domain/brand-mark-audit";
 import { markProvider } from "../src/domain/brand-marks";
@@ -136,5 +137,106 @@ describe("brand marks", () => {
     for (const name of ["denizbank", "turkiye finans", "tosla", "nays", "bip", "bisu", "millenicom"]) {
       expect(listed, `${name} must say why it has no mark`).toContain(`"${name}"`);
     }
+  });
+});
+
+/**
+ * The app's own mark, and the one property its layout depends on.
+ *
+ * `src/ui/brand.tsx` sizes the mark by HEIGHT and derives the width from a
+ * ratio it holds as a constant. That is only honest while the artwork's canvas
+ * IS the artwork. It was not: the mark shipped on a 1024x1024 canvas with the
+ * ink centred inside it — 606x789 with 210px of transparency down each side —
+ * so `contentFit` scaled the padding too and a caller asking for 40pt got a
+ * 30.8pt mark carrying 9pt of invisible margin into the gap beside it.
+ *
+ * Re-exporting a logo from a design tool is exactly how that padding comes
+ * back, and nothing about the result looks wrong in a file listing. So the
+ * alpha channel is measured here instead: the ink must touch all four edges,
+ * and the ratio the component uses must be the ratio the file has.
+ */
+describe("the app's own brand mark", () => {
+  /** Bounding box of pixels the artwork actually paints. */
+  function inkBounds(file: string): { width: number; height: number; left: number; top: number; right: number; bottom: number } {
+    const buf = readFileSync(join(root, file));
+    let at = 8;
+    let width = 0;
+    let height = 0;
+    let depth = 0;
+    let colorType = 0;
+    const parts: Buffer[] = [];
+    while (at < buf.length) {
+      const length = buf.readUInt32BE(at);
+      const type = buf.toString("latin1", at + 4, at + 8);
+      const data = buf.subarray(at + 8, at + 8 + length);
+      if (type === "IHDR") {
+        width = data.readUInt32BE(0);
+        height = data.readUInt32BE(4);
+        depth = data[8]!;
+        colorType = data[9]!;
+      }
+      if (type === "IDAT") parts.push(Buffer.from(data));
+      at += 12 + length;
+    }
+    // 8-bit RGBA is what the un-filtering below assumes; anything else would be
+    // measured wrongly rather than reported as unmeasurable.
+    expect({ depth, colorType }, `${file} must be 8-bit RGBA`).toEqual({ depth: 8, colorType: 6 });
+    const raw = inflateSync(Buffer.concat(parts));
+    const stride = width * 4;
+    const pixels = Buffer.alloc(height * stride);
+    let read = 0;
+    for (let y = 0; y < height; y += 1) {
+      const filter = raw[read];
+      read += 1;
+      for (let x = 0; x < stride; x += 1) {
+        const left = x >= 4 ? pixels[y * stride + x - 4]! : 0;
+        const up = y > 0 ? pixels[(y - 1) * stride + x]! : 0;
+        const upLeft = y > 0 && x >= 4 ? pixels[(y - 1) * stride + x - 4]! : 0;
+        let value = raw[read + x]!;
+        if (filter === 1) value += left;
+        else if (filter === 2) value += up;
+        else if (filter === 3) value += (left + up) >> 1;
+        else if (filter === 4) {
+          const estimate = left + up - upLeft;
+          const dl = Math.abs(estimate - left);
+          const du = Math.abs(estimate - up);
+          const dul = Math.abs(estimate - upLeft);
+          value += dl <= du && dl <= dul ? left : du <= dul ? up : upLeft;
+        }
+        pixels[y * stride + x] = value & 0xff;
+      }
+      read += stride;
+    }
+    let minX = width;
+    let minY = height;
+    let maxX = -1;
+    let maxY = -1;
+    for (let y = 0; y < height; y += 1) {
+      for (let x = 0; x < width; x += 1) {
+        if (pixels[y * stride + x * 4 + 3]! > 8) {
+          if (x < minX) minX = x;
+          if (x > maxX) maxX = x;
+          if (y < minY) minY = y;
+          if (y > maxY) maxY = y;
+        }
+      }
+    }
+    return { width, height, left: minX, top: minY, right: width - 1 - maxX, bottom: height - 1 - maxY };
+  }
+
+  for (const file of ["assets/brand/symbol-light-t.png", "assets/brand/symbol-dark-t.png"]) {
+    it(`leaves no transparent margin around ${file.split("/").pop()}`, () => {
+      const bounds = inkBounds(file);
+      expect(
+        { left: bounds.left, top: bounds.top, right: bounds.right, bottom: bounds.bottom },
+        "the canvas must BE the mark, or `size` stops meaning the height it draws",
+      ).toEqual({ left: 0, top: 0, right: 0, bottom: 0 });
+    });
+  }
+
+  it("uses the ratio the artwork actually has", () => {
+    const bounds = inkBounds("assets/brand/symbol-light-t.png");
+    const source = readFileSync(join(root, "src/ui/brand.tsx"), "utf8");
+    expect(source).toContain(`const MARK_ASPECT = ${bounds.width} / ${bounds.height};`);
   });
 });

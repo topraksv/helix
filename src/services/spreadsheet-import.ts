@@ -74,6 +74,17 @@ export interface ParsedSheet {
   skippedColumns: string[];
   /** Earliest month's opening-balance cell ("Ay Başında Eldeki Para"), if any. */
   openingBalance: { month: MonthKey; minor: Minor } | null;
+  /**
+   * Every balance-like column that carries a readable figure in the first
+   * month, with that figure.
+   *
+   * The parser guesses which of them is the month-opening balance from its
+   * heading, and a heading is the one part of a personal spreadsheet nobody
+   * else wrote the rules for: "Toplam", "Ay Sonu" and "Devreden" are all
+   * somebody's opening balance and none of them is anybody else's. The guess
+   * is a default; this list is what makes it correctable.
+   */
+  openingCandidates: { label: string; month: MonthKey; minor: Minor }[];
 }
 
 export interface UnparsedSheet {
@@ -342,6 +353,18 @@ export function parseSheet(grid: RawCell[][], sheetName: string): ParsedSheet | 
     const minor = parseSheetAmount(body[0]?.[openingColIdx + 1]?.v);
     if (minor != null) openingBalance = { month: firstMonth, minor };
   }
+  // EVERY column that carries a figure in the first month, under the same
+  // label the rest of the wizard shows for it. Offering only the balance-like
+  // ones made the choice depend on the very heading rule it exists to correct:
+  // the list then held names the owner did not recognise as columns of theirs,
+  // and the column their opening balance is actually in was missing from it.
+  const openingCandidates: ParsedSheet["openingCandidates"] = [];
+  keepIdx.forEach((index, position) => {
+    const label = columns[position]?.label ?? "";
+    if (label === "") return;
+    const minor = parseSheetAmount(body[0]?.[index + 1]?.v);
+    if (minor != null) openingCandidates.push({ label, month: firstMonth, minor });
+  });
 
   return {
     sheetName,
@@ -351,6 +374,7 @@ export function parseSheet(grid: RawCell[][], sheetName: string): ParsedSheet | 
     cells,
     skippedColumns,
     openingBalance,
+    openingCandidates,
   };
 }
 
@@ -559,7 +583,8 @@ export function collectInstallmentPlans(
   const byKey = new Map<string, ImportInstallmentPlanSpec>();
   for (const sheet of sheets) {
     sheet.columns.forEach((col, index) => {
-      if (excluded.has(col.label) || !/taksit/i.test(col.label)) return;
+      // The heading decides nothing here either: see `isInstallmentCell`.
+      if (excluded.has(col.label)) return;
       for (const [r, month] of sheet.months.entries()) {
         if (!allow(yearOf(month))) continue;
         const comment = sheet.cells[r]?.[index]?.comment;
@@ -578,10 +603,23 @@ export function collectInstallmentPlans(
   return [...byKey.values()];
 }
 
-/** True when a "…Taksitli…" cell carries reconstructable installment lines (so
- *  the importer materializes plans from it instead of one opaque aggregate). */
-export function isInstallmentCell(columnLabel: string, comment: string | null): boolean {
-  return /taksit/i.test(columnLabel) && comment != null && parseInstallmentComment(comment).length > 0;
+/**
+ * True when a cell carries reconstructable instalment lines, so the importer
+ * materializes plans from it instead of one opaque aggregate.
+ *
+ * The COMMENT is the evidence; the column heading is not. This used to require
+ * `/taksit/` in the heading, which assumed a workbook keeps single charges and
+ * instalments in separate columns — mine does, most do not. One "Kredi Kartı"
+ * column holding both produced no plans at all, and the Taksitler screen stayed
+ * empty however many `3/9` lines the comments carried.
+ *
+ * A card banner is required, and that is the second half of the same fix: a
+ * note with no card was already refused by `collectInstallmentPlans`, so a cell
+ * that only reached this far was skipped from the aggregate AND never became a
+ * plan — the money left the import entirely. Both now ask the same question.
+ */
+export function isInstallmentCell(comment: string | null): boolean {
+  return comment != null && parseInstallmentComment(comment).some((note) => note.card !== "");
 }
 
 /** Convert a SheetJS worksheet into a dense grid of RawCells over its range. */

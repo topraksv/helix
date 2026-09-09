@@ -210,10 +210,16 @@ export function OpeningBalanceEditor() {
 
   // Never let the async ledger's pre-load fallback masquerade as a real zero
   // balance; the editor becomes actionable only after its accounting inputs load.
-  if (!dataReady || computed == null) {
+  //
+  // What is NOT a reason to withhold it: an unset opening balance. This branch
+  // used to synthesise an "error" status from `computed == null` and tell the
+  // owner their finance data could not be read — on the one screen that can set
+  // the anchor whose absence produced the null. Nothing had failed, and the
+  // only way out of the loop was to stop using the app.
+  if (!dataReady || bundle == null) {
     return (
       <Screen>
-        <DataStateNotice status={computed == null && dataReady ? "error" : dataStatus} retry={retryData} />
+        <DataStateNotice status={dataStatus} retry={retryData} />
       </Screen>
     );
   }
@@ -292,7 +298,7 @@ export function OpeningBalanceEditor() {
             setTargetMinor(minor);
           }}
         />
-        <BalanceBridge computedMinor={computed} targetMinor={effectiveTarget ?? computed} />
+        <BalanceBridge computedMinor={bundle.actualBalanceMinor} targetMinor={effectiveTarget ?? bundle.actualBalanceMinor} />
         <Row
           gap={spacing.sm}
           style={{

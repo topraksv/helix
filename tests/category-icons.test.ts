@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { categoryIcon, suggestCategoryIcon } from "../src/domain/category-icons";
+import { categoryIcon, conceptOf, suggestCategoryIcon } from "../src/domain/category-icons";
 
 describe("category icon policy", () => {
   it("keeps earlier keyword rules ahead of later matching rules", () => {
@@ -30,5 +30,41 @@ describe("category icon policy", () => {
   it("uses a stored category icon before falling back to its suggestion", () => {
     expect(categoryIcon({ name: "Market", kind: "expense", icon: "🧺" })).toBe("🧺");
     expect(categoryIcon({ name: "Market", kind: "expense", icon: null })).toBe("🛒");
+  });
+});
+
+/**
+ * The same vocabulary, asked the other question: are two strings about the
+ * same thing? It is what lets a statement line find the owner's own column
+ * without either of them sharing a word.
+ */
+describe("what a piece of text is about", () => {
+  it("answers nothing for text the vocabulary does not recognise", () => {
+    expect(conceptOf("ABC XYZ 1234")).toBeNull();
+    expect(conceptOf("")).toBeNull();
+  });
+
+  it("answers the same thing for two words that mean the same thing", () => {
+    const market = conceptOf("MIGROS MARKET");
+    expect(market).not.toBeNull();
+    expect(conceptOf("Gıda")).toBe(market);
+    expect(conceptOf("Mutfak Alışverişi")).toBe(market);
+  });
+
+  it("keeps unrelated subjects apart", () => {
+    const rent = conceptOf("Kira");
+    const health = conceptOf("Eczane");
+    expect(rent).not.toBeNull();
+    expect(health).not.toBeNull();
+    expect(rent).not.toBe(health);
+  });
+
+  /**
+   * The first matching rule wins, exactly as the icon it also chooses does —
+   * so the two answers can never disagree about the same name.
+   */
+  it("resolves an overlap the same way the icon does", () => {
+    expect(conceptOf("Araçla Metro")).toBe(conceptOf("Yakıt"));
+    expect(suggestCategoryIcon("Araçla Metro", "expense")).toBe("⛽");
   });
 });

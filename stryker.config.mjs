@@ -83,5 +83,5 @@ export default {
   concurrency: 4,
   timeoutMS: 15_000,
   cleanTempDir: "always",
-  vitest: { configFile: "vitest.mutation.config.ts", related: false },
+  vitest: { configFile: "vitest.mutation.config.mts", related: false },
 };

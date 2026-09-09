@@ -74,7 +74,7 @@ export function buildSpreadsheetImportPlan(input: {
           if (!yearAllowed(year)) continue;
           for (const column of columns) {
             const cell: CellData | undefined = sheet.cells[rowIndex]?.[column.index];
-            if (!cell || isInstallmentCell(column.label, cell.comment)) continue;
+            if (!cell || isInstallmentCell(cell.comment)) continue;
             const planned = planImportCell(cell);
             if (!planned) continue;
             const effectiveDate = `${month}-01`;

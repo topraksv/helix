@@ -17,6 +17,7 @@ const sheet = (overrides: Partial<ParsedSheet> = {}): ParsedSheet => ({
   cells: [[cell(100_00)]],
   skippedColumns: [],
   openingBalance: null,
+  openingCandidates: [],
   ...overrides,
 });
 

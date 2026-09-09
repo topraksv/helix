@@ -1,7 +1,7 @@
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const harness = vi.hoisted(() => ({ db: null as DatabaseSync | null }));
+const harness = vi.hoisted(() => ({ db: null as DatabaseSync | null, failMaintenance: false }));
 
 vi.mock("../src/db/client", () => ({
   getSqliteAsync: async () => ({
@@ -9,9 +9,21 @@ vi.mock("../src/db/client", () => ({
       harness.db!.prepare(sql).get(...(args as never[])) ?? null,
     getAllAsync: async (sql: string, args: unknown[] = []) =>
       harness.db!.prepare(sql).all(...(args as never[])),
-    runAsync: async (sql: string, args: unknown[] = []) => ({
-      changes: Number(harness.db!.prepare(sql).run(...(args as never[])).changes),
-    }),
+    runAsync: async (sql: string, args: unknown[] = []) => {
+      // A tidy-up that fails after the delete has committed, injected where a
+      // failure actually happens: the maintenance pass's own bookkeeping write.
+      //
+      // NOT by mocking `./maintenance`. Every assertion in this file about
+      // what a reset leaves behind runs the REAL pass over the real database,
+      // and replacing that module — even with a spread of the original — costs
+      // Stryker the per-test coverage it attributes through it. Measured
+      // 2026-09-09: the file fell from 48.02 to 43.03 with nothing about it
+      // changed except this mock.
+      if (harness.failMaintenance && args.includes("cc_column_removed")) {
+        throw new Error("injected maintenance failure");
+      }
+      return { changes: Number(harness.db!.prepare(sql).run(...(args as never[])).changes) };
+    },
   }),
   withTransaction: async (task: () => Promise<void>) => {
     harness.db!.exec("BEGIN");
@@ -39,14 +51,25 @@ vi.mock("../src/db/ids", () => ({
 }));
 
 vi.mock("../src/sync/engine", () => ({ scheduleSync: vi.fn() }));
+// The reset ends by running the maintenance pass, which reaches the rate
+// services — and those reach `react-native` for `Platform`. Stubbed the way
+// `maintenance-repairs.test.ts` already stubs them, so this suite keeps
+// exercising the real reset and the real maintenance over a real database.
+vi.mock("../src/services/fx-fetch", () => ({ lookupRate: vi.fn() }));
+vi.mock("../src/services/markets", () => ({ marketSellRateTry: vi.fn() }));
+// The reset and the pass it ends with both record what they could not do, and
+// the recorder reaches the device store. Stubbed for the same reason as above.
+vi.mock("../src/services/logger", () => ({ devWarning: vi.fn(), devError: vi.fn() }));
 
 import {
   performDataReset,
   previewDataReset,
+  RESET_SCOPES,
   UNDATED_SCOPES,
   type ResetRange,
   type ResetSelection,
 } from "../src/data/repo/reset";
+import { RELATIONS } from "../src/db/relations";
 import { migrationStatements } from "./helpers";
 
 const USER = "reset-user";
@@ -82,6 +105,9 @@ function seedTransaction(
     categoryId?: string | null;
     planId?: string | null;
     subscriptionId?: string | null;
+    cardStatementId?: string | null;
+    paymentSourceId?: string | null;
+    purchaseDate?: string | null;
     amountTryMinor?: number;
     type?: "expense" | "income" | "transfer";
     deletedAt?: string | null;
@@ -93,7 +119,7 @@ function seedTransaction(
        type, amount_minor, currency, fx_rate, amount_try_minor, entry_date, purchase_date,
        effective_date, status, category_id, payment_source_id, person_id, installment_plan_id,
        installment_no, card_statement_id, subscription_id, is_aggregate, note)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'TRY', NULL, ?, ?, NULL, ?, 'realized', ?, NULL, 'self', ?, NULL, NULL, ?, 0, NULL)`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'TRY', NULL, ?, ?, ?, ?, 'realized', ?, ?, 'self', ?, NULL, ?, ?, 0, NULL)`,
     [
       id,
       options.userId ?? USER,
@@ -105,11 +131,34 @@ function seedTransaction(
       options.amountTryMinor ?? 1000,
       options.amountTryMinor ?? 1000,
       options.effectiveDate ?? "2026-05-10",
+      options.purchaseDate ?? null,
       options.effectiveDate ?? "2026-05-10",
       options.categoryId ?? null,
+      options.paymentSourceId ?? null,
       options.planId ?? null,
+      options.cardStatementId ?? null,
       options.subscriptionId ?? null,
     ],
+  );
+}
+
+/** The card a statement is billed against. Structure: no scope takes it. */
+function seedSource(id = "card"): void {
+  run(
+    `INSERT INTO payment_sources (id, user_id, created_at, updated_at, deleted_at, tombstone_version,
+       name, type, person_id, due_day, statement_day, color, logo_source, logo_ref, is_active)
+     VALUES (?, ?, ?, ?, NULL, 0, ?, 'credit_card', 'self', 10, 25, NULL, 'initials', NULL, 1)`,
+    [id, USER, NOW, NOW, id],
+  );
+}
+
+/** A billed period. Nothing displays one that has no lines left on it. */
+function seedStatement(id: string, periodMonth = "2026-05", sourceId = "card"): void {
+  run(
+    `INSERT INTO credit_card_statements (id, user_id, created_at, updated_at, deleted_at, tombstone_version,
+       payment_source_id, period_month, statement_date, due_date)
+     VALUES (?, ?, ?, ?, NULL, 0, ?, ?, ?, ?)`,
+    [id, USER, NOW, NOW, sourceId, periodMonth, `${periodMonth}-25`, `${periodMonth}-10`],
   );
 }
 
@@ -231,8 +280,8 @@ function seedAdjustment(id: string, date: string): void {
 function seedProfile(startedOn = "2026-01-01", openingCashMinor = 0): void {
   run(
     `INSERT INTO investment_profiles (id, user_id, created_at, updated_at, deleted_at, tombstone_version,
-       started_on, opening_cash_minor, setup_completed)
-     VALUES ('profile', ?, ?, ?, NULL, 0, ?, ?, 1)`,
+       started_on, opening_cash_minor)
+     VALUES ('profile', ?, ?, ?, NULL, 0, ?, ?)`,
     [USER, NOW, NOW, startedOn, openingCashMinor],
   );
 }
@@ -272,6 +321,21 @@ function live(table: string, userId = USER): string[] {
     .map((row) => String((row as { id: string }).id));
 }
 
+/**
+ * Live rows of a table with the columns a test needs to judge them.
+ *
+ * `live` answers with ids, which stopped being enough once the reset began
+ * ending in the maintenance pass: several of these assertions are about what
+ * the workspace looks like AFTERWARDS, and an obligation regenerated as
+ * `pending` is a different fact from the settled one that was deleted even
+ * though both are rows in the same table.
+ */
+function liveRows<T extends Record<string, unknown>>(table: string, columns: string, userId = USER): T[] {
+  return harness
+    .db!.prepare(`SELECT ${columns} FROM ${table} WHERE user_id = ? AND deleted_at IS NULL ORDER BY id`)
+    .all(userId) as T[];
+}
+
 const ALL_DATES: ResetRange = { from: null, to: null };
 
 function selection(scopes: ResetSelection["scopes"], range: ResetRange = ALL_DATES): ResetSelection {
@@ -283,6 +347,7 @@ describe("data reset", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date(NOW));
     harness.db = new DatabaseSync(":memory:");
+    harness.failMaintenance = false;
     for (const statement of migrationStatements) harness.db.exec(statement);
     seedPerson();
     seedPerson("other-self", OTHER);
@@ -421,8 +486,46 @@ describe("data reset", () => {
 
       await performDataReset(USER, selection(["ledger"]));
 
-      // The anchor goes; every other preference is not ledger data.
-      expect(live("settings")).toEqual([`det:setting|${USER}|reminder_days`]);
+      // The anchor goes; every other preference is not ledger data. Named
+      // rather than compared as a whole list, because the maintenance pass the
+      // reset now ends with writes bookkeeping flags of its own — pinning the
+      // exact set would fail this test for a reason unrelated to the anchor.
+      const settings = live("settings");
+      expect(settings).toContain(`det:setting|${USER}|reminder_days`);
+      expect(settings).not.toContain(`det:setting|${USER}|start_month`);
+      expect(settings).not.toContain(`det:setting|${USER}|opening_balance_minor`);
+      expect(settings).not.toContain(`det:setting|${USER}|balance_declared`);
+    });
+
+    /**
+     * The hole a full reset used to leave behind, and the reason a workspace
+     * the owner had just cleared still showed a balance: a row pointing at a
+     * plan that is already tombstoned belonged to NEITHER scope. The ledger
+     * refused it because the column was not null; the instalment scope refused
+     * it because there was no live plan to claim it.
+     */
+    it("takes an instalment row whose plan no longer exists", async () => {
+      seedPlan("gone");
+      run(`UPDATE installment_plans SET deleted_at = ? WHERE id = 'gone'`, [NOW]);
+      seedTransaction("orphan", { effectiveDate: "2026-05-10", planId: "gone" });
+      seedTransaction("plain", { effectiveDate: "2026-05-10" });
+
+      const preview = await previewDataReset(USER, selection(["ledger"]));
+      expect(preview.counts.ledger).toBe(2);
+
+      await performDataReset(USER, selection(["ledger"]));
+      expect(live("transactions")).toEqual([]);
+    });
+
+    it("still counts an orphan exactly once when both scopes are reset", async () => {
+      seedPlan("gone");
+      run(`UPDATE installment_plans SET deleted_at = ? WHERE id = 'gone'`, [NOW]);
+      seedTransaction("orphan", { effectiveDate: "2026-05-10", planId: "gone" });
+
+      const preview = await previewDataReset(USER, selection(["ledger", "installments"]));
+      expect(preview.total).toBe(1);
+      const outcome = await performDataReset(USER, selection(["ledger", "installments"]));
+      expect(outcome.deleted).toBe(1);
     });
 
     it("leaves instalment rows to their own scope", async () => {
@@ -565,8 +668,14 @@ describe("data reset", () => {
 
       expect(live("recurring_incomes")).toEqual([]);
       expect(live("subscriptions")).toEqual(["sub-1"]);
-      // The other rule's obligation is not this scope's to take.
-      expect(live("expected_payments")).toEqual(["sub-expected"]);
+      // The other rule's obligation is not this scope's to take. Asserted by
+      // KIND rather than as an exact list: the maintenance pass that now ends
+      // every reset raises fresh obligations for rules that survived, and
+      // `sub-1` is one. What must be true is that nothing is left standing for
+      // an income rule that no longer exists.
+      const obligations = liveRows<{ id: string; kind: string }>("expected_payments", "id, kind");
+      expect(obligations.map((row) => row.id)).toContain("sub-expected");
+      expect(obligations.filter((row) => row.kind === "recurring_income")).toEqual([]);
     });
 
     it("leaves the income already received in the ledger", async () => {
@@ -685,8 +794,15 @@ describe("data reset", () => {
       const outcome = await performDataReset(USER, chosen);
 
       expect(preview.total).toBe(outcome.deleted);
-      expect(live("expected_payments")).toEqual([]);
       expect(live("subscriptions")).toEqual(["sub-1"]);
+      // The settled obligation is gone, and what the surviving rule has now is
+      // an unpaid one. That is the end state this scope's own comment promises
+      // — "the rule still stands, the payment does not" — and it is reachable
+      // to assert because the reset runs the maintenance pass rather than
+      // leaving the workspace inconsistent until the next foreground.
+      const obligations = liveRows<{ id: string; status: string }>("expected_payments", "id, status");
+      expect(obligations.map((row) => row.id)).not.toContain("shared");
+      expect(obligations.every((row) => row.status !== "paid")).toBe(true);
     });
 
     it("clears the anchor only when the ledger itself is being reset", async () => {
@@ -744,7 +860,12 @@ describe("data reset", () => {
 
       expect(outcome.deleted).toBe(450);
       expect(live("transactions")).toEqual([]);
-      const queued = harness.db!.prepare(`SELECT COUNT(*) AS n FROM outbox`).get() as { n: number };
+      // Counted for THIS table: the maintenance pass that ends every reset
+      // queues its own rows too, and a total over the whole outbox would be
+      // measuring both. What this test is about is that no chunk was lost.
+      const queued = harness
+        .db!.prepare(`SELECT COUNT(*) AS n FROM outbox WHERE table_name = 'transactions'`)
+        .get() as { n: number };
       expect(Number(queued.n)).toBe(450);
     });
 
@@ -797,6 +918,117 @@ describe("data reset", () => {
       expect(live("investment_operations")).toEqual([]);
       expect(live("investment_products")).toEqual(["gold"]);
       expect(live("investment_profiles")).toEqual(["profile"]);
+    });
+
+    /**
+     * The half of the anchor rule that was missing.
+     *
+     * A ledger reset over every date clears the opening balance; the wallet's
+     * opening cash is the same kind of claim and used to survive, so clearing
+     * every operation handed the free balance the money those operations had
+     * spent. The owner reported it as the products going and the cash that
+     * bought them coming back.
+     */
+    it("clears the wallet's opening cash when every operation goes", async () => {
+      seedProfile("2026-01-01", 100_000);
+      seedProduct();
+      seedOperation("only", "2026-02-01", 30_000);
+
+      const preview = await previewDataReset(USER, selection(["investments"]));
+      await performDataReset(USER, selection(["investments"]));
+
+      expect(preview.clearsInvestmentWallet).toBe(true);
+      // The operation and the wallet row: both are writes, both are counted.
+      expect(preview.counts.investments).toBe(2);
+      const wallet = liveRows<{ opening_cash_minor: number; started_on: string }>(
+        "investment_profiles",
+        "id, opening_cash_minor, started_on",
+      );
+      expect(wallet).toEqual([{ id: "profile", opening_cash_minor: 0, started_on: "2026-01-01" }]);
+    });
+
+    /**
+     * `started_on` deliberately stays put, and this is the trap: advancing it
+     * to today looks like a tidy way to drop the transfers that funded the
+     * wallet, but a transfer OUT dated today would then be subtracted from a
+     * wallet declared empty this morning — and the day someone clears their
+     * investments is the day they have just moved the balance out of them.
+     */
+    it("leaves the wallet alone when the range only cuts a tail", async () => {
+      seedProfile("2026-01-01", 100_000);
+      seedProduct();
+      seedOperation("early", "2026-02-01", 10_000);
+      seedOperation("late", "2026-06-01", 10_000);
+
+      const preview = await previewDataReset(USER, selection(["investments"], { from: "2026-05-01", to: null }));
+      await performDataReset(USER, selection(["investments"], { from: "2026-05-01", to: null }));
+
+      expect(preview.clearsInvestmentWallet).toBe(false);
+      const wallet = liveRows<{ opening_cash_minor: number }>("investment_profiles", "id, opening_cash_minor");
+      expect(wallet).toEqual([{ id: "profile", opening_cash_minor: 100_000 }]);
+    });
+
+    it("says nothing about a wallet that is already empty", async () => {
+      seedProfile("2026-01-01", 0);
+      seedProduct();
+      seedOperation("only", "2026-02-01", 0 + 1);
+
+      const preview = await previewDataReset(USER, selection(["investments"]));
+
+      // One write, not two: a row already at zero is not rewritten, not synced
+      // and not counted in a total the owner reads as "records to be deleted".
+      expect(preview.counts.investments).toBe(1);
+      expect(preview.clearsInvestmentWallet).toBe(false);
+    });
+
+    /**
+     * The reported case end to end. Clearing both scopes takes the transfers
+     * with the ledger and the opening figure with the wallet, so the free
+     * balance the replay produces afterwards is zero rather than the money the
+     * deleted purchases had spent.
+     */
+    it("leaves nothing in the wallet when the ledger goes with it", async () => {
+      seedCategory("transfer-cat", { isTransfer: true });
+      seedProfile("2026-01-01", 20_000);
+      seedProduct();
+      seedTransaction("funding", {
+        effectiveDate: "2026-03-01",
+        type: "transfer",
+        categoryId: "transfer-cat",
+        amountTryMinor: 50_000,
+      });
+      seedOperation("bought", "2026-03-02", 70_000);
+
+      const chosen = selection(["ledger", "investments"]);
+      const preview = await previewDataReset(USER, chosen);
+      await performDataReset(USER, chosen);
+
+      expect(preview.blocker).toBeNull();
+      expect(live("investment_operations")).toEqual([]);
+      expect(live("transactions")).toEqual([]);
+      const wallet = liveRows<{ opening_cash_minor: number }>("investment_profiles", "id, opening_cash_minor");
+      expect(wallet).toEqual([{ id: "profile", opening_cash_minor: 0 }]);
+    });
+
+    /**
+     * Refused in the PREVIEW rather than as a failure after the confirmation.
+     * A wallet that opened with 20.000 and has since sent 50.000 back to the
+     * Mali Tablo cannot be re-declared as having opened with nothing, and
+     * `movesInvestments` now asks about exactly this selection.
+     */
+    it("refuses to empty a wallet that more has left than it opened with", async () => {
+      seedCategory("transfer-cat", { isTransfer: true });
+      seedProfile("2026-01-01", 20_000);
+      seedTransaction("cash-out", {
+        effectiveDate: "2026-03-01",
+        type: "transfer",
+        categoryId: "transfer-cat",
+        amountTryMinor: -50_000,
+      });
+
+      const preview = await previewDataReset(USER, selection(["investments"]));
+
+      expect(preview.blocker).toBe("insufficient_cash");
     });
 
     it("refuses a ledger reset that would take the cash the wallet already spent", async () => {
@@ -897,6 +1129,185 @@ describe("data reset", () => {
     });
   });
 
+  /**
+   * What a reset leaves behind that no selector claims.
+   *
+   * A credit-card statement is a record of a billed period, and it is the
+   * parent of its lines rather than a dependent of them, so none of the scopes
+   * above take it. Clearing the ledger therefore left every statement standing
+   * over lines that no longer existed — rows of ₺0 on the payment-source
+   * screen. The sweep already existed in the maintenance pass; what was
+   * missing was the reset running it, which is also what regenerates the
+   * obligations this module tombstones on purpose.
+   */
+  describe("what the maintenance pass tidies afterwards", () => {
+    it("takes a card statement whose every line the reset removed", async () => {
+      seedSource();
+      seedStatement("stmt");
+      seedTransaction("line", { effectiveDate: "2026-05-10", cardStatementId: "stmt" });
+
+      await performDataReset(USER, selection(["ledger"]));
+
+      expect(live("transactions")).toEqual([]);
+      expect(live("credit_card_statements")).toEqual([]);
+    });
+
+    it("keeps a statement whose lines the range did not reach", async () => {
+      seedSource();
+      seedStatement("kept", "2026-09");
+      seedTransaction("line", { effectiveDate: "2026-09-10", cardStatementId: "kept" });
+
+      await performDataReset(USER, selection(["ledger"], { from: "2026-01-01", to: "2026-06-30" }));
+
+      expect(live("transactions")).toEqual(["line"]);
+      expect(live("credit_card_statements")).toEqual(["kept"]);
+    });
+  });
+
+  /**
+   * Every combination of scopes, against the rule the module opens with.
+   *
+   * Sixty-three subsets is more than anyone will reason about one at a time,
+   * and reasoning one at a time is how the two defects above survived: the
+   * ledger owned a cascade, the investments scope owned a tail, and nobody
+   * asked what "ledger AND investments but not subscriptions" leaves behind.
+   * So the permutations are enumerated and the INVARIANT is asserted rather
+   * than the outcome — a per-case expectation would be sixty-three more
+   * things to keep true.
+   *
+   * The invariant is the module's second rule, made checkable: a scope owns
+   * its dependents, so nothing that outlives a reset may point at something
+   * that did not. Deliberate exceptions are named in `KEPT_PROVENANCE` rather
+   * than quietly excluded, because each one is a decision.
+   */
+  describe("no combination leaves a dangling reference", () => {
+    /**
+     * References a reset is ALLOWED to leave hanging, and why.
+     *
+     * A paid subscription invoice stays in the Mali Tablo when the rule is
+     * reset — the scope hint promises exactly that — and it keeps the rule id
+     * it was raised from. That id is provenance, not a lookup: every consumer
+     * of it already treats a missing rule as "no record to point at".
+     */
+    const KEPT_PROVENANCE = new Set(["transactions.subscription_id"]);
+
+    /** One of everything, wired to everything else it can be wired to. */
+    function seedWholeWorkspace(): void {
+      seedSource();
+      seedPlan("plan");
+      seedSubscription("sub");
+      seedIncome("inc");
+      seedPriceHistory("price", "sub");
+      seedStatement("stmt");
+      seedBudget("budget", "2026-05");
+      seedCellNote("note", "2026-05");
+      seedMatrixColor("mark-cell", "cell", "2026-05");
+      seedMatrixColor("mark-row", "row", null);
+      seedAdjustment("adj", "2026-05-02");
+      seedProfile("2026-01-01", 100_000);
+      seedProduct();
+      seedOperation("op", "2026-02-01", 10_000);
+
+      seedTransaction("plain", { effectiveDate: "2026-05-10", categoryId: "cat-1" });
+      // On the card and already billed, so the statement has a line to lose.
+      seedTransaction("carded", {
+        effectiveDate: "2026-05-11",
+        paymentSourceId: "card",
+        cardStatementId: "stmt",
+      });
+      seedTransaction("from-sub", { effectiveDate: "2026-05-12", subscriptionId: "sub" });
+      // On the card and NOT billed yet: this is what makes the maintenance
+      // pass's statement repair run, which the reset now reaches. Without a
+      // card behind it the repair found no candidates and every permutation
+      // was quietly measuring a workspace with no cards in it at all.
+      seedTransaction("instalment", {
+        effectiveDate: "2026-05-13",
+        paymentSourceId: "card",
+        planId: "plan",
+      });
+      seedTransaction("unbilled", {
+        effectiveDate: "2026-06-10",
+        paymentSourceId: "card",
+        purchaseDate: "2026-05-28",
+      });
+
+      seedAttachment("doc-plain", "plain");
+      seedAttachment("doc-instalment", "instalment");
+      seedExpected("exp-sub", { kind: "subscription", refId: "sub", transactionId: "from-sub", status: "paid" });
+      seedExpected("exp-inc", { kind: "recurring_income", refId: "inc" });
+      seedExpected("exp-plain", { kind: "subscription", refId: "sub", transactionId: "plain", status: "paid" });
+    }
+
+    /** Ids of the rows a table still has, live or not — a tombstone is gone. */
+    function liveIds(table: string): Set<string> {
+      return new Set(live(table));
+    }
+
+    function danglingReferences(): string[] {
+      const found: string[] = [];
+      for (const [table, column, target] of RELATIONS) {
+        const key = `${table}.${column}`;
+        if (KEPT_PROVENANCE.has(key)) continue;
+        const parents = liveIds(target);
+        const rows = liveRows<Record<string, unknown>>(table, `id, ${column}`);
+        for (const row of rows) {
+          const reference = row[column];
+          if (reference == null) continue;
+          if (!parents.has(String(reference))) found.push(`${key} -> ${String(reference)} (row ${String(row.id)})`);
+        }
+      }
+      return found;
+    }
+
+    /** Every non-empty subset of the six scopes, smallest first. */
+    const combinations = Array.from({ length: 2 ** RESET_SCOPES.length - 1 }, (_, index) =>
+      RESET_SCOPES.filter((_scope, bit) => ((index + 1) >> bit) & 1),
+    );
+
+    /**
+     * Both ends of the range question, because they fail differently.
+     *
+     * Unbounded is where the anchors go and where whole-scope cascades run.
+     * A bounded range is where a cascade can run HALF way — the plan the range
+     * cuts through, the month a note only partly belongs to, the operation
+     * tail — and that is the side a hand-written case is least likely to
+     * cover. The bounds deliberately cut through the seeded month rather than
+     * enclosing it.
+     */
+    const ranges: readonly (readonly [string, ResetRange])[] = [
+      ["every date", ALL_DATES],
+      ["a range that cuts through the data", { from: "2026-05-11", to: "2026-08-31" }],
+    ];
+
+    const cases = combinations.flatMap((scopes) =>
+      ranges.map(([label, range]) => [`${scopes.join("+")} over ${label}`, scopes, range] as const),
+    );
+
+    it.each(cases)("leaves a consistent workspace after resetting %s", async (_name, scopes, range) => {
+      seedWholeWorkspace();
+
+      const chosen = selection(scopes, range);
+      const preview = await previewDataReset(USER, chosen);
+      const outcome = await performDataReset(USER, chosen);
+
+      // The scopes are kept disjoint rather than overlapping-and-deduplicated,
+      // and this is the only assertion that holds them to it across every
+      // combination: a row two scopes both claimed would be written once and
+      // counted twice, and the count is what a person approves.
+      expect(preview.total).toBe(outcome.deleted);
+      expect(danglingReferences()).toEqual([]);
+      // A statement with no lines left displays as a row of ₺0 and answers
+      // nothing. The maintenance pass the reset ends with owns this sweep.
+      const lines = liveRows<{ card_statement_id: string | null }>("transactions", "id, card_statement_id");
+      for (const statement of live("credit_card_statements")) {
+        expect(
+          lines.some((row) => row.card_statement_id === statement),
+          `statement ${statement} kept with no lines`,
+        ).toBe(true);
+      }
+    });
+  });
+
   describe("the sync contract", () => {
     it("tombstones rather than dropping rows, and queues each one for sync", async () => {
       // A reset that only emptied this device would be undone by the next pull.
@@ -910,7 +1321,9 @@ describe("data reset", () => {
       };
       expect(row.deleted_at).toBe(NOW);
       expect(row.tombstone_version).toBe(1);
-      const outbox = harness.db!.prepare(`SELECT table_name, row_id, op FROM outbox`).all();
+      const outbox = harness
+        .db!.prepare(`SELECT table_name, row_id, op FROM outbox WHERE table_name = 'transactions'`)
+        .all();
       expect(outbox).toEqual([{ table_name: "transactions", row_id: "tx", op: "upsert" }]);
     });
 
@@ -925,6 +1338,81 @@ describe("data reset", () => {
         .db!.prepare(`SELECT id FROM settings WHERE user_id = ? AND key = 'last_entry_at'`)
         .all(USER);
       expect(entry).toEqual([]);
+    });
+  });
+
+  /**
+   * The delete is committed by the time the sweep runs, so a sweep that fails
+   * must not turn a finished reset into a failure. It did: the owner was told
+   * "hiçbir şey silinmedi; tekrar dene" with every row already gone, and
+   * pressing again found nothing left to delete.
+   */
+  describe("when the tidy-up after the delete fails", () => {
+    it("still reports the rows as deleted, and says the sweep did not finish", async () => {
+      seedTransaction("gone", { effectiveDate: "2026-05-10" });
+      harness.failMaintenance = true;
+
+      const outcome = await performDataReset(USER, selection(["ledger"]));
+
+      expect(outcome.deleted).toBe(1);
+      expect(outcome.tidied).toBe(false);
+      expect(live("transactions")).toEqual([]);
+    });
+
+    it("says the sweep finished when it did", async () => {
+      seedTransaction("gone", { effectiveDate: "2026-05-10" });
+      const outcome = await performDataReset(USER, selection(["ledger"]));
+      expect(outcome).toEqual({ deleted: 1, tidied: true });
+    });
+
+    it("reports a selection with nothing in it as tidy, having run no sweep", async () => {
+      harness.failMaintenance = true;
+      await expect(performDataReset(USER, selection(["ledger"]))).resolves.toEqual({ deleted: 0, tidied: true });
+    });
+  });
+
+  /**
+   * The whole promise of "everything, all dates", stated as the only figure
+   * the owner actually checks.
+   *
+   * Every assertion above is about one table. This one asks the question the
+   * owner asks — is the balance zero — and it is the question that caught the
+   * orphaned instalment rows: each table looked emptied and the dashboard
+   * still showed money.
+   */
+  describe("after everything, all dates", () => {
+    it("leaves nothing behind that a balance can be computed from", async () => {
+      seedSetting("start_month", '"2020-01"');
+      seedSetting("opening_balance_minor", "150000");
+      seedSetting("balance_declared", '{"minor":150000,"at":"2026-01-01"}');
+      seedTransaction("typed", { effectiveDate: "2024-03-04", amountTryMinor: 40_000 });
+      seedTransaction("future", { effectiveDate: "2027-01-04", amountTryMinor: 9_000 });
+      seedPlan("live");
+      seedTransaction("instalment", { effectiveDate: "2026-02-01", planId: "live" });
+      seedPlan("gone");
+      run(`UPDATE installment_plans SET deleted_at = ? WHERE id = 'gone'`, [NOW]);
+      seedTransaction("orphan", { effectiveDate: "2025-07-10", planId: "gone", amountTryMinor: 12_345 });
+      seedAdjustment("adjustment", "2025-09-09");
+      seedSource();
+      seedStatement("statement");
+      seedSubscription("sub-1");
+      seedIncome("inc-1");
+      seedBudget("budget", "2026-03");
+      seedProfile("2026-01-01", 500_00);
+
+      await performDataReset(USER, selection([...RESET_SCOPES]));
+
+      expect(live("transactions")).toEqual([]);
+      expect(live("balance_adjustments")).toEqual([]);
+      const settings = live("settings");
+      for (const key of ["start_month", "opening_balance_minor", "balance_declared"]) {
+        expect(settings, key).not.toContain(`det:setting|${USER}|${key}`);
+      }
+      // The structure the reset promises to keep is still standing, so this is
+      // an emptied workspace rather than a dismantled one.
+      expect(live("categories")).toEqual(["cat-1"]);
+      expect(live("payment_sources")).toEqual(["card"]);
+      expect(live("investment_profiles")).toEqual(["profile"]);
     });
   });
 });

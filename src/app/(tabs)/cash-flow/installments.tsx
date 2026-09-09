@@ -42,7 +42,7 @@ export default function InstallmentsScreen() {
   const router = useRouter();
   const { palette } = useTheme();
   const compact = useContentWidth() < 560;
-  const [viewMonth, setViewMonth] = useState(monthKeyOf(todayISO()));
+  const [requestedMonth, setRequestedMonth] = useState(monthKeyOf(todayISO()));
   /**
    * Arriving with a card already chosen.
    *
@@ -66,16 +66,29 @@ export default function InstallmentsScreen() {
     if (tx.installmentPlanId && tx.note && !noteByPlan.has(tx.installmentPlanId)) noteByPlan.set(tx.installmentPlanId, tx.note);
   }
 
-  // The stepper used to walk to any month in either direction, so a plan ending
-  // in October 2027 still offered 2035 — every one of those months empty. The
-  // bounds are the plans themselves; with no plans at all there is nowhere to
-  // go, so it stays on this month.
+  // The stepper walks the instalment months and nothing else: a plan ending in
+  // October 2027 used to offer 2035, and every one of those months was empty.
+  //
+  // What made the bounds wrong on their own was the STARTING point, not the
+  // bounds. The screen opens on this month, and a workspace whose last
+  // instalment fell in June opens outside its own range — so Back worked,
+  // Forward was dead from the first press, and walking away from today was a
+  // one-way trip. The view is clamped INTO the range instead of the range
+  // being widened to reach today, because a month with no instalment in it has
+  // nothing to show whichever direction you arrive from.
   const planMonths = allTx
     .filter((t) => t.installmentPlanId != null)
     .map((t) => monthKeyOf(t.effectiveDate))
     .sort();
-  const firstPlanMonth = planMonths[0] ?? viewMonth;
-  const lastPlanMonth = planMonths.at(-1) ?? viewMonth;
+  const currentMonth = monthKeyOf(todayISO());
+  const firstPlanMonth = planMonths[0] ?? currentMonth;
+  const lastPlanMonth = planMonths.at(-1) ?? currentMonth;
+  // Derived, not stored: clamping through state would need an effect, and an
+  // effect that corrects state on the render after the data arrives is the
+  // one-frame flash of an out-of-range month.
+  const viewMonth = requestedMonth < firstPlanMonth
+    ? firstPlanMonth
+    : requestedMonth > lastPlanMonth ? lastPlanMonth : requestedMonth;
 
   const itemsByPlan = new Map<string, GeneratedInstallment[]>();
   for (const t of allTx) {
@@ -200,7 +213,7 @@ export default function InstallmentsScreen() {
         testID="installments-workspace"
         primary={(
           <View>
-            <MonthStepper value={viewMonth} onChange={setViewMonth} min={firstPlanMonth} max={lastPlanMonth} />
+            <MonthStepper value={viewMonth} onChange={setRequestedMonth} min={firstPlanMonth} max={lastPlanMonth} />
             <Card>
               <Body muted>{tr.installments.thisMonthTotal} · {monthLabel(viewMonth)}</Body>
               {/* This screen's ONE hero figure, so it counts — the same rule

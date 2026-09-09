@@ -177,24 +177,65 @@ export function parseMarketBooks(payload: unknown): MarketBooks | null {
 }
 
 /**
+ * The margin a dealer keeps, in basis points of what it is asking.
+ *
+ * An exchange order book has a spread of a few hundredths of a percent, so
+ * `buyTry` and `sellTry` taken straight off it came out within a rounding of
+ * each other. That is a true statement about an exchange and a false one about
+ * the counter a person actually sells across: a shop's "Alış" sits well under
+ * its "Satış", and the tile said the owner could sell gold at very nearly what
+ * they would pay. The selling side needed no such correction — measured
+ * against the dealer feed this replaced, the ask agreed to within half a
+ * percent.
+ *
+ * Each figure below is a published Turkish counter spread, not a number taken
+ * off anyone's price list — copying that list is what the derivation above
+ * exists to avoid. Read 2026-09-09:
+ *
+ *   - **Gold.** A jeweller's gram spread runs 80–120 TL on a ~6.850 TL gram,
+ *     which is 1,2–1,8%. A large dealer sits at the tight end of that, so 1,25%
+ *     rather than the middle. (Banks quote up to 5% on paper gold; that is a
+ *     different product and not what this tile is about.)
+ *   - **Dollar.** Free-market boards quoted 48,3810 / 48,4899 — 0,22%.
+ *   - **Euro.** 56,1223 / 56,3586 on the same boards — 0,42%. Wider than the
+ *     dollar because the euro reaches lira through two legs, which is also how
+ *     the ask below is composed.
+ *
+ * Recalibrating means editing these three numbers and the readings beside them.
+ */
+export const DEALER_MARGIN_BP: Readonly<Record<"metal" | "usd" | "eur", number>> = {
+  metal: 125,
+  usd: 22,
+  eur: 42,
+};
+
+/**
+ * What a dealer pays, given what it asks.
+ *
+ * Anchored to the ASK rather than to the book's own bid: the ask is the side
+ * that was verified against a real dealer, so deriving the other side from it
+ * keeps one measured number underneath both.
+ */
+export function dealerBidTry(sellTry: number, marginBp: number): number {
+  return sellTry * (1 - marginBp / 10_000);
+}
+
+/**
  * Turn three order books into the six prices the card shows.
  *
- * The two sides are composed consistently rather than averaged: a euro bought
- * with lira crosses two asks, and one sold crosses two bids, so that is how the
- * cross rate is built. Averaging the pair first would produce a rate nobody
- * could actually trade at, narrower than either leg allows.
+ * The selling side is composed consistently rather than averaged: a euro bought
+ * with lira crosses two asks, so that is how the cross rate is built. The
+ * buying side is that price less the dealer margin above.
  */
 export function deriveMarketQuotes(books: MarketBooks): DerivedQuote[] {
-  const gramBid = books.goldTry.bid / TROY_OUNCE_GRAMS;
   const gramAsk = books.goldTry.ask / TROY_OUNCE_GRAMS;
+  const gramBid = dealerBidTry(gramAsk, DEALER_MARGIN_BP.metal);
+  const usdSell = books.usdTry.ask;
+  const eurSell = books.eurUsd.ask * books.usdTry.ask;
   const quotes: DerivedQuote[] = [
     { code: "ALTIN", buyTry: gramBid, sellTry: gramAsk },
-    { code: "USDTRY", buyTry: books.usdTry.bid, sellTry: books.usdTry.ask },
-    {
-      code: "EURTRY",
-      buyTry: books.eurUsd.bid * books.usdTry.bid,
-      sellTry: books.eurUsd.ask * books.usdTry.ask,
-    },
+    { code: "USDTRY", buyTry: dealerBidTry(usdSell, DEALER_MARGIN_BP.usd), sellTry: usdSell },
+    { code: "EURTRY", buyTry: dealerBidTry(eurSell, DEALER_MARGIN_BP.eur), sellTry: eurSell },
   ];
   for (const [code, fineGrams] of Object.entries(COIN_FINE_GRAMS)) {
     quotes.push({ code, buyTry: gramBid * fineGrams, sellTry: gramAsk * fineGrams });

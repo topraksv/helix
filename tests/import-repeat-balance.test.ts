@@ -62,6 +62,7 @@ function sheet(): ParsedSheet {
     ],
     skippedColumns: [],
     openingBalance: { month: "2026-01", minor: OPENING_MINOR },
+    openingCandidates: [],
   };
 }
 
@@ -181,6 +182,184 @@ describe("importing the same workbook twice", () => {
     expect(liveRows().every((row) => row.origin === "spreadsheet")).toBe(true);
   });
 
+  /**
+   * The rule a replace import lives or dies by: it owns the years it is
+   * importing and nothing else.
+   *
+   * The batch index records which rows belong to which year precisely so that
+   * re-importing 2026 cannot touch 2025 — and the protection is a filter over
+   * ids, which is the kind of thing that keeps working right up until the
+   * moment it silently does not. Nothing exercised it, and the failure would
+   * look like a year of records disappearing during an ordinary re-import.
+   */
+  it("re-importing one year leaves another year's rows alone", async () => {
+    const yearSheet = (year: number): ParsedSheet => ({
+      ...sheet(),
+      sheetName: String(year),
+      year,
+      months: [`${year}-01` as MonthKey, `${year}-02` as MonthKey],
+      openingBalance: { month: `${year}-01` as MonthKey, minor: OPENING_MINOR },
+      openingCandidates: [],
+    });
+    const forYear = (year: number) => ({
+      sheets: [yearSheet(year)],
+      excludedLabels: [],
+      selfId: "person-self",
+      mode: "replace" as const,
+    });
+
+    await importSheets(USER, forYear(2025));
+    const from2025 = new Set(liveRows().map((row) => row.id));
+    expect(from2025.size).toBeGreaterThan(0);
+
+    await importSheets(USER, forYear(2026));
+
+    const live = new Set(liveRows().map((row) => row.id));
+    for (const id of from2025) expect(live.has(id), `2025 row ${id} was removed by a 2026 import`).toBe(true);
+    expect(live.size).toBeGreaterThan(from2025.size);
+  });
+
+  /**
+   * An opaque monthly total keeps its comment as a cell note — that comment is
+   * usually the only record of what the figure was made of, and losing it on
+   * import loses the one thing a person could not reconstruct.
+   */
+  it("keeps an unitemizable cell's comment as a note on that cell", async () => {
+    const noted = (): ParsedSheet => {
+      const base = sheet();
+      return {
+        ...base,
+        cells: base.cells.map((row, index) =>
+          index === 0
+            ? [{ ...row[0]!, comment: "Market + eczane, fişler kayıp" }]
+            : row),
+      };
+    };
+
+    await importSheets(USER, { sheets: [noted()], excludedLabels: [], selfId: "person-self", mode: "replace" });
+
+    const notes = harness.db!
+      .prepare(`SELECT month, body FROM cell_notes WHERE user_id = ? AND deleted_at IS NULL`)
+      .all(USER) as { month: string; body: string }[];
+    expect(notes).toEqual([{ month: "2026-01", body: "Market + eczane, fişler kayıp" }]);
+  });
+
+  /**
+   * The batch record is what a replace import uses to know which rows it owns.
+   * If it cannot be read, "replace" has no way to identify the rows it should
+   * remove — so the only safe answer is to refuse, and to refuse in ADD mode
+   * too, because add mode overwrites the same record and would leave the old
+   * rows both unremovable and unattributed.
+   *
+   * Nothing exercised this. It is the guard that decides whether a corrupt
+   * setting costs an error message or a year of doubled rows.
+   */
+  describe("when a year's batch record cannot be read", () => {
+    const corrupt = (year: number, value: string) => {
+      harness.db!.prepare(
+        `INSERT INTO settings (id, user_id, created_at, updated_at, deleted_at, tombstone_version, key, value)
+         VALUES (?, ?, ?, ?, NULL, 0, ?, ?)`,
+      ).run(`setting-${year}`, USER, NOW, NOW, `import_batch:${year}`, value);
+    };
+
+    it("refuses a replace rather than orphaning the rows it cannot find", async () => {
+      corrupt(2026, "{ not json");
+      await expect(importSheets(USER, request("replace"))).rejects.toThrow();
+      expect(liveRows()).toEqual([]);
+    });
+
+    it("refuses an add for the same reason, and writes nothing", async () => {
+      corrupt(2026, JSON.stringify({ transactions: "not-an-array" }));
+      await expect(importSheets(USER, request("add"))).rejects.toThrow();
+      expect(liveRows()).toEqual([]);
+      // The anchor is part of the same transaction, so a refusal leaves it too.
+      expect(setting("opening_balance_minor")).toBeNull();
+    });
+
+    it("still imports a year whose own record is readable", async () => {
+      corrupt(2025, "{ not json");
+      await importSheets(USER, request("replace"));
+      expect(liveRows().length).toBeGreaterThan(0);
+    });
+  });
+
+  /**
+   * A "Taksit" column whose cell comments list the instalments is the one place
+   * the importer builds STRUCTURE — a card, a plan and its whole schedule —
+   * rather than rows. None of it was covered.
+   */
+  describe("reconstructing an instalment plan from a comment", () => {
+    const CARD = "Kart A";
+    const comment = ["══════ Kart A ══════", "Robot Süpürge    2.777,67   3/9"].join("\n");
+
+    function planSheet(): ParsedSheet {
+      const base = sheet();
+      return {
+        ...base,
+        columns: [...base.columns, { label: "KK Taksit", kindGuess: "expense", isInvestment: false, balanceLike: false, dueDay: null }],
+        cells: base.cells.map((row, index) => [
+          ...row,
+          { valueMinor: 2_777_67, formulaParts: null, comment: index === 1 ? comment : null, commentParts: null },
+        ]),
+      };
+    }
+
+    const planRequest = (cardCycles?: Record<string, { statementDay: number; dueDay: number }>) => ({
+      sheets: [planSheet()],
+      excludedLabels: [],
+      selfId: "person-self",
+      mode: "replace" as const,
+      ...(cardCycles ? { cardCycles } : {}),
+    });
+
+    /**
+     * A plan needs a card, and a card needs a cycle: without a statement and a
+     * due day there is no date to put an instalment on. Refusing is the only
+     * honest answer, and it is what the wizard's cycle prompt exists to collect.
+     */
+    it("refuses when the workbook names a card whose cycle nobody supplied", async () => {
+      await expect(importSheets(USER, planRequest())).rejects.toThrow();
+      expect(liveRows()).toEqual([]);
+    });
+
+    it("creates the card, the plan and the whole schedule from one comment", async () => {
+      await importSheets(USER, planRequest({ [CARD]: { statementDay: 25, dueDay: 10 } }));
+
+      const sources = harness.db!
+        .prepare(`SELECT name, type, statement_day, due_day FROM payment_sources WHERE user_id = ? AND deleted_at IS NULL`)
+        .all(USER) as { name: string; type: string; statement_day: number; due_day: number }[];
+      expect(sources).toEqual([{ name: CARD, type: "credit_card", statement_day: 25, due_day: 10 }]);
+
+      const plans = harness.db!
+        .prepare(`SELECT title, kind, installment_count, monthly_amount_minor FROM installment_plans WHERE user_id = ? AND deleted_at IS NULL`)
+        .all(USER) as { title: string; kind: string; installment_count: number; monthly_amount_minor: number }[];
+      expect(plans).toEqual([{ title: "Robot Süpürge", kind: "card_installment", installment_count: 9, monthly_amount_minor: 2_777_67 }]);
+
+      // Nine instalments, and the plan starts where the comment says: the cell
+      // is February and it is the 3rd payment, so the first was December 2025.
+      const rows = harness.db!
+        .prepare(`SELECT effective_date FROM transactions WHERE user_id = ? AND installment_plan_id IS NOT NULL AND deleted_at IS NULL ORDER BY effective_date`)
+        .all(USER) as { effective_date: string }[];
+      expect(rows).toHaveLength(9);
+      expect(rows[0]!.effective_date.slice(0, 7)).toBe("2025-12");
+    });
+
+    /**
+     * The plan is structure, so a repeated replace must not leave two of it.
+     * The batch record carries plan ids for exactly this reason.
+     */
+    it("does not stack a second copy of the plan on a repeated import", async () => {
+      const req = planRequest({ [CARD]: { statementDay: 25, dueDay: 10 } });
+      await importSheets(USER, req);
+      await importSheets(USER, req);
+
+      const plans = harness.db!
+        .prepare(`SELECT COUNT(*) AS n FROM installment_plans WHERE user_id = ? AND deleted_at IS NULL`)
+        .get(USER) as { n: number };
+      expect(plans.n).toBe(1);
+    });
+  });
+
   /** An earlier workbook may move the anchor back; a later one may not. */
   it("moves the anchor only when the workbook genuinely starts earlier", async () => {
     await importSheets(USER, request("replace"));
@@ -191,6 +370,7 @@ describe("importing the same workbook twice", () => {
       months: ["2025-12"],
       cells: [[{ valueMinor: 100_00, formulaParts: null, comment: null, commentParts: null }]],
       openingBalance: { month: "2025-12", minor: 5_000_00 },
+      openingCandidates: [],
     };
     await importSheets(USER, { ...request("add"), sheets: [earlier] });
     expect(setting("start_month")).toBe("2025-12");
@@ -221,6 +401,7 @@ describe("adopting a workbook's opening balance", () => {
       cells: [[]],
       skippedColumns: [],
       openingBalance: { month: `${year}-01` as MonthKey, minor },
+      openingCandidates: [],
     });
     expect(openingBalanceFromSheets([sheet(2026, 500_00), sheet(2025, 300_00)]))
       .toEqual({ month: "2025-01", minor: 300_00 });
@@ -229,5 +410,51 @@ describe("adopting a workbook's opening balance", () => {
       .toEqual({ month: "2026-01", minor: 500_00 });
     expect(openingBalanceFromSheets([{ ...sheet(2026, 0), openingBalance: null }])).toBeNull();
     expect(openingBalanceFromSheets([])).toBeNull();
+  });
+
+  /**
+   * A heading is the one part of a personal spreadsheet nobody else wrote the
+   * rules for. "Toplam", "Ay Sonu" and "Devreden" are all somebody's opening
+   * balance and none of them is anybody else's, so the reading is a default
+   * and the owner can name the column instead.
+   */
+  describe("when the owner names the column instead", () => {
+    const sheet = (year: number): ParsedSheet => ({
+      sheetName: String(year),
+      year,
+      months: [`${year}-01` as MonthKey],
+      columns: [],
+      cells: [[]],
+      skippedColumns: ["Ay Başı", "Toplam"],
+      openingBalance: { month: `${year}-01` as MonthKey, minor: 100_00 },
+      openingCandidates: [
+        { label: "Ay Başı", month: `${year}-01` as MonthKey, minor: 100_00 },
+        { label: "Toplam", month: `${year}-01` as MonthKey, minor: 900_00 },
+      ],
+    });
+
+    it("takes the figure out of the column that was named", () => {
+      expect(openingBalanceFromSheets([sheet(2026)], () => true, "Toplam"))
+        .toEqual({ month: "2026-01", minor: 900_00 });
+    });
+
+    it("still honours the year filter", () => {
+      expect(openingBalanceFromSheets([sheet(2025), sheet(2026)], (year) => year === 2026, "Toplam"))
+        .toEqual({ month: "2026-01", minor: 900_00 });
+    });
+
+    /**
+     * A named column that is not in the workbook yields NOTHING rather than
+     * falling back: a person who answered the question must not be quietly
+     * overruled by the heading rule they were correcting.
+     */
+    it("refuses to fall back to the guess it was correcting", () => {
+      expect(openingBalanceFromSheets([sheet(2026)], () => true, "Devreden")).toBeNull();
+    });
+
+    it("goes back to the heading rule when no column was named", () => {
+      expect(openingBalanceFromSheets([sheet(2026)], () => true, null))
+        .toEqual({ month: "2026-01", minor: 100_00 });
+    });
   });
 });

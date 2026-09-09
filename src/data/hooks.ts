@@ -17,6 +17,8 @@ import { daysBetweenISO, todayISO, type MonthKey } from "../domain/dates";
 import type { TxLike } from "../domain/types";
 import { devError } from "../services/logger";
 import { decodeSettingValue, type SettingKey } from "../domain/settings";
+import { balanceColumnLabel, type StoredBalanceColumns } from "../domain/matrix-preferences";
+import { tr } from "../i18n/tr";
 import {
   combineLiveStates,
   completeLiveQuery,
@@ -805,7 +807,7 @@ export function useInvestmentWalletSnapshot(): InvestmentWalletSnapshot {
  * ahead extends the chain) so it stays a cache, not a leak.
  */
 const LEDGER_CACHE_LIMIT = 4;
-type LedgerCacheEntry = { inputs: readonly unknown[]; value: LedgerChain | null };
+type LedgerCacheEntry = { inputs: readonly unknown[]; value: LedgerChain };
 const ledgerChainCache = new Map<number, LedgerCacheEntry>();
 
 /**
@@ -834,13 +836,21 @@ export function useLedgerState(year: number): LiveValueResult<LedgerBundle | nul
   const txLike = useTxLike();
   const settings = settingsState.data;
   const adjustments = adjustmentsState.data;
-  const { status, error, updatedAt, retry } = combineLiveStates([
+  const { status, ready, error, updatedAt, retry } = combineLiveStates([
     settingsState,
     personsState,
     categoriesState,
     transactionsState,
     adjustmentsState,
   ]);
+
+  // `null` means ONE thing now: the queries have not answered yet. It used to
+  // mean that AND "no opening month is configured", and a screen cannot tell
+  // those apart — which is how a workspace with a perfectly readable database
+  // ended up showing a permanent skeleton. Returning before the build also
+  // keeps the loading pass out of the chain cache, whose inputs would all be
+  // the empty arrays a pending query reports.
+  if (!ready) return { data: null, status, error, updatedAt, retry };
 
   const today = todayISO();
   const configuredStart = settingValue<MonthKey | null>(settings, "start_month", null);
@@ -849,7 +859,7 @@ export function useLedgerState(year: number): LiveValueResult<LedgerBundle | nul
   const inputs = [configuredStart, openingBalanceMinor, includePendingInCells, txLike, adjustments, today] as const;
   const endYear = ledgerChainEndYear(year, today);
   const cached = ledgerChainCache.get(endYear);
-  let chain: LedgerChain | null;
+  let chain: LedgerChain;
   if (cached && cached.inputs.length === inputs.length && cached.inputs.every((input, index) => input === inputs[index])) {
     chain = cached.value;
   } else {
@@ -874,17 +884,30 @@ export function useLedgerState(year: number): LiveValueResult<LedgerBundle | nul
   }
   // The slice is a filter over months already computed, and it has to keep a
   // stable identity or every memo built on the bundle is invalidated again.
-  const sliceCache = chain ? sliceCacheFor(chain) : null;
-  let data: LedgerBundle | null = null;
-  if (chain && sliceCache) {
-    const hit = sliceCache.get(year);
-    if (hit) data = hit;
-    else {
-      data = sliceLedgerYear(chain, year);
-      sliceCache.set(year, data);
-    }
+  const sliceCache = sliceCacheFor(chain);
+  let data = sliceCache.get(year);
+  if (!data) {
+    data = sliceLedgerYear(chain, year);
+    sliceCache.set(year, data);
   }
   return { data, status, error, updatedAt, retry };
+}
+
+/**
+ * What the two balance columns are called here, and whether both are drawn.
+ *
+ * A hook rather than three reads per screen: the Mali Tablo, its month detail
+ * and the editor that sets them all have to agree, and a heading that differs
+ * between the table and the card opened from a cell reads as two figures.
+ */
+export function useBalanceColumns(): { openingLabel: string; closingLabel: string; showOpening: boolean } {
+  const settings = useSettingsMapState().data;
+  const stored = settingValue<StoredBalanceColumns | null>(settings, "balance_columns", null);
+  return {
+    openingLabel: balanceColumnLabel(stored?.openingLabel, tr.cashflow.opening),
+    closingLabel: balanceColumnLabel(stored?.closingLabel, tr.cashflow.closing),
+    showOpening: stored?.showOpening !== false,
+  };
 }
 
 export function useLastEntryInfoState(): LiveValueResult<{ at: string | null; daysAgo: number | null }> {

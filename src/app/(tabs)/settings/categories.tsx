@@ -4,9 +4,9 @@
 import { useState, type ReactNode } from "react";
 import { StyleSheet, View } from "react-native";
 import { useRouter } from "expo-router";
-import { useCategoriesState, useUserId } from "../../../data/hooks";
+import { useBalanceColumns, useCategoriesState, useUserId } from "../../../data/hooks";
 import { combineLiveStates } from "../../../data/live-state";
-import { categoryReferenceUsage, createCategory, deleteCategoryWithBudgets, reorderCategoryGroup, restoreCategoryWithBudgets, updateCategory } from "../../../data/repo";
+import { categoryReferenceUsage, createCategory, deleteCategoryWithBudgets, reorderCategoryGroup, restoreCategoryWithBudgets, setBalanceColumns, updateCategory } from "../../../data/repo";
 import type { CategoryReferenceUsage } from "../../../data/repo";
 import { CategoryIcon } from "../../../ui/category-icon";
 import { scheduleSync } from "../../../sync/engine";
@@ -15,6 +15,7 @@ import { tr } from "../../../i18n/tr";
 import ArrowDownLeft from "lucide-react-native/icons/arrow-down-left";
 import ArrowUpRight from "lucide-react-native/icons/arrow-up-right";
 import Columns3 from "lucide-react-native/icons/columns-3";
+import Scale from "lucide-react-native/icons/scale";
 import LayoutTemplate from "lucide-react-native/icons/layout-template";
 import Pencil from "lucide-react-native/icons/pencil";
 import Plus from "lucide-react-native/icons/plus";
@@ -28,6 +29,87 @@ import { iconSize, radius, spacing, type, useTheme } from "../../../ui/theme";
 import { useOperationGuard } from "../../../ui/operation-guard";
 import { useDirtyExitGuard } from "../../../ui/dirty-exit";
 import { WorkspaceSplit } from "../../../ui/workspace-layout";
+import { MAX_BALANCE_COLUMN_LABEL } from "../../../domain/matrix-preferences";
+
+/**
+ * The two balance columns, named by the owner.
+ *
+ * It sits at the very bottom of the column list because that is what it is
+ * about: the last two columns of the Mali Tablo, which every other card here
+ * cannot reach. They are not categories, so they have no row above; they are
+ * not computed columns either, so the other tab does not own them.
+ */
+function BalanceColumnsCard() {
+  const userId = useUserId();
+  const current = useBalanceColumns();
+  const [opening, setOpening] = useState<string | null>(null);
+  const [closing, setClosing] = useState<string | null>(null);
+
+  /**
+   * A box left as the app's own name stores NOTHING.
+   *
+   * Otherwise opening the screen and tabbing through it would freeze today's
+   * wording into the account: a later build renaming "Ay Başı" would leave
+   * this workspace on the old name with nothing on screen explaining why.
+   */
+  const label = (draft: string | null, shown: string, fallback: string) => {
+    const value = (draft ?? shown).trim();
+    return value === "" || value === fallback ? null : value;
+  };
+
+  const save = (showOpening: boolean) => {
+    void setBalanceColumns(userId, {
+      openingLabel: label(opening, current.openingLabel, tr.cashflow.opening),
+      closingLabel: label(closing, current.closingLabel, tr.cashflow.closing),
+      showOpening,
+    })
+      .then(() => {
+        // Hand the boxes back to the stored value. Clearing one stores "use the
+        // app's own name", and a draft left holding "" would keep showing an
+        // empty box beside a column that is once again called "Ay Başı".
+        setOpening(null);
+        setClosing(null);
+        scheduleSync(userId);
+      })
+      .catch(() => void appAlert(tr.errors.saveFailed, tr.errors.title));
+  };
+
+  return (
+    <Card testID="balance-columns-card">
+      <PanelHeader icon={Scale} title={tr.settings.balanceColumnsTitle} description={tr.settings.balanceColumnsHint} />
+      <Field
+        label={tr.settings.balanceClosingLabel}
+        value={closing ?? current.closingLabel}
+        maxLength={MAX_BALANCE_COLUMN_LABEL}
+        placeholder={tr.settings.balanceColumnsPlaceholder(tr.cashflow.closing)}
+        onChangeText={setClosing}
+        onBlur={() => save(current.showOpening)}
+      />
+      <Field
+        label={tr.settings.balanceOpeningLabel}
+        value={opening ?? current.openingLabel}
+        maxLength={MAX_BALANCE_COLUMN_LABEL}
+        placeholder={tr.settings.balanceColumnsPlaceholder(tr.cashflow.opening)}
+        onChangeText={setOpening}
+        onBlur={() => save(current.showOpening)}
+      />
+      {/* Character for character the row every category carries, because it is
+          the same decision about the same kind of thing: whether a column is
+          drawn. A second wording and a second spacing for one switch would
+          make two controls out of one rule. */}
+      <Spread style={{ marginTop: spacing.xs }}>
+        <Body muted style={{ fontSize: type.small.fontSize, flex: 1, paddingRight: spacing.sm }}>
+          {tr.settings.columnVisible}
+        </Body>
+        <Toggle
+          label={`${current.openingLabel} · ${tr.settings.columnVisible}`}
+          value={current.showOpening}
+          onValueChange={save}
+        />
+      </Spread>
+    </Card>
+  );
+}
 
 type CategoryItem = ReturnType<typeof useCategoriesState>["data"][number];
 
@@ -376,6 +458,7 @@ export default function CategoriesScreen({ header }: { header?: ReactNode } = {}
           </View>
         )}
       />
+      <BalanceColumnsCard />
     </Screen>
   );
 }

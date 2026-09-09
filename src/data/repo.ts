@@ -155,6 +155,7 @@ export {
   retrySyncDeadLetter,
   setAccountFrozen,
   setAttentionState,
+  setBalanceColumns,
   setBalanceDeclaration,
   setMatrixColorLabels,
   setPendingTableVisibility,

@@ -7,7 +7,6 @@
 import { useMemo } from "react";
 import { Pressable, Text, View } from "react-native";
 import { Redirect, Stack, useLocalSearchParams, useRouter } from "expo-router";
-import Inbox from "lucide-react-native/icons/inbox";
 import { creditCardSplitsByMonth } from "../../../domain/analytics";
 import { monthColumnBasis } from "../../../domain/balance";
 import { evaluateComputedColumn, parseDefinition } from "../../../domain/computed-columns";
@@ -25,7 +24,7 @@ import {
 } from "../../../data/hooks";
 import { combineLiveStates } from "../../../data/live-state";
 import { monthLabel, tr } from "../../../i18n/tr";
-import { Amount, Card, DataGateScreen, DataStateNotice, EmptyState, Screen } from "../../../ui/components";
+import { Amount, Card, DataGateScreen, DataStateNotice, Screen } from "../../../ui/components";
 import { interactionSurface } from "../../../ui/interaction";
 import { controlSize, font, spacing, type, useTheme } from "../../../ui/theme";
 
@@ -173,9 +172,10 @@ function ItemBreakdown({
     <Screen width="form">
       <Stack.Screen options={{ title: label ?? tr.cashflow.monthDetail }} />
       <DataStateNotice status={dataStatus} retry={retryData} />
-      {!bundle ? (
-        <EmptyState icon={Inbox} title={tr.cashflow.emptyMonth} />
-      ) : (
+      {/* Loading is the only thing a missing bundle can mean now, and the
+          notice above already says it. The empty state that stood here read
+          "Bu ayda kayıt yok" over a ledger that had simply lost its anchor. */}
+      {bundle == null ? null : (
         <Card padded={false}>
           <View style={{ paddingHorizontal: spacing.lg, paddingVertical: spacing.md, borderBottomWidth: 1, borderColor: palette.border, flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
             <Text style={[type.label, { color: palette.textSecondary }]}>{tr.cashflow.yearTotal(year)}</Text>

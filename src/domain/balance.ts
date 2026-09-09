@@ -118,6 +118,51 @@ interface LedgerInput {
 }
 
 /**
+ * The earliest month carrying anything, never later than `seed`.
+ *
+ * One scan serving two questions that used to own a copy each: where an
+ * anchored ledger has to reach back to, and where an unanchored one begins.
+ */
+function earliestRecordedMonth(
+  seed: MonthKey,
+  transactions: TxLike[],
+  adjustments: AdjustmentLike[],
+): MonthKey {
+  let earliest = seed;
+  for (const tx of transactions) {
+    const month = monthKeyOf(tx.effectiveDate);
+    if (month < earliest) earliest = month;
+  }
+  for (const adjustment of adjustments) {
+    const month = monthKeyOf(adjustment.date);
+    if (month < earliest) earliest = month;
+  }
+  return earliest;
+}
+
+/**
+ * The earliest month carrying a record, or null when nothing does.
+ *
+ * `earliestRecordedMonth` answers a different question — it is bounded by a
+ * seed it may never exceed — and that bound is exactly what a caller asking
+ * "where does the data start" must not inherit.
+ */
+export function firstRecordedMonth(
+  transactions: TxLike[],
+  adjustments: AdjustmentLike[],
+): MonthKey | null {
+  // Sorted rather than compared in a running-minimum loop. A month key is a
+  // sortable string, so the loop's `month < earliest` had a twin — `<=` — that
+  // assigns an equal value and produces the same answer for every input there
+  // is. A test cannot tell those apart, which makes the comparison a thing the
+  // suite is permanently unable to guard.
+  return [
+    ...transactions.map((tx) => monthKeyOf(tx.effectiveDate)),
+    ...adjustments.map((adjustment) => monthKeyOf(adjustment.date)),
+  ].sort()[0] ?? null;
+}
+
+/**
  * Resolve the effective ledger anchor so history entered before the
  * configured opening month still appears. Extends the start back to the
  * earliest recorded data and back-computes the opening balance there, so the
@@ -130,15 +175,7 @@ export function resolveLedgerAnchor(
   adjustments: AdjustmentLike[],
   today: ISODate,
 ): { startMonth: MonthKey; openingBalanceMinor: Minor } {
-  let startMonth = configuredStart;
-  for (const tx of transactions) {
-    const m = monthKeyOf(tx.effectiveDate);
-    if (m < startMonth) startMonth = m;
-  }
-  for (const a of adjustments) {
-    const m = monthKeyOf(a.date);
-    if (m < startMonth) startMonth = m;
-  }
+  const startMonth = earliestRecordedMonth(configuredStart, transactions, adjustments);
   if (startMonth === configuredStart) {
     return { startMonth, openingBalanceMinor: configuredOpeningMinor };
   }
@@ -247,6 +284,18 @@ export interface LedgerBundle {
   ledger: MonthLedger[];
   yearMonths: MonthLedger[];
   startMonth: MonthKey;
+  /**
+   * The earliest month that actually HOLDS something, or null when nothing does.
+   *
+   * Distinct from `startMonth`, which is where the balance chain has to begin.
+   * An anchor can sit years before the first record — an import writes one, a
+   * setup screen writes one — and the chain then carries the opening figure
+   * across every empty month in between. That is right for the arithmetic and
+   * wrong for navigation: the Mali Tablo offered six years of blank rows with
+   * a balance column filled in, which reads as data that went missing rather
+   * than as months that never had any.
+   */
+  firstRecordedMonth: MonthKey | null;
   actualBalanceMinor: Minor;
   txLike: TxLike[];
 }
@@ -273,10 +322,33 @@ export function ledgerChainEndYear(year: number, today: ISODate): number {
 export interface LedgerChain {
   ledger: MonthLedger[];
   startMonth: MonthKey;
+  /** See `LedgerBundle.firstRecordedMonth`. */
+  firstRecordedMonth: MonthKey | null;
   actualBalanceMinor: Minor;
   txLike: TxLike[];
 }
 
+/**
+ * The whole chain, anchored or not.
+ *
+ * An unset `start_month` is NOT a missing ledger, and modelling it as one is
+ * the defect this signature used to carry: it returned `null`, and each of the
+ * seven screens reading it invented its own meaning for that. The dashboard
+ * held a loading skeleton that never resolved, Mali Tablo announced the month
+ * was empty, and the opening-balance editor — the one screen that can SET the
+ * anchor — refused to open because there was no anchor to read, which is a
+ * deadlock a person cannot leave without reinstalling.
+ *
+ * It is reached by clearing the whole ledger, which the reset does on purpose,
+ * so "no anchor" is an ordinary state rather than a corrupt one. Worse, every
+ * row entered AFTERWARDS was invisible too: the chain refused before it ever
+ * looked at the transactions.
+ *
+ * Unanchored therefore means what a person would assume it means — the table
+ * opens at zero, in the earliest month that carries anything, or in this month
+ * when nothing does. `null` no longer travels from here, so a screen holding
+ * one is holding exactly one fact: the queries have not answered yet.
+ */
 export function buildLedgerChain(input: {
   configuredStart: MonthKey | null;
   openingBalanceMinor: Minor;
@@ -285,17 +357,21 @@ export function buildLedgerChain(input: {
   adjustments: AdjustmentLike[];
   endYear: number;
   today: ISODate;
-}): LedgerChain | null {
+}): LedgerChain {
   const { configuredStart, transactions, adjustments, endYear, today } = input;
-  if (!configuredStart) return null;
 
-  const { startMonth, openingBalanceMinor } = resolveLedgerAnchor(
-    configuredStart,
-    input.openingBalanceMinor,
-    transactions,
-    adjustments,
-    today,
-  );
+  const { startMonth, openingBalanceMinor } = configuredStart == null
+    ? {
+        startMonth: earliestRecordedMonth(monthKeyOf(today), transactions, adjustments),
+        openingBalanceMinor: 0,
+      }
+    : resolveLedgerAnchor(
+        configuredStart,
+        input.openingBalanceMinor,
+        transactions,
+        adjustments,
+        today,
+      );
   const ledger = buildLedger({
     openingBalanceMinor,
     startMonth,
@@ -317,7 +393,13 @@ export function buildLedgerChain(input: {
     adjustments,
     today,
   });
-  return { ledger, startMonth, actualBalanceMinor, txLike: transactions };
+  return {
+    ledger,
+    startMonth,
+    firstRecordedMonth: firstRecordedMonth(transactions, adjustments),
+    actualBalanceMinor,
+    txLike: transactions,
+  };
 }
 
 /** One year's view of a chain that has already been built. */
@@ -326,6 +408,7 @@ export function sliceLedgerYear(chain: LedgerChain, year: number): LedgerBundle 
     ledger: chain.ledger,
     yearMonths: chain.ledger.filter((month) => yearOf(month.month) === year),
     startMonth: chain.startMonth,
+    firstRecordedMonth: chain.firstRecordedMonth,
     actualBalanceMinor: chain.actualBalanceMinor,
     txLike: chain.txLike,
   };

@@ -91,6 +91,78 @@ describe("release contract", () => {
    * because a throw has no behaviour to mutate. Any one of the three drifting
    * from the other two puts the driver back.
    */
+  /**
+   * The socket this app does not open, and the bytes it was costing anyway.
+   *
+   * `createClient` builds a `RealtimeClient` in its constructor whether or not
+   * anything subscribes, and `@supabase/supabase-js` re-exports the module
+   * besides — so with no tree-shaking, realtime-js and the phoenix socket under
+   * it sat in the entry chunk of every screen: 65_769 bytes, measured by
+   * exporting with and without the substitution.
+   *
+   * The substitution is only sound while the premise holds, so the premise is
+   * the assertion. A `.channel(` anywhere in `src` means someone has started
+   * subscribing and would meet a thrown error on a device rather than a failure
+   * here — which is the worst possible place to find out, because what it looks
+   * like from the outside is data that simply never arrives.
+   */
+  /**
+   * The type definitions the typecheck gate stands on, and the runtime they
+   * are allowed to describe.
+   *
+   * Both were accidents. `@types/node` was never declared: it reached the tree
+   * as a transitive dependency of `@stryker-mutator/core`'s prompt library, and
+   * whether its ambient `node:*` declarations registered depended on how npm
+   * happened to hoist. Measured on 2026-09-09, a clean `npm ci` against the
+   * COMMITTED lockfile produced 206 errors across `tests/` and `e2e/` — every
+   * one of them a `node:` import or `Buffer` — with nothing in the repository
+   * changed. A gate that can fail on an install is not a gate.
+   *
+   * The major matters separately. What came in was `@types/node@26` while
+   * `.nvmrc` and every CI job run Node 22, so the gate would have accepted an
+   * API the runtime does not have and said nothing.
+   */
+  it("types the Node it actually runs on, and says so out loud", () => {
+    const declared = JSON.parse(read("package.json")).devDependencies["@types/node"];
+    expect(declared, "@types/node must be a declared dependency, not an inherited one").toBeTruthy();
+
+    const runtime = read(".nvmrc").trim().split(".")[0];
+    expect(declared.replace(/^[^\d]*/, "").split(".")[0]).toBe(runtime);
+
+    // Explicit rather than left to the automatic `@types/*` scan, which is the
+    // half of this that silently stopped working.
+    const tsconfig = JSON.parse(read("tsconfig.json").replace(/^\s*\/\/.*$/gm, ""));
+    expect(tsconfig.compilerOptions.types).toEqual(["node"]);
+  });
+
+  it("keeps the realtime socket out of the bundle, and the app off it", () => {
+    const metro = read("metro.config.js");
+    const stub = read("src/sync/realtime-absent.js");
+    const stryker = read("stryker.ci.config.mjs");
+
+    expect(metro).toContain('moduleName === "@supabase/realtime-js"');
+    expect(metro).toContain("src/sync/realtime-absent.js");
+    // Every method supabase-js calls on the client it built for itself.
+    for (const name of ["setAuth", "getChannels", "channel", "removeChannel", "removeAllChannels"]) {
+      expect(stub, `${name} must be answered`).toContain(name);
+    }
+    // Excluded from mutation for the reason the SQLite stub already is: a
+    // no-op and four throws have no behaviour a mutant could change.
+    expect(stryker).toContain("realtime-absent\\.js");
+
+    const walk = (directory: string): string[] =>
+      readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+        const path = `${directory}/${entry.name}`;
+        if (entry.isDirectory()) return walk(path);
+        return /\.tsx?$/.test(entry.name) ? [path] : [];
+      });
+    const sources = walk("src");
+    // A floor, because a walker that finds nothing would pass silently.
+    expect(sources.length).toBeGreaterThan(100);
+    const subscribers = sources.filter((file) => /\.(channel|getChannels|removeChannel|removeAllChannels)\(/.test(readFileSync(file, "utf8")));
+    expect(subscribers, "these files subscribe to a transport that is not bundled").toEqual([]);
+  });
+
   it("keeps the database out of server rendering", () => {
     const metro = read("metro.config.js");
     const stub = read("src/db/expo-sqlite.server.js");

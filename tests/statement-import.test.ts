@@ -14,8 +14,10 @@ import {
   parseStatement,
   parseStatementLine,
   periodFromDates,
+  matchStatementCategory,
   statementDifferenceMinor,
   statementImportKey,
+  statementPlanSpec,
 } from "../src/domain/statement-import";
 
 const PERIOD = "2026-08";
@@ -457,3 +459,156 @@ describe("checking the read against the statement", () => {
   });
 });
 
+describe("the instalment plan a statement line implies", () => {
+  const line = (over: Partial<Parameters<typeof statementPlanSpec>[0]> = {}) => ({
+    kind: "installment" as const,
+    installmentNo: 3,
+    installmentCount: 9,
+    remainingInstallments: null,
+    ...over,
+  });
+
+  it("puts the first payment as many months back as this one is along", () => {
+    expect(statementPlanSpec(line(), "2026-07")).toEqual({
+      startMonth: "2026-05",
+      installmentCount: 9,
+      installmentNo: 3,
+    });
+  });
+
+  it("starts the plan here when this is its first payment", () => {
+    expect(statementPlanSpec(line({ installmentNo: 1 }), "2026-07")?.startMonth).toBe("2026-07");
+  });
+
+  /**
+   * The reference statement's `Kalan Tutar/Taksit` column says how many
+   * payments are LEFT and never which one this is. A plan built from it can
+   * only be the remainder, beginning here — everything earlier is unknown, so
+   * nothing earlier is invented.
+   */
+  it("builds only the remainder when the position was not printed", () => {
+    expect(statementPlanSpec(
+      line({ installmentNo: null, installmentCount: null, remainingInstallments: 2 }),
+      "2026-07",
+    )).toEqual({ startMonth: "2026-07", installmentCount: 2, installmentNo: 1 });
+  });
+
+  it("crosses a year boundary the way months do", () => {
+    expect(statementPlanSpec(line({ installmentNo: 4, installmentCount: 6 }), "2026-02")?.startMonth)
+      .toBe("2025-11");
+  });
+
+  it("is nothing at all for a line that is not an instalment", () => {
+    expect(statementPlanSpec({ ...line(), kind: "purchase" }, "2026-07")).toBeNull();
+    expect(statementPlanSpec(
+      line({ installmentNo: null, installmentCount: null, remainingInstallments: null }),
+      "2026-07",
+    )).toBeNull();
+  });
+
+  it("refuses a remaining count of zero rather than opening an empty plan", () => {
+    expect(statementPlanSpec(
+      line({ installmentNo: null, installmentCount: null, remainingInstallments: 0 }),
+      "2026-07",
+    )).toBeNull();
+  });
+
+  /** Two statements of one plan must derive the SAME plan, or each opens its own. */
+  it("derives one start month and count from every statement of the same plan", () => {
+    const july = statementPlanSpec(line({ installmentNo: 3 }), "2026-07");
+    const august = statementPlanSpec(line({ installmentNo: 4 }), "2026-08");
+    expect(august?.startMonth).toBe(july?.startMonth);
+    expect(august?.installmentCount).toBe(july?.installmentCount);
+  });
+});
+
+/**
+ * Which of the owner's own columns a statement line belongs in.
+ *
+ * Every row used to default to whichever expense column sorted first, so a
+ * statement filed a month of spending under one arbitrary heading and nothing
+ * on screen admitted the guess.
+ */
+describe("fitting a statement line to a column the owner already has", () => {
+  const columns = (...names: string[]) => names.map((name, index) => ({ id: `c${index}`, name }));
+
+  it("uses the owner's own heading when the merchant prints it", () => {
+    expect(matchStatementCategory("MIGROS MARKET", columns("Kira", "Market"))).toBe("c1");
+  });
+
+  it("reads the heading through Turkish casing, in either direction", () => {
+    // A statement is printed in capitals and dotless ı does not fold to I, so
+    // a plain lowercase comparison misses "GIDA" against a column named "Gıda".
+    expect(matchStatementCategory("SOK MARKET GIDA", columns("Gıda"))).toBe("c0");
+    expect(matchStatementCategory("İSTANBUL ECZANE", columns("Eczane"))).toBe("c0");
+  });
+
+  it("refuses a heading too short to mean anything on a statement line", () => {
+    // "Ev" and "Su" would match half a statement between them.
+    expect(matchStatementCategory("EVIM SUCUK", columns("Ev", "Su"))).toBeNull();
+  });
+
+  it("matches the same concept under different words", () => {
+    // The merchant says market, the column says food. One vocabulary, two
+    // words, and no entry needed for either of them.
+    expect(matchStatementCategory("BIM MARKET", columns("Kira", "Gıda"))).toBe("c1");
+  });
+
+  it("places a merchant that names no concept of its own", () => {
+    expect(matchStatementCategory("SHELL PETROL", columns("Kira", "Araç & Yakıt"))).toBe("c1");
+    expect(matchStatementCategory("NETFLIX.COM", columns("Abonelikler"))).toBe("c0");
+  });
+
+  /**
+   * Every merchant this claims to know, and every column word it claims to
+   * answer with. A table rather than a sentence each, because the list IS the
+   * feature: what is missing from here is what the importer cannot place, and
+   * the only way to know a name still resolves is to ask it.
+   *
+   * Each case is chosen so the alias is the rule that answers — the merchant
+   * carries no word of the column's own, and neither side names a concept the
+   * shared vocabulary would have matched first.
+   */
+  it("knows every merchant and every column word in its own list", () => {
+    const merchants: [string, string][] = [
+      ["MIGROS SANAL", "Market"], ["CARREFOURSA", "Market"], ["A101 MAGAZA", "Market"],
+      ["A 101 YENI", "Market"], ["BIM", "Market"],
+      ["SHELL BAYI", "Yakıt"], ["OPET AS", "Yakıt"], ["PETROL OFISI", "Yakıt"], ["AYTEMIZ", "Yakıt"],
+      ["YEMEKSEPETI", "Restoran"], ["GETIR", "Restoran"], ["STARBUCKS", "Restoran"], ["BURGER KING", "Restoran"],
+      ["NETFLIX.COM", "Abonelik"], ["SPOTIFY AB", "Abonelik"], ["YOUTUBEPREMIUM", "Abonelik"], ["ICLOUD", "Abonelik"],
+      ["TURKCELL", "İnternet"], ["VODAFONE", "İnternet"], ["TURK TELEKOM", "İnternet"], ["SUPERONLINE", "İnternet"],
+      ["UBER BV", "Ulaşım"], ["BITAKSI", "Ulaşım"], ["MARTI", "Ulaşım"], ["HGS", "Ulaşım"],
+      ["LC WAIKIKI", "Giyim"], ["DEFACTO", "Giyim"], ["KOTON", "Giyim"], ["ZARA", "Giyim"],
+      ["TEKNOSA", "Alışveriş"], ["MEDIAMARKT", "Alışveriş"], ["HEPSIBURADA", "Alışveriş"], ["TRENDYOL", "Alışveriş"],
+    ];
+    for (const [merchant, column] of merchants) {
+      expect(matchStatementCategory(merchant, columns("Kira", column)), merchant).toBe("c1");
+    }
+
+    // The other side of each entry: the words an owner's column might use.
+    const columnWords: [string, string][] = [
+      ["MIGROS SANAL", "Market"], ["MIGROS SANAL", "Gıda"], ["MIGROS SANAL", "Mutfak"],
+      ["SHELL BAYI", "Yakıt"], ["SHELL BAYI", "Araç"], ["SHELL BAYI", "Benzin"], ["SHELL BAYI", "Otomobil"],
+      ["GETIR", "Restoran"], ["GETIR", "Yemek"], ["GETIR", "Kafe"],
+      ["NETFLIX.COM", "Abonelik"], ["NETFLIX.COM", "Dijital"], ["NETFLIX.COM", "Eğlence"],
+      ["TURKCELL", "İnternet"], ["TURKCELL", "Telefon"], ["TURKCELL", "İletişim"],
+      ["UBER BV", "Ulaşım"], ["UBER BV", "Taksi"], ["UBER BV", "Otobüs"],
+      ["ZARA", "Giyim"], ["ZARA", "Kıyafet"], ["ZARA", "Ayakkabı"],
+      ["TEKNOSA", "Alışveriş"], ["TEKNOSA", "Elektronik"], ["TEKNOSA", "Teknoloji"],
+    ];
+    for (const [merchant, column] of columnWords) {
+      expect(matchStatementCategory(merchant, columns("Kira", column)), `${merchant} → ${column}`).toBe("c1");
+    }
+  });
+
+  /** Null is the important answer: nothing is invented, and the review says so. */
+  it("answers null rather than picking a column at random", () => {
+    expect(matchStatementCategory("ABC XYZ 1234", columns("Kira", "Market"))).toBeNull();
+    expect(matchStatementCategory("MIGROS MARKET", [])).toBeNull();
+  });
+
+  it("never invents a column that is not the owner's", () => {
+    // A merchant this can read, in a workspace with no column for it.
+    expect(matchStatementCategory("SHELL PETROL", columns("Kira"))).toBeNull();
+  });
+});

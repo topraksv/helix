@@ -1,5 +1,5 @@
 /**
- * Reading the text out of a PDF, locally, with no new dependency (spec §3.1b).
+ * Reading the text out of a PDF, locally (spec §3.1b).
  *
  * ## Why this exists at all
  *
@@ -7,11 +7,24 @@
  * still has to retype. Extracting them needs the document's text — and a PDF
  * text layer is compressed, so something has to inflate it.
  *
- * Nothing in this project could, and adding a PDF library to a local-first
- * finance app means shipping a large parser that runs over the most sensitive
- * file the owner has. So this uses the inflate that is ALREADY in the tree:
- * SheetJS ships one for reading `.xlsx` (a ZIP), and a PDF `FlateDecode`
- * stream is the same DEFLATE data. `CFB.utils._inflateRaw` is that function.
+ * ## Why it has a dependency now, having refused one for a year
+ *
+ * It used SheetJS's inflate, on the reasoning that it was already in the tree
+ * for `.xlsx` and a `FlateDecode` stream is the same DEFLATE data. The
+ * reasoning was sound and the outcome was not: that inflate needs a size to
+ * allocate, a PDF does not reliably declare one, and the estimate that filled
+ * the gap silently truncated well-compressed statements and leaked unzeroed
+ * memory into the extracted text. `inflate` below records both measurements.
+ *
+ * `fflate` is 8 KB of dependency-free JavaScript whose inflate reports what it
+ * wrote. That is the entire capability that was missing, and both defects are
+ * gone by construction rather than by tuning.
+ *
+ * A full PDF library was considered and refused, on a narrower argument than
+ * the original one. It is not only that shipping a large parser to run over the
+ * owner's most sensitive file is a cost — it is that this app runs on React
+ * Native as well as the web, and `pdfjs-dist` wants DOM APIs that Hermes does
+ * not have. The limits below stay limits.
  *
  * ## What this deliberately does NOT do
  *
@@ -27,14 +40,20 @@
  */
 
 /**
- * SheetJS is loaded ON DEMAND, exactly as `spreadsheet-import.ts` loads it.
+ * Loaded ON DEMAND, for the same reason the SheetJS it replaced was.
  *
- * A static import puts its ~560 KB into the entry bundle for every session,
- * including the overwhelming majority that never open a statement — measured,
- * it pushed the web export straight past its release budget. Type-only here,
- * real module inside the one async function that needs it.
+ * Smaller is not small: measured, a static `import { Unzlib } from "fflate"`
+ * put 33_884 bytes into the entry chunk of every session and pushed the export
+ * 2_142 bytes past its ceiling — for a feature most sessions never open. The
+ * win over SheetJS is still real and is a different one: the chunk that arrives
+ * when somebody does open a statement is a few KB rather than 493.
+ *
+ * Type-only here, real module inside the one async function that needs it, and
+ * threaded down to `inflate` exactly as the SheetJS handle used to be.
  */
-import type * as XlsxTypes from "xlsx";
+import type { Unzlib as UnzlibClass } from "fflate";
+
+type UnzlibCtor = typeof UnzlibClass;
 
 /** Bytes a statement may be. Larger is not a statement; it is a mistake. */
 export const MAX_PDF_BYTES = 12 * 1024 * 1024;
@@ -90,47 +109,89 @@ function hasZlibHeader(bytes: Uint8Array): boolean {
 }
 
 /**
- * Inflate a zlib stream.
+ * How much compressed input is handed to the inflater at a time.
  *
- * The uncompressed length is not reliably declared in a PDF, and the inflate
- * available here needs a size to allocate, so the size is estimated at 12x the
- * compressed length and the surplus is left alone.
+ * It is the bomb guard, and it has to be small. The limit below can only be
+ * enforced between callbacks, so one push's worth of expansion is the overshoot
+ * the process has to absorb: at DEFLATE's documented 1032:1 ceiling, 4 KB of
+ * input is at most ~4 MB of output. Measured against 64 MB of zeros compressed
+ * to 65_508 bytes — a 1023:1 bomb — the peak settles at 25_180_543 bytes with
+ * this step and at the full 67_108_864 with 64 KB, because the whole payload
+ * then arrives in two pushes and the callback never gets to say stop.
+ */
+const INFLATE_STEP = 4096;
+
+/**
+ * Inflate a zlib stream, exactly.
  *
- * TWO MEASURED DEFECTS LIVE IN THIS ESTIMATE, and neither is fixable without
- * changing where the inflate comes from — which is a dependency decision, not
- * a tuning one. They are recorded here so the next person does not rediscover
- * them the hard way, and does not "fix" one by making the other worse.
+ * ## What this replaced, and why it had to be a dependency
  *
- * 1. A stream that compresses better than 12:1 is TRUNCATED, silently. A text
+ * This used SheetJS's `CFB.utils._inflateRaw`, chosen because it was already in
+ * the tree. It needs a size to allocate and a PDF does not reliably declare
+ * one, so the size was estimated at 12x the compressed length — and the
+ * estimate carried two measured defects that could not both be fixed by tuning
+ * it:
+ *
+ * 1. A stream compressing better than 12:1 was TRUNCATED, silently. A text
  *    layer repeats merchant names, dates and headers: measured, a 900 KB layer
  *    that deflated to 2.7 KB (331:1) came back 3.6% complete with the closing
- *    balance simply gone, reported as `ok`. `_inflateRaw` signals nothing — it
- *    returns a buffer of the requested size either way.
- * 2. The surplus is NOT zeroed. It is whatever was in that memory, and the
- *    extractor scans all of it: measured on a two-line statement, the text came
- *    back with JavaScript source fragments after it.
+ *    balance simply gone, reported as `ok`.
+ * 2. The surplus was NOT zeroed, and the extractor scanned all of it: measured
+ *    on a two-line statement, the text came back with JavaScript source
+ *    fragments after it. Raising the estimate to fix (1) made (2) worse in
+ *    proportion — 14_287 leaked characters instead of 189.
  *
- * Raising the estimate fixes (1) and makes (2) worse in proportion — at the
- * 1032:1 ratio zlib documents as its maximum, the same two-line statement
- * carried 14_287 characters of leaked memory instead of 189. Lowering it does
- * the reverse. Trailing zeros do not mark the end (a complete inflate can have
- * none) and neither does comparing two differently-sized inflations (measured:
- * exact twice, over by 4_029 once, under once). There is no length to trim to.
+ * `fflate` is the smallest thing that ends both: zero dependencies, pure
+ * JavaScript, so it runs in Hermes as well as a browser. A full PDF library was
+ * considered and refused — `pdfjs-dist` wants DOM APIs this app does not have
+ * on native, and the missing capability was never parsing, it was an inflate
+ * that reports how much it wrote.
  *
- * The real fix is an inflate that reports how much it wrote.
+ * It also takes SheetJS off this path entirely. Opening a statement used to
+ * download the 493 KB `xlsx` chunk for one utility function.
+ *
+ * ## Why streaming rather than the one-line call
+ *
+ * `unzlibSync` returns the exact length, which is the whole point — but its
+ * bounded form does not: given a preallocated buffer that is too small it fills
+ * it and returns, with no error, which is defect (1) again wearing a different
+ * name. Measured. The streaming form is the one that can refuse: it reports
+ * each chunk as it is produced, so the limit is a decision rather than an
+ * allocation.
  */
-function inflate(bytes: Uint8Array, cfb: typeof XlsxTypes.CFB): Uint8Array | null {
+function inflate(bytes: Uint8Array, Unzlib: UnzlibCtor): Uint8Array | null {
   if (!hasZlibHeader(bytes)) return null;
-  const payload = bytes.subarray(2);
-  const estimate = Math.min(MAX_STREAM_BYTES, Math.max(1024, payload.length * 12));
+  const parts: Uint8Array[] = [];
+  let written = 0;
+  let overflowed = false;
+  const stream = new Unzlib((chunk) => {
+    if (overflowed) return;
+    written += chunk.length;
+    if (written > MAX_STREAM_BYTES) {
+      overflowed = true;
+      return;
+    }
+    parts.push(chunk);
+  });
   try {
-    const out = (cfb.utils as { _inflateRaw: (data: Uint8Array, size: number) => unknown })._inflateRaw(payload, estimate);
-    if (out instanceof Uint8Array) return out;
-    if (Array.isArray(out)) return new Uint8Array(out as number[]);
-    return null;
+    for (let at = 0; at < bytes.length && !overflowed; at += INFLATE_STEP) {
+      const end = Math.min(at + INFLATE_STEP, bytes.length);
+      stream.push(bytes.subarray(at, end), end === bytes.length);
+    }
   } catch {
+    // Corrupt or not actually deflate. It THROWS rather than spinning, which
+    // the previous inflate did not — `hasZlibHeader` below is kept anyway,
+    // because refusing early is still cheaper than unwinding.
     return null;
   }
+  if (overflowed) return null;
+  const out = new Uint8Array(written);
+  let at = 0;
+  for (const part of parts) {
+    out.set(part, at);
+    at += part.length;
+  }
+  return out;
 }
 
 /** `/Length 1234` from a stream's own dictionary, when it declares one. */
@@ -150,7 +211,7 @@ function declaredLength(dictionary: string): number | null {
  * times over, and treating those byte ranges as streams is what fed garbage to
  * the inflater in the first place.
  */
-function contentStreams(bytes: Uint8Array, cfb: typeof XlsxTypes.CFB): { content: string[]; cmaps: string[] } {
+function contentStreams(bytes: Uint8Array, Unzlib: UnzlibCtor): { content: string[]; cmaps: string[] } {
   const haystack = bytesToLatin1(bytes);
   const streams: string[] = [];
   const cmaps: string[] = [];
@@ -179,7 +240,7 @@ function contentStreams(bytes: Uint8Array, cfb: typeof XlsxTypes.CFB): { content
     const declared = declaredLength(dictionary);
     const end = declared != null && start + declared <= close ? start + declared : close;
     const raw = bytes.subarray(start, end);
-    const decoded = isFlate ? inflate(raw, cfb) : raw;
+    const decoded = isFlate ? inflate(raw, Unzlib) : raw;
     if (!decoded) continue;
     const text = bytesToLatin1(decoded);
     total += text.length;
@@ -430,8 +491,8 @@ export async function extractPdfText(bytes: Uint8Array): Promise<PdfTextResult> 
 
   let streams: { content: string[]; cmaps: string[] };
   try {
-    const { CFB } = await import("xlsx");
-    streams = contentStreams(bytes, CFB);
+    const { Unzlib } = await import("fflate");
+    streams = contentStreams(bytes, Unzlib);
   } catch {
     return { ok: false, reason: "unreadable" };
   }

@@ -4,6 +4,7 @@ import { isAttentionState } from "./attention";
 import { parseBalanceDeclaration } from "./balance-declaration";
 import { isISODate, isMonthKey } from "./dates";
 import { parseMatrixColorLabels } from "./matrix-colors";
+import { parseBalanceColumns } from "./matrix-preferences";
 import { isSupportedMinorAmount } from "./money";
 
 function stringArray(value: unknown): value is string[] {
@@ -54,6 +55,8 @@ const SETTING_VALIDATORS = {
    * point of the rename.
    */
   matrix_color_labels: (value: unknown) => parseMatrixColorLabels(value) !== null,
+  /** What the owner calls the two balance columns, and whether both are shown. */
+  balance_columns: (value: unknown) => parseBalanceColumns(value) !== null,
 } satisfies Record<string, (value: unknown) => boolean>;
 
 /** A settings key with a declared shape. */

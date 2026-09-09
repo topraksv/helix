@@ -53,9 +53,34 @@ updates:
         update-types: ["version-update:semver-patch", "version-update:semver-minor", "version-update:semver-major"]
       - dependency-name: "eslint-config-expo"
         update-types: ["version-update:semver-patch", "version-update:semver-minor", "version-update:semver-major"]
+      # ESLint 10 and TypeScript 7 are both blocked by the lint plugins Expo's
+      # config bundles, and both were measured on 2026-09-09 rather than
+      # assumed. ESLint 10 removed `context.getFilename()`; the NEWEST
+      # `eslint-plugin-react` (7.37.5) still calls it and its own peer range
+      # stops at `^9.7`, so `expo lint` dies on the first file. TypeScript 7
+      # typechecks this tree clean, but the newest
+      # `@typescript-eslint/typescript-estree` (8.70.0) declares
+      # `typescript: ">=4.8.4 <6.1.0"` and throws before linting a line.
+      # Neither has an upstream release that would work; re-check when
+      # `eslint-plugin-react` publishes an ESLint 10 peer.
       - dependency-name: "eslint"
         update-types: ["version-update:semver-patch", "version-update:semver-minor", "version-update:semver-major"]
       - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
+      # Vitest 5 breaks the MUTATION gate, which is the one failure a green
+      # test run hides. Measured 2026-09-09 on `src/domain/category-icons.ts`:
+      # 97.37 under vitest 4, 71.05 under vitest 5, with only 20 of 76 mutants
+      # getting per-test coverage attribution. It is the runner and not the
+      # code — a mutant Stryker reported as SURVIVED was applied by hand and
+      # failed two real tests. Both `@stryker-mutator/vitest-runner` 9.6.1 and
+      # 10.0.0 behave the same way and both declare `vitest: ">=2.0.0"`, so npm
+      # gives no warning. Adopting it would have re-baselined 67 files against
+      # a broken instrument. Re-check when the runner names vitest 5 explicitly.
+      - dependency-name: "vitest"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@vitest/coverage-v8"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@stryker-mutator/*"
         update-types: ["version-update:semver-major"]
 
   - package-ecosystem: github-actions

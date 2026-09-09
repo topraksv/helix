@@ -7,8 +7,16 @@ const root = process.cwd();
 describe("investment screen recovery", () => {
   it("does not turn a ready projection failure into an empty page", () => {
     const source = readFileSync(join(root, "src/app/(tabs)/investments/index.tsx"), "utf8");
+    const branch = source.slice(source.indexOf("if (!state) {"), source.indexOf("const active ="));
 
-    expect(source).toContain('status={status === "ready" ? "error" : status}');
+    // The original defect was this branch rendering nothing at all, and that
+    // is still what must never come back: a notice while the queries are
+    // answering, and a sentence once they have.
+    expect(branch).toContain("DataStateNotice");
+    // The sentence is the replay's own, not "your data could not be read".
+    // Those are different failures — the rows arrived, and the arithmetic in
+    // them did not add up — and only one of them tells anyone what to do.
+    expect(branch).toContain("userMessage(wallet.error");
   });
 
   it("lets the edit removal row use the full form width at every viewport", () => {

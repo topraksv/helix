@@ -49,6 +49,7 @@ import { DelayedLoadingIndicator } from "../ui/loading-indicator";
 import { isSupabaseConfigured } from "../sync/supabase";
 import { scheduleSync } from "../sync/engine";
 import { devWarning } from "../services/logger";
+import { rescheduleAll } from "../services/notifications";
 
 const EMPTY_RANGE: ResetRange = { from: null, to: null };
 
@@ -160,22 +161,54 @@ function CloudDataResetScreen() {
         return;
       }
       setRunning(true);
+      let outcome;
       try {
-        const outcome = await performDataReset(userId, selection);
-        scheduleSync(userId);
-        setScopes([]);
-        setRange(EMPTY_RANGE);
-        void appAlert(outcome.deleted > 0 ? tr.dataReset.done(outcome.deleted) : tr.dataReset.doneNothing);
-        navigateBack(router, "/account-security");
+        outcome = await performDataReset(userId, selection);
+      } catch (error) {
+        // The write is one transaction, so a failure HERE left the workspace
+        // exactly as it was. This is the only place that may say so.
+        devWarning("data-reset.perform", String(error));
+        void appAlert(tr.dataReset.failed, tr.errors.title);
+        return;
       } finally {
         setRunning(false);
       }
+
+      // Past this line the rows are gone, and nothing below is allowed to
+      // claim otherwise. Everything that follows is bookkeeping the workspace
+      // repeats on its own — a sync it will schedule again, reminders it
+      // replans on every foreground — and each of them used to be able to
+      // turn a finished reset into "hiçbir şey silinmedi; tekrar dene", which
+      // sent the owner to press a button that then found nothing left to do.
+      scheduleSync(userId);
+      setScopes([]);
+      setRange(EMPTY_RANGE);
+      void appAlert(
+        outcome.deleted > 0
+          ? (outcome.tidied ? tr.dataReset.done(outcome.deleted) : tr.dataReset.donePartialTidy(outcome.deleted))
+          : tr.dataReset.doneNothing,
+      );
+      // The OS holds its own copy of every reminder, and nothing in the write
+      // path can reach it: the maintenance pass rebuilds the obligations, but
+      // the notifications built FROM those obligations are scheduled by the
+      // operating system and survive the rows that justified them. Without
+      // this, a subscription deleted here still buzzed on its due date until
+      // the next foreground maintenance kick.
+      //
+      // A statement, not an expression with `.catch` hung off it: a throw
+      // BEFORE the promise exists would walk straight past that and out to the
+      // handler below, which is the shape of the bug this whole flow is fixing.
+      try {
+        await rescheduleAll(userId);
+      } catch (error) {
+        devWarning("data-reset.reschedule", String(error));
+      }
+      navigateBack(router, "/account-security");
     }).catch((error) => {
-      // The write is one transaction, so a failure here left the workspace
-      // exactly as it was. Say so, rather than leaving the owner wondering how
-      // much of it went through.
-      devWarning("data-reset.perform", String(error));
-      void appAlert(tr.dataReset.failed, tr.errors.title);
+      // Whatever reaches here happened AROUND the delete — a dialog, the
+      // password check — so it says only that the operation did not complete.
+      devWarning("data-reset.flow", String(error));
+      void appAlert(tr.errors.requestFailed, tr.errors.title);
     });
 
   return (
@@ -246,6 +279,9 @@ function CloudDataResetScreen() {
               <Label>{tr.dataReset.summaryTotal(preview.total)}</Label>
               {preview.clearsLedgerAnchor ? (
                 <Body muted style={{ fontSize: type.small.fontSize, marginTop: spacing.sm }}>{tr.dataReset.anchorNote}</Body>
+              ) : null}
+              {preview.clearsInvestmentWallet ? (
+                <Body muted style={{ fontSize: type.small.fontSize, marginTop: spacing.sm }}>{tr.dataReset.walletNote}</Body>
               ) : null}
               {preview.straddlingPlans > 0 ? (
                 <Body muted style={{ fontSize: type.small.fontSize, marginTop: spacing.sm }}>

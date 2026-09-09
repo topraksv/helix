@@ -5,6 +5,8 @@ import { normalizeLogoDomain, remoteFaviconUrl } from "../src/domain/logo-domain
 import {
   buildHistorySeries,
   COIN_FINE_GRAMS,
+  DEALER_MARGIN_BP,
+  dealerBidTry,
   deriveMarketQuotes,
   freshMarketQuote,
   historyDelta,
@@ -312,8 +314,24 @@ describe("deriving market prices from order books", () => {
   it("turns one troy ounce in lira into one gram in lira", () => {
     const quotes = deriveMarketQuotes(books);
     const gram = quotes.find((quote) => quote.code === "ALTIN");
-    expect(gram?.buyTry).toBeCloseTo(10_000, 6);
     expect(gram?.sellTry).toBeCloseTo(10_010, 6);
+    // The buying side is the selling side less the dealer margin, never the
+    // exchange's own bid: an order book's two sides are within a rounding of
+    // each other, which said the owner could sell gold at what they paid.
+    expect(gram?.buyTry).toBeCloseTo(dealerBidTry(10_010, DEALER_MARGIN_BP.metal), 6);
+    expect(gram!.buyTry).toBeLessThan(gram!.sellTry);
+  });
+
+  it("keeps the dealer margin a proportion of what is being asked", () => {
+    expect(dealerBidTry(100, 0)).toBe(100);
+    expect(dealerBidTry(100, 100)).toBeCloseTo(99, 9);
+    expect(dealerBidTry(200, 40)).toBeCloseTo(199.2, 9);
+    // Gold is bought and sold across a far wider counter than currency is, and
+    // the euro across a wider one than the dollar — it reaches lira through
+    // two legs, which is also how its ask is composed.
+    expect(DEALER_MARGIN_BP.metal).toBeGreaterThan(DEALER_MARGIN_BP.eur);
+    expect(DEALER_MARGIN_BP.eur).toBeGreaterThan(DEALER_MARGIN_BP.usd);
+    expect(DEALER_MARGIN_BP.usd).toBeGreaterThan(0);
   });
 
   it("prices each coin at the fine gold it legally contains", () => {
@@ -322,21 +340,24 @@ describe("deriving market prices from order books", () => {
     expect(at("CEYREK_YENI")?.sellTry).toBeCloseTo(10_010 * COIN_FINE_GRAMS.CEYREK_YENI!, 6);
     expect(at("TEK_YENI")?.sellTry).toBeCloseTo(10_010 * COIN_FINE_GRAMS.TEK_YENI!, 6);
     expect(at("ATA_YENI")?.sellTry).toBeCloseTo(10_010 * COIN_FINE_GRAMS.ATA_YENI!, 6);
-    expect(at("CEYREK_YENI")?.buyTry).toBeCloseTo(10_000 * COIN_FINE_GRAMS.CEYREK_YENI!, 6);
+    expect(at("CEYREK_YENI")?.buyTry)
+      .toBeCloseTo(dealerBidTry(10_010, DEALER_MARGIN_BP.metal) * COIN_FINE_GRAMS.CEYREK_YENI!, 6);
     // Smaller coin, less gold: the ordering is the specification, not a detail.
     expect(COIN_FINE_GRAMS.CEYREK_YENI!).toBeLessThan(COIN_FINE_GRAMS.TEK_YENI!);
     expect(COIN_FINE_GRAMS.TEK_YENI!).toBeLessThan(COIN_FINE_GRAMS.ATA_YENI!);
   });
 
-  it("crosses the euro through both legs on the same side", () => {
-    // Buying euros with lira crosses two asks; selling crosses two bids.
-    // Averaging the pair first would quote a rate nobody could trade at.
+  it("crosses the euro through both legs of the selling side", () => {
+    // Buying euros with lira crosses two asks, so that is the rate quoted; the
+    // buying side is that rate less the dealer margin. Averaging the pair
+    // first would quote a rate nobody could trade at.
     const quotes = deriveMarketQuotes(books);
     const eur = quotes.find((quote) => quote.code === "EURTRY");
-    expect(eur?.buyTry).toBeCloseTo(1.1 * 40, 9);
     expect(eur?.sellTry).toBeCloseTo(1.2 * 40.5, 9);
+    expect(eur?.buyTry).toBeCloseTo(dealerBidTry(1.2 * 40.5, DEALER_MARGIN_BP.eur), 9);
     const usd = quotes.find((quote) => quote.code === "USDTRY");
-    expect(usd).toEqual({ code: "USDTRY", buyTry: 40, sellTry: 40.5 });
+    expect(usd?.sellTry).toBe(40.5);
+    expect(usd?.buyTry).toBeCloseTo(dealerBidTry(40.5, DEALER_MARGIN_BP.usd), 9);
   });
 
   it("produces exactly the symbols the card is built to show", () => {

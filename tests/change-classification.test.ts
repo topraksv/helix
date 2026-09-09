@@ -84,7 +84,7 @@ describe("change classification", () => {
 
   for (const [area, file, shipping] of [
     ["dependency lock", "package-lock.json", true],
-    ["coverage policy", "vitest.coverage.config.ts", false],
+    ["coverage policy", "vitest.coverage.config.mts", false],
     ["mutation policy", "stryker.config.mjs", false],
     ["database configuration", "drizzle.config.ts", false],
     ["Supabase migration", "supabase/migrations/00000000000029_retire_legacy_expected_kinds.sql", false],

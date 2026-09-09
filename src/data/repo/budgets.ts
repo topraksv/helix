@@ -88,27 +88,37 @@ export interface CategoryDeleteSnapshot {
 /** Count every live row that would otherwise keep a deleted column alive. */
 export async function categoryReferenceUsage(userId: string, categoryId: string): Promise<CategoryReferenceUsage> {
   const sqlite = await getSqliteAsync();
-  const counts = await Promise.all(CATEGORY_REFERENCE_TABLES.map(async (table) => {
+  // Every key is initialised here and then ADDED to, rather than each read
+  // carrying its own `?? 0`. `CATEGORY_REFERENCE_TABLES` is derived from
+  // `RELATIONS` at runtime, so a `get` that missed used to be reported as zero
+  // references — which is the one answer that lets a delete cascade past a row
+  // still pointing at the column. It cannot miss now: a table with no key here
+  // fails to compile.
+  const usage: CategoryReferenceUsage = {
+    transactions: 0,
+    subscriptions: 0,
+    recurringIncomes: 0,
+    installmentPlans: 0,
+    cellNotes: 0,
+    total: 0,
+  };
+  const field: Record<CategoryReferenceTable, keyof CategoryReferenceUsage> = {
+    transactions: "transactions",
+    subscriptions: "subscriptions",
+    recurring_incomes: "recurringIncomes",
+    installment_plans: "installmentPlans",
+    cell_notes: "cellNotes",
+  };
+  await Promise.all(CATEGORY_REFERENCE_TABLES.map(async (table) => {
     const row = await sqlite.getFirstAsync<{ n: number }>(
       `SELECT COUNT(*) AS n FROM ${table} WHERE user_id = ? AND category_id = ? AND deleted_at IS NULL`,
       [userId, categoryId],
     );
-    return row?.n ?? 0;
+    const count = Number(row?.n ?? 0);
+    usage[field[table]] += count;
+    usage.total += count;
   }));
-  const countByTable = new Map(CATEGORY_REFERENCE_TABLES.map((table, index) => [table, counts[index] ?? 0]));
-  const transactions = countByTable.get("transactions") ?? 0;
-  const subscriptions = countByTable.get("subscriptions") ?? 0;
-  const recurringIncomes = countByTable.get("recurring_incomes") ?? 0;
-  const installmentPlans = countByTable.get("installment_plans") ?? 0;
-  const cellNotes = countByTable.get("cell_notes") ?? 0;
-  return {
-    transactions,
-    subscriptions,
-    recurringIncomes,
-    installmentPlans,
-    cellNotes,
-    total: counts.reduce((sum, count) => sum + count, 0),
-  };
+  return usage;
 }
 
 /**
@@ -271,10 +281,14 @@ export async function restoreCategoryWithBudgets(userId: string, snapshot: Categ
     table: reference.table,
     row: { ...reference.row, deletedAt: nowIso() },
   }));
+  // No `?? []` after the map: `snapshot.reassigned` is required on the type and
+  // `Array.prototype.map` returns an array, so the fallback was a branch no
+  // input could reach — the same dead defence the snapshot's own doc comment
+  // says was removed from the type.
   await writeRowsValidated(userId, [...categoryWrites, ...snapshot.reassigned.map((reference) => ({
     table: reference.table,
     row: { ...reference.row, deletedAt: null },
-  })) ?? [], ...createdTombstones], async (db) => {
+  })), ...createdTombstones], async (db) => {
     await assertRestorableRows(db, userId, categoryWrites);
     await Promise.all(snapshot.reassigned.map(async (reference) => {
       const current = await db.getFirstAsync<{ user_id: string }>(

@@ -143,11 +143,24 @@ const root = process.argv[2] ?? "dist";
 // is loosening it for no measured reason; the next feature that trips one
 // measures it then.
 //
-// Left unmeasured on purpose: `assets/brand/symbol-{light,dark}-t.png` are
-// 1024x1024 and 560_835 bytes together, drawn at 130pt by the splash and
-// smaller again by `src/ui/brand.tsx`. That is the largest single saving
-// available here and it is not taken, because resampling brand art is a
-// judgement about how the mark looks, not about bytes.
+// `assets/brand/symbol-{light,dark}-t.png` were left unmeasured here for a
+// year, on the reasoning that resampling brand art is a judgement about how the
+// mark looks rather than about bytes. That reasoning was right and the question
+// was wrong: the files did not need resampling, they needed CROPPING.
+//
+// Measured 2026-09-09 on the alpha channel: a 1024x1024 canvas carrying 606x789
+// of ink, with 210px of transparency down each side and 118 across the top. So
+// `contentFit` was scaling the padding as though it were part of the drawing —
+// a 40pt mark drew at 30.8pt — and 128_002 bytes of the export were empty
+// pixels. Cropped losslessly (decode, take the rectangle, re-encode; every ink
+// pixel byte-identical, resolution untouched at 606x789), the export measured
+// 7_606_608 -> 7_478_730 and the mark finally fills the box it is given.
+//
+// The saving is a side effect and is not the reason. `tests/brand-domains.test.ts`
+// holds the property that matters: the ink must touch all four edges, because
+// re-exporting a logo from a design tool is exactly how the padding comes back.
+//
+// `totalExport` COMES DOWN to measured plus ~1.5%.
 //
 // 2026-09-03, and the largest single drop this file has recorded: removing Zod
 // took 397_764 bytes off all three JavaScript figures at once. It was reached
@@ -214,13 +227,45 @@ const root = process.argv[2] ?? "dist";
 // Both JavaScript ceilings move to measured plus the usual ~1%. Total export
 // measured 7_638_765 and its ceiling does NOT move: it clears by 75_235 bytes,
 // and a limit that passed is not loosened for a rise it absorbed.
+//
+// 2026-09-09: the lead this file named above and left for the sync layer was
+// taken there. `metro.config.js` now resolves `@supabase/realtime-js` to
+// `src/sync/realtime-absent.js`, because `createClient` builds a socket client
+// whether or not anything subscribes and nothing in this app ever calls
+// `.channel()` — checked in `tests/release-config.test.ts` rather than
+// remembered. Measured entry 3_268_575 -> 3_202_806, total JavaScript
+// 3_898_238 -> 3_832_469, export 7_637_899 -> 7_572_130: 65_769 bytes off all
+// three, against the 65_134 the source map attributed to realtime-js and
+// phoenix together. The 635-byte difference is the module wrapper.
+//
+// All three ceilings COME DOWN, on the rule the Zod line set: measured plus
+// ~1% on JavaScript and ~1.5% on the export.
+//
+// Then `services/pdf-text.ts` stopped estimating. It had been inflating PDF
+// streams with SheetJS's `_inflateRaw`, which needs a size it cannot know, and
+// the estimate silently truncated well-compressed statements — measured, 96% of
+// a 291:1 text layer. `fflate` replaces it, and the interesting number is not
+// the one that went up.
+//
+// Statically imported it measured entry 3_237_142, which is 2_142 bytes PAST
+// the ceiling above for a feature most sessions never open. Loaded on demand
+// instead — the shape the SheetJS it replaced already had — the entry chunk
+// stays at 3_203_391 and fflate becomes a 33_893-byte chunk of its own. So
+// opening a statement now downloads 34 KB where it used to download the 493 KB
+// `xlsx` chunk for one utility function.
+//
+// `totalJavaScript` measured 3_866_947 and PASSES by 4_053 bytes. It moves
+// anyway, to measured plus the usual ~1%, on the rule the reported-defects line
+// already set: a ceiling the next one-line change trips is a ceiling that stops
+// being read. `entryJavaScript` and `totalExport` do NOT move — the entry rose
+// by 133 bytes and the export clears by 79_392.
 const limits = {
-  entryJavaScript: 3_302_000,
-  totalJavaScript: 3_938_000,
+  entryJavaScript: 3_235_000,
+  totalJavaScript: 3_906_000,
   // Fonts are 1_534_728 of this and the rest is one HTML file per route, so it
   // grows in coarser steps than the JavaScript above it — measured 8_037_112
   // with ~3% of slack rather than the ~1% the JS ceilings carry.
-  totalExport: 7_714_000,
+  totalExport: 7_591_000,
   fontFiles: 6,
   fontBytes: 800_000,
   // Pages is public. Symbolication maps belong only in a private crash service,

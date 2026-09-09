@@ -453,6 +453,7 @@ const taksitSheet = (name: string, rows: [string, string | null][], label = "KK 
   cells: rows.map((r) => [cell(r[1])]),
   skippedColumns: [],
   openingBalance: null,
+  openingCandidates: [],
 });
 
 describe("collectInstallmentPlans", () => {
@@ -510,21 +511,44 @@ describe("collectInstallmentPlans", () => {
     expect(only2026.map((p) => p.name)).toEqual(["Yeni"]);
   });
 
-  it("ignores non-installment columns even if a comment looks similar", () => {
+  /**
+   * The heading decides nothing. Requiring "taksit" in it assumed a workbook
+   * keeps single charges and instalments in separate columns; one "Kredi
+   * Kartı" column holding both produced no plans at all, however many `3/9`
+   * lines its comments carried. What proves a plan is the comment.
+   */
+  it("reads a plan out of a column whose heading never says taksit", () => {
     const sheet: ParsedSheet = {
       ...taksitSheet("2026", [["2026-01", "══ Kart A ══\nFatura  100,00  1/3"]]),
-      columns: [col("Faturalar")], // not a "…Taksitli…" column
+      columns: [col("Kredi Kartı")],
+    };
+    expect(collectInstallmentPlans([sheet]).map((plan) => plan.name)).toEqual(["Fatura"]);
+  });
+
+  it("still ignores a comment that is not an instalment list", () => {
+    const sheet: ParsedSheet = {
+      ...taksitSheet("2026", [["2026-01", "Elektrik faturası geldi"]]),
+      columns: [col("Faturalar")],
     };
     expect(collectInstallmentPlans([sheet])).toHaveLength(0);
   });
 });
 
 describe("isInstallmentCell", () => {
-  it("is true only for a taksit column whose comment has installment lines", () => {
-    expect(isInstallmentCell("KK Taksitli Harcamalar", "══ Kart A ══\nÜrün  100,00  1/3")).toBe(true);
-    expect(isInstallmentCell("Faturalar", "══ Kart A ══\nÜrün  100,00  1/3")).toBe(false); // wrong column
-    expect(isInstallmentCell("KK Taksitli Harcamalar", "Elektrik 436,30")).toBe(false); // no N/M
-    expect(isInstallmentCell("KK Taksitli Harcamalar", null)).toBe(false);
+  it("is decided by the comment, in any column", () => {
+    expect(isInstallmentCell("══ Kart A ══\nÜrün  100,00  1/3")).toBe(true);
+    expect(isInstallmentCell("Elektrik 436,30")).toBe(false); // no N/M
+    expect(isInstallmentCell(null)).toBe(false);
+  });
+
+  /**
+   * A note with no card banner was already refused by `collectInstallmentPlans`,
+   * so a cell that only reached here was skipped from the aggregate AND never
+   * became a plan — the money left the import entirely. Both ask the same
+   * question now.
+   */
+  it("refuses an instalment line that names no card, so the cell stays an aggregate", () => {
+    expect(isInstallmentCell("Ürün  100,00  1/3")).toBe(false);
   });
 });
 

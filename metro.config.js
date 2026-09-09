@@ -19,6 +19,25 @@ const SERVER_ENVIRONMENTS = new Set(["node", "react-server"]);
 const SERVER_SQLITE_STUB = path.resolve(__dirname, "src/db/expo-sqlite.server.js");
 
 /**
+ * Realtime, which this app does not have.
+ *
+ * `createClient` constructs a `RealtimeClient` whether or not anything
+ * subscribes, and `@supabase/supabase-js` re-exports the module besides — so
+ * with no tree-shaking, `@supabase/realtime-js` and the `@supabase/phoenix`
+ * socket under it sat in the entry chunk of every screen. Measured from the
+ * source map: 39_283 + 25_851 = 65_134 bytes, 2.0% of the entry bundle, to
+ * carry a websocket nothing ever opens.
+ *
+ * Unscoped, unlike the SQLite stub above: that one answers a question only the
+ * server render asks, while this is true on every platform. `sync/engine.ts`
+ * pulls on a cursor and Helix is offline-first by design, so a live socket is
+ * not a feature waiting to be switched on — it is a different product.
+ *
+ * The stub itself says what happens if that changes.
+ */
+const REALTIME_STUB = path.resolve(__dirname, "src/sync/realtime-absent.js");
+
+/**
  * `expo-sqlite` does not exist on the server, so the server bundle stops
  * carrying it.
  *
@@ -39,6 +58,9 @@ config.resolver.resolveRequest = (context, moduleName, platform) => {
     SERVER_ENVIRONMENTS.has(context.customResolverOptions?.environment)
   ) {
     return { type: "sourceFile", filePath: SERVER_SQLITE_STUB };
+  }
+  if (moduleName === "@supabase/realtime-js") {
+    return { type: "sourceFile", filePath: REALTIME_STUB };
   }
   return (defaultResolveRequest ?? context.resolveRequest)(context, moduleName, platform);
 };

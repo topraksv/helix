@@ -24,7 +24,7 @@ import { useAllTransactionsState, usePersonsState, usePriceHistoryState, useSubs
 import { combineLiveStates } from "../../data/live-state";
 import { deleteSubscriptionWithExpected, restoreDeletedRule } from "../../data/repo";
 import { scheduleSync } from "../../sync/engine";
-import { Button, Card, CardList, DataGateScreen, DataStateNotice, EmptyState, FadeIn, MetricStrip, PanelHeader, Screen, SectionHeader } from "../../ui/components";
+import { Amount, Button, Card, CardList, DataGateScreen, DataStateNotice, EmptyState, FadeIn, PanelHeader, Screen, SectionHeader, Spread } from "../../ui/components";
 import { RuleRow, type RuleBadge } from "../../ui/rule-row";
 import { Logo } from "../../ui/logo";
 import { useUndo } from "../../ui/undo";
@@ -331,16 +331,25 @@ function SubscriptionCostSummary({
   return (
     <Card testID="subscription-cost-summary" style={{ marginBottom: spacing.lg }}>
       <PanelHeader icon={Wallet} title={tr.subs.costSummary} description={tr.subs.costSummaryHint} />
-      {/* The app's shared rail for a row of labelled figures, rather than two
-          hand-tinted boxes that were this screen's alone. One source, one
-          place: this card is the only thing that says what the rules cost. */}
-      <MetricStrip
-        testID="subscription-cost-figures"
-        items={[
-          { label: tr.subs.monthlyCost, minor: summary.monthlyTryMinor },
-          { label: tr.subs.annualCost, minor: summary.annualTryMinor },
-        ]}
-      />
+      {/* The market card's two-rate block, for the two figures that are one
+          fact. They used to share a rail as equal columns, which reads as two
+          independent numbers to compare — and they are not: the annual one is
+          twelve of the monthly one. Same shape as Alış/Satış: the supporting
+          figure muted above, the one being answered in full ink below. */}
+      <View testID="subscription-cost-figures" style={{ marginTop: spacing.sm, gap: 3 }}>
+        <Spread style={{ alignItems: "baseline" }}>
+          <Text style={[type.small, { color: palette.textSecondary }]}>{tr.subs.annualCost}</Text>
+          <Amount
+            minor={summary.annualTryMinor}
+            colorized={false}
+            style={{ fontSize: type.amountSm.fontSize, color: palette.textSecondary, textAlign: "right" }}
+          />
+        </Spread>
+        <Spread style={{ alignItems: "baseline" }}>
+          <Text style={[type.small, { color: palette.textSecondary }]}>{tr.subs.monthlyCost}</Text>
+          <Amount minor={summary.monthlyTryMinor} colorized={false} style={{ textAlign: "right" }} />
+        </Spread>
+      </View>
       {summary.excludedCurrencyCount > 0 ? (
         <Text style={[type.small, { color: palette.textSecondary, marginTop: spacing.sm }]}>
           {tr.subs.costExcluded(summary.excludedCurrencyCount)}

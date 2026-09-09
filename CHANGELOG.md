@@ -4,6 +4,34 @@ Yayımlanan her sürümde neyin değiştiği, en yeni üstte. Sürüm numarası
 `app.json` içindeki `expo.version`'dır; nasıl seçildiği geliştiricinin kendi
 sürüm defterinde yazılıdır ve bu depoya dahil değildir.
 
+## 1.7.0
+
+### Minor Changes
+
+- Kredi kartı ekstresindeki taksitler Taksitler ekranına düşüyor. Bir satır "3/9" diyorsa artık tek bir harcama değil, arkasındaki planın kendisi yazılıyor: ilk taksitin ayı, toplam adedi ve aylık tutarıyla. Aynı planın bir sonraki ekstresi aynı plana denk geliyor, yanına ikincisini açmıyor.
+- Bir ekstre yalnız kendi ayına yazıyor. Ekran artık dönemi ve kartı soruyor; kabul edilen her satır o dönemin ödeme gününe düşüyor, satırın üstündeki tarih alışverişin yapıldığı gün olarak saklanıyor. Önceden her satır kendi tarihine gidiyordu ve bir temmuz ekstresi, içindeki alışverişlerin yapıldığı bütün aylara dağılıyordu.
+- Ekstre satırı kendi kalemine oturuyor. İşyeri adı kolon adlarından biriyle eşleşiyorsa oraya, eşleşmiyorsa uygulamanın kendi Türkçe sözlüğüyle aynı konuyu anlatan kolona gidiyor; hiçbiri tutmazsa kalemsiz kalıyor ve ekran bunu söylüyor. Önceden her satır ilk gider kolonuna yazılıyor, bu da hiçbir yerde belirtilmiyordu.
+- Mali Tablo'nun iki bakiye kolonu artık senin. Kolonlar ekranının altından ikisini de yeniden adlandırabilir, ay başı kolonunu kullanmıyorsan kapatabilirsin.
+- Excel'de açılış bakiyesinin hangi kolondan okunacağını sen seçiyorsun. Başlık kuralının bulduğu kolon bir varsayım; liste artık tablonun bütün kolonlarını, her birinin vereceği rakamla birlikte gösteriyor.
+- Excel'deki taksitler kolon başlığına bakılmadan okunuyor. Taksitini ve tek çekimini aynı kolonda tutan bir tablo önceden hiç plan üretmiyordu.
+- Canlı piyasa kartındaki "Alış" gerçek tezgâha yaklaştı. Emir defterinin iki tarafı birbirine yapışık olduğu için kart, altını aldığın fiyata satabileceğini söylüyordu; satış fiyatından ölçülmüş bir makas düşülüyor — altın %1,25, dolar %0,22, euro %0,42.
+
+### Patch Changes
+
+- Veri sıfırlama, biten bir silmeye "hiçbir şey silinmedi" demiyor. Silme tek bir işlemde tamamlanıyor; sonraki toparlama adımı aksarsa bu ayrıca söyleniyor, kayıtlar gitmişken seni tekrar denemeye göndermiyor.
+- Sıfırlama, planı silinmiş taksit satırlarını da alıyor. Bu satırları hiçbir kapsam sahiplenmiyordu; her şeyi silen bir sıfırlamadan sonra bile Durum ekranında bir bakiye kalıyordu.
+- Mali Tablo, hiç kayıt olmayan yılları geri okuyla açmıyor. Bir yıllık veriyi on yıllık bir tablodan aktarınca geri kalan dokuz yıl boş satırlarla geziliyordu.
+- Taksitler ekranında ay okları yalnızca taksitin olduğu aylar arasında geziniyor; geri gidince ileri gelebiliyorsun.
+- Mali Tablo hücresindeki kayıt satırı işyeri adıyla başlıyor; "Harcama · 3 Ağustos" altına geçti.
+- Abonelik maliyeti, aylık ve yıllık rakamı piyasa kartındaki alış/satış düzeniyle veriyor.
+- Sıfırlama ekranı, yatırım kapsamının cüzdanın açılış nakdini de sıfırladığını söylüyor.
+- Boş yatırım grafiğinin yanındaki "grafik sıfırdan başlıyor" cümlesi kaldırıldı; halkanın kendisi zaten boş.
+
+### Internal
+
+- Bakım geçişi, onaylanamayan tek bir bekleyen ödeme yüzünden bütünüyle durmuyor; kart ekstresi taraması ve gecikme işaretlemesi o satırın arkasında kalmıyor.
+- `matchStatementCategory`, `statementPlanSpec`, `parseBalanceColumns` ve kuyumcu makası için testler eklendi; sıfırlamanın "her şey, tüm tarihler" sözü tek bir uçtan uca testle ölçülüyor.
+
 ## 1.6.0
 
 ### Minor Changes
