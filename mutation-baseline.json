@@ -91,13 +91,13 @@
       "measuredDate": "2026-08-21"
     },
     "src/data/repo/budgets.ts": {
-      "score": 94.85,
-      "killed": 276,
+      "score": 95.04,
+      "killed": 268,
       "timeout": 0,
       "survived": 14,
-      "noCoverage": 1,
-      "measuredOn": "b9b509660d621bc2b356597b6693b9974b815f3b",
-      "measuredDate": "2026-08-21"
+      "noCoverage": 0,
+      "measuredOn": "7f5bc57794a446e84233f12df6845d17008829e7",
+      "measuredDate": "2026-09-09"
     },
     "src/data/repo/categories.ts": {
       "score": 98.97,
@@ -150,17 +150,17 @@
       "timeout": 0,
       "survived": 0,
       "noCoverage": 0,
-      "measuredOn": "0c2881fade9362f7d22692880634afe8e92c4b8c",
-      "measuredDate": "2026-08-20"
+      "measuredOn": "7f5bc57794a446e84233f12df6845d17008829e7",
+      "measuredDate": "2026-09-09"
     },
     "src/data/repo/imports.ts": {
-      "score": 55.39,
-      "killed": 256,
+      "score": 61.88,
+      "killed": 296,
       "timeout": 1,
-      "survived": 56,
-      "noCoverage": 151,
-      "measuredOn": "a9263150c9529d2bdb5552037b378916cbb57f34",
-      "measuredDate": "2026-08-21"
+      "survived": 111,
+      "noCoverage": 72,
+      "measuredOn": "7f5bc57794a446e84233f12df6845d17008829e7",
+      "measuredDate": "2026-09-09"
     },
     "src/data/repo/installments.ts": {
       "score": 72.81,
@@ -181,21 +181,21 @@
       "measuredDate": "2026-09-04"
     },
     "src/data/repo/investments.ts": {
-      "score": 69.78,
+      "score": 70.04,
       "killed": 187,
       "timeout": 0,
-      "survived": 72,
+      "survived": 71,
       "noCoverage": 9,
-      "measuredOn": "dc9686a35190aef09ea7be5161bfa5bc3a118575",
-      "measuredDate": "2026-09-04"
+      "measuredOn": "7f5bc57794a446e84233f12df6845d17008829e7",
+      "measuredDate": "2026-09-09"
     },
     "src/data/repo/maintenance.ts": {
-      "score": 48.02,
-      "killed": 158,
+      "score": 43.77,
+      "killed": 144,
       "timeout": 0,
-      "survived": 158,
+      "survived": 172,
       "noCoverage": 13,
-      "measuredOn": "bac1cd3f15e43c32916b994140dcd6c3ddb11e97",
+      "measuredOn": "7f5bc57794a446e84233f12df6845d17008829e7",
       "measuredDate": "2026-09-09"
     },
     "src/data/repo/matrix-colors.ts": {
@@ -217,13 +217,13 @@
       "measuredDate": "2026-08-21"
     },
     "src/data/repo/reset.ts": {
-      "score": 91.96,
-      "killed": 285,
+      "score": 92.44,
+      "killed": 317,
       "timeout": 1,
-      "survived": 25,
+      "survived": 26,
       "noCoverage": 0,
-      "measuredOn": "2797805dc91c8fdac3b7032b676790cdd21405ab",
-      "measuredDate": "2026-08-31"
+      "measuredOn": "7f5bc57794a446e84233f12df6845d17008829e7",
+      "measuredDate": "2026-09-09"
     },
     "src/data/repo/rule-validation.ts": {
       "score": 100,
@@ -245,21 +245,21 @@
     },
     "src/data/repo/settings.ts": {
       "score": 100,
-      "killed": 35,
+      "killed": 41,
       "timeout": 0,
       "survived": 0,
       "noCoverage": 0,
-      "measuredOn": "e74e17d4740a531ce1a342a2eeb52f9b7841e0fc",
-      "measuredDate": "2026-08-23"
+      "measuredOn": "7f5bc57794a446e84233f12df6845d17008829e7",
+      "measuredDate": "2026-09-09"
     },
     "src/data/repo/statement-import.ts": {
-      "score": 78.33,
-      "killed": 46,
+      "score": 79.53,
+      "killed": 100,
       "timeout": 1,
-      "survived": 13,
-      "noCoverage": 0,
-      "measuredOn": "dc9686a35190aef09ea7be5161bfa5bc3a118575",
-      "measuredDate": "2026-09-04"
+      "survived": 23,
+      "noCoverage": 3,
+      "measuredOn": "7f5bc57794a446e84233f12df6845d17008829e7",
+      "measuredDate": "2026-09-09"
     },
     "src/data/repo/transactions.ts": {
       "score": 97.99,
@@ -352,13 +352,13 @@
       "measuredDate": "2026-08-22"
     },
     "src/domain/balance.ts": {
-      "score": 96.74,
-      "killed": 178,
+      "score": 96.92,
+      "killed": 189,
       "timeout": 0,
       "survived": 6,
       "noCoverage": 0,
-      "measuredOn": "0dda8f4ab515ff54e3f87476074b9cd1c8ec055c",
-      "measuredDate": "2026-08-22"
+      "measuredOn": "7f5bc57794a446e84233f12df6845d17008829e7",
+      "measuredDate": "2026-09-09"
     },
     "src/domain/brand-marks.ts": {
       "score": 100,
@@ -388,22 +388,22 @@
       "measuredDate": "2026-08-24"
     },
     "src/domain/cash-flow-matrix.ts": {
-      "score": 98.55,
-      "killed": 68,
+      "score": 98.67,
+      "killed": 74,
       "timeout": 0,
       "survived": 1,
       "noCoverage": 0,
-      "measuredOn": "c74ef5673070c2c16a3f021e5a8d6d9296f1ca63",
-      "measuredDate": "2026-08-24"
+      "measuredOn": "7f5bc57794a446e84233f12df6845d17008829e7",
+      "measuredDate": "2026-09-09"
     },
     "src/domain/category-icons.ts": {
-      "score": 97.4,
-      "killed": 74,
+      "score": 97.56,
+      "killed": 79,
       "timeout": 1,
       "survived": 2,
       "noCoverage": 0,
-      "measuredOn": "f5fbeff2d21f1391122c7455874606aa9462a699",
-      "measuredDate": "2026-09-08"
+      "measuredOn": "7f5bc57794a446e84233f12df6845d17008829e7",
+      "measuredDate": "2026-09-09"
     },
     "src/domain/computed-columns.ts": {
       "score": 71.97,
@@ -542,12 +542,12 @@
     },
     "src/domain/market.ts": {
       "score": 100,
-      "killed": 199,
+      "killed": 224,
       "timeout": 0,
       "survived": 0,
       "noCoverage": 0,
-      "measuredOn": "2797805dc91c8fdac3b7032b676790cdd21405ab",
-      "measuredDate": "2026-08-31"
+      "measuredOn": "7f5bc57794a446e84233f12df6845d17008829e7",
+      "measuredDate": "2026-09-09"
     },
     "src/domain/matrix-colors.ts": {
       "score": 88.31,
@@ -559,12 +559,12 @@
       "measuredDate": "2026-08-21"
     },
     "src/domain/matrix-preferences.ts": {
-      "score": 87.5,
-      "killed": 14,
+      "score": 93.44,
+      "killed": 57,
       "timeout": 0,
-      "survived": 2,
+      "survived": 4,
       "noCoverage": 0,
-      "measuredOn": "bac1cd3f15e43c32916b994140dcd6c3ddb11e97",
+      "measuredOn": "7f5bc57794a446e84233f12df6845d17008829e7",
       "measuredDate": "2026-09-09"
     },
     "src/domain/money.ts": {
@@ -649,22 +649,22 @@
       "measuredDate": "2026-09-09"
     },
     "src/domain/settings.ts": {
-      "score": 97.35,
-      "killed": 110,
+      "score": 97.44,
+      "killed": 114,
       "timeout": 0,
       "survived": 3,
       "noCoverage": 0,
-      "measuredOn": "33ea3a4ac9db4b3571dc4e9e025984d122e4ddf4",
-      "measuredDate": "2026-08-19"
+      "measuredOn": "7f5bc57794a446e84233f12df6845d17008829e7",
+      "measuredDate": "2026-09-09"
     },
     "src/domain/statement-import.ts": {
-      "score": 70.35,
-      "killed": 242,
+      "score": 71.53,
+      "killed": 289,
       "timeout": 0,
-      "survived": 95,
+      "survived": 108,
       "noCoverage": 7,
-      "measuredOn": "0dda8f4ab515ff54e3f87476074b9cd1c8ec055c",
-      "measuredDate": "2026-08-22"
+      "measuredOn": "7f5bc57794a446e84233f12df6845d17008829e7",
+      "measuredDate": "2026-09-09"
     },
     "src/domain/subscriptions.ts": {
       "score": 97.26,
@@ -901,13 +901,13 @@
       "measuredDate": "2026-09-09"
     },
     "src/services/pdf-text.ts": {
-      "score": 27.85,
-      "killed": 165,
-      "timeout": 1,
-      "survived": 169,
-      "noCoverage": 261,
-      "measuredOn": "bca3517b5e0450a62a6c26dfc6a91e0806178646",
-      "measuredDate": "2026-08-21"
+      "score": 43.13,
+      "killed": 236,
+      "timeout": 40,
+      "survived": 239,
+      "noCoverage": 125,
+      "measuredOn": "7f5bc57794a446e84233f12df6845d17008829e7",
+      "measuredDate": "2026-09-09"
     },
     "src/services/picked-file.ts": {
       "score": 54.23,
@@ -919,13 +919,13 @@
       "measuredDate": "2026-09-09"
     },
     "src/services/spreadsheet-import.ts": {
-      "score": 62.08,
-      "killed": 659,
-      "timeout": 4,
-      "survived": 366,
-      "noCoverage": 39,
-      "measuredOn": "a9263150c9529d2bdb5552037b378916cbb57f34",
-      "measuredDate": "2026-08-21"
+      "score": 62.23,
+      "killed": 669,
+      "timeout": 5,
+      "survived": 369,
+      "noCoverage": 40,
+      "measuredOn": "7f5bc57794a446e84233f12df6845d17008829e7",
+      "measuredDate": "2026-09-09"
     },
     "src/services/workbook-export.ts": {
       "score": 75,
