@@ -96,7 +96,7 @@
       "timeout": 0,
       "survived": 14,
       "noCoverage": 0,
-      "measuredOn": "7f5bc57794a446e84233f12df6845d17008829e7",
+      "measuredOn": "f4aca7d7251d8bc6230ab9e6786e0a544e674f3e",
       "measuredDate": "2026-09-09"
     },
     "src/data/repo/categories.ts": {
@@ -150,7 +150,7 @@
       "timeout": 0,
       "survived": 0,
       "noCoverage": 0,
-      "measuredOn": "7f5bc57794a446e84233f12df6845d17008829e7",
+      "measuredOn": "f4aca7d7251d8bc6230ab9e6786e0a544e674f3e",
       "measuredDate": "2026-09-09"
     },
     "src/data/repo/imports.ts": {
@@ -159,7 +159,7 @@
       "timeout": 1,
       "survived": 111,
       "noCoverage": 72,
-      "measuredOn": "7f5bc57794a446e84233f12df6845d17008829e7",
+      "measuredOn": "f4aca7d7251d8bc6230ab9e6786e0a544e674f3e",
       "measuredDate": "2026-09-09"
     },
     "src/data/repo/installments.ts": {
@@ -186,16 +186,16 @@
       "timeout": 0,
       "survived": 71,
       "noCoverage": 9,
-      "measuredOn": "7f5bc57794a446e84233f12df6845d17008829e7",
+      "measuredOn": "f4aca7d7251d8bc6230ab9e6786e0a544e674f3e",
       "measuredDate": "2026-09-09"
     },
     "src/data/repo/maintenance.ts": {
-      "score": 43.77,
-      "killed": 144,
+      "score": 49.54,
+      "killed": 163,
       "timeout": 0,
-      "survived": 172,
-      "noCoverage": 13,
-      "measuredOn": "7f5bc57794a446e84233f12df6845d17008829e7",
+      "survived": 158,
+      "noCoverage": 8,
+      "measuredOn": "f4aca7d7251d8bc6230ab9e6786e0a544e674f3e",
       "measuredDate": "2026-09-09"
     },
     "src/data/repo/matrix-colors.ts": {
@@ -222,7 +222,7 @@
       "timeout": 1,
       "survived": 26,
       "noCoverage": 0,
-      "measuredOn": "7f5bc57794a446e84233f12df6845d17008829e7",
+      "measuredOn": "f4aca7d7251d8bc6230ab9e6786e0a544e674f3e",
       "measuredDate": "2026-09-09"
     },
     "src/data/repo/rule-validation.ts": {
@@ -249,7 +249,7 @@
       "timeout": 0,
       "survived": 0,
       "noCoverage": 0,
-      "measuredOn": "7f5bc57794a446e84233f12df6845d17008829e7",
+      "measuredOn": "f4aca7d7251d8bc6230ab9e6786e0a544e674f3e",
       "measuredDate": "2026-09-09"
     },
     "src/data/repo/statement-import.ts": {
@@ -258,7 +258,7 @@
       "timeout": 1,
       "survived": 23,
       "noCoverage": 3,
-      "measuredOn": "7f5bc57794a446e84233f12df6845d17008829e7",
+      "measuredOn": "f4aca7d7251d8bc6230ab9e6786e0a544e674f3e",
       "measuredDate": "2026-09-09"
     },
     "src/data/repo/transactions.ts": {
@@ -357,7 +357,7 @@
       "timeout": 0,
       "survived": 6,
       "noCoverage": 0,
-      "measuredOn": "7f5bc57794a446e84233f12df6845d17008829e7",
+      "measuredOn": "f4aca7d7251d8bc6230ab9e6786e0a544e674f3e",
       "measuredDate": "2026-09-09"
     },
     "src/domain/brand-marks.ts": {
@@ -393,7 +393,7 @@
       "timeout": 0,
       "survived": 1,
       "noCoverage": 0,
-      "measuredOn": "7f5bc57794a446e84233f12df6845d17008829e7",
+      "measuredOn": "f4aca7d7251d8bc6230ab9e6786e0a544e674f3e",
       "measuredDate": "2026-09-09"
     },
     "src/domain/category-icons.ts": {
@@ -402,7 +402,7 @@
       "timeout": 1,
       "survived": 2,
       "noCoverage": 0,
-      "measuredOn": "7f5bc57794a446e84233f12df6845d17008829e7",
+      "measuredOn": "f4aca7d7251d8bc6230ab9e6786e0a544e674f3e",
       "measuredDate": "2026-09-09"
     },
     "src/domain/computed-columns.ts": {
@@ -546,7 +546,7 @@
       "timeout": 0,
       "survived": 0,
       "noCoverage": 0,
-      "measuredOn": "7f5bc57794a446e84233f12df6845d17008829e7",
+      "measuredOn": "f4aca7d7251d8bc6230ab9e6786e0a544e674f3e",
       "measuredDate": "2026-09-09"
     },
     "src/domain/matrix-colors.ts": {
@@ -564,7 +564,7 @@
       "timeout": 0,
       "survived": 4,
       "noCoverage": 0,
-      "measuredOn": "7f5bc57794a446e84233f12df6845d17008829e7",
+      "measuredOn": "f4aca7d7251d8bc6230ab9e6786e0a544e674f3e",
       "measuredDate": "2026-09-09"
     },
     "src/domain/money.ts": {
@@ -654,7 +654,7 @@
       "timeout": 0,
       "survived": 3,
       "noCoverage": 0,
-      "measuredOn": "7f5bc57794a446e84233f12df6845d17008829e7",
+      "measuredOn": "f4aca7d7251d8bc6230ab9e6786e0a544e674f3e",
       "measuredDate": "2026-09-09"
     },
     "src/domain/statement-import.ts": {
@@ -663,7 +663,7 @@
       "timeout": 0,
       "survived": 108,
       "noCoverage": 7,
-      "measuredOn": "7f5bc57794a446e84233f12df6845d17008829e7",
+      "measuredOn": "f4aca7d7251d8bc6230ab9e6786e0a544e674f3e",
       "measuredDate": "2026-09-09"
     },
     "src/domain/subscriptions.ts": {
@@ -906,7 +906,7 @@
       "timeout": 40,
       "survived": 239,
       "noCoverage": 125,
-      "measuredOn": "7f5bc57794a446e84233f12df6845d17008829e7",
+      "measuredOn": "f4aca7d7251d8bc6230ab9e6786e0a544e674f3e",
       "measuredDate": "2026-09-09"
     },
     "src/services/picked-file.ts": {
@@ -920,11 +920,11 @@
     },
     "src/services/spreadsheet-import.ts": {
       "score": 62.23,
-      "killed": 669,
-      "timeout": 5,
+      "killed": 667,
+      "timeout": 7,
       "survived": 369,
       "noCoverage": 40,
-      "measuredOn": "7f5bc57794a446e84233f12df6845d17008829e7",
+      "measuredOn": "f4aca7d7251d8bc6230ab9e6786e0a544e674f3e",
       "measuredDate": "2026-09-09"
     },
     "src/services/workbook-export.ts": {
