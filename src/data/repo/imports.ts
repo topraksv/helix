@@ -9,6 +9,7 @@ import type { Minor } from "../../domain/money";
 import { isValidCardCycle, type CardCycle } from "../../domain/card-statements";
 import { collectInstallmentPlans, type ParsedSheet } from "../../services/spreadsheet-import";
 import { suggestCategoryIcon } from "../../domain/category-icons";
+import { nameMentions } from "../../domain/logo-domain";
 import { CreditCardCycleRequiredError, ImportBatchUnreadableError } from "./errors";
 import { buildPlanRows, linkDueRowsToCardStatements } from "./installments";
 import { buildSpreadsheetImportPlan, importCategoryKey } from "./import-plan";
@@ -231,7 +232,7 @@ export async function hasImportedData(userId: string): Promise<boolean> {
  * adds on top. Everything is additive elsewhere — existing manual rows are
  * never touched.
  */
-export async function importSheets(userId: string, req: ImportRequest): Promise<{ imported: number }> {
+export async function importSheets(userId: string, req: ImportRequest): Promise<{ imported: number; plans: number }> {
   const sqlite = await getSqliteAsync();
   // `selfId` crosses the UI/file boundary and becomes the owner of every
   // imported transaction/source/plan. Never trust the preview's cached person
@@ -245,6 +246,13 @@ export async function importSheets(userId: string, req: ImportRequest): Promise<
     [req.selfId, userId],
   );
   if (!self) throw new Error("Import owner must be the live self person");
+  // Read with the rest of the up-front queries: a card section named after
+  // someone the owner already tracks belongs to that person, and which rows
+  // reach the balance turns on it.
+  const otherPersons = await sqlite.getAllAsync<{ id: string; name: string }>(
+    `SELECT id, name FROM persons WHERE user_id = ? AND is_self = 0 AND deleted_at IS NULL`,
+    [userId],
+  );
   const existing = await sqlite.getAllAsync<{
     id: string;
     name: string;
@@ -378,24 +386,100 @@ export async function importSheets(userId: string, req: ImportRequest): Promise<
       }
     }
   }
+  /**
+   * What the workbook states for one column in one month, keyed
+   * `${month}|${label}`: a figure, `null` for a column that is there and left
+   * empty, and absent for a month whose sheet does not carry that column at
+   * all. The three are different facts and the instalment rules below turn on
+   * which one it is.
+   */
+  const statedCells = new Map<string, Minor | null>();
+  const statedMonths = new Set<MonthKey>();
+  for (const sheet of req.sheets) {
+    sheet.columns.forEach((column, index) => {
+      if (req.excludedLabels.includes(column.label)) return;
+      sheet.months.forEach((month, row) => {
+        if (!yearAllowed(yearOf(month))) return;
+        const value = sheet.cells[row]?.[index]?.valueMinor ?? null;
+        statedCells.set(`${month}|${column.label}`, value);
+        if (value != null) statedMonths.add(month);
+      });
+    });
+  }
+
+  /**
+   * Whose card a reconstructed section is.
+   *
+   * A workbook tracks more cards than it pays. The owner's file keeps two of
+   * their partner's under her own name — "Betül Business", "Betül Axess" —
+   * watched but deliberately outside the table, which is what a non-self
+   * person IS in this app: rows that are recorded and never counted. Matching
+   * the card against the people the owner already created is what makes that
+   * distinction survive an import instead of landing on the balance.
+   *
+   * Whole-word and at least three letters, the same bar the logo matcher uses:
+   * a two-letter name would claim "Ev Kredisi" for a person called Ev.
+   */
+  const cardOwner = (card: string): { id: string; isSelf: boolean } => {
+    const person = otherPersons.find((entry) => entry.name.trim().length >= 3 && nameMentions(card, entry.name));
+    return person ? { id: person.id, isSelf: false } : { id: req.selfId, isSelf: true };
+  };
+
+  // Plans are collected before the cells are planned, because a cell whose
+  // instalments add up to it is written AS those instalments.
+  const collectedPlans = collectInstallmentPlans(req.sheets, {
+    excludedLabels: req.excludedLabels,
+    informationalCards: req.informationalCards,
+    yearAllowed,
+  });
+  const planTotals = new Map<string, Minor>();
+  for (const spec of collectedPlans) {
+    // Another person's card is not inside the owner's column total, so it can
+    // neither add up to a cell nor be double-counted by one.
+    if (!cardOwner(spec.card).isSelf) continue;
+    for (let index = 0; index < spec.total; index += 1) {
+      const key = `${addMonthsToKey(spec.startMonth, index)}|${spec.columnLabel}`;
+      planTotals.set(key, (planTotals.get(key) ?? 0) + spec.monthlyMinor);
+    }
+  }
+  /**
+   * What the plans already put into a cell, so it writes only the rest.
+   *
+   * Every instalment a comment names becomes a real row with its card, its
+   * title and its payment number, and the cell keeps the difference — which
+   * makes the column total exactly what the workbook says while the Taksitler
+   * screen shows the whole schedule. The difference is not always positive:
+   * the owner's "Kredi Kartı Taksitler" column is the card statements MINUS
+   * the single-charge column beside it, so it reads 18.822,92 where the
+   * instalments on their own cards come to 16.799,84 in one month and
+   * 16.504,85 in the next.
+   */
+  const coveredByPlans = (month: MonthKey, label: string): Minor => {
+    // Only a cell that CARRIES A FIGURE has anything to reduce. Empty and zero
+    // are not a statement of zero — they are the workbook not having reached
+    // that cell yet, which is where the schedule earns its keep. Measured on
+    // the owner's file: the current month's card column was still blank, and
+    // treating blank as zero cancelled its instalments against a −25.162,14
+    // correction row while the two months AFTER it, blank in every column,
+    // showed theirs. Same fact, opposite answers, one month apart.
+    return statedCells.get(`${month}|${label}`) ? planTotals.get(`${month}|${label}`) ?? 0 : 0;
+  };
   const sheetPlan = buildSpreadsheetImportPlan({
     sheets: req.sheets,
     excludedLabels: new Set(req.excludedLabels),
     selectedYears,
     categoryIds: idByNameAndKind,
     today,
+    instalmentTotal: coveredByPlans,
+    remainderNote: tr.importer.columnRemainder,
   });
   for (const [year, ids] of sheetPlan.columnYears) columnYearsUpdates.set(year, ids);
-  // Months the workbook itself states. Collected from the very loop that
-  // writes them, so it costs no second pass.
-  const statedMonths = new Set<MonthKey>();
   // What each imported month does to the balance. Only the re-anchor
   // arithmetic below needs it, and only the loops that write the rows can
   // produce it without walking them a second time.
   const netByMonth = new Map<MonthKey, Minor>();
   const addNet = (month: MonthKey, minor: Minor) => netByMonth.set(month, (netByMonth.get(month) ?? 0) + minor);
   for (const cell of sheetPlan.cells) {
-    statedMonths.add(cell.month);
     const batch = batchFor(cell.year);
     for (const item of cell.items) {
       const id = newId();
@@ -461,20 +545,26 @@ export async function importSheets(userId: string, req: ImportRequest): Promise<
    * A month the workbook states belongs to the workbook: its column cells
    * already carry that month's instalment inside a total, and a plan row on
    * top of it is the same money twice — measured on the owner's file as an
-   * "Ev Kredisi" of 23.672,13 showing 46.000. What the comments add that no
-   * column states is the part still to come, after the last month the sheets
-   * fill in; a year the owner did not select states nothing either way, and
-   * stays empty rather than receiving rows it never asked for.
+   * "Ev Kredisi" of 23.672,13 showing 46.000 — so wherever the plan's own
+   * column is there to be reduced, `coveredByPlans` takes the instalment back
+   * out of it and the month totals what it always did. What a plan may NOT
+   * reach is a month whose sheet does not carry its column at all: that money
+   * is inside some other column, with nothing to reduce, and writing the row
+   * would count it twice. The owner's home loan moved between two columns
+   * across years and is exactly that case. A month no sheet states is free,
+   * and a year the owner did not select stays empty rather than receiving rows
+   * it never asked for.
    */
-  const openMonths = (spec: { startMonth: MonthKey; total: number }): MonthKey[] =>
-    Array.from({ length: spec.total }, (_, index) => addMonthsToKey(spec.startMonth, index))
-      .filter((month) => yearAllowed(yearOf(month)) && !statedMonths.has(month));
+  const openMonths = (spec: { startMonth: MonthKey; total: number; columnLabel: string; card: string }): MonthKey[] => {
+    // A card that is somebody else's keeps its whole schedule unconditionally:
+    // those rows never reach the balance, so no column can be counting them.
+    const watched = !cardOwner(spec.card).isSelf;
+    return Array.from({ length: spec.total }, (_, index) => addMonthsToKey(spec.startMonth, index))
+      .filter((month) => yearAllowed(yearOf(month))
+        && (watched || !statedMonths.has(month) || statedCells.has(`${month}|${spec.columnLabel}`)));
+  };
 
-  const planSpecs = collectInstallmentPlans(req.sheets, {
-    excludedLabels: req.excludedLabels,
-    informationalCards: req.informationalCards,
-    yearAllowed,
-  }).filter((spec) => openMonths(spec).length > 0);
+  const planSpecs = collectedPlans.filter((spec) => openMonths(spec).length > 0);
   const sourceWrites: RowWrite[] = [];
   const cycleByName = new Map<string, CardCycle>();
   for (const spec of planSpecs) {
@@ -483,11 +573,19 @@ export async function importSheets(userId: string, req: ImportRequest): Promise<
     const existingCycle = existingSource
       ? { statementDay: existingSource.statement_day, dueDay: existingSource.due_day }
       : null;
-    const cycle = existingCycle && isValidCardCycle(existingCycle) ? existingCycle : requestedCycles.get(key);
-    if (!cycle || !isValidCardCycle(cycle)) throw new CreditCardCycleRequiredError();
-    cycleByName.set(key, cycle);
+    // The cycle is optional. A workbook names every card a comment mentions —
+    // a partner's, a shop card, one that turns out to be a debit card — and
+    // demanding a statement and a due day for each of them before anything can
+    // be imported asks the owner to invent dates for cards they do not hold.
+    // Without one the instalment simply falls on its own month, which is where
+    // every other imported row falls anyway.
+    const requested = requestedCycles.get(key);
+    const cycle = existingCycle && isValidCardCycle(existingCycle)
+      ? existingCycle
+      : requested && isValidCardCycle(requested) ? requested : null;
+    if (cycle) cycleByName.set(key, cycle);
     if (sourceIdByName.has(key)) {
-      if (existingSource && !isValidCardCycle(existingCycle!)) {
+      if (cycle && existingSource && !isValidCardCycle(existingCycle!)) {
         sourceWrites.push({
           table: "payment_sources",
           row: {
@@ -504,8 +602,8 @@ export async function importSheets(userId: string, req: ImportRequest): Promise<
     sourceWrites.push({
       table: "payment_sources",
       row: {
-        id, name: spec.card, type: "credit_card", personId: req.selfId,
-        dueDay: cycle.dueDay, statementDay: cycle.statementDay,
+        id, name: spec.card, type: "credit_card", personId: cardOwner(spec.card).id,
+        dueDay: cycle?.dueDay ?? null, statementDay: cycle?.statementDay ?? null,
         color: null, logoSource: "initials", logoRef: null, isActive: true, deletedAt: null,
       },
     });
@@ -513,8 +611,9 @@ export async function importSheets(userId: string, req: ImportRequest): Promise<
   const planRowBatches = await Promise.all(
     planSpecs.map(async (spec) => {
       const sourceId = sourceIdByName.get(normalizedName(spec.card));
-      const cycle = cycleByName.get(normalizedName(spec.card));
-      if (!sourceId || !cycle) throw new CreditCardCycleRequiredError();
+      const cycle = cycleByName.get(normalizedName(spec.card)) ?? null;
+      if (!sourceId) throw new CreditCardCycleRequiredError();
+      const owner = cardOwner(spec.card);
       const planId = await deterministicId(naturalKeys.importInstallmentPlan(userId, spec.name, spec.monthlyMinor, spec.total, spec.startMonth));
       const built = await buildPlanRows(planId, {
         title: spec.name,
@@ -525,10 +624,10 @@ export async function importSheets(userId: string, req: ImportRequest): Promise<
         currency: "TRY",
         fxRate: null,
         startMonth: spec.startMonth,
-        dueDay: cycle.dueDay,
+        dueDay: cycle?.dueDay ?? null,
         paymentSourceId: sourceId,
-        personId: req.selfId,
-        personIsSelf: true,
+        personId: owner.id,
+        personIsSelf: owner.isSelf,
         categoryId:
           idByNameAndKind.get(importCategoryKey(spec.columnLabel, "expense")) ??
           idByNameAndKind.get(importCategoryKey(spec.columnLabel, "income")) ??
@@ -540,12 +639,18 @@ export async function importSheets(userId: string, req: ImportRequest): Promise<
       const rows = built.rows.filter(
         (row) => row.table !== "transactions" || open.has(String(row.row.effectiveDate).slice(0, 7)),
       );
-      return { ...built, rows: await linkDueRowsToCardStatements(userId, sourceId, cycle, rows), planId, spec };
+      // No cycle, no statement to link to: the rows stand on their own months.
+      const linked = cycle ? await linkDueRowsToCardStatements(userId, sourceId, cycle, rows) : rows;
+      return { ...built, rows: linked, planId, spec };
     }),
   );
   for (const built of planRowBatches) {
-    for (const row of built.rows) {
-      if (row.table === "transactions") addNet(String(row.row.effectiveDate).slice(0, 7) as MonthKey, -Number(row.row.amountTryMinor));
+    // A watched card's rows are recorded and never counted, so they must not
+    // move the re-anchor arithmetic either.
+    if (cardOwner(built.spec.card).isSelf) {
+      for (const row of built.rows) {
+        if (row.table === "transactions") addNet(String(row.row.effectiveDate).slice(0, 7) as MonthKey, -Number(row.row.amountTryMinor));
+      }
     }
     const startYear = yearOf(built.spec.startMonth);
     const endYear = yearOf(addMonthsToKey(built.spec.startMonth, built.spec.total - 1));
@@ -560,7 +665,7 @@ export async function importSheets(userId: string, req: ImportRequest): Promise<
   }
   imported += planSpecs.length;
 
-  const anchorWrites = await anchorWritesFromImport(
+  const { writes: anchorWrites, anchorMonth, anchorMinor } = await anchorFromImport(
     userId,
     req.sheets,
     yearAllowed,
@@ -582,17 +687,19 @@ export async function importSheets(userId: string, req: ImportRequest): Promise<
    * opens on the stated figure rather than closing on it.
    */
   const adjustmentWrites: RowWrite[] = [];
-  const anchor = openingBalanceFromSheets(req.sheets, yearAllowed, req.openingColumnLabel ?? null);
-  // Only an import that sets the anchor may restate the balance along the way:
-  // the arithmetic starts from that anchor, and a ledger this workbook is
-  // merely being added to has a history no cell here can account for.
-  if (anchor && anchorWrites.length > 0) {
+  // Only an import the ledger's anchor BELONGS TO may restate the balance along
+  // the way: the arithmetic starts from that anchor, and a ledger this workbook
+  // is merely being added to has a history no cell here can account for. Owning
+  // it is not the same as having just written it — re-importing a workbook the
+  // ledger is already anchored to writes no anchor and still owns the chain,
+  // and testing for the write dropped both corrections on every second import.
+  if (anchorMonth != null) {
     const stated = statedOpenings(req.sheets, yearAllowed, req.openingColumnLabel ?? null);
     const targetByMonth = new Map(stated.filter((entry) => entry.minor != null).map((entry) => [entry.month, entry.minor!]));
-    let running = anchor.minor ?? 0;
+    let running = anchorMinor;
     for (const month of [...new Set([...netByMonth.keys(), ...targetByMonth.keys()])].sort()) {
       const target = targetByMonth.get(month);
-      if (target != null && month !== anchor.month && target !== running) {
+      if (target != null && month !== anchorMonth && target !== running) {
         const date = lastDayOf(addMonthsToKey(month, -1));
         const id = await deterministicId(naturalKeys.balanceAdjustment(userId, date));
         adjustmentWrites.push({
@@ -648,7 +755,7 @@ export async function importSheets(userId: string, req: ImportRequest): Promise<
       (db) => assertInvestmentWrites(db, userId, writes).then(() => undefined),
     );
   }
-  return { imported };
+  return { imported, plans: planSpecs.length };
 }
 
 /**
@@ -709,29 +816,48 @@ export function openingBalanceFromSheets(
 /**
  * Seed the ledger anchor from the earliest imported month.
  *
- * Nothing is written when an anchor already exists and the workbook states no
- * figure of its own: the ledger back-anchors to the earliest row it has and
- * preserves the balance at the configured month, which is right, and writing a
- * zero over the owner's own opening balance would not be.
+ * An import that reaches back before the configured anchor MOVES it, whether or
+ * not the workbook states a figure of its own. The balance is the opening plus
+ * every row, with no regard for whether a row predates the anchor — so an
+ * anchor left later than the data does not merely look untidy, it adds the
+ * whole imported history on top of a figure that described a later moment.
+ * Measured on the owner's file: a first run that opened at 50.000,00 for Eylül
+ * 2026 and then imported from Ağustos 2021 read 70.953,72 where the same
+ * workbook into an empty workspace reads −16.462,53.
+ *
+ * The figure is the workbook's where it states one and zero where it does not,
+ * which is what the owner describes: the first month opens at the figure given
+ * for it, or at zero, and every month after it opens at the one before's close.
  */
-async function anchorWritesFromImport(
+async function anchorFromImport(
   userId: string,
   sheets: ParsedSheet[],
   yearAllowed: (y: number) => boolean,
   adopt: boolean,
   columnLabel: string | null,
-): Promise<RowWrite[]> {
+): Promise<{ writes: RowWrite[]; anchorMonth: MonthKey | null; anchorMinor: Minor }> {
+  const none = { writes: [], anchorMonth: null, anchorMinor: 0 };
   const opening = openingBalanceFromSheets(sheets, yearAllowed, columnLabel);
-  if (!opening) return [];
+  if (!opening) return none;
   const currentStart = await readSetting<string>(userId, "start_month");
-  // Earlier data always wins without being asked: the ledger back-anchors to
-  // the earliest month it has, so an anchor later than the data is simply
-  // wrong. Anything else is the owner's call and arrives as `adopt`.
-  if (adopt || !currentStart || (opening.month < currentStart && opening.minor != null)) {
-    return [
-      await settingWrite(userId, "start_month", opening.month),
-      await settingWrite(userId, "opening_balance_minor", opening.minor ?? 0),
-    ];
+  // Earlier data always wins without being asked. Moving the anchor later, or
+  // restating it where the workbook starts at the same month, is the owner's
+  // call and arrives as `adopt`.
+  if (adopt || !currentStart || opening.month < currentStart) {
+    return {
+      writes: [
+        await settingWrite(userId, "start_month", opening.month),
+        await settingWrite(userId, "opening_balance_minor", opening.minor ?? 0),
+      ],
+      anchorMonth: opening.month,
+      anchorMinor: opening.minor ?? 0,
+    };
   }
-  return [];
+  // The anchor is already this workbook's — a second import of the same file.
+  // Nothing moves, and the chain still starts here, from the figure the ledger
+  // actually holds rather than the one this run would have written.
+  if (currentStart === opening.month) {
+    return { writes: [], anchorMonth: opening.month, anchorMinor: (await readSetting<Minor>(userId, "opening_balance_minor")) ?? 0 };
+  }
+  return none;
 }

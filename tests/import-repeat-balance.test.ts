@@ -31,11 +31,13 @@ vi.mock("../src/db/ids", () => ({
 vi.mock("../src/sync/engine", () => ({ scheduleSync: vi.fn() }));
 
 import { importSheets, openingBalanceFromSheets } from "../src/data/repo/imports";
+import { setOpeningBalance } from "../src/data/repo/onboarding";
 import type { CellData, ParsedSheet } from "../src/services/spreadsheet-import";
 import { currentBalance } from "../src/domain/balance";
 import type { TxLike } from "../src/domain/types";
 import type { ISODate, MonthKey } from "../src/domain/dates";
-import { migrationStatements } from "./helpers";
+import { tr } from "../src/i18n/tr";
+import { migrationStatements, required } from "./helpers";
 
 const USER = "import-user";
 const NOW = "2026-08-18T09:00:00.000Z";
@@ -90,6 +92,12 @@ interface Row { id: string; type: string; amount_try_minor: number; effective_da
 
 const liveRows = (): Row[] =>
   harness.db!.prepare(`SELECT * FROM transactions WHERE user_id = ? AND deleted_at IS NULL`).all(USER) as unknown as Row[];
+
+/** What one month's imported rows do to the balance, income positive. */
+const monthTotal = (month: string): number =>
+  liveRows()
+    .filter((row) => row.effective_date.startsWith(month))
+    .reduce((sum, row) => sum + (row.type === "income" ? row.amount_try_minor : -row.amount_try_minor), 0);
 
 /** The balance the dashboard would show, derived exactly as production does. */
 function balanceNow(): number {
@@ -320,22 +328,34 @@ describe("importing the same workbook twice", () => {
     });
 
     /**
-     * A plan needs a card, and a card needs a cycle: without a statement and a
-     * due day there is no date to put an instalment on. Refusing is the only
-     * honest answer, and it is what the wizard's cycle prompt exists to collect.
+     * A cycle is optional.
+     *
+     * A workbook names every card a comment mentions — a partner's, a shop
+     * card, one that turns out to be a debit card — and demanding a statement
+     * and a due day for each before anything can be imported asks the owner to
+     * invent dates for cards they do not hold. Without one the card is created
+     * without a cycle and the instalment falls on its own month, which is where
+     * every other imported row falls anyway.
      */
-    it("refuses when the workbook names a card whose cycle nobody supplied", async () => {
-      await expect(importSheets(USER, planRequest())).rejects.toThrow();
-      expect(liveRows()).toEqual([]);
+    it("imports a card whose cycle nobody supplied, on the instalment's own month", async () => {
+      await importSheets(USER, planRequest());
+
+      const source = harness.db!
+        .prepare(`SELECT statement_day, due_day FROM payment_sources WHERE user_id = ? AND deleted_at IS NULL`)
+        .all(USER) as { statement_day: number | null; due_day: number | null }[];
+      expect(source).toEqual([{ statement_day: null, due_day: null }]);
+      const rows = harness.db!
+        .prepare(`SELECT effective_date FROM transactions WHERE user_id = ? AND installment_plan_id IS NOT NULL AND deleted_at IS NULL ORDER BY effective_date`)
+        .all(USER) as { effective_date: string }[];
+      expect(required(rows[0]).effective_date).toBe("2025-12-01");
     });
 
     /**
-     * The schedule reaches every month the workbook does NOT state. A month
-     * whose cells the sheet fills in already carries that instalment inside
-     * the column total, and a plan row on top of it is the same money twice —
-     * the owner's home loan of 23.672,13 reading 46.000.
+     * The cell and its instalments are the same money when they add up, so the
+     * plan's rows ARE the cell: the month carries the card and the payment
+     * number instead of one opaque total, and the column total is unchanged.
      */
-    it("creates the card, the plan and the instalments the workbook does not state", async () => {
+    it("creates the card, the plan and the whole schedule when the cell adds up to it", async () => {
       await importSheets(USER, planRequest({ [CARD]: { statementDay: 25, dueDay: 10 } }));
 
       const sources = harness.db!
@@ -349,14 +369,124 @@ describe("importing the same workbook twice", () => {
       expect(plans).toEqual([{ title: "Robot Süpürge", kind: "card_installment", installment_count: 9, monthly_amount_minor: 2_777_67 }]);
 
       // The plan starts where the comment says: the cell is February and it is
-      // the 3rd payment, so the first was December 2025. Nine instalments, less
-      // the two months this sheet states (January and February 2026).
+      // the 3rd payment, so the first was December 2025.
       const rows = harness.db!
         .prepare(`SELECT effective_date FROM transactions WHERE user_id = ? AND installment_plan_id IS NOT NULL AND deleted_at IS NULL ORDER BY effective_date`)
         .all(USER) as { effective_date: string }[];
-      expect(rows.map((row) => row.effective_date.slice(0, 7))).toEqual([
-        "2025-12", "2026-03", "2026-04", "2026-05", "2026-06", "2026-07", "2026-08",
-      ]);
+      expect(rows).toHaveLength(9);
+      expect(required(rows[0]).effective_date.slice(0, 7)).toBe("2025-12");
+      // Once, not twice: the cell's own aggregate gave way to the plan rows.
+      expect(monthTotal("2026-01")).toBe(-(1_500_00 + 2_777_67));
+    });
+
+    /**
+     * A column the owner keeps NET of the column beside it.
+     *
+     * The owner's file writes the whole card statement into "Kredi Kartı
+     * Taksitler" and subtracts the single-charge column from it, so the cell
+     * holds less than the instalments its own comment lists. Every instalment
+     * is still written — the Taksitler screen is the whole point of
+     * reconstructing them — and the cell keeps the difference, which here is
+     * negative. The column totals what the workbook says either way.
+     */
+    it("writes every instalment and leaves the cell holding the difference", async () => {
+      const netSheet = (): ParsedSheet => {
+        const base = planSheet();
+        return {
+          ...base,
+          // The column carries 1.000,00 where its comment reconstructs 2.777,67.
+          cells: base.cells.map((row) => [...row.slice(0, -1), { ...row.at(-1)!, valueMinor: 1_000_00 }]),
+        };
+      };
+      await importSheets(USER, { ...planRequest({ [CARD]: { statementDay: 25, dueDay: 10 } }), sheets: [netSheet()] });
+
+      // 1.000,00 in the column, whichever way it is made up.
+      expect(monthTotal("2026-01")).toBe(-(1_500_00 + 1_000_00));
+      expect(monthTotal("2026-02")).toBe(-(2_500_00 + 1_000_00));
+      // The whole schedule is there, including the two months the sheet states.
+      const months = (harness.db!
+        .prepare(`SELECT effective_date FROM transactions WHERE user_id = ? AND installment_plan_id IS NOT NULL AND deleted_at IS NULL ORDER BY effective_date`)
+        .all(USER) as { effective_date: string }[]).map((row) => row.effective_date.slice(0, 7));
+      expect(months).toHaveLength(9);
+      expect(months).toContain("2026-01");
+      // And the difference is one row that says what it is.
+      const remainder = harness.db!
+        .prepare(`SELECT amount_try_minor v, note FROM transactions WHERE user_id = ? AND note IS NOT NULL AND installment_plan_id IS NULL AND effective_date LIKE '2026-01%' AND deleted_at IS NULL`)
+        .all(USER) as { v: number; note: string }[];
+      expect(remainder).toEqual([{ v: 1_000_00 - 2_777_67, note: tr.importer.columnRemainder }]);
+    });
+
+    /**
+     * A card the owner watches rather than pays.
+     *
+     * The owner's file keeps two of their partner's cards under her own name,
+     * tracked on purpose and deliberately outside the table — which is what a
+     * non-self person IS here: rows that are recorded and never counted.
+     * Landing them on the balance is the same mistake as double-counting, in
+     * the other direction.
+     */
+    it("gives a card named after a tracked person that person's rows, out of the balance", async () => {
+      harness.db!.prepare(
+        `INSERT INTO persons (id, user_id, created_at, updated_at, deleted_at, tombstone_version, name, is_self)
+         VALUES ('person-betul', ?, ?, ?, NULL, 0, 'Betül', 0)`,
+      ).run(USER, NOW, NOW);
+      const watched = (): ParsedSheet => {
+        const base = planSheet();
+        return {
+          ...base,
+          cells: base.cells.map((row, index) => [
+            ...row.slice(0, -1),
+            { ...row.at(-1)!, comment: index === 1 ? "══ Betül Axess ══\nRobot Süpürge  2.777,67  3/9" : null },
+          ]),
+        };
+      };
+      await importSheets(USER, { ...planRequest({ "Betül Axess": { statementDay: 25, dueDay: 10 } }), sheets: [watched()] });
+
+      const rows = harness.db!
+        .prepare(`SELECT person_id, COUNT(*) n FROM transactions WHERE user_id = ? AND installment_plan_id IS NOT NULL AND deleted_at IS NULL GROUP BY person_id`)
+        .all(USER) as { person_id: string; n: number }[];
+      // The whole schedule, because none of it can be inside a column total.
+      expect(rows).toEqual([{ person_id: "person-betul", n: 9 }]);
+      const source = harness.db!
+        .prepare(`SELECT person_id FROM payment_sources WHERE user_id = ? AND deleted_at IS NULL`)
+        .all(USER) as { person_id: string }[];
+      expect(source).toEqual([{ person_id: "person-betul" }]);
+      // The cell is untouched — a watched card is not inside the owner's column
+      // total, so it can neither add up to the cell nor be counted twice by it.
+      // The month therefore holds both, and only one of them is the owner's.
+      expect(monthTotal("2026-01")).toBe(-(1_500_00 + 2_777_67 + 2_777_67));
+      expect(balanceNow()).toBe(OPENING_MINOR - (1_500_00 + 2_500_00) - 2_777_67 * 2);
+    });
+
+    /**
+     * An empty cell is not a statement of zero.
+     *
+     * A month the sheet has reached in its other columns may still have the
+     * card column blank — the current month, before the statement arrives. The
+     * instalments due in it are not cancelled by that blank: treating it as a
+     * figure of zero wrote a negative correction the size of the whole
+     * schedule, while the months after it, blank in EVERY column, showed
+     * theirs. Same fact, opposite answers, one month apart.
+     */
+    it("leaves a blank cell's instalments alone in a month the sheet otherwise states", async () => {
+      const blankCell = (): ParsedSheet => {
+        const base = planSheet();
+        return {
+          ...base,
+          cells: base.cells.map((row, index) => [
+            ...row.slice(0, -1),
+            { ...row.at(-1)!, valueMinor: index === 0 ? null : 2_777_67 },
+          ]),
+        };
+      };
+      await importSheets(USER, { ...planRequest({ [CARD]: { statementDay: 25, dueDay: 10 } }), sheets: [blankCell()] });
+
+      // January's own instalment, and nothing taken back out of it.
+      expect(monthTotal("2026-01")).toBe(-(1_500_00 + 2_777_67));
+      const remainders = harness.db!
+        .prepare(`SELECT COUNT(*) n FROM transactions WHERE user_id = ? AND note = ? AND deleted_at IS NULL`)
+        .get(USER, tr.importer.columnRemainder) as { n: number };
+      expect(remainders.n).toBe(0);
     });
 
     /**
@@ -403,6 +533,29 @@ describe("importing the same workbook twice", () => {
     expect(balanceNow()).toBe(500_00 - 1_000_00);
   });
 
+  /**
+   * Re-importing the same workbook converges, restatements included.
+   *
+   * The second run moves no anchor — it is already this workbook's — and the
+   * corrections used to be written only by a run that DID move one. Replace
+   * mode had meanwhile tombstoned the first run's, so every second import
+   * silently handed back the drift the file had already corrected.
+   */
+  it("keeps the restatement when the same workbook is imported again", async () => {
+    const second: ParsedSheet = { ...sheet(), sheetName: "2026-2", months: ["2026-03"], cells: [[money(1_000_00), money(500_00)]] };
+    const both = { ...request("replace"), sheets: [sheet(), second] };
+    await importSheets(USER, both);
+    const first = balanceNow();
+
+    await importSheets(USER, both);
+
+    const adjustments = harness.db!
+      .prepare(`SELECT date, amount_minor FROM balance_adjustments WHERE user_id = ? AND deleted_at IS NULL`)
+      .all(USER) as { date: string; amount_minor: number }[];
+    expect(adjustments).toEqual([{ date: "2026-02-28", amount_minor: -5_500_00 }]);
+    expect(balanceNow()).toBe(first);
+  });
+
   /** An earlier workbook may move the anchor back; a later one may not. */
   it("moves the anchor only when the workbook genuinely starts earlier", async () => {
     await importSheets(USER, request("replace"));
@@ -421,6 +574,37 @@ describe("importing the same workbook twice", () => {
     await importSheets(USER, { ...request("add"), sheets: [later] });
     expect(setting("start_month")).toBe("2025-12");
     expect(setting("opening_balance_minor")).toBe(5_000_00);
+  });
+
+  /**
+   * History reaching back before the anchor brings the anchor with it, whether
+   * or not the workbook names an opening figure.
+   *
+   * The balance is the opening plus every row, with no regard for whether a row
+   * predates the anchor — so leaving the anchor where it was adds the whole
+   * imported history on top of a figure that described a later moment. Measured
+   * on the owner's file: a first run that opened at 50.000,00 for Eylül 2026 and
+   * then imported from Ağustos 2021 read 70.953,72 where the same workbook into
+   * an empty workspace read −16.462,53.
+   */
+  it("moves the anchor back even when the workbook states no opening figure", async () => {
+    await setOpeningBalance(USER, "2026-06", 50_000_00);
+    const noOpeningColumn = (): ParsedSheet => {
+      const base = sheet();
+      return {
+        ...base,
+        columns: base.columns.slice(0, 1),
+        cells: base.cells.map((row) => row.slice(0, 1)),
+        skippedColumns: [],
+        openingColumn: null,
+        openingCandidates: [],
+      };
+    };
+    await importSheets(USER, { ...request("replace"), sheets: [noOpeningColumn()], excludedLabels: [] });
+
+    expect(setting("start_month")).toBe("2026-01");
+    expect(setting("opening_balance_minor")).toBe(0);
+    expect(balanceNow()).toBe(-(1_500_00 + 2_500_00));
   });
 });
 

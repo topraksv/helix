@@ -1605,7 +1605,7 @@ describe("replace-mode import with an unreadable batch", () => {
       mode: "add",
     });
 
-    expect(result).toEqual({ imported: 1 });
+    expect(result).toEqual({ imported: 1, plans: 0 });
     expect(dependencies.writeRows).toHaveBeenCalledTimes(1);
     const [, writes] = required(dependencies.writeRows.mock.calls[0]) as [
       string,

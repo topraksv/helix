@@ -20,6 +20,7 @@ import Banknote from "lucide-react-native/icons/banknote";
 import CalendarRange from "lucide-react-native/icons/calendar-range";
 import CreditCard from "lucide-react-native/icons/credit-card";
 import Eraser from "lucide-react-native/icons/eraser";
+import ListChecks from "lucide-react-native/icons/list-checks";
 import Landmark from "lucide-react-native/icons/landmark";
 import RefreshCw from "lucide-react-native/icons/refresh-cw";
 import Target from "lucide-react-native/icons/target";
@@ -234,6 +235,23 @@ function CloudDataResetScreen() {
               />
             </View>
           ))}
+          {/* Under the list, where it reads as the end of it rather than as a
+              seventh thing to delete. Six toggles is exactly the length at
+              which "hepsi" becomes six taps. */}
+          <Divider flush />
+          <ListRow
+            icon={ListChecks}
+            title={tr.dataReset.everyScope}
+            subtitle={tr.dataReset.everyScopeHint}
+            right={
+              <Toggle
+                label={tr.dataReset.everyScope}
+                value={scopes.length === RESET_SCOPES.length}
+                disabled={running}
+                onValueChange={(next) => setScopes(next ? [...RESET_SCOPES] : [])}
+              />
+            }
+          />
         </Card>
 
         <Card>

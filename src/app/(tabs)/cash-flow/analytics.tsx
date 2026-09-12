@@ -666,7 +666,11 @@ export default function AnalysisScreen() {
             headWidth={compact ? 112 : 148}
             cellWidth={analysisCellWidth}
             currentColumnKey={currentMonth}
-            focusColumnKey={currentMonth}
+            // This month when the window holds it, otherwise the window's last
+            // month. A window that does not contain today — a past year, a
+            // custom range — has no column to focus, and the table then opened
+            // on January and had to be dragged to the end every time.
+            focusColumnKey={monthKeys.includes(currentMonth) ? currentMonth : monthKeys.at(-1)}
             columns={[...monthKeys.map((m) => ({ key: m, label: shortMonthLabel(m) })), { key: "__total", label: tr.common.total }]}
             rows={rows.map(({ category, data }) => ({
               key: category.id,

@@ -132,19 +132,27 @@ describe("the month-end forecast carries one colour meaning", () => {
 });
 
 /**
- * A horizontally scrolled financial grid must never rest on a half-covered
- * cell: the sticky label column hides the left part of an amount and what is
- * left reads as a smaller but perfectly valid figure — `₺14.500,00` became
+ * A horizontally scrolled financial grid must not rest on a half-covered cell:
+ * the sticky label column hides the left part of an amount and what is left
+ * reads as a smaller but perfectly valid figure — `₺14.500,00` became
  * `4.500,00` whenever the focus scroll hit the far-end clamp.
+ *
+ * Every offset the table CHOOSES is therefore a whole number of cells. The one
+ * it does not choose is the far end a person drags to themselves: reaching it
+ * used to need a spacer after the last column, and a strip of bare background
+ * at the end of every row was the worse of the two readings.
  */
 describe("the ledger never rests between columns", () => {
   const table = readFileSync(join(root, "src/ui/sticky-table.tsx"), "utf8");
 
-  it("shows a whole number of cells and reaches the end on that grid", () => {
+  it("shows a whole number of cells and focuses one on that grid", () => {
     expect(table).toContain("const visibleCells =");
-    expect(table).toContain("const trailingSpacer =");
     expect(table).toContain("const maxScrollX =");
     expect(table).toContain("Math.min(Math.round(centered / cellWidth) * cellWidth, maxScrollX)");
+    // No spacer, and no column widened to stand in for one: the columns of a
+    // table are equal or they are not columns.
+    expect(table).not.toContain("trailingSpacer");
+    expect(table).not.toContain("cellWidthOf");
   });
 
   /**

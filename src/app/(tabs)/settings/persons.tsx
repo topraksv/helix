@@ -21,7 +21,7 @@ import Pencil from "lucide-react-native/icons/pencil";
 import Plus from "lucide-react-native/icons/plus";
 import Trash from "lucide-react-native/icons/trash";
 import UserRound from "lucide-react-native/icons/user-round";
-import { Badge, Body, Button, Card, CardList, ChipPicker, DataGateScreen, DataStateNotice, FadeIn, Field, IconButton, PanelHeader, Row, Screen, SectionHeader, Spread } from "../../../ui/components";
+import { Badge, Body, Button, Card, CardList, ChipPicker, DataGateScreen, DataStateNotice, FadeIn, Field, IconButton, PanelHeader, Row, Screen, Spread } from "../../../ui/components";
 import { appAlert, appConfirm } from "../../../ui/dialog";
 import { placeholderPools, useRotatingPlaceholder } from "../../../ui/placeholders";
 import { useUndo } from "../../../ui/undo";
@@ -280,8 +280,12 @@ export default function PersonsScreen() {
         )}
         secondary={(
           <View>
-          <SectionHeader description={tr.persons.listHint}>{tr.persons.listTitle}</SectionHeader>
+          {/* The heading belongs INSIDE the card, as it does on every other
+              split screen. Standing above it, its section gap pushed the whole
+              right-hand column below the card on the left, and two panes that
+              start on different lines read as two unrelated screens. */}
           <CardList
+            header={<PanelHeader icon={UserRound} title={tr.persons.listTitle} description={tr.persons.listHint} />}
             items={[...persons].sort((a, b) => Number(b.isSelf) - Number(a.isSelf))}
             keyExtractor={(p) => p.id}
             renderItem={(p) =>

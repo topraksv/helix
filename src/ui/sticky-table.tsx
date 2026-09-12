@@ -518,13 +518,17 @@ export function StickyTable({
   // at a whole-cell offset, and `snapToInterval` keeps a dragged scroll on the
   // same grid.
   const visibleCells = bodyW > 0 ? Math.max(1, Math.floor(bodyW / cellWidth)) : 0;
-  // Absorbs the leftover so the far end is reachable on the cell grid. Clamping
-  // the viewport itself to whole cells was tried and rejected: at 320px only one
-  // 88px month fits, so it threw away up to 87px of a phone to avoid a partial
-  // cell at the right edge — where an amount is right-aligned and a clipped one
-  // ends mid-digit rather than reading as a smaller valid figure. The left edge
-  // is the dangerous one, and snapping keeps it exact.
-  const trailingSpacer = bodyW > 0 ? bodyW - visibleCells * cellWidth : 0;
+  // The far end is where the CONTENT ends, and nothing is added to reach it.
+  //
+  // Two other answers were tried. A trailing spacer made every resting offset a
+  // whole number of cells, at the price of a strip of bare background after the
+  // last column — the width of most of a cell on a desktop, and the owner's
+  // word for it was that the table had a hole in it. Carrying that leftover
+  // inside the last column instead removed the strip but left one column wider
+  // than the rest, which is a false reading of a table whose columns are
+  // otherwise equal. So the end can rest mid-cell: the snap below keeps every
+  // OTHER offset on the grid, and the one place a cell is clipped at the left
+  // edge is the position a person reached by dragging to the very end.
   const maxScrollX = Math.max(0, scrollCols.length * cellWidth - visibleCells * cellWidth);
 
   // Center the current month on open (clamped at the edges). When the pivot
@@ -861,7 +865,6 @@ export function StickyTable({
         >
           <View style={{ flexDirection: "row" }}>
             {scrollCols.map(headerCell)}
-            {trailingSpacer > 0 ? <View style={{ width: trailingSpacer }} /> : null}
           </View>
         </ScrollView>
       </View>
@@ -975,7 +978,6 @@ export function StickyTable({
                   }}
                 >
                   {scrollCols.map((c) => bodyCell(c, r))}
-                  {trailingSpacer > 0 ? <View style={{ width: trailingSpacer }} /> : null}
                 </View>
               ))}
             </View>

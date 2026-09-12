@@ -41,72 +41,106 @@ import { MAX_BALANCE_COLUMN_LABEL } from "../../../domain/matrix-preferences";
  */
 function BalanceColumnsCard() {
   const userId = useUserId();
+  const { palette } = useTheme();
   const current = useBalanceColumns();
-  const [opening, setOpening] = useState<string | null>(null);
-  const [closing, setClosing] = useState<string | null>(null);
+  const [editing, setEditing] = useState<"opening" | "closing" | null>(null);
+  const [draft, setDraft] = useState("");
 
   /**
-   * A box left as the app's own name stores NOTHING.
+   * A name left as the app's own stores NOTHING.
    *
-   * Otherwise opening the screen and tabbing through it would freeze today's
-   * wording into the account: a later build renaming "Ay Başı" would leave
-   * this workspace on the old name with nothing on screen explaining why.
+   * Otherwise renaming a column to what it is already called would freeze
+   * today's wording into the account: a later build renaming "Ay Başı" would
+   * leave this workspace on the old name with nothing on screen explaining why.
    */
-  const label = (draft: string | null, shown: string, fallback: string) => {
-    const value = (draft ?? shown).trim();
-    return value === "" || value === fallback ? null : value;
+  const stored = (value: string, fallback: string) => {
+    const trimmed = value.trim();
+    return trimmed === "" || trimmed === fallback ? null : trimmed;
   };
 
-  const save = (showOpening: boolean) => {
-    void setBalanceColumns(userId, {
-      openingLabel: label(opening, current.openingLabel, tr.cashflow.opening),
-      closingLabel: label(closing, current.closingLabel, tr.cashflow.closing),
-      showOpening,
-    })
+  const write = (next: { openingLabel: string | null; closingLabel: string | null; showOpening: boolean }) => {
+    void setBalanceColumns(userId, next)
       .then(() => {
-        // Hand the boxes back to the stored value. Clearing one stores "use the
-        // app's own name", and a draft left holding "" would keep showing an
-        // empty box beside a column that is once again called "Ay Başı".
-        setOpening(null);
-        setClosing(null);
+        setEditing(null);
         scheduleSync(userId);
       })
       .catch(() => void appAlert(tr.errors.saveFailed, tr.errors.title));
   };
 
+  const saved = (which: "opening" | "closing") => ({
+    openingLabel: which === "opening"
+      ? stored(draft, tr.cashflow.opening)
+      : stored(current.openingLabel, tr.cashflow.opening),
+    closingLabel: which === "closing"
+      ? stored(draft, tr.cashflow.closing)
+      : stored(current.closingLabel, tr.cashflow.closing),
+    showOpening: current.showOpening,
+  });
+
+  /** The same row every column in this screen gets: its name, and a pencil. */
+  const row = (which: "opening" | "closing", name: string, fieldLabel: string, fallback: string, below?: ReactNode) => (
+    <View style={{ paddingVertical: spacing.sm }}>
+      {editing === which ? (
+        <View style={{ gap: spacing.sm }}>
+          <Field
+            label={fieldLabel}
+            noMargin
+            autoFocus
+            value={draft}
+            maxLength={MAX_BALANCE_COLUMN_LABEL}
+            placeholder={tr.settings.balanceColumnsPlaceholder(fallback)}
+            onChangeText={setDraft}
+          />
+          <Row gap={spacing.sm} style={{ justifyContent: "flex-end" }}>
+            <Button label={tr.common.cancel} size="sm" variant="ghost" onPress={() => setEditing(null)} />
+            <Button label={tr.common.save} size="sm" variant="secondary" onPress={() => write(saved(which))} />
+          </Row>
+        </View>
+      ) : (
+        <>
+          <Spread>
+            <Body style={{ flex: 1, paddingRight: spacing.sm }}>{name}</Body>
+            <IconButton
+              icon={Pencil}
+              label={`${tr.common.edit} · ${name}`}
+              onPress={() => {
+                setDraft(name);
+                setEditing(which);
+              }}
+            />
+          </Spread>
+          {below}
+        </>
+      )}
+    </View>
+  );
+
   return (
     <Card testID="balance-columns-card">
       <PanelHeader icon={Scale} title={tr.settings.balanceColumnsTitle} description={tr.settings.balanceColumnsHint} />
-      <Field
-        label={tr.settings.balanceClosingLabel}
-        value={closing ?? current.closingLabel}
-        maxLength={MAX_BALANCE_COLUMN_LABEL}
-        placeholder={tr.settings.balanceColumnsPlaceholder(tr.cashflow.closing)}
-        onChangeText={setClosing}
-        onBlur={() => save(current.showOpening)}
-      />
-      <Field
-        label={tr.settings.balanceOpeningLabel}
-        value={opening ?? current.openingLabel}
-        maxLength={MAX_BALANCE_COLUMN_LABEL}
-        placeholder={tr.settings.balanceColumnsPlaceholder(tr.cashflow.opening)}
-        onChangeText={setOpening}
-        onBlur={() => save(current.showOpening)}
-      />
-      {/* Character for character the row every category carries, because it is
-          the same decision about the same kind of thing: whether a column is
-          drawn. A second wording and a second spacing for one switch would
-          make two controls out of one rule. */}
-      <Spread style={{ marginTop: spacing.xs }}>
-        <Body muted style={{ fontSize: type.small.fontSize, flex: 1, paddingRight: spacing.sm }}>
-          {tr.settings.columnVisible}
-        </Body>
-        <Toggle
-          label={`${current.openingLabel} · ${tr.settings.columnVisible}`}
-          value={current.showOpening}
-          onValueChange={save}
-        />
-      </Spread>
+      {row("closing", current.closingLabel, tr.settings.balanceClosingLabel, tr.cashflow.closing)}
+      <View style={{ borderBottomWidth: StyleSheet.hairlineWidth, borderColor: palette.border }} />
+      {/* The switch sits UNDER the month-opening row and nowhere else, because
+          it is that row's own: the closing balance is the figure the whole
+          ledger exists to produce and has no such choice. Character for
+          character the line every category carries, so one rule keeps one
+          control. */}
+      {row("opening", current.openingLabel, tr.settings.balanceOpeningLabel, tr.cashflow.opening, (
+        <Spread style={{ marginTop: spacing.xs }}>
+          <Body muted style={{ fontSize: type.small.fontSize, flex: 1, paddingRight: spacing.sm }}>
+            {tr.settings.columnVisible}
+          </Body>
+          <Toggle
+            label={`${current.openingLabel} · ${tr.settings.columnVisible}`}
+            value={current.showOpening}
+            onValueChange={(showOpening) => write({
+              openingLabel: stored(current.openingLabel, tr.cashflow.opening),
+              closingLabel: stored(current.closingLabel, tr.cashflow.closing),
+              showOpening,
+            })}
+          />
+        </Spread>
+      ))}
     </Card>
   );
 }
@@ -312,6 +346,7 @@ export default function CategoriesScreen({ header }: { header?: ReactNode } = {}
         testID="categories-workspace"
         wideLayout={categories.length === 0 ? "stack" : "split"}
         primary={(
+          <View>
           <Card>
             <PanelHeader icon={Plus} title={tr.settings.createItemTitle} description={tr.settings.createItemHint} />
             <CategoryLedgerMap
@@ -348,6 +383,12 @@ export default function CategoriesScreen({ header }: { header?: ReactNode } = {}
               onPress={() => router.push("/workspace-template")}
             />
           </Card>
+          {/* Under the maker, in its own column. Standing below the split it
+              was a full-width strip under two columns of cards, which reads as
+              a footer for the page rather than as what it is: two more columns
+              of the same table, edited the same way. */}
+          <BalanceColumnsCard />
+          </View>
         )}
         secondary={(
           <View>
@@ -458,7 +499,6 @@ export default function CategoriesScreen({ header }: { header?: ReactNode } = {}
           </View>
         )}
       />
-      <BalanceColumnsCard />
     </Screen>
   );
 }

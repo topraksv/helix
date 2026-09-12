@@ -1438,8 +1438,17 @@ describe("nothing changes state by cutting to it", () => {
     // narrow and progressively too far left — visible on the third segment of
     // the only view that has a toggle.
     const segmented = selectionControls.slice(selectionControls.indexOf("export function Segmented<"));
-    expect(segmented).toContain("width: `${100 / options.length}%`");
+    // The indicator takes the SELECTED option's own share of the track and
+    // starts where that option starts. Equal shares are the default, so the
+    // strip that has always been halves stays halves; a strip that has to break
+    // on the same vertical as the panes under it can say so.
+    expect(segmented).toContain("width: `${widths[selectedIndex]");
+    expect(segmented).toContain("offsets.map((offset) => `${offset}%`)");
     expect(segmented).not.toContain("optionCount");
+    // Animated refuses a single interpolation stop, so a one-option strip is
+    // given two identical ones rather than the crash that dropping the old
+    // `Math.max(1, …)` clamp would have introduced.
+    expect(segmented).toContain("options.length > 1 ? options.map((_, index) => index) : [0, 1]");
   });
 });
 

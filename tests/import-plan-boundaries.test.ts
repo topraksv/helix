@@ -92,4 +92,44 @@ describe("spreadsheet import-plan boundaries", () => {
       { type: "transfer", effectiveDate: "2026-01-01", status: "pending" },
     ]);
   });
+
+  /**
+   * A cell whose instalments are written as their own rows keeps the REST of
+   * itself, so the column totals what the workbook says while the schedule
+   * reaches the Taksitler screen. Three shapes, one rule: money left over,
+   * nothing left over, and a column the owner has not filled in for a month
+   * the sheet otherwise accounts for.
+   */
+  describe("a cell the instalment plans already carry", () => {
+    const plan = (value: number | null, covered: number, note?: string) => [...buildSpreadsheetImportPlan({
+      sheets: [sheet({
+        columns: [{ label: "KK", kindGuess: "expense", isInvestment: false, balanceLike: false, dueDay: null }],
+        cells: [[cell(value, "══ Kart A ══\nÜrün  100,00  1/3")]],
+      })],
+      excludedLabels: new Set(),
+      selectedYears: null,
+      categoryIds: new Map([[importCategoryKey("KK", "expense"), "kk"]]),
+      today: "2026-01-15",
+      instalmentTotal: () => covered,
+      ...(note == null ? {} : { remainderNote: note }),
+    }).cells];
+
+    it("writes what is left of the cell, under the note it was given", () => {
+      expect(plan(250_00, 100_00, "kalan").map((entry) => entry.items)).toEqual([
+        [{ amountMinor: 150_00, note: "kalan", isAggregate: true }],
+      ]);
+    });
+
+    it("writes nothing when the instalments are the whole cell", () => {
+      expect(plan(100_00, 100_00)).toEqual([]);
+    });
+
+    it("takes the instalments back out of a column left empty", () => {
+      const [entry] = plan(null, 100_00);
+      expect(entry?.items).toEqual([{ amountMinor: -100_00, note: null, isAggregate: true }]);
+      // The comment survives on the cell, which is the only record of what the
+      // figure was made of.
+      expect(entry?.cellNote).toContain("Ürün");
+    });
+  });
 });

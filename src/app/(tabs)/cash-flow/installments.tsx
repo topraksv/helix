@@ -107,6 +107,21 @@ export default function InstallmentsScreen() {
 
   // The one installment (if any) a plan pays in the viewed month.
   const itemInMonth = (planId: string) => itemsByPlan.get(planId)?.find((it) => it.month === viewMonth);
+  /** How far into the plan the viewed month is, or the paid count outside it. */
+  const reachedNo = (planId: string, paidSoFar: number) => itemInMonth(planId)?.installmentNo ?? paidSoFar;
+  /**
+   * Where the plan stands TODAY, whichever month is being viewed.
+   *
+   * The line above the bar is the one fixed fact on this card: in September it
+   * says September, and it says it while you walk back through June to see what
+   * that month cost. The bar and the count beside it are the moving parts.
+   */
+  const asOfToday = (planId: string, paidSoFar: number, total: number) => {
+    const today = itemsByPlan.get(planId)?.find((item) => item.month === currentMonth);
+    return today
+      ? tr.installments.thisMonthInstallment(monthLabel(currentMonth), today.installmentNo, total)
+      : tr.installments.progress(paidSoFar, total);
+  };
 
   // Cards that actually carry an installment this month — the filter never
   // offers a card with nothing to show. (Plain derivation; the React Compiler
@@ -140,11 +155,19 @@ export default function InstallmentsScreen() {
     const progress = planProgress(items);
     const finished = progress.remaining === 0;
     const thisMonth = itemInMonth(plan.id);
+    // The plan's own count, not the number of rows it happens to have: an
+    // imported plan can be missing the months its workbook kept in another
+    // column, and "3/21" of a 24-month loan is a figure nobody recognises.
+    const total = Math.max(plan.installmentCount, progress.total);
+    // The bar walks the MONTH being viewed, which is the question this screen
+    // answers — where am I in this plan in September? The static paid-so-far
+    // count stays on the right of it, where it reads as the running tally.
+    const reached = reachedNo(plan.id, progress.paid);
     const Icon = plan.kind === "loan" ? Landmark : CreditCard;
     return (
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel={`${installmentDisplayTitle(plan.title, noteByPlan.get(plan.id), tr.installments.plan)}. ${thisMonth ? formatMinorCompact(thisMonth.amountMinor) : ""}. ${tr.installments.progress(progress.paid, progress.total)}`}
+        accessibilityLabel={`${installmentDisplayTitle(plan.title, noteByPlan.get(plan.id), tr.installments.plan)}. ${thisMonth ? formatMinorCompact(thisMonth.amountMinor) : ""}. ${tr.installments.progress(progress.paid, total)}`}
         onPress={() => router.push({ pathname: "/installment-new", params: { id: plan.id } })}
         style={({ pressed }) => [pressed && { opacity: 0.6 }]}
       >
@@ -176,12 +199,14 @@ export default function InstallmentsScreen() {
           <View style={{ flexDirection: "row", alignItems: "flex-end", gap: spacing.md, marginTop: spacing.md }}>
             <View style={{ flex: 1, minWidth: 0 }}>
               <Text style={[type.small, { color: palette.textSecondary }]}>
-                {thisMonth ? tr.installments.thisMonthInstallment(thisMonth.installmentNo, progress.total) : tr.installments.progress(progress.paid, progress.total)}
+                {asOfToday(plan.id, progress.paid, total)}
               </Text>
               {thisMonth ? <Amount minor={thisMonth.amountMinor} colorized={false} style={{ fontSize: compact ? type.moneyInput.fontSize : type.heading.fontSize, textAlign: "left", marginTop: 2 }} /> : null}
             </View>
             <View style={{ alignItems: "flex-end", gap: spacing.xs }}>
-              <Text style={[type.label, { color: finished ? palette.positiveText : palette.textStrong }]}>{progress.paid}/{progress.total}</Text>
+              {/* Moves with the bar under it: both answer "where is this plan in
+                  the month I am looking at". */}
+              <Text style={[type.label, { color: finished ? palette.positiveText : palette.textStrong }]}>{reached}/{total}</Text>
               {watchedBy ? <Badge text={`${tr.installments.watchOnly}: ${watchedBy}`} tone="warning" /> : null}
             </View>
           </View>
@@ -191,8 +216,8 @@ export default function InstallmentsScreen() {
               one you are on. */}
           <View style={{ marginTop: spacing.sm }}>
             <SegmentBar
-              ratio={progress.paid / Math.max(progress.total, 1)}
-              segments={progress.total}
+              ratio={reached / Math.max(total, 1)}
+              segments={total}
               tone={finished ? palette.success : palette.primary}
               height={8}
             />

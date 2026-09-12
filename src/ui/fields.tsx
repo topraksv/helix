@@ -41,6 +41,7 @@ import { useReducedMotion } from "./motion";
 import { useShake } from "./motion-primitives";
 import { examplePlaceholder, numericPlaceholderColor } from "./input-placeholder";
 import { placeholderPools, useRotatingPlaceholder } from "./placeholders";
+import { useContentWidth } from "./viewport";
 import { Heading, IconButton, Label, Spread, controlStateStyle } from "./primitives";
 import { borderWidth, controlSize, iconSize, motion, radius, spacing, stateOpacity, themeShadow, toggleSize, type, useTheme, type Palette } from "./theme";
 
@@ -300,6 +301,10 @@ export function MoneyField({
     active: placeholder == null && value.trim() === "",
   });
   const [focused, setFocused] = useState(false);
+  // A desktop row has room the phone does not. The inline box was sized for the
+  // narrow case and kept that size everywhere, so a month of amounts on a wide
+  // screen was typed into 156px boxes with half the row left empty beside them.
+  const roomy = useContentWidth() >= 900;
   const [calcOpen, setCalcOpen] = useState(false);
   const calculatorTriggerRef = useRef<View>(null);
   const display = formatMoneyInputLive(value);
@@ -338,7 +343,7 @@ export function MoneyField({
                 // native TextInput scrolls its value, so keep that control
                 // predictable while returning the remaining width to context.
                 width: "42%",
-                maxWidth: 156,
+                maxWidth: roomy ? 240 : 156,
                 minWidth: 120,
                 flexShrink: 1,
               }

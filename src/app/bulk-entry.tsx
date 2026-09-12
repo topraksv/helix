@@ -141,7 +141,10 @@ export default function BulkEntryModal() {
         ) : (
           <>
             <WorkspaceGrid
-        testID="bulk-entry-workspace"
+              testID="bulk-entry-workspace"
+              // Every amount box stands in the same column as the one above it,
+              // including the last one when the count is odd.
+              grow={false}
             >
               {rows.map((c) => (
                 <View key={c.id}>

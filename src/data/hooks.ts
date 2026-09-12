@@ -367,10 +367,14 @@ export function useSyncDeadLettersState() {
   const userId = useUserId();
   return useSharedLive(
     `sync_dead_letters:${userId}`,
+    // The payload comes along so the list can name the RECORD and not just its
+    // table: "hücre notu kaydı" tells a person nothing they can place, and the
+    // one thing they can place is the month or the name inside it.
     () => getDb().select({
       id: s.syncDeadLetters.id,
       tableName: s.syncDeadLetters.tableName,
       reason: s.syncDeadLetters.reason,
+      payload: s.syncDeadLetters.payload,
       quarantinedAt: s.syncDeadLetters.quarantinedAt,
     }).from(s.syncDeadLetters).orderBy(desc(s.syncDeadLetters.quarantinedAt)),
     ["sync_dead_letters"],

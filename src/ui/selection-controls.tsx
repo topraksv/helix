@@ -367,6 +367,7 @@ export function Segmented<T extends string>({
   disabled = false,
   fill = false,
   action,
+  weights,
 }: {
   options: { value: T; label: string }[];
   value: T;
@@ -392,11 +393,23 @@ export function Segmented<T extends string>({
    * choice.
    */
   action?: { icon: LucideIcon; label: string; active: boolean; onPress: () => void };
+  /**
+   * Relative widths for the options, when the strip has to break on the same
+   * vertical as something under it — the column editor's two panes. One number
+   * per option; omitted, every option takes an equal share.
+   */
+  weights?: number[];
 }) {
   const { palette } = useTheme();
   const bounded = shouldBoundIntrinsicControls(useContentWidth());
   const reducedMotion = useReducedMotion();
   const selectedIndex = Math.max(0, options.findIndex((option) => option.value === value));
+  // Shares as percentages, and where each one starts. Equal shares are the
+  // default and produce exactly the geometry this control always had.
+  const shares = options.map((_, index) => weights?.[index] ?? 1);
+  const totalShare = shares.reduce((sum, share) => sum + share, 0) || 1;
+  const widths = shares.map((share) => (share / totalShare) * 100);
+  const offsets = widths.map((_, index) => widths.slice(0, index).reduce((sum, width) => sum + width, 0));
   const indicator = useRef(new Animated.Value(selectedIndex)).current;
   useEffect(() => {
     if (reducedMotion) {
@@ -441,7 +454,7 @@ export function Segmented<T extends string>({
           correct in the two views that have no toggle. The track is what the
           flexing options actually share; the toggle is outside it. */}
       <View style={{ position: "relative", flexDirection: "row", flex: 1, minWidth: 0 }}>
-      {options.map((option) => {
+      {options.map((option, index) => {
         const selected = option.value === value;
         return (
           <Pressable
@@ -456,7 +469,7 @@ export function Segmented<T extends string>({
             accessibilityState={{ checked: selected, selected, disabled }}
             style={(state) => [
               {
-                flex: 1,
+                flex: shares[index] ?? 1,
                 alignSelf: "stretch",
                 minHeight: controlSize.minimumTarget,
                 paddingVertical: spacing.sm,
@@ -500,10 +513,13 @@ export function Segmented<T extends string>({
           bottom: 0,
           height: 3,
           backgroundColor: disabled ? palette.controlBorder : palette.primary,
-          width: `${100 / options.length}%`,
+          width: `${widths[selectedIndex] ?? 100 / options.length}%`,
           left: indicator.interpolate({
-            inputRange: [0, Math.max(1, options.length - 1)],
-            outputRange: ["0%", `${(100 / options.length) * Math.max(1, options.length - 1)}%`],
+            // Animated needs two stops. A one-option strip has one and never
+            // moves, so it gets the same position twice rather than throwing —
+            // which is what the arithmetic this replaced was clamping for.
+            inputRange: options.length > 1 ? options.map((_, index) => index) : [0, 1],
+            outputRange: options.length > 1 ? offsets.map((offset) => `${offset}%`) : ["0%", "0%"],
           }),
         }}
       />

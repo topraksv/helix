@@ -272,6 +272,7 @@ export default function ImportWizardModal() {
   const [error, setError] = useState<string | null>(null);
   const [reimportYears, setReimportYears] = useState<number[] | null>(null);
   const [doneCount, setDoneCount] = useState<number | null>(null);
+  const [donePlans, setDonePlans] = useState(0);
   const [cardCycleDrafts, setCardCycleDrafts] = useState<Record<string, { statementDay: string; dueDay: string }>>({});
   /**
    * Whether this import may move the ledger's anchor.
@@ -371,8 +372,11 @@ export default function ImportWizardModal() {
   };
   const cardCyclesValid = installmentCards.every((card) => {
     const cycle = cycleDraft(card);
-    // The importer creates real cards, so it applies the editor's rule too:
-    // a pair it accepts here must be a pair the settings screen can reopen.
+    // Blank is an answer: a card whose cycle nobody knows still imports, and
+    // its instalments fall on their own months. A HALF-filled pair is not an
+    // answer, and the importer creates real cards, so a pair it accepts here
+    // must be a pair the settings screen can reopen.
+    if (cycle.statementDay.trim() === "" && cycle.dueDay.trim() === "") return true;
     return isMonthDay(cycle.statementDay)
       && isMonthDay(cycle.dueDay)
       && cardCycleError(Number(cycle.statementDay), Number(cycle.dueDay)) === null;
@@ -417,19 +421,20 @@ export default function ImportWizardModal() {
       adoptOpeningBalance: adoptOpening,
       openingColumnLabel: openingColumn,
       cardCycles: Object.fromEntries(
-        installmentCards.map((card) => {
-          const cycle = cycleDraft(card);
-          return [card, { statementDay: Number(cycle.statementDay), dueDay: Number(cycle.dueDay) }];
-        }),
+        installmentCards
+          .map((card) => [card, cycleDraft(card)] as const)
+          .filter(([, cycle]) => cycle.statementDay.trim() !== "" && cycle.dueDay.trim() !== "")
+          .map(([card, cycle]) => [card, { statementDay: Number(cycle.statementDay), dueDay: Number(cycle.dueDay) }]),
       ),
     };
     context.report(2, 4);
     if (context.signal.aborted) throw context.signal.reason;
     setCommitting(true);
-    const { imported } = await importSheets(userId, request).finally(() => setCommitting(false));
+    const { imported, plans } = await importSheets(userId, request).finally(() => setCommitting(false));
     context.report(3, 4);
     scheduleSync(userId);
     context.report(4, 4);
+    setDonePlans(plans);
     setDoneCount(imported);
   };
 
@@ -466,6 +471,10 @@ export default function ImportWizardModal() {
             <View style={{ flex: 1 }}>
               <Text accessibilityRole="header" style={[type.heading, { color: palette.text }]}>{tr.importer.doneTitle(doneCount)}</Text>
               <Body muted style={{ marginTop: spacing.xs }}>{tr.importer.doneHint}</Body>
+              {/* Said out loud, because it is the half of the import nobody can
+                  see from the table: a workbook whose comments list instalments
+                  produces plans, and "kayıt geldi" alone never mentioned them. */}
+              {donePlans > 0 ? <Body muted style={{ marginTop: spacing.xs }}>{tr.importer.donePlans(donePlans)}</Body> : null}
             </View>
           </Row>
         </Card>
@@ -502,10 +511,11 @@ export default function ImportWizardModal() {
     openingColumn,
   );
   const currentStartMonth = settingValue<MonthKey | null>(settingsState.data, "start_month", null);
-  // Earlier data wins without being asked only when the workbook actually
-  // states a figure. A sheet that carries no opening column states nothing, and
-  // the ledger's own back-anchoring keeps the balance the owner configured.
-  const openingIsEarlier = workbookOpening?.minor != null
+  // Earlier data wins without being asked, figure or no figure: the balance is
+  // the opening plus every row whatever its date, so history reaching back
+  // before the anchor has to bring the anchor with it. A sheet with no opening
+  // column states zero for its first month, and the line below shows that.
+  const openingIsEarlier = workbookOpening != null
     && (currentStartMonth == null || workbookOpening.month < currentStartMonth);
   const preview: ParsedSheet | undefined = activeSheets[0];
 

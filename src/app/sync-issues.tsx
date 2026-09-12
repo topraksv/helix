@@ -35,8 +35,8 @@ import { dismissSyncDeadLetter, retrySyncDeadLetter } from "../data/repo";
 import { buildExportText, saveTextFile } from "../services/export-import";
 import { devError } from "../services/logger";
 import { syncNow } from "../sync/engine";
-import { todayISO } from "../domain/dates";
-import { dateTimeLabel, tr } from "../i18n/tr";
+import { isMonthKey, todayISO } from "../domain/dates";
+import { dateTimeLabel, monthLabel, tr } from "../i18n/tr";
 import {
   Body,
   Button,
@@ -55,6 +55,28 @@ import { spacing, type, useTheme } from "../ui/theme";
 
 /** What the last retry learned about one row, keyed by dead-letter id. */
 type Outcome = "requeued" | "missing" | "unsupported" | "unrepairable";
+
+/**
+ * The one field of a quarantined payload a person would recognise.
+ *
+ * Whatever the table, a record is a name, a month or a day — and one of those
+ * turns "hücre notu kaydı" into "hücre notu kaydı · Ağustos 2026", which is a
+ * row somebody can go and look at.
+ */
+function subjectOf(payload: string): string | null {
+  let row: Record<string, unknown>;
+  try {
+    row = JSON.parse(payload) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+  for (const key of ["name", "title", "month", "effective_date", "date", "key"]) {
+    const value = row[key];
+    if (typeof value !== "string" || value.trim() === "") continue;
+    return isMonthKey(value) ? monthLabel(value) : value;
+  }
+  return null;
+}
 
 export default function SyncIssuesScreen() {
   const { palette } = useTheme();
@@ -183,6 +205,9 @@ export default function SyncIssuesScreen() {
       </Card>
 
       {deadLetters.map((deadLetter) => {
+        // Which record this is, in the owner's own words. A quarantined row is
+        // already an abstraction; naming only its table makes it a second one.
+        const subject = subjectOf(deadLetter.payload);
         // `tableName` is a raw DB string, not the finite `SyncedTableName`
         // union — a dead letter can carry a table name from a newer build than
         // this client's i18n map, so the lookup can still miss at runtime.
@@ -200,7 +225,7 @@ export default function SyncIssuesScreen() {
           <Card key={deadLetter.id}>
             <Spread style={{ alignItems: "flex-start", gap: spacing.sm }}>
               <View style={{ flex: 1, minWidth: 0, gap: 3 }}>
-                <Body>{title}</Body>
+                <Body>{subject ? `${title} · ${subject}` : title}</Body>
                 <Body muted style={{ fontSize: type.small.fontSize }}>
                   {`${reason} · ${dateTimeLabel(deadLetter.quarantinedAt)}`}
                 </Body>

@@ -569,6 +569,8 @@ export const tr = {
     title: "Veri Sıfırlama",
     entryDescription: "Hesabın açık kalır; seçtiğin kayıtları tarih aralığıyla temizlersin.",
     intro: `Kayıtları silersin, çalışma alanının kurgusunu değil. ${productTerms.items}, kolonlar, kişiler, ödeme yöntemleri ve yatırım ürünleri her durumda korunur.`,
+    everyScope: "Tümünü seç",
+    everyScopeHint: "Yukarıdaki altı kapsamın hepsini birden işaretler.",
     scopeSection: "Ne sıfırlansın?",
     rangeSection: "Hangi tarihler?",
     allDates: "Tüm tarihler",
@@ -703,8 +705,11 @@ export const tr = {
     forecastOutgoing: "Kalan gider",
     forecastResult: "Ay sonu tahmini",
     forecastTypical: "Tipik harcamanla",
+    // Two facts, in the order a reader needs them: where the number came from,
+    // and what it is. The long version explained the arithmetic first and the
+    // answer last, so the sentence had to be finished before it said anything.
     forecastTypicalHint: (amount: string) =>
-      `Yukarıdaki rakam yalnız bildiklerini toplar; markete, yakıta, dışarıda yemeğe ayın kalanında ne gideceğini bilemez. Son altı ayda abonelik ve taksit dışı harcaman ayda ne tuttuysa, bu ay şimdiye kadar harcadığın düşülerek ${amount} daha bekleniyor.`,
+      `Market, yakıt, dışarıda yemek gibi planlanmamış harcamalar için ${amount} daha bekleniyor: son 6 ayın aylık ortalaması, bu ay harcadığın düşülerek.`,
     noUpcoming: "Önümüzdeki 31 günde ödeme yok.",
     inDays: (n: number) => (n === 0 ? "bugün" : n === 1 ? "yarın" : `${n} gün sonra`),
   },
@@ -1118,7 +1123,7 @@ export const tr = {
     allCards: "Tüm kartlar",
     cardFilter: "Bu ayın kartları",
     addCard: "Yeni kart ekle",
-    thisMonthInstallment: (n: number, total: number) => `Bu ay ${n}/${total}. taksit`,
+    thisMonthInstallment: (month: string, n: number, total: number) => `${month} itibarıyla ${n}/${total}. taksit`,
     noneThisMonth: "Bu ay ödenecek taksit yok",
     noneThisMonthHint: "Bu ayda aktif taksit veya kredi taksiti bulunmuyor. Ay/kart seçimini değiştirebilirsin.",
   },
@@ -1721,6 +1726,7 @@ export const tr = {
     reasonNoColumns: "Ayların yanında kalem başlıklarını (Kira, Maaş gibi) göremedik.",
     reasonInvestmentSheet: "Yatırım sayfası gelir-gider olarak alınmaz; yatırımlar ayrı yönetilecek.",
     openingRestated: "Tablodaki ay başı değerine göre düzeltme",
+    columnRemainder: "Taksit listesi dışında kalan kolon tutarı",
     // format guide
     guideTitle: "Nasıl bir tablo işe yarar?",
     guideLead: "İki türlü de olur: ayları ister yana ister alta diz, ikisini de anlıyoruz. Bir eksende aylar, diğerinde kalemlerin; kesişen her kutu o ayki tutar.",
@@ -1756,7 +1762,7 @@ export const tr = {
       `Σ ile işaretli kolonlar bakiye ya da toplam sayıldı ve kapalı geldi: ${labels}. Toplam kolonunu aktarmak o ayı iki kez sayar. Biri aslında bir gelir ya da gider kalemiyse buradan açabilirsin.`,
     columnsLead: "İstemediğin bir kalem varsa dokunup çıkarabilirsin.",
     cardCyclesTitle: "Kredi Kartı Ekstre Tarihleri",
-    cardCyclesHint: "Taksitleri doğru ekstre ve son ödeme dönemine yerleştirebilmemiz için dosyada bulunan her kartın iki gününü de belirt.",
+    cardCyclesHint: "İsteğe bağlı. Bir kartın ekstre ve son ödeme gününü yazarsan taksitleri o döneme yerleşir; boş bıraktığın kart, taksitleri kendi ayında kalarak aktarılır.",
     breakdownHint: "Yanında • olan hücreler ayrı kalemlere bölündü ya da bir not taşıyor.",
     detected: (m: number, c: number) => `${c} kalem, ${m} ay hazır.`,
     skipped: (cols: string) => `Şu bakiye kolonlarını geçtik: ${cols}.`,
@@ -1766,6 +1772,7 @@ export const tr = {
     reimportAdd: "Üstüne Ekle",
     doneTitle: (n: number) => `${n} kayıt geldi`,
     doneHint: "Toplamlar tek tek ayrıldı, notların yerine yerleşti. Mali Tablo'da bir kutuya dokunarak hepsini görebilirsin.",
+    donePlans: (n: number) => `${n} taksit planı kuruldu; Taksitler ekranında ay ay görebilirsin.`,
     settingsDesc: "Kendi Excel tablonu ya da Helix şablonunu, tüm yıllarıyla içeri al.",
   },
   calc: {
