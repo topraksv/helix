@@ -16,7 +16,7 @@ const sheet = (overrides: Partial<ParsedSheet> = {}): ParsedSheet => ({
   columns: [{ label: "Yatırım", kindGuess: "expense", isInvestment: true, balanceLike: false, dueDay: null }],
   cells: [[cell(100_00)]],
   skippedColumns: [],
-  openingBalance: null,
+  openingColumn: null,
   openingCandidates: [],
   ...overrides,
 });
@@ -45,7 +45,7 @@ describe("spreadsheet import-plan boundaries", () => {
     expect([...excluded.cells]).toEqual([]);
   });
 
-  it("deduplicates column ids and skips missing, empty, and reconstructed installment cells", () => {
+  it("deduplicates column ids, skips missing and empty cells, and keeps an instalment cell at its own value", () => {
     const columns = [
       { label: "Kira", kindGuess: "expense" as const, isInvestment: false, balanceLike: false, dueDay: null },
       { label: "Kira", kindGuess: "expense" as const, isInvestment: false, balanceLike: false, dueDay: null },
@@ -70,8 +70,13 @@ describe("spreadsheet import-plan boundaries", () => {
     });
 
     expect(plan.columnYears.get(2026)).toEqual(["rent", "installments"]);
+    // The instalment cell is imported like any other: its value is what the
+    // workbook's own balance column adds up. What its comment reconstructs is
+    // the schedule, and `importSheets` places those rows only in months no
+    // sheet states — see `openMonths` there.
     expect([...plan.cells].map(({ month, type, status, categoryId }) => ({ month, type, status, categoryId }))).toEqual([
       { month: "2026-01", type: "expense", status: "realized", categoryId: "rent" },
+      { month: "2026-01", type: "expense", status: "realized", categoryId: "installments" },
     ]);
   });
 

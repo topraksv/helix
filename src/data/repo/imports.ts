@@ -1,8 +1,9 @@
 import { getSqliteAsync } from "../../db/client";
+import { tr } from "../../i18n/tr";
 import { deterministicId, naturalKeys, newId } from "../../db/ids";
 import { fromDbShape, nowIso, readSetting, writeRowsValidated, type RowWrite } from "../../db/mutations";
 import type { ImportBatchKey } from "../../domain/settings";
-import { addMonthsToKey, todayISO, yearOf, type MonthKey } from "../../domain/dates";
+import { addMonthsToKey, lastDayOf, todayISO, yearOf, type MonthKey } from "../../domain/dates";
 import type { PaymentSourceType } from "../../domain/types";
 import type { Minor } from "../../domain/money";
 import { isValidCardCycle, type CardCycle } from "../../domain/card-statements";
@@ -22,6 +23,8 @@ interface ImportBatch {
   transactions: string[];
   cellNotes: string[];
   installmentPlans?: string[];
+  /** Re-anchor rows written where the workbook restarts its own balance. */
+  adjustments?: string[];
 }
 
 export interface ImportRequest {
@@ -68,6 +71,9 @@ function parseImportBatch(value: string): ImportBatch | null {
       cellNotes: parsed.cellNotes.filter((id): id is string => typeof id === "string"),
       installmentPlans: Array.isArray(parsed.installmentPlans)
         ? parsed.installmentPlans.filter((id): id is string => typeof id === "string")
+        : [],
+      adjustments: Array.isArray(parsed.adjustments)
+        ? parsed.adjustments.filter((id): id is string => typeof id === "string")
         : [],
     };
   } catch {
@@ -172,7 +178,7 @@ async function settingWrite(userId: string, key: string, value: unknown): Promis
 
 async function tombstoneImportRows(
   userId: string,
-  table: "transactions" | "cell_notes" | "installment_plans",
+  table: "transactions" | "cell_notes" | "installment_plans" | "balance_adjustments",
   ids: Iterable<string>,
 ): Promise<RowWrite[]> {
   const uniqueIds = [...new Set(ids)];
@@ -196,7 +202,7 @@ export async function importedYears(userId: string, years: number[]): Promise<nu
   const out: number[] = [];
   for (const year of [...new Set(years)]) {
     const prev = await readSetting<ImportBatch>(userId, importBatchKey(year));
-    if (prev && (prev.transactions?.length || prev.cellNotes?.length || prev.installmentPlans?.length)) out.push(year);
+    if (prev && (prev.transactions?.length || prev.cellNotes?.length || prev.installmentPlans?.length || prev.adjustments?.length)) out.push(year);
   }
   return out;
 }
@@ -330,19 +336,23 @@ export async function importSheets(userId: string, req: ImportRequest): Promise<
     const protectedTransactions = new Set<string>();
     const protectedNotes = new Set<string>();
     const protectedPlans = new Set<string>();
+    const protectedAdjustments = new Set<string>();
     for (const [year, batch] of priorBatches) {
       if (affected.has(year)) continue;
       batch.transactions.forEach((id) => protectedTransactions.add(id));
       batch.cellNotes.forEach((id) => protectedNotes.add(id));
       batch.installmentPlans?.forEach((id) => protectedPlans.add(id));
+      batch.adjustments?.forEach((id) => protectedAdjustments.add(id));
     }
     const oldTransactions = affectedYears.flatMap((year) => priorBatches.get(year)?.transactions ?? []).filter((id) => !protectedTransactions.has(id));
     const oldNotes = affectedYears.flatMap((year) => priorBatches.get(year)?.cellNotes ?? []).filter((id) => !protectedNotes.has(id));
     const oldPlans = affectedYears.flatMap((year) => priorBatches.get(year)?.installmentPlans ?? []).filter((id) => !protectedPlans.has(id));
+    const oldAdjustments = affectedYears.flatMap((year) => priorBatches.get(year)?.adjustments ?? []).filter((id) => !protectedAdjustments.has(id));
     cleanupWrites.push(
       ...(await tombstoneImportRows(userId, "transactions", oldTransactions)),
       ...(await tombstoneImportRows(userId, "cell_notes", oldNotes)),
       ...(await tombstoneImportRows(userId, "installment_plans", oldPlans)),
+      ...(await tombstoneImportRows(userId, "balance_adjustments", oldAdjustments)),
     );
   }
 
@@ -354,7 +364,7 @@ export async function importSheets(userId: string, req: ImportRequest): Promise<
   let imported = 0;
   const batchFor = (y: number): ImportBatch => {
     let b = batchByYear.get(y);
-    if (!b) batchByYear.set(y, (b = { version: 2, transactions: [], cellNotes: [], installmentPlans: [] }));
+    if (!b) batchByYear.set(y, (b = { version: 2, transactions: [], cellNotes: [], installmentPlans: [], adjustments: [] }));
     return b;
   };
 
@@ -376,7 +386,16 @@ export async function importSheets(userId: string, req: ImportRequest): Promise<
     today,
   });
   for (const [year, ids] of sheetPlan.columnYears) columnYearsUpdates.set(year, ids);
+  // Months the workbook itself states. Collected from the very loop that
+  // writes them, so it costs no second pass.
+  const statedMonths = new Set<MonthKey>();
+  // What each imported month does to the balance. Only the re-anchor
+  // arithmetic below needs it, and only the loops that write the rows can
+  // produce it without walking them a second time.
+  const netByMonth = new Map<MonthKey, Minor>();
+  const addNet = (month: MonthKey, minor: Minor) => netByMonth.set(month, (netByMonth.get(month) ?? 0) + minor);
   for (const cell of sheetPlan.cells) {
+    statedMonths.add(cell.month);
     const batch = batchFor(cell.year);
     for (const item of cell.items) {
       const id = newId();
@@ -418,6 +437,7 @@ export async function importSheets(userId: string, req: ImportRequest): Promise<
           deletedAt: null,
         },
       });
+      addNet(cell.month, cell.type === "income" ? amount : -amount);
       batch.transactions.push(id);
       imported++;
     }
@@ -435,11 +455,26 @@ export async function importSheets(userId: string, req: ImportRequest): Promise<
   // the months they appear in), create/match a payment source per card, then
   // build each plan's rows. Everything is flushed with the ledger rows in ONE
   // write below (deterministic ids → re-import converges, no dups).
+  /**
+   * The months a reconstructed plan may write a ledger row for.
+   *
+   * A month the workbook states belongs to the workbook: its column cells
+   * already carry that month's instalment inside a total, and a plan row on
+   * top of it is the same money twice — measured on the owner's file as an
+   * "Ev Kredisi" of 23.672,13 showing 46.000. What the comments add that no
+   * column states is the part still to come, after the last month the sheets
+   * fill in; a year the owner did not select states nothing either way, and
+   * stays empty rather than receiving rows it never asked for.
+   */
+  const openMonths = (spec: { startMonth: MonthKey; total: number }): MonthKey[] =>
+    Array.from({ length: spec.total }, (_, index) => addMonthsToKey(spec.startMonth, index))
+      .filter((month) => yearAllowed(yearOf(month)) && !statedMonths.has(month));
+
   const planSpecs = collectInstallmentPlans(req.sheets, {
     excludedLabels: req.excludedLabels,
     informationalCards: req.informationalCards,
     yearAllowed,
-  });
+  }).filter((spec) => openMonths(spec).length > 0);
   const sourceWrites: RowWrite[] = [];
   const cycleByName = new Map<string, CardCycle>();
   for (const spec of planSpecs) {
@@ -501,10 +536,17 @@ export async function importSheets(userId: string, req: ImportRequest): Promise<
         note: null,
         tryFactor: 1,
       }, today);
-      return { ...built, rows: await linkDueRowsToCardStatements(userId, sourceId, cycle, built.rows), planId, spec };
+      const open = new Set(openMonths(spec));
+      const rows = built.rows.filter(
+        (row) => row.table !== "transactions" || open.has(String(row.row.effectiveDate).slice(0, 7)),
+      );
+      return { ...built, rows: await linkDueRowsToCardStatements(userId, sourceId, cycle, rows), planId, spec };
     }),
   );
   for (const built of planRowBatches) {
+    for (const row of built.rows) {
+      if (row.table === "transactions") addNet(String(row.row.effectiveDate).slice(0, 7) as MonthKey, -Number(row.row.amountTryMinor));
+    }
     const startYear = yearOf(built.spec.startMonth);
     const endYear = yearOf(addMonthsToKey(built.spec.startMonth, built.spec.total - 1));
     for (const year of affectedYears) {
@@ -517,6 +559,52 @@ export async function importSheets(userId: string, req: ImportRequest): Promise<
     }
   }
   imported += planSpecs.length;
+
+  const anchorWrites = await anchorWritesFromImport(
+    userId,
+    req.sheets,
+    yearAllowed,
+    req.adoptOpeningBalance === true,
+    req.openingColumnLabel ?? null,
+  );
+  /**
+   * Where the workbook restarts its own running balance, the ledger restarts
+   * with it.
+   *
+   * A sheet's first month states what was really in hand — reconciled against
+   * a bank, typed by hand — and the months before it do not add up to that
+   * figure: the file this was measured against is 24.592,14 out at Ağustos
+   * 2022 and 7.500,00 out at Ocak 2024. Carrying our own sum across those
+   * points reproduces the drift the owner had already corrected, in a ledger
+   * that then disagrees with every balance in the file from there on.
+   *
+   * The row lands on the last day of the month BEFORE, so the stated month
+   * opens on the stated figure rather than closing on it.
+   */
+  const adjustmentWrites: RowWrite[] = [];
+  const anchor = openingBalanceFromSheets(req.sheets, yearAllowed, req.openingColumnLabel ?? null);
+  // Only an import that sets the anchor may restate the balance along the way:
+  // the arithmetic starts from that anchor, and a ledger this workbook is
+  // merely being added to has a history no cell here can account for.
+  if (anchor && anchorWrites.length > 0) {
+    const stated = statedOpenings(req.sheets, yearAllowed, req.openingColumnLabel ?? null);
+    const targetByMonth = new Map(stated.filter((entry) => entry.minor != null).map((entry) => [entry.month, entry.minor!]));
+    let running = anchor.minor ?? 0;
+    for (const month of [...new Set([...netByMonth.keys(), ...targetByMonth.keys()])].sort()) {
+      const target = targetByMonth.get(month);
+      if (target != null && month !== anchor.month && target !== running) {
+        const date = lastDayOf(addMonthsToKey(month, -1));
+        const id = await deterministicId(naturalKeys.balanceAdjustment(userId, date));
+        adjustmentWrites.push({
+          table: "balance_adjustments",
+          row: { id, date, amountMinor: target - running, note: tr.importer.openingRestated, deletedAt: null },
+        });
+        batchFor(yearOf(month)).adjustments!.push(id);
+        running = target;
+      }
+      running += netByMonth.get(month) ?? 0;
+    }
+  }
 
   // Settings and data are part of the SAME transaction as replacement
   // tombstones. The persisted batch can therefore never claim a half-import.
@@ -531,23 +619,18 @@ export async function importSheets(userId: string, req: ImportRequest): Promise<
 
   // Record batches (add mode keeps prior ids so a later replace still cleans up).
   for (const year of affectedYears) {
-    const batch = batchByYear.get(year) ?? { version: 2 as const, transactions: [], cellNotes: [], installmentPlans: [] };
+    const batch = batchByYear.get(year) ?? { version: 2 as const, transactions: [], cellNotes: [], installmentPlans: [], adjustments: [] };
     if (req.mode === "add") {
       const prev = priorBatches.get(year);
       batch.transactions = [...new Set([...(prev?.transactions ?? []), ...batch.transactions])];
       batch.cellNotes = [...new Set([...(prev?.cellNotes ?? []), ...batch.cellNotes])];
       batch.installmentPlans = [...new Set([...(prev?.installmentPlans ?? []), ...(batch.installmentPlans ?? [])])];
+      batch.adjustments = [...new Set([...(prev?.adjustments ?? []), ...(batch.adjustments ?? [])])];
     }
     metadataWrites.push(await settingWrite(userId, importBatchKey(year), batch));
   }
 
-  metadataWrites.push(...(await openingWritesFromImport(
-    userId,
-    req.sheets,
-    yearAllowed,
-    req.adoptOpeningBalance === true,
-    req.openingColumnLabel ?? null,
-  )));
+  metadataWrites.push(...anchorWrites);
   const writes = [
     ...cleanupWrites,
     ...catWrites,
@@ -555,6 +638,7 @@ export async function importSheets(userId: string, req: ImportRequest): Promise<
     ...txWrites,
     ...noteWrites,
     ...planRowBatches.flatMap((b) => b.rows),
+    ...adjustmentWrites,
     ...metadataWrites,
   ];
   if (writes.length > 0) {
@@ -568,38 +652,69 @@ export async function importSheets(userId: string, req: ImportRequest): Promise<
 }
 
 /**
- * The opening-balance cell the earliest imported sheet carries, if any.
+ * The month-opening figure each imported sheet states for its own first month,
+ * earliest first. `minor` is null when no column states one there.
  *
- * Exported so the importer can SHOW the figure it is about to adopt. The whole
+ * A workbook kept by hand does not chain across its sheets: the file this was
+ * measured against restarts the running balance in Ağustos 2022 and again in
+ * Ocak 2024, because the owner reconciled against the bank and typed what was
+ * really there. Those figures are the most reliable data in the file and the
+ * only place it admits the arithmetic drifted, so the importer reproduces them
+ * rather than carrying its own sum across them.
+ */
+function statedOpenings(
+  sheets: ParsedSheet[],
+  yearAllowed: (year: number) => boolean = () => true,
+  columnLabel?: string | null,
+): { month: MonthKey; minor: Minor | null }[] {
+  return sheets
+    .flatMap((sheet) => {
+      const first = sheet.months
+        .map((month, row) => ({ month, row }))
+        .filter((entry) => yearAllowed(yearOf(entry.month)))
+        .sort((a, b) => a.month.localeCompare(b.month))[0];
+      if (!first) return [];
+      const label = columnLabel ?? sheet.openingColumn;
+      const column = label == null ? -1 : sheet.columns.findIndex((entry) => entry.label === label);
+      const minor = column < 0 ? null : sheet.cells[first.row]?.[column]?.valueMinor ?? null;
+      return [{ month: first.month, minor }];
+    })
+    .sort((a, b) => a.month.localeCompare(b.month));
+}
+
+/**
+ * The ledger anchor an import establishes: the earliest month being imported,
+ * and the balance to open it with.
+ *
+ * The month is the earliest one IMPORTED, never the earliest one that happens
+ * to carry a balance column. A workbook whose first year has no opening column
+ * — the owner's 2021 sheet is exactly that — used to anchor at a later year
+ * instead, and the chain then back-computed the earlier months from it and
+ * opened them thousands in the red. Anchoring where the data starts is also
+ * what the owner describes: the first month opens at the figure given for it,
+ * or at zero, and every month after it opens at the one before's close.
+ *
+ * Exported so the importer can SHOW what it is about to adopt. The whole
  * chained ledger hangs off this one number, and it was being written with
- * nothing on screen naming it — an anchor read from the wrong column produced a
- * balance the owner could not explain and could not find.
+ * nothing on screen naming it.
  */
 export function openingBalanceFromSheets(
   sheets: ParsedSheet[],
   yearAllowed: (year: number) => boolean = () => true,
   columnLabel?: string | null,
-): { month: MonthKey; minor: Minor } | null {
-  // A named column wins over the parser's own guess, and a named column that
-  // is not in this workbook yields NOTHING rather than falling back to the
-  // guess: a person who answered the question must not be quietly overruled by
-  // the heading rule they were correcting.
-  if (columnLabel != null) {
-    const chosen = sheets
-      .flatMap((sheet) => sheet.openingCandidates.filter((candidate) => candidate.label === columnLabel))
-      .filter((candidate) => yearAllowed(yearOf(candidate.month)))
-      .sort((a, b) => a.month.localeCompare(b.month));
-    const first = chosen[0];
-    return first ? { month: first.month, minor: first.minor } : null;
-  }
-  const withOpening = sheets
-    .filter((sheet) => sheet.openingBalance && yearAllowed(yearOf(sheet.openingBalance.month)))
-    .sort((a, b) => a.openingBalance!.month.localeCompare(b.openingBalance!.month));
-  return withOpening[0]?.openingBalance ?? null;
+): { month: MonthKey; minor: Minor | null } | null {
+  return statedOpenings(sheets, yearAllowed, columnLabel)[0] ?? null;
 }
 
-/** Seed the ledger opening balance from the earliest imported opening cell. */
-async function openingWritesFromImport(
+/**
+ * Seed the ledger anchor from the earliest imported month.
+ *
+ * Nothing is written when an anchor already exists and the workbook states no
+ * figure of its own: the ledger back-anchors to the earliest row it has and
+ * preserves the balance at the configured month, which is right, and writing a
+ * zero over the owner's own opening balance would not be.
+ */
+async function anchorWritesFromImport(
   userId: string,
   sheets: ParsedSheet[],
   yearAllowed: (y: number) => boolean,
@@ -612,10 +727,10 @@ async function openingWritesFromImport(
   // Earlier data always wins without being asked: the ledger back-anchors to
   // the earliest month it has, so an anchor later than the data is simply
   // wrong. Anything else is the owner's call and arrives as `adopt`.
-  if (adopt || !currentStart || opening.month < currentStart) {
+  if (adopt || !currentStart || (opening.month < currentStart && opening.minor != null)) {
     return [
       await settingWrite(userId, "start_month", opening.month),
-      await settingWrite(userId, "opening_balance_minor", opening.minor),
+      await settingWrite(userId, "opening_balance_minor", opening.minor ?? 0),
     ];
   }
   return [];

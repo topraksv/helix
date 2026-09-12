@@ -502,7 +502,10 @@ export default function ImportWizardModal() {
     openingColumn,
   );
   const currentStartMonth = settingValue<MonthKey | null>(settingsState.data, "start_month", null);
-  const openingIsEarlier = workbookOpening != null
+  // Earlier data wins without being asked only when the workbook actually
+  // states a figure. A sheet that carries no opening column states nothing, and
+  // the ledger's own back-anchoring keeps the balance the owner configured.
+  const openingIsEarlier = workbookOpening?.minor != null
     && (currentStartMonth == null || workbookOpening.month < currentStartMonth);
   const preview: ParsedSheet | undefined = activeSheets[0];
 
@@ -640,7 +643,7 @@ export default function ImportWizardModal() {
                     <>
                       <Spread style={{ marginTop: spacing.sm, marginBottom: spacing.sm }}>
                         <Body>{monthLabel(workbookOpening.month)}</Body>
-                        <Amount minor={workbookOpening.minor} colorized={false} />
+                        <Amount minor={workbookOpening.minor ?? 0} colorized={false} />
                       </Spread>
                       {openingIsEarlier ? (
                         <Body muted>{tr.importer.openingEarlier}</Body>

@@ -3,7 +3,6 @@
 import { yearOf, type MonthKey } from "../../domain/dates";
 import type { TransactionType } from "../../domain/types";
 import {
-  isInstallmentCell,
   planImportCell,
   type CellData,
   type ParsedSheet,
@@ -74,7 +73,13 @@ export function buildSpreadsheetImportPlan(input: {
           if (!yearAllowed(year)) continue;
           for (const column of columns) {
             const cell: CellData | undefined = sheet.cells[rowIndex]?.[column.index];
-            if (!cell || isInstallmentCell(cell.comment)) continue;
+            // Every cell is imported at its own value, instalment comments
+            // included: the cell is what the workbook's own balance column
+            // adds up, and rows that sum to anything else put the ledger at
+            // odds with the file it came from. What the comment reconstructs
+            // is the SCHEDULE — see `openMonths` in `imports.ts` for where
+            // those rows may land.
+            if (!cell) continue;
             const planned = planImportCell(cell);
             if (!planned) continue;
             const effectiveDate = `${month}-01`;

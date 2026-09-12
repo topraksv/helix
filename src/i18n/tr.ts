@@ -1720,6 +1720,7 @@ export const tr = {
     reasonNoMonths: "Ay adlarını bulamadık. Bir satır ya da sütun Ocak 2025 gibi aylardan oluşmalı.",
     reasonNoColumns: "Ayların yanında kalem başlıklarını (Kira, Maaş gibi) göremedik.",
     reasonInvestmentSheet: "Yatırım sayfası gelir-gider olarak alınmaz; yatırımlar ayrı yönetilecek.",
+    openingRestated: "Tablodaki ay başı değerine göre düzeltme",
     // format guide
     guideTitle: "Nasıl bir tablo işe yarar?",
     guideLead: "İki türlü de olur: ayları ister yana ister alta diz, ikisini de anlıyoruz. Bir eksende aylar, diğerinde kalemlerin; kesişen her kutu o ayki tutar.",

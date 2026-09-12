@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   collectInstallmentPlans,
   extractDueDay,
+  formulaColumnSigns,
   isBalanceLikeColumn,
-  isInstallmentCell,
   parseFormulaLiterals,
   parseInstallmentComment,
   parseMonthLabel,
@@ -153,9 +153,103 @@ describe("parseSheet — vertical block", () => {
     expect(sheetCell(s, 0, 0).valueMinor).toBe(1882292);
   });
 
-  it("captures the earliest month's opening balance", () => {
+  it("names the column it reads as the month-opening balance", () => {
     const s = asSheet(parseSheet(sheet2026(), "2026"));
-    expect(s.openingBalance).toEqual({ month: "2026-01", minor: 200400 });
+    expect(s.openingColumn).toBe("Ay Başında Eldeki Para");
+  });
+});
+
+/**
+ * The sheet's own balance line, read instead of guessed.
+ *
+ * Headings are the one part of a personal workbook nobody else wrote the rules
+ * for. A column called "Ek" is income, a "Düzenleme Tarihi" is not money, and
+ * neither is knowable from the words. The formula that produces the owner's own
+ * closing balance says which columns it adds, which it subtracts, and which it
+ * leaves out — and reproducing it is the difference between a ledger that
+ * matches the file and one 600.000 TL below it.
+ */
+describe("parseSheet — roles taken from the balance formula", () => {
+  const grid = (closing: string): RawCell[][] => [
+    row("", "Kira", "Maaş", "Ek", "Düzenleme Tarihi", "Kalan"),
+    row("2026 Ocak", 850, 40_000, 5_000, 45_655, c(44_150, { f: closing })),
+    row("2026 Şubat", 850, 40_000, 0, 45_690, c(83_300, { f: closing })),
+  ];
+
+  it("reads income, expense and left-out columns off the formula", () => {
+    const s = asSheet(parseSheet(grid("(C2+D2)-B2"), "2026"));
+    const byLabel = new Map(s.columns.map((column) => [column.label, column]));
+    expect(required(byLabel.get("Maaş")).kindGuess).toBe("income");
+    expect(required(byLabel.get("Ek")).kindGuess).toBe("income");
+    expect(required(byLabel.get("Kira")).kindGuess).toBe("expense");
+    // Left out of the owner's own arithmetic, so left out of the import — and
+    // offered back in the wizard like every other default.
+    expect(required(byLabel.get("Düzenleme Tarihi")).balanceLike).toBe(true);
+    expect(s.skippedColumns).toEqual(["Düzenleme Tarihi", "Kalan"]);
+  });
+
+  it("subtracts a whole parenthesised group, not just its first term", () => {
+    const s = asSheet(parseSheet(grid("C2-(B2+D2)"), "2026"));
+    const byLabel = new Map(s.columns.map((column) => [column.label, column]));
+    expect(required(byLabel.get("Ek")).kindGuess).toBe("expense");
+    expect(required(byLabel.get("Kira")).kindGuess).toBe("expense");
+    expect(required(byLabel.get("Maaş")).kindGuess).toBe("income");
+  });
+
+  it("expands a subtracted range and ignores another sheet's columns", () => {
+    const s = asSheet(parseSheet(grid("='Gelir-Gider 2025'!F13+C2-SUM(B2:B2)+D2"), "2026"));
+    const byLabel = new Map(s.columns.map((column) => [column.label, column]));
+    expect(required(byLabel.get("Kira")).kindGuess).toBe("expense");
+    expect(required(byLabel.get("Ek")).kindGuess).toBe("income");
+    // F is this sheet's "Kalan"; the cross-sheet reference must not classify it.
+    expect(required(byLabel.get("Kalan")).balanceLike).toBe(true);
+  });
+
+  /**
+   * A balance line reading "opening + income − total expenses" names three
+   * columns out of twelve, and treating the nine it does not name as excluded
+   * would throw the whole breakdown away. Below half the named columns the
+   * headings keep their say.
+   */
+  it("leaves the headings alone when the formula speaks for too little", () => {
+    const s = asSheet(parseSheet(grid("C2-B2"), "2026"));
+    const byLabel = new Map(s.columns.map((column) => [column.label, column]));
+    expect(required(byLabel.get("Ek")).kindGuess).toBe("expense"); // heading rule
+    expect(required(byLabel.get("Düzenleme Tarihi")).balanceLike).toBe(false);
+  });
+
+  /**
+   * A workbook kept by hand grows: the file this was measured against starts
+   * its 2022 balance line over fourteen columns and ends it over sixteen.
+   */
+  it("takes the widest formula in the sheet, not the first", () => {
+    const rows = grid("C2-B2");
+    rows[2] = row("2026 Şubat", 850, 40_000, 0, 45_690, c(83_300, { f: "(C3+D3)-B3" }));
+    const byLabel = new Map(asSheet(parseSheet(rows, "2026")).columns.map((column) => [column.label, column]));
+    expect(required(byLabel.get("Ek")).kindGuess).toBe("income");
+  });
+});
+
+describe("formulaColumnSigns", () => {
+  const signs = (formula: string) => Object.fromEntries(formulaColumnSigns(formula));
+
+  it("carries the sign of the group each reference sits in", () => {
+    expect(signs("=(H2+I2+J2)-(B2+C2)")).toEqual({ 7: 1, 8: 1, 9: 1, 1: -1, 2: -1 });
+    expect(signs("=N2-SUM(B2:D2)")).toEqual({ 13: 1, 1: -1, 2: -1, 3: -1 });
+    expect(signs("=-(B2-C2)")).toEqual({ 1: -1, 2: 1 });
+  });
+
+  /**
+   * `IF(ISBLANK(J2),"",…)` names a column in its condition before the
+   * arithmetic does. The arithmetic is what counts, so the last mention wins —
+   * and the empty string in between must not be read as anything at all.
+   */
+  it("lets the arithmetic overrule a condition that named the same column", () => {
+    expect(signs('=IF(ISBLANK(B2),"",((C2)-(B2)))')).toEqual({ 2: 1, 1: -1 });
+  });
+
+  it("finds nothing in a formula that references no cell", () => {
+    expect(signs("=500+300+700")).toEqual({});
   });
 });
 
@@ -452,7 +546,7 @@ const taksitSheet = (name: string, rows: [string, string | null][], label = "KK 
   columns: [col(label)],
   cells: rows.map((r) => [cell(r[1])]),
   skippedColumns: [],
-  openingBalance: null,
+  openingColumn: null,
   openingCandidates: [],
 });
 
@@ -525,30 +619,27 @@ describe("collectInstallmentPlans", () => {
     expect(collectInstallmentPlans([sheet]).map((plan) => plan.name)).toEqual(["Fatura"]);
   });
 
+  /**
+   * The reported failure: one home loan written "Ev Kredisi" in the 2026 sheet
+   * and "Kredi" in the 2025 one became two plans over the same 24 months, and
+   * every month from the start carried 23.672,13 twice — the 46.000 the owner
+   * saw. A plan is its schedule; the words around it are what a person retypes.
+   */
+  it("collapses one schedule written under two names, keeping the fuller one", () => {
+    const plans = collectInstallmentPlans([
+      taksitSheet("2026", [["2026-01", "══ Garanti ══\nEv Kredisi  23.672,13  16/24"]]),
+      taksitSheet("2025", [["2025-01", "══ Garanti ══\nKredi  23672,13  4/24"]]),
+    ]);
+    expect(plans).toHaveLength(1);
+    expect(required(plans[0])).toMatchObject({ name: "Ev Kredisi", total: 24, startMonth: "2024-10" });
+  });
+
   it("still ignores a comment that is not an instalment list", () => {
     const sheet: ParsedSheet = {
       ...taksitSheet("2026", [["2026-01", "Elektrik faturası geldi"]]),
       columns: [col("Faturalar")],
     };
     expect(collectInstallmentPlans([sheet])).toHaveLength(0);
-  });
-});
-
-describe("isInstallmentCell", () => {
-  it("is decided by the comment, in any column", () => {
-    expect(isInstallmentCell("══ Kart A ══\nÜrün  100,00  1/3")).toBe(true);
-    expect(isInstallmentCell("Elektrik 436,30")).toBe(false); // no N/M
-    expect(isInstallmentCell(null)).toBe(false);
-  });
-
-  /**
-   * A note with no card banner was already refused by `collectInstallmentPlans`,
-   * so a cell that only reached here was skipped from the aggregate AND never
-   * became a plan — the money left the import entirely. Both ask the same
-   * question now.
-   */
-  it("refuses an instalment line that names no card, so the cell stays an aggregate", () => {
-    expect(isInstallmentCell("Ürün  100,00  1/3")).toBe(false);
   });
 });
 

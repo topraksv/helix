@@ -31,10 +31,10 @@ vi.mock("../src/db/ids", () => ({
 vi.mock("../src/sync/engine", () => ({ scheduleSync: vi.fn() }));
 
 import { importSheets, openingBalanceFromSheets } from "../src/data/repo/imports";
-import type { ParsedSheet } from "../src/services/spreadsheet-import";
+import type { CellData, ParsedSheet } from "../src/services/spreadsheet-import";
 import { currentBalance } from "../src/domain/balance";
 import type { TxLike } from "../src/domain/types";
-import type { MonthKey } from "../src/domain/dates";
+import type { ISODate, MonthKey } from "../src/domain/dates";
 import { migrationStatements } from "./helpers";
 
 const USER = "import-user";
@@ -49,26 +49,32 @@ function seed(): void {
   ).run(USER, NOW, NOW);
 }
 
-/** One month, one expense column, one opening-balance cell. */
+const OPENING_LABEL = "Ay Başında Eldeki Para";
+const money = (valueMinor: number | null): CellData => ({ valueMinor, formulaParts: null, comment: null, commentParts: null });
+
+/** Two months, one expense column, and the opening-balance column beside it. */
 function sheet(): ParsedSheet {
   return {
     sheetName: "2026",
     year: 2026,
     months: ["2026-01", "2026-02"],
-    columns: [{ label: "Market", kindGuess: "expense", isInvestment: false, balanceLike: false, dueDay: null }],
-    cells: [
-      [{ valueMinor: 1_500_00, formulaParts: null, comment: null, commentParts: null }],
-      [{ valueMinor: 2_500_00, formulaParts: null, comment: null, commentParts: null }],
+    columns: [
+      { label: "Market", kindGuess: "expense", isInvestment: false, balanceLike: false, dueDay: null },
+      { label: OPENING_LABEL, kindGuess: "expense", isInvestment: false, balanceLike: true, dueDay: null },
     ],
-    skippedColumns: [],
-    openingBalance: { month: "2026-01", minor: OPENING_MINOR },
-    openingCandidates: [],
+    cells: [
+      [money(1_500_00), money(OPENING_MINOR)],
+      [money(2_500_00), money(null)],
+    ],
+    skippedColumns: [OPENING_LABEL],
+    openingColumn: OPENING_LABEL,
+    openingCandidates: [{ label: OPENING_LABEL, month: "2026-01", minor: OPENING_MINOR }],
   };
 }
 
 const request = (mode: "replace" | "add") => ({
   sheets: [sheet()],
-  excludedLabels: [],
+  excludedLabels: [OPENING_LABEL],
   selfId: "person-self",
   mode,
 });
@@ -101,10 +107,13 @@ function balanceNow(): number {
     subscriptionId: null,
     isAggregate: Boolean(row.is_aggregate),
   }));
+  const adjustments = harness.db!
+    .prepare(`SELECT date, amount_minor FROM balance_adjustments WHERE user_id = ? AND deleted_at IS NULL`)
+    .all(USER) as { date: string; amount_minor: number }[];
   return currentBalance({
     openingBalanceMinor: Number(setting("opening_balance_minor") ?? 0),
     transactions,
-    adjustments: [],
+    adjustments: adjustments.map((row) => ({ date: row.date as ISODate, amountMinor: row.amount_minor })),
     today: "2026-12-31",
   });
 }
@@ -198,12 +207,10 @@ describe("importing the same workbook twice", () => {
       sheetName: String(year),
       year,
       months: [`${year}-01` as MonthKey, `${year}-02` as MonthKey],
-      openingBalance: { month: `${year}-01` as MonthKey, minor: OPENING_MINOR },
-      openingCandidates: [],
     });
     const forYear = (year: number) => ({
       sheets: [yearSheet(year)],
-      excludedLabels: [],
+      excludedLabels: [OPENING_LABEL],
       selfId: "person-self",
       mode: "replace" as const,
     });
@@ -231,12 +238,12 @@ describe("importing the same workbook twice", () => {
         ...base,
         cells: base.cells.map((row, index) =>
           index === 0
-            ? [{ ...row[0]!, comment: "Market + eczane, fişler kayıp" }]
+            ? [{ ...row[0]!, comment: "Market + eczane, fişler kayıp" }, ...row.slice(1)]
             : row),
       };
     };
 
-    await importSheets(USER, { sheets: [noted()], excludedLabels: [], selfId: "person-self", mode: "replace" });
+    await importSheets(USER, { sheets: [noted()], excludedLabels: [OPENING_LABEL], selfId: "person-self", mode: "replace" });
 
     const notes = harness.db!
       .prepare(`SELECT month, body FROM cell_notes WHERE user_id = ? AND deleted_at IS NULL`)
@@ -306,7 +313,7 @@ describe("importing the same workbook twice", () => {
 
     const planRequest = (cardCycles?: Record<string, { statementDay: number; dueDay: number }>) => ({
       sheets: [planSheet()],
-      excludedLabels: [],
+      excludedLabels: [OPENING_LABEL],
       selfId: "person-self",
       mode: "replace" as const,
       ...(cardCycles ? { cardCycles } : {}),
@@ -322,7 +329,13 @@ describe("importing the same workbook twice", () => {
       expect(liveRows()).toEqual([]);
     });
 
-    it("creates the card, the plan and the whole schedule from one comment", async () => {
+    /**
+     * The schedule reaches every month the workbook does NOT state. A month
+     * whose cells the sheet fills in already carries that instalment inside
+     * the column total, and a plan row on top of it is the same money twice —
+     * the owner's home loan of 23.672,13 reading 46.000.
+     */
+    it("creates the card, the plan and the instalments the workbook does not state", async () => {
       await importSheets(USER, planRequest({ [CARD]: { statementDay: 25, dueDay: 10 } }));
 
       const sources = harness.db!
@@ -335,13 +348,15 @@ describe("importing the same workbook twice", () => {
         .all(USER) as { title: string; kind: string; installment_count: number; monthly_amount_minor: number }[];
       expect(plans).toEqual([{ title: "Robot Süpürge", kind: "card_installment", installment_count: 9, monthly_amount_minor: 2_777_67 }]);
 
-      // Nine instalments, and the plan starts where the comment says: the cell
-      // is February and it is the 3rd payment, so the first was December 2025.
+      // The plan starts where the comment says: the cell is February and it is
+      // the 3rd payment, so the first was December 2025. Nine instalments, less
+      // the two months this sheet states (January and February 2026).
       const rows = harness.db!
         .prepare(`SELECT effective_date FROM transactions WHERE user_id = ? AND installment_plan_id IS NOT NULL AND deleted_at IS NULL ORDER BY effective_date`)
         .all(USER) as { effective_date: string }[];
-      expect(rows).toHaveLength(9);
-      expect(rows[0]!.effective_date.slice(0, 7)).toBe("2025-12");
+      expect(rows.map((row) => row.effective_date.slice(0, 7))).toEqual([
+        "2025-12", "2026-03", "2026-04", "2026-05", "2026-06", "2026-07", "2026-08",
+      ]);
     });
 
     /**
@@ -360,6 +375,34 @@ describe("importing the same workbook twice", () => {
     });
   });
 
+  /**
+   * A workbook kept by hand does not chain across its own sheets: the owner
+   * reconciles against the bank and types what was really there. Carrying our
+   * own sum across that point reproduces the drift they had already corrected,
+   * in a ledger that then disagrees with every balance in the file from there
+   * on — measured at 24.592,14 out by Ağustos 2022 and 37.416,25 by 2024.
+   */
+  it("restates the balance where the workbook restarts its own", async () => {
+    const second: ParsedSheet = {
+      ...sheet(),
+      sheetName: "2026-2",
+      months: ["2026-03"],
+      // 1.000,00 spent, and the sheet says the month opened on 500,00 — which
+      // the two months before it do not add up to.
+      cells: [[money(1_000_00), money(500_00)]],
+    };
+    await importSheets(USER, { ...request("replace"), sheets: [sheet(), second] });
+
+    const adjustments = harness.db!
+      .prepare(`SELECT date, amount_minor FROM balance_adjustments WHERE user_id = ? AND deleted_at IS NULL`)
+      .all(USER) as { date: string; amount_minor: number }[];
+    // 10.000,00 − 1.500,00 − 2.500,00 = 6.000,00 at the end of February; the
+    // sheet says March opened on 500,00, so 5.500,00 is taken back out.
+    expect(adjustments).toEqual([{ date: "2026-02-28", amount_minor: -5_500_00 }]);
+    // Nothing to restate when the sheets chain: the balance is the balance.
+    expect(balanceNow()).toBe(500_00 - 1_000_00);
+  });
+
   /** An earlier workbook may move the anchor back; a later one may not. */
   it("moves the anchor only when the workbook genuinely starts earlier", async () => {
     await importSheets(USER, request("replace"));
@@ -368,15 +411,13 @@ describe("importing the same workbook twice", () => {
       sheetName: "2025",
       year: 2025,
       months: ["2025-12"],
-      cells: [[{ valueMinor: 100_00, formulaParts: null, comment: null, commentParts: null }]],
-      openingBalance: { month: "2025-12", minor: 5_000_00 },
-      openingCandidates: [],
+      cells: [[money(100_00), money(5_000_00)]],
     };
     await importSheets(USER, { ...request("add"), sheets: [earlier] });
     expect(setting("start_month")).toBe("2025-12");
     expect(setting("opening_balance_minor")).toBe(5_000_00);
 
-    const later: ParsedSheet = { ...sheet(), openingBalance: { month: "2026-06", minor: 99_999_00 } };
+    const later: ParsedSheet = sheet();
     await importSheets(USER, { ...request("add"), sheets: [later] });
     expect(setting("start_month")).toBe("2025-12");
     expect(setting("opening_balance_minor")).toBe(5_000_00);
@@ -392,24 +433,40 @@ describe("importing the same workbook twice", () => {
  * right. The importer states the figure and the owner decides.
  */
 describe("adopting a workbook's opening balance", () => {
-  it("reads the earliest opening cell among the imported years", () => {
-    const sheet = (year: number, minor: number): ParsedSheet => ({
-      sheetName: String(year),
-      year,
-      months: [`${year}-01` as MonthKey],
-      columns: [],
-      cells: [[]],
-      skippedColumns: [],
-      openingBalance: { month: `${year}-01` as MonthKey, minor },
-      openingCandidates: [],
-    });
-    expect(openingBalanceFromSheets([sheet(2026, 500_00), sheet(2025, 300_00)]))
+  const anchorSheet = (year: number, minor: number | null): ParsedSheet => ({
+    sheetName: String(year),
+    year,
+    months: [`${year}-01` as MonthKey],
+    columns: [{ label: OPENING_LABEL, kindGuess: "expense", isInvestment: false, balanceLike: true, dueDay: null }],
+    cells: [[money(minor)]],
+    skippedColumns: [OPENING_LABEL],
+    openingColumn: OPENING_LABEL,
+    openingCandidates: [],
+  });
+
+  it("reads the opening cell of the earliest month being imported", () => {
+    expect(openingBalanceFromSheets([anchorSheet(2026, 500_00), anchorSheet(2025, 300_00)]))
       .toEqual({ month: "2025-01", minor: 300_00 });
     // A year the owner did not select cannot move the anchor.
-    expect(openingBalanceFromSheets([sheet(2026, 500_00), sheet(2025, 300_00)], (year) => year === 2026))
+    expect(openingBalanceFromSheets([anchorSheet(2026, 500_00), anchorSheet(2025, 300_00)], (year) => year === 2026))
       .toEqual({ month: "2026-01", minor: 500_00 });
-    expect(openingBalanceFromSheets([{ ...sheet(2026, 0), openingBalance: null }])).toBeNull();
     expect(openingBalanceFromSheets([])).toBeNull();
+  });
+
+  /**
+   * The first month opens at zero when nothing states otherwise, and the
+   * anchor still lands ON it.
+   *
+   * A workbook whose earliest year has no opening column — the owner's 2021
+   * sheet is exactly that — used to anchor at the first year that DID carry
+   * one, and the chain then back-computed the years before it and opened them
+   * thousands in the red. Where the data starts is where the ledger starts.
+   */
+  it("anchors at the earliest month even when no column states a figure there", () => {
+    expect(openingBalanceFromSheets([{ ...anchorSheet(2026, null), openingColumn: null }]))
+      .toEqual({ month: "2026-01", minor: null });
+    expect(openingBalanceFromSheets([anchorSheet(2026, null)]))
+      .toEqual({ month: "2026-01", minor: null });
   });
 
   /**
@@ -423,10 +480,13 @@ describe("adopting a workbook's opening balance", () => {
       sheetName: String(year),
       year,
       months: [`${year}-01` as MonthKey],
-      columns: [],
-      cells: [[]],
+      columns: [
+        { label: "Ay Başı", kindGuess: "expense", isInvestment: false, balanceLike: true, dueDay: null },
+        { label: "Toplam", kindGuess: "expense", isInvestment: false, balanceLike: true, dueDay: null },
+      ],
+      cells: [[money(100_00), money(900_00)]],
       skippedColumns: ["Ay Başı", "Toplam"],
-      openingBalance: { month: `${year}-01` as MonthKey, minor: 100_00 },
+      openingColumn: "Ay Başı",
       openingCandidates: [
         { label: "Ay Başı", month: `${year}-01` as MonthKey, minor: 100_00 },
         { label: "Toplam", month: `${year}-01` as MonthKey, minor: 900_00 },
@@ -444,12 +504,14 @@ describe("adopting a workbook's opening balance", () => {
     });
 
     /**
-     * A named column that is not in the workbook yields NOTHING rather than
-     * falling back: a person who answered the question must not be quietly
-     * overruled by the heading rule they were correcting.
+     * A named column that is not in the workbook opens at zero rather than
+     * falling back to the heading rule: a person who answered the question
+     * must not be quietly overruled by the guess they were correcting. The
+     * anchor MONTH is still where the data starts — that part is not a guess.
      */
     it("refuses to fall back to the guess it was correcting", () => {
-      expect(openingBalanceFromSheets([sheet(2026)], () => true, "Devreden")).toBeNull();
+      expect(openingBalanceFromSheets([sheet(2026)], () => true, "Devreden"))
+        .toEqual({ month: "2026-01", minor: null });
     });
 
     it("goes back to the heading rule when no column was named", () => {

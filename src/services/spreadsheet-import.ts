@@ -72,8 +72,15 @@ export interface ParsedSheet {
   cells: CellData[][];
   /** Balance/derived column labels, excluded by default and offered back. */
   skippedColumns: string[];
-  /** Earliest month's opening-balance cell ("Ay Başında Eldeki Para"), if any. */
-  openingBalance: { month: MonthKey; minor: Minor } | null;
+  /**
+   * Heading of the column the parser reads as the month-opening balance
+   * ("Ay Başında Eldeki Para"), or null when no heading looks like one.
+   *
+   * The LABEL rather than a figure: which month's figure to anchor on is the
+   * importer's question, not the parser's, and it depends on which years the
+   * owner is importing.
+   */
+  openingColumn: string | null;
   /**
    * Every balance-like column that carries a readable figure in the first
    * month, with that figure.
@@ -177,6 +184,125 @@ export function extractDueDay(label: string): { label: string; dueDay: number | 
     }
   }
   return { label: trimmed, dueDay: null };
+}
+
+
+// --- what the sheet's own balance formula says the columns are ----------------
+// A heading is a guess; a formula is the owner's own statement. "Kalan" in the
+// 2022-2023 sheet of the file this was measured against adds Maaş and "Ek" and
+// subtracts eleven columns — and leaves Kira, Askerlik and "Yemek + Ek Gelir"
+// out of the arithmetic altogether. Reading that off the formula reproduces the
+// owner's own closing balance to the kuruş; reading it off the headings put the
+// ledger 600.000 TL below it by 2024, because "Ek" is income and looks like
+// nothing, and a "Düzenleme Tarihi" column is not money at all.
+
+/** Grid column index (0-based) for a spreadsheet column letter: "A" → 0. */
+function columnLetterIndex(letters: string): number {
+  let index = 0;
+  for (const letter of letters) index = index * 26 + (letter.charCodeAt(0) - 64);
+  return index - 1;
+}
+
+/** A cell reference at `start` ("B12", "$B$12"), or null. */
+function readCellReference(formula: string, start: number): { letters: string; end: number } | null {
+  let at = start;
+  if (formula[at] === "$") at += 1;
+  const lettersFrom = at;
+  while (at < formula.length && at - lettersFrom < 3 && /[A-Z]/.test(formula[at] ?? "")) at += 1;
+  if (at === lettersFrom) return null;
+  const letters = formula.slice(lettersFrom, at);
+  if (formula[at] === "$") at += 1;
+  const digitsFrom = at;
+  while (at < formula.length && /\d/.test(formula[at] ?? "")) at += 1;
+  if (at === digitsFrom) return null;
+  return { letters, end: at };
+}
+
+/** One reference or range ("B2", "B2:L2") → the column letters it covers. */
+function readReference(formula: string, start: number): { letters: string[]; end: number } | null {
+  // "'Gelir-Gider 2025'!M13" points at another sheet, where the same letter is
+  // a different column. Only this sheet's own columns can be classified.
+  if (formula[start - 1] === "!") return null;
+  const first = readCellReference(formula, start);
+  if (!first) return null;
+  const second = formula[first.end] === ":" ? readCellReference(formula, first.end + 1) : null;
+  if (!second) return { letters: [first.letters], end: first.end };
+  const from = columnLetterIndex(first.letters);
+  const to = columnLetterIndex(second.letters);
+  const span: string[] = [];
+  for (let index = from; index <= to; index += 1) span.push(String(index));
+  return { letters: span, end: second.end };
+}
+
+/**
+ * Which columns a formula adds and which it subtracts, by grid column index.
+ *
+ * A single left-to-right pass carrying the sign of the group it is inside, so
+ * "(J2+K2)-(B2+C2)" subtracts B and C rather than only C, and "N2-SUM(B2:L2)"
+ * subtracts all eleven. A column named twice takes the sign of its LAST
+ * mention: `IF(ISBLANK(J2),"",…)` names J in the condition before the
+ * arithmetic does, and the arithmetic is what counts.
+ */
+export function formulaColumnSigns(formula: string): Map<number, 1 | -1> {
+  const signs = new Map<number, 1 | -1>();
+  const groups: (1 | -1)[] = [];
+  let group: 1 | -1 = 1;
+  let pending: 1 | -1 = 1;
+  let index = 0;
+  while (index < formula.length) {
+    const char = formula[index] ?? "";
+    if (char === '"') {
+      const close = formula.indexOf('"', index + 1);
+      index = close < 0 ? formula.length : close + 1;
+      continue;
+    }
+    if (char === "+" || char === ",") { pending = 1; index += 1; continue; }
+    if (char === "-") { pending = -1; index += 1; continue; }
+    if (char === "(") { groups.push(group); group = (group * pending) as 1 | -1; pending = 1; index += 1; continue; }
+    if (char === ")") { group = groups.pop() ?? 1; pending = 1; index += 1; continue; }
+    const reference = readReference(formula, index);
+    if (!reference) { index += 1; continue; }
+    const sign = (group * pending) as 1 | -1;
+    for (const letters of reference.letters) {
+      signs.set(/^\d+$/.test(letters) ? Number(letters) : columnLetterIndex(letters), sign);
+    }
+    index = reference.end;
+  }
+  return signs;
+}
+
+/**
+ * The roles a sheet's balance column assigns to the columns beside it, by
+ * HEADER index, or null when no formula speaks for enough of the sheet.
+ *
+ * Every row is read and the widest formula wins, because a workbook kept by
+ * hand grows: the file this was measured against starts its 2022 balance line
+ * over fourteen columns and ends it over sixteen, having taken up rent and a
+ * conscription payment along the way. The widest reading is the one that keeps
+ * a column the owner ever counted.
+ *
+ * The threshold is the guard: a workbook whose balance line reads
+ * "opening + income − total expenses" names three columns out of twelve, and
+ * treating the nine it does not name as excluded would throw the whole
+ * breakdown away. Half the named columns is the bar for letting a formula
+ * overrule the headings.
+ */
+function balanceFormulaRoles(rows: RawCell[][], header: string[]): Map<number, 1 | -1> | null {
+  const named = header.reduce((count, label) => count + (label === "" ? 0 : 1), 0);
+  let best: Map<number, 1 | -1> | null = null;
+  for (const row of rows) {
+    for (const cell of row) {
+      if (!cell?.f) continue;
+      const roles = new Map<number, 1 | -1>();
+      for (const [column, sign] of formulaColumnSigns(cell.f)) {
+        // header[0] is grid column B, so a grid index becomes a header index.
+        const index = column - 1;
+        if (index >= 0 && index < header.length && header[index] !== "") roles.set(index, sign);
+      }
+      if (roles.size > (best?.size ?? 0)) best = roles;
+    }
+  }
+  return best != null && best.size * 2 >= named ? best : null;
 }
 
 /** "Ocak 2025" | "Oca 25" | "2025-01" | "01.2025" | Date → "2025-01" | null */
@@ -325,34 +451,36 @@ export function parseSheet(grid: RawCell[][], sheetName: string): ParsedSheet | 
   // Maaş" lost its salary and there was no way to say otherwise. They are now
   // excluded by default and offered back in the wizard.
   const keepIdx: number[] = [];
-  const skippedColumns: string[] = [];
   let openingColIdx = -1;
   header.forEach((label, i) => {
     if (label === "") return;
     keepIdx.push(i);
-    if (isBalanceLikeColumn(label)) {
-      skippedColumns.push(label);
-      if (openingColIdx < 0 && OPENING_HINTS.test(label)) openingColIdx = i;
-    }
+    if (isBalanceLikeColumn(label) && openingColIdx < 0 && OPENING_HINTS.test(label)) openingColIdx = i;
   });
 
+  // Column letters only mean anything in the sheet's own orientation.
+  const roles = normalized === grid ? balanceFormulaRoles(body, header) : null;
   const columns: ParsedColumn[] = keepIdx.map((i) => {
     const { label, dueDay } = extractDueDay(header[i] ?? "");
+    const role = roles?.get(i);
     return {
       label,
-      kindGuess: INCOME_HINTS.test(label) ? "income" : "expense",
+      kindGuess: role == null ? (INCOME_HINTS.test(label) ? "income" : "expense") : role > 0 ? "income" : "expense",
       isInvestment: INVESTMENT_HINTS.test(label),
-      balanceLike: isBalanceLikeColumn(header[i] ?? ""),
+      // A column the owner's own balance line leaves out of its arithmetic is
+      // excluded by default for the same reason a running total is: importing
+      // it puts the ledger at odds with the file it came from. Offered back in
+      // the wizard, like every other default this parser sets.
+      balanceLike: isBalanceLikeColumn(header[i] ?? "") || (roles != null && role == null),
       dueDay,
     };
   });
+  // One list, one rule: whatever is excluded by default is what the wizard
+  // offers back, however the exclusion was decided.
+  const skippedColumns = columns.filter((column) => column.balanceLike).map((column) => column.label);
   const cells: CellData[][] = body.map((r) => keepIdx.map((i) => toCellData(r[i + 1])));
 
-  let openingBalance: ParsedSheet["openingBalance"] = null;
-  if (openingColIdx >= 0) {
-    const minor = parseSheetAmount(body[0]?.[openingColIdx + 1]?.v);
-    if (minor != null) openingBalance = { month: firstMonth, minor };
-  }
+  const openingColumn = openingColIdx < 0 ? null : extractDueDay(header[openingColIdx] ?? "").label;
   // EVERY column that carries a figure in the first month, under the same
   // label the rest of the wizard shows for it. Offering only the balance-like
   // ones made the choice depend on the very heading rule it exists to correct:
@@ -373,7 +501,7 @@ export function parseSheet(grid: RawCell[][], sheetName: string): ParsedSheet | 
     columns,
     cells,
     skippedColumns,
-    openingBalance,
+    openingColumn,
     openingCandidates,
   };
 }
@@ -563,13 +691,19 @@ interface ImportInstallmentPlanSpec {
 }
 
 /**
- * Reconstruct the distinct installment plans across a workbook's "…Taksitli…"
- * columns. Pure (no DB) so it is thoroughly unit-testable:
- *  - a plan appears once per month it is active → deduped by
- *    (name, monthly, count, start), NOT by card, so a purchase tracked under a
- *    card's renamed forms collapses to one plan instead of double-counting.
+ * Reconstruct the distinct installment plans across a workbook's instalment
+ * comments. Pure (no DB) so it is thoroughly unit-testable:
+ *  - a plan appears once per month it is active → deduped by its SCHEDULE
+ *    alone (monthly amount, count, start month). Neither the item's name nor
+ *    the card's is part of the key, because a workbook kept by hand renames
+ *    both: the owner's file writes one home loan "Ev Kredisi" in the 2026
+ *    sheet and "Kredi" in the 2025 one, and keying on the name made that two
+ *    plans over the same 24 months — 23.672,13 landing twice, the 46k the
+ *    owner reported. Two genuinely different purchases sharing an amount to
+ *    the kuruş, a count AND a start month collapse into one; that costs a row
+ *    on the Taksitler screen, where the alternative costs the balance.
+ *  - the longest name seen wins, so the fuller "Ev Kredisi" survives "Kredi".
  *  - the start month is derived from paid/total and is invariant across mentions.
- *  - the first mention wins the card (earliest processed sheet/month).
  *  - cards flagged informational ("ℹ️ not in totals") are excluded.
  *  - excluded columns and non-selected years are skipped.
  */
@@ -583,7 +717,10 @@ export function collectInstallmentPlans(
   const byKey = new Map<string, ImportInstallmentPlanSpec>();
   for (const sheet of sheets) {
     sheet.columns.forEach((col, index) => {
-      // The heading decides nothing here either: see `isInstallmentCell`.
+      // The comment is the evidence; the column heading decides nothing. One
+      // "Kredi Kartı" column holding both single charges and instalments is
+      // the common shape, and requiring `/taksit/` in the heading found no
+      // plans in it at all.
       if (excluded.has(col.label)) return;
       for (const [r, month] of sheet.months.entries()) {
         if (!allow(yearOf(month))) continue;
@@ -592,9 +729,12 @@ export function collectInstallmentPlans(
         for (const note of parseInstallmentComment(comment)) {
           if (!note.card || informational.has(note.card.toLocaleLowerCase("tr-TR"))) continue;
           const startMonth = addMonthsToKey(month, -(note.paidNo - 1));
-          const key = `${note.name.toLocaleLowerCase("tr-TR")}|${note.monthlyMinor}|${note.total}|${startMonth}`;
-          if (!byKey.has(key)) {
+          const key = `${note.monthlyMinor}|${note.total}|${startMonth}`;
+          const seen = byKey.get(key);
+          if (!seen) {
             byKey.set(key, { card: note.card, name: note.name, monthlyMinor: note.monthlyMinor, total: note.total, startMonth, columnLabel: col.label });
+          } else if (note.name.length > seen.name.length) {
+            seen.name = note.name;
           }
         }
       }
@@ -603,34 +743,18 @@ export function collectInstallmentPlans(
   return [...byKey.values()];
 }
 
-/**
- * True when a cell carries reconstructable instalment lines, so the importer
- * materializes plans from it instead of one opaque aggregate.
- *
- * The COMMENT is the evidence; the column heading is not. This used to require
- * `/taksit/` in the heading, which assumed a workbook keeps single charges and
- * instalments in separate columns — mine does, most do not. One "Kredi Kartı"
- * column holding both produced no plans at all, and the Taksitler screen stayed
- * empty however many `3/9` lines the comments carried.
- *
- * A card banner is required, and that is the second half of the same fix: a
- * note with no card was already refused by `collectInstallmentPlans`, so a cell
- * that only reached this far was skipped from the aggregate AND never became a
- * plan — the money left the import entirely. Both now ask the same question.
- */
-export function isInstallmentCell(comment: string | null): boolean {
-  return comment != null && parseInstallmentComment(comment).some((note) => note.card !== "");
-}
-
 /** Convert a SheetJS worksheet into a dense grid of RawCells over its range. */
 function worksheetToRawGrid(ws: XLSXTypes.WorkSheet, xlsx: XlsxModule): RawCell[][] {
   const ref = ws["!ref"];
   if (!ref) return [];
   const range = xlsx.utils.decode_range(ref);
   const grid: RawCell[][] = [];
-  for (let r = range.s.r; r <= range.e.r; r++) {
+  // From row 1 / column A rather than from the used range's own origin: a
+  // formula says "B2", and only a grid that starts where the sheet starts can
+  // say which column that is.
+  for (let r = 0; r <= range.e.r; r++) {
     const row: RawCell[] = [];
-    for (let col = range.s.c; col <= range.e.c; col++) {
+    for (let col = 0; col <= range.e.c; col++) {
       const cell = ws[xlsx.utils.encode_cell({ r, c: col })] as
         | { v?: unknown; f?: string; c?: { t?: string }[] }
         | undefined;

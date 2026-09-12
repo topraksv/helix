@@ -21,7 +21,7 @@ const sheet: ParsedSheet = {
     ],
   ],
   skippedColumns: [],
-  openingBalance: null,
+  openingColumn: null,
   openingCandidates: [],
 };
 

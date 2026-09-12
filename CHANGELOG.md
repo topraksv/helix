@@ -4,6 +4,17 @@ Yayımlanan her sürümde neyin değiştiği, en yeni üstte. Sürüm numarası
 `app.json` içindeki `expo.version`'dır; nasıl seçildiği geliştiricinin kendi
 sürüm defterinde yazılıdır ve bu depoya dahil değildir.
 
+## 1.7.1
+
+### Patch Changes
+
+- Excel içe aktarımı, tablonun kendi bakiye formülünü okuyor. Hangi kolonun gelir, hangisinin gider olduğunu ve hangilerinin bakiyeye hiç girmediğini artık başlıktaki kelimeye değil, senin "Kalan" ya da "Güncel Bakiye" hücrendeki formüle bakarak belirliyor. "Ek" gibi adı bir şey söylemeyen bir gelir kolonu gider sayılmıyor, "Düzenleme Tarihi" gibi para olmayan bir kolon tabloya girmiyor.
+- Bir hücre kendi değerinden fazlasını yazmıyor. Yorumunda taksit listesi olan hücre önceden atlanıyor, yerine yorumdan kurulan planlar yazılıyordu; hücrede 23.672,13 yazan ev kredisi tabloya 46.000 olarak düşüyordu. Artık hücrede ne yazıyorsa tabloya o giriyor.
+- Aynı taksit iki isimle yazıldığında tek plan oluyor. Bir sayfada "Ev Kredisi", diğerinde "Kredi" yazan tek bir kredi, aynı tutar ve aynı vade olmasına rağmen iki plan açıyor ve her ayı iki kez borçlandırıyordu. Plan artık adıyla değil, takvimiyle tanınıyor.
+- Excel'den kurulan taksit planları yalnızca tablonun yazmadığı aylara satır yazıyor. Tablonun doldurduğu bir ay o taksiti zaten kolon toplamının içinde taşıyor; planın eklediği şey, tablonun bittiği yerden sonrası.
+- Ay başı bakiyesi, aktarılan en erken aya yazılıyor. Önceden ilk bakiye kolonunu taşıyan yıl neredeyse oraya yazılıyordu, ondan önceki aylar geriye doğru hesaplanıp eksiye düşüyordu. O ay için bir rakam veren kolon yoksa sıfırdan başlıyor.
+- Tablonun kendi bakiyesini elle yeniden başlattığı yerde uygulama da yeniden başlıyor. Bir sayfa "ay başında elimde şu kadar vardı" diyorsa ve önceki aylar o rakamı tutmuyorsa, aradaki fark bir düzeltme satırı olarak yazılıyor; böylece o aydan sonrası tablonun kendi rakamlarıyla birebir aynı gidiyor.
+
 ## 1.7.0
 
 ### Minor Changes

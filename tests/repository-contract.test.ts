@@ -1597,7 +1597,7 @@ describe("replace-mode import with an unreadable batch", () => {
         columns: [{ label: "Market", kindGuess: "expense", isInvestment: false, balanceLike: false, dueDay: null }],
         cells: [[{ valueMinor: 10_000, formulaParts: null, comment: null, commentParts: null }]],
         skippedColumns: [],
-        openingBalance: null,
+        openingColumn: null,
         openingCandidates: [],
       }],
       excludedLabels: [],
@@ -1611,9 +1611,14 @@ describe("replace-mode import with an unreadable batch", () => {
       string,
       { table: string; row: Record<string, unknown> }[],
     ];
+    // Two data rows and four settings: the column set, the year's batch, and
+    // the ledger anchor this workbook establishes (its earliest month, opening
+    // at zero because no column states a figure there).
     expect(writes.map((write) => write.table)).toEqual([
       "categories",
       "transactions",
+      "settings",
+      "settings",
       "settings",
       "settings",
     ]);
@@ -1671,7 +1676,7 @@ describe("replace-mode import with an unreadable batch", () => {
         columns: [{ label: "Yatırım", kindGuess: "expense", isInvestment: true, balanceLike: false, dueDay: null }],
         cells: [[{ valueMinor: -20_000, formulaParts: null, comment: null, commentParts: null }]],
         skippedColumns: [],
-        openingBalance: null,
+        openingColumn: null,
         openingCandidates: [],
       }],
       excludedLabels: [],
