@@ -6,6 +6,14 @@ defterinde yazılıdır ve bu depoya dahil değildir.
 
 Notlar kısa tutulur: ne değişti, tek cümle. Sebebi ve ölçümü commit'te.
 
+## 1.7.4
+
+### Patch Changes
+
+- Şifre yenileme, e-posta doğrulama ve geri bildirim mailleri tek bir Gmail hesabından gidiyor; önceden şifre mailleri yalnızca proje ekibindeki adreslere ulaşıyordu.
+- Şifre yenileme maili Türkçe ve yeni tasarımıyla geliyor; bağlantı 5 dakika geçerli.
+- Aydınlatma Metni, e-postaları gönderen servis olarak Resend yerine Google'ı (Gmail) listeliyor.
+
 ## 1.7.3
 
 ### Patch Changes

@@ -116,7 +116,7 @@ describe("KVKK notice", () => {
     // Read from the notice rather than counted: a transfer the app performs
     // and the notice omits is the failure KVKK md.9 is about.
     const transfers = tr.legal.transfers.join(" ");
-    for (const processor of ["Supabase", "Resend", "GitHub Pages", "Expo"]) {
+    for (const processor of ["Supabase", "Gmail", "GitHub Pages", "Expo"]) {
       expect(transfers, `${processor} receives data and must be named`).toContain(processor);
     }
     expect(transfers, "the location of the main store must be stated").toMatch(/Frankfurt/);

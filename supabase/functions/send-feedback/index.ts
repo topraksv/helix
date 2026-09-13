@@ -4,8 +4,9 @@
  * This runs on Supabase Edge Functions (Deno), not in the app bundle, for two
  * reasons that both matter:
  *
- *   - the Resend API key must never reach a client. The web build is a static
- *     export served from GitHub Pages, so anything the client holds is public;
+ *   - the mail account's app password must never reach a client. The web build
+ *     is a static export served from GitHub Pages, so anything the client holds
+ *     is public;
  *   - the app is offline-first and its CSP pins `connect-src` to a short list.
  *     The Supabase origin is already on that list, so calling our own function
  *     needs no CSP change, while calling a mail provider directly would.
@@ -15,36 +16,36 @@
  * server may not assume is the client we shipped.
  *
  * Deployment (owner, once):
- *   supabase secrets set RESEND_API_KEY=...
+ *   supabase secrets set SMTP_USER=<gmail address> SMTP_PASS=<app password>
  *   supabase functions deploy send-feedback
  */
 
-// A remote module specifier, which is how Deno imports. `tsconfig.json` and
+// Remote module specifiers, which is how Deno imports. `tsconfig.json` and
 // `eslint.config.js` both exclude this directory precisely so the app's
-// toolchain never tries to resolve it — which is also why there is no
-// `@ts-expect-error` here: under Deno the import resolves fine, and the
+// toolchain never tries to resolve them — which is also why there is no
+// `@ts-expect-error` here: under Deno the imports resolve fine, and the
 // directive itself became the only error `deno check` reported.
 import { feedbackSubject } from "./subject.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import nodemailer from "npm:nodemailer@^9";
 
 const OWNER_EMAIL = "topraksavli@hotmail.com";
 
 /**
- * Resend refuses an unverified `from` domain, and this project owns none — so
- * the report is sent from Resend's shared sandbox sender and carries the
- * reporter's address in `reply_to`, which is the field a reply actually uses.
+ * One mail account sends everything Helix sends: Auth's reset and
+ * confirmation messages through the project's custom SMTP setting, and this
+ * report through the same account here. Gmail, because the project owns no
+ * domain, and every provider that sends to arbitrary addresses wants one.
  *
- * Checked 2026-09-02, so the next person does not repeat it: `helix.com.tr` is
- * registered to somebody else (delegated to Vodafone Türkiye's nameservers), so
- * the intended `destek@helix.com.tr` cannot be had. Until a domain is owned and
- * verified, this stays as it is — and note what that costs: the shared sender
- * may only deliver to the address that owns the Resend account, which is why
- * `OWNER_EMAIL` below happens to work and would break quietly if it ever
- * pointed somewhere else. `OWNER_EMAIL` is also the KVKK contact published in
- * the app; `tests/legal-notice.test.ts` holds the two together, so changing it
- * changes both or fails.
+ * Port 465 with implicit TLS is not a preference. Edge Functions refuse
+ * outgoing connections to 25 and 587, which leaves 465 as Gmail's only open
+ * door. Gmail also rewrites any `from` that is not the signed-in account, so
+ * the sender is the account itself and the reporter goes in `replyTo`, the
+ * field a reply actually uses. `SMTP_HOST` exists so a later move to a domain
+ * and a transactional provider changes a secret rather than this file.
  */
-const FROM_ADDRESS = "Helix Geri Bildirim <onboarding@resend.dev>";
+const SMTP_PORT = 465;
+const FROM_NAME = "Helix Geri Bildirim";
 
 const FEEDBACK_CATEGORIES = [
   "visual", "functional", "performance", "data", "suggestion", "other",
@@ -100,8 +101,9 @@ Deno.serve(async (request: Request): Promise<Response> => {
   if (request.method === "OPTIONS") return new Response("ok", { headers: CORS });
   if (request.method !== "POST") return json({ error: "method_not_allowed" }, 405);
 
-  const apiKey = Deno.env.get("RESEND_API_KEY");
-  if (!apiKey) return json({ error: "not_configured" }, 503);
+  const smtpUser = Deno.env.get("SMTP_USER");
+  const smtpPass = Deno.env.get("SMTP_PASS");
+  if (!smtpUser || !smtpPass) return json({ error: "not_configured" }, 503);
 
   /**
    * Only a signed-in account may post. The function runs with the caller's own
@@ -176,7 +178,7 @@ Deno.serve(async (request: Request): Promise<Response> => {
       : [];
   if (rawImages.length > MAX_FEEDBACK_IMAGES) return json({ error: "too_many_images" }, 400);
 
-  const attachments: { filename: string; content: string }[] = [];
+  const attachments: { filename: string; content: string; encoding: "base64"; contentType: string }[] = [];
   let totalBase64 = 0;
   for (const entry of rawImages) {
     const image = entry as { mimeType?: unknown; base64?: unknown; filename?: unknown };
@@ -196,11 +198,13 @@ Deno.serve(async (request: Request): Promise<Response> => {
     const rawName = String(image?.filename ?? "").replace(/[^\w.-]/g, "").slice(0, 60);
     const fallbackName = `ekran-goruntusu-${attachments.length + 1}.${extension}`;
     const name = rawName || fallbackName;
-    // Resend keys attachments by filename; two screenshots a phone named the
-    // same thing would otherwise arrive as one.
+    // Two screenshots a phone named the same thing still arrive as two files a
+    // mail client can tell apart.
     attachments.push({
       filename: attachments.some((existing) => existing.filename === name) ? `${attachments.length + 1}-${name}` : name,
       content: base64,
+      encoding: "base64",
+      contentType: mimeType,
     });
   }
 
@@ -216,23 +220,31 @@ Deno.serve(async (request: Request): Promise<Response> => {
     </div>
   `;
 
-  const response = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-    body: JSON.stringify({
-      from: FROM_ADDRESS,
-      to: [OWNER_EMAIL],
-      reply_to: user.email ? [user.email] : undefined,
-      subject: feedbackSubject(category, message),
-      html,
-      attachments: attachments.length > 0 ? attachments : undefined,
-    }),
+  const transport = nodemailer.createTransport({
+    host: Deno.env.get("SMTP_HOST") ?? "smtp.gmail.com",
+    port: SMTP_PORT,
+    secure: true,
+    auth: { user: smtpUser, pass: smtpPass },
+    // Inside the function's wall clock, with room to answer the client.
+    connectionTimeout: 10_000,
+    greetingTimeout: 10_000,
+    socketTimeout: 20_000,
   });
 
-  if (!response.ok) {
-    // The provider's body can carry the reporter's own text back; log the
-    // status only, and tell the client nothing it could not already infer.
-    console.error("resend rejected the report", response.status);
+  try {
+    await transport.sendMail({
+      from: { name: FROM_NAME, address: smtpUser },
+      to: OWNER_EMAIL,
+      replyTo: user.email ?? undefined,
+      subject: feedbackSubject(category, message),
+      html,
+      attachments,
+    });
+  } catch (error) {
+    // The server's reply can quote the reporter's own text back; log the codes
+    // only, and tell the client nothing it could not already infer.
+    const failure = error as { code?: string; responseCode?: number };
+    console.error("smtp rejected the report", failure.code ?? "unknown", failure.responseCode ?? "");
     return json({ error: "send_failed" }, 502);
   }
 
