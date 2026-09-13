@@ -44,6 +44,36 @@ let verificationBrake: VerificationBrake = IDLE_BRAKE;
 let authLifecycleSubscribed = false;
 let explicitSignOutInProgress = false;
 let invalidationCleanup: Promise<void> | null = null;
+/**
+ * The recovery token a reset link brought, held until the owner presses save.
+ *
+ * Opening the page spends nothing. A mail client that checks the link, or the
+ * owner reloading the screen, would otherwise burn the one token before
+ * anybody had typed a password — which is how "the link has expired" arrived
+ * seconds after the e-mail did.
+ */
+let pendingRecoveryTokenHash: string | null = null;
+
+/**
+ * Spend the held recovery token: null once redeemed (or when none is held),
+ * otherwise the message the reset screen shows. Needs no PKCE verifier, so the
+ * link works in whichever browser the mail app opens — not only the one that
+ * asked for the reset.
+ */
+async function redeemPendingRecoveryToken(supabase: NonNullable<ReturnType<typeof getSupabase>>): Promise<string | null> {
+  if (!pendingRecoveryTokenHash) return null;
+  const { data, error } = await supabase.auth.verifyOtp({ token_hash: pendingRecoveryTokenHash, type: "recovery" });
+  if (error) {
+    // A request that never reached Auth spent nothing: the same link can be
+    // tried again. Auth's own refusal is final for this token.
+    if (error.name === "AuthRetryableFetchError") return friendlyAuthError(error.message);
+    pendingRecoveryTokenHash = null;
+    return error.code === "otp_expired" ? tr.auth.resetExpiredBody : tr.auth.resetInvalidBody;
+  }
+  pendingRecoveryTokenHash = null;
+  if (data.session?.user) markPasswordRecoverySession(data.session.user.id);
+  return null;
+}
 
 /**
  * Sign-out refused because rows would be lost. Safe to show as-is — it names
@@ -257,9 +287,10 @@ interface SessionStore {
   signUp: (email: string, password: string) => Promise<SignUpResult>;
   /** Send a neutral, expiring Supabase password-reset link. */
   requestPasswordReset: (email: string) => Promise<string | null>;
-  /** Exchange a web/native recovery deep link for a short-lived session. */
+  /** Read a recovery link. A token link is held unspent until save; older code
+   *  and token links are exchanged for a short-lived session here. */
   preparePasswordRecovery: (url: string | null) => Promise<"ready" | "expired" | "invalid">;
-  /** Update the password from the recovery session and end that session. */
+  /** Spend a held recovery token, update the password and end that session. */
   completePasswordRecovery: (newPassword: string) => Promise<string | null>;
   /** End the session on THIS device and wipe its local finance data. Returns an
    *  error if the wipe failed or if unsynced rows would be destroyed
@@ -430,7 +461,12 @@ export const useSession = create<SessionStore>((set, get) => ({
       ? { platform: "web" as const, origin: globalThis.location.origin, baseUrl: process.env.EXPO_BASE_URL ?? "/" }
       : { platform: "native" as const, scheme: "helix" };
     const link = parsePasswordRecoveryUrl(url, target);
+    pendingRecoveryTokenHash = null;
     if (link.kind === "expired") return "expired";
+    if (link.kind === "tokenHash") {
+      pendingRecoveryTokenHash = link.tokenHash;
+      return "ready";
+    }
     const acceptRecoverySession = async (recoveryUserId: string): Promise<boolean> => {
       const workspaceUserId = get().userId;
       if (workspaceUserId && workspaceUserId !== recoveryUserId) {
@@ -474,6 +510,8 @@ export const useSession = create<SessionStore>((set, get) => ({
     const supabase = getSupabase();
     if (!supabase) return tr.errors.supabaseNotConfigured;
     if (!isValidNewPassword(newPassword)) return tr.auth.errWeakPassword;
+    const redeemError = await redeemPendingRecoveryToken(supabase);
+    if (redeemError) return redeemError;
     const { data } = await supabase.auth.getSession();
     const recoveryUserId = data.session?.user.id;
     if (!recoveryUserId || !wasPasswordRecoveryDetected(recoveryUserId)) return tr.auth.resetInvalidBody;

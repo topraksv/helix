@@ -6,6 +6,16 @@ defterinde yazılıdır ve bu depoya dahil değildir.
 
 Notlar kısa tutulur: ne değişti, tek cümle. Sebebi ve ölçümü commit'te.
 
+## 1.7.3
+
+### Patch Changes
+
+- Şifre yenileme bağlantısı, mail hangi tarayıcıda açılırsa açılsın şifre yenileme ekranını açıyor; önceden isteği yapan tarayıcı dışında giriş ekranı açılıyordu.
+- Bağlantı saniyeler içinde "süresi dolmuş" demiyor: sayfayı açmak onu harcamıyor, yalnızca yeni şifreyi kaydettiğinde kullanılıyor.
+- Eski şifreni yeniden seçince "şifre çok zayıf" yerine "yeni şifren eskisiyle aynı olamaz" yazıyor.
+- Süresi dolmuş ya da kullanılmış bir bağlantıda kaydet'e basınca, yeni bağlantı isteyebileceğin ekran açılıyor.
+- Şifre yenileme maili için Türkçe, yeni tasarımlı bir şablon hazırlandı.
+
 ## 1.7.2
 
 ### Patch Changes

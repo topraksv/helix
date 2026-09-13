@@ -68,6 +68,10 @@ describe("friendly auth errors", () => {
   it("maps expired sessions and server failures instead of a generic fallback", () => {
     expect(friendlyAuthError("Invalid Refresh Token: Refresh Token Not Found")).toBe(tr.auth.errSessionExpired);
     expect(friendlyAuthError("JWT expired")).toBe(tr.auth.errSessionExpired);
+    // Auth's same-password refusal contains "password should be", which the
+    // weak-password rule used to claim.
+    expect(friendlyAuthError("New password should be different from the old password.")).toBe(tr.auth.errSamePassword);
+    expect(friendlyAuthError("same_password")).toBe(tr.auth.errSamePassword);
     expect(friendlyAuthError("Internal Server Error")).toBe(tr.auth.errService);
     expect(friendlyAuthError("Error 503: Service Unavailable")).toBe(tr.auth.errService);
     expect(friendlyAuthError("something unexpected")).toBe(tr.auth.errGeneric);
@@ -81,6 +85,21 @@ describe("server-side password policy", () => {
     expect(config).toMatch(/^minimum_password_length = 8$/m);
     expect(config).toMatch(/^secure_password_change = true$/m);
     expect(config).toMatch(/\[auth\.email\][\s\S]*?^enable_confirmations = true$/m);
+  });
+
+  /**
+   * The reset e-mail's link is the fix for two reported failures, so it is
+   * held here rather than trusted to the dashboard. Auth's own verify endpoint
+   * spends the token on the first GET and returns a PKCE code only the browser
+   * that requested the reset can redeem: a link checker produced "the link has
+   * expired" seconds after delivery, and a phone's mail app opened sign-in.
+   */
+  it("sends reset links that reach the app with the token unspent, for five minutes", () => {
+    expect(config).toMatch(/^otp_expiry = 300$/m);
+    expect(config).toMatch(/\[auth\.email\.template\.recovery\][\s\S]*?^content_path = "\.\/supabase\/templates\/recovery\.html"$/m);
+    const template = readFileSync(join(process.cwd(), "supabase/templates/recovery.html"), "utf8");
+    expect(template).toContain('href="{{ .RedirectTo }}?token_hash={{ .TokenHash }}&type=recovery"');
+    expect(template).not.toContain("{{ .ConfirmationURL }}");
   });
 });
 
@@ -106,6 +125,20 @@ describe("password recovery links", () => {
       origin: "https://example.com",
       baseUrl: "/preview",
     })).toBe("https://example.com/preview/reset-password");
+  });
+
+  it("holds the unspent token link the reset e-mail carries, and only for recovery", () => {
+    expect(parsePasswordRecoveryUrl("https://topraksv.github.io/helix/reset-password?token_hash=pkce_abc&type=recovery", webTarget))
+      .toEqual({ kind: "tokenHash", tokenHash: "pkce_abc" });
+    expect(parsePasswordRecoveryUrl("https://topraksv.github.io/helix/reset-password?token_hash=abc&type=signup", webTarget))
+      .toEqual({ kind: "invalid" });
+    expect(parsePasswordRecoveryUrl("https://topraksv.github.io/helix/reset-password?token_hash=abc", webTarget))
+      .toEqual({ kind: "invalid" });
+    expect(parsePasswordRecoveryUrl("https://attacker.example/helix/reset-password?token_hash=abc&type=recovery", webTarget))
+      .toEqual({ kind: "invalid" });
+    // An error Auth attached still wins over a token beside it.
+    expect(parsePasswordRecoveryUrl("https://topraksv.github.io/helix/reset-password?token_hash=abc&type=recovery&error_code=otp_expired", webTarget))
+      .toEqual({ kind: "expired" });
   });
 
   it("parses web PKCE codes and native token deep links", () => {

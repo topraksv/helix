@@ -235,7 +235,9 @@ max_frequency = "1s"
 # Number of characters used in the email OTP.
 otp_length = 6
 # Number of seconds before the email OTP expires (defaults to 1 hour).
-otp_expiry = 3600
+# Five minutes: the owner's window for a reset link. Auth has ONE expiry for
+# every e-mail link, so sign-up confirmation and e-mail change share it.
+otp_expiry = 300
 
 # Use a production-ready SMTP server
 # [auth.email.smtp]
@@ -251,6 +253,15 @@ otp_expiry = 3600
 # [auth.email.template.invite]
 # subject = "You have been invited"
 # content_path = "./supabase/templates/invite.html"
+
+# The reset link lands on the app with its token UNSPENT and the app redeems it
+# on save. The default template links through Auth's verify endpoint instead,
+# which spends the token on the first GET — a mail client's link checker was
+# enough — and returns a PKCE code only the browser that asked can redeem.
+# The hosted project does not read this file: see docs/RELEASE.md.
+[auth.email.template.recovery]
+subject = "🔑 Helix şifre yenileme bağlantın"
+content_path = "./supabase/templates/recovery.html"
 
 # Uncomment to customize notification email template
 # [auth.email.notification.password_changed]

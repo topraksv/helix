@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="tr" xmlns="http://www.w3.org/1999/xhtml" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="x-apple-disable-message-reformatting">
+  <meta name="color-scheme" content="light">
+  <meta name="supported-color-schemes" content="light">
+  <title>Helix şifre yenileme</title>
+  <!--[if mso]>
+  <noscript><xml><o:OfficeDocumentSettings><o:PixelsPerInch>96</o:PixelsPerInch></o:OfficeDocumentSettings></xml></noscript>
+  <![endif]-->
+  <style>
+    body { margin: 0; padding: 0; background: #F1EDE8; }
+    a { color: #A55335; }
+    @media only screen and (max-width: 620px) {
+      .card { border-radius: 0 !important; }
+      .pad { padding-left: 24px !important; padding-right: 24px !important; }
+      .chip { display: block !important; width: 100% !important; padding: 0 0 8px 0 !important; }
+      .title { font-size: 26px !important; line-height: 32px !important; }
+    }
+  </style>
+</head>
+<body style="margin:0; padding:0; background-color:#F1EDE8; -webkit-text-size-adjust:100%; -ms-text-size-adjust:100%;">
+  <!-- Preheader: the line mail apps show beside the subject. -->
+  <div style="display:none; max-height:0; overflow:hidden; mso-hide:all; font-size:1px; line-height:1px; color:#F1EDE8; opacity:0;">
+    Yeni şifreni birkaç saniyede belirle. Bağlantı 5 dakika geçerli ve tek kullanımlık.&#8199;&#65279;&#847;&#8199;&#65279;&#847;&#8199;&#65279;&#847;&#8199;&#65279;&#847;
+  </div>
+
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color:#F1EDE8;">
+    <tr>
+      <td align="center" style="padding:32px 12px;">
+        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="max-width:560px;">
+
+          <!-- Wordmark, drawn rather than loaded: a blocked image must not leave a hole. -->
+          <tr>
+            <td align="center" style="padding:0 0 20px 0;">
+              <table role="presentation" cellspacing="0" cellpadding="0" border="0">
+                <tr>
+                  <td width="40" height="40" align="center" valign="middle" style="width:40px; height:40px; background-color:#A55335; border-radius:12px; font-family:'IBM Plex Serif', Georgia, 'Times New Roman', serif; font-size:22px; font-weight:600; line-height:40px; color:#FBF4EF;">H</td>
+                  <td style="padding-left:10px; font-family:'IBM Plex Serif', Georgia, 'Times New Roman', serif; font-size:22px; font-weight:600; color:#2A211B; letter-spacing:0.2px;">Helix</td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- Card -->
+          <tr>
+            <td class="card" style="background-color:#FFFDFB; border:1px solid #E7DFD7; border-radius:20px; overflow:hidden;">
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
+
+                <!-- Clay band -->
+                <tr>
+                  <td style="height:6px; line-height:6px; font-size:0; background-color:#A55335;">&nbsp;</td>
+                </tr>
+
+                <tr>
+                  <td class="pad" style="padding:40px 44px 8px 44px;">
+                    <table role="presentation" cellspacing="0" cellpadding="0" border="0">
+                      <tr>
+                        <td width="64" height="64" align="center" valign="middle" style="width:64px; height:64px; background-color:#EED8CC; border-radius:32px; font-size:30px; line-height:64px;">🔑</td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+
+                <tr>
+                  <td class="pad" style="padding:20px 44px 0 44px;">
+                    <h1 class="title" style="margin:0; font-family:'IBM Plex Serif', Georgia, 'Times New Roman', serif; font-size:30px; line-height:36px; font-weight:600; color:#2A211B;">Şifreni yenileyelim</h1>
+                  </td>
+                </tr>
+
+                <tr>
+                  <td class="pad" style="padding:16px 44px 0 44px; font-family:Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size:16px; line-height:26px; color:#3A3028;">
+                    Merhaba,<br><br>
+                    <strong style="color:#2A211B;">{{ .Email }}</strong> adresine bağlı Helix hesabın için bir şifre yenileme isteği aldık. Aşağıdaki butona dokun, açılan ekranda yeni şifreni belirle.
+                  </td>
+                </tr>
+
+                <!-- Button -->
+                <tr>
+                  <td class="pad" style="padding:32px 44px 8px 44px;">
+                    <!--[if mso]>
+                    <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" href="{{ .RedirectTo }}?token_hash={{ .TokenHash }}&type=recovery" style="height:56px; v-text-anchor:middle; width:472px;" arcsize="25%" stroke="f" fillcolor="#A55335">
+                      <w:anchorlock/>
+                      <center style="color:#FBF4EF; font-family:Arial, sans-serif; font-size:17px; font-weight:bold;">Yeni Şifremi Belirle</center>
+                    </v:roundrect>
+                    <![endif]-->
+                    <!--[if !mso]><!-->
+                    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
+                      <tr>
+                        <td align="center" style="background-color:#A55335; border-radius:14px;">
+                          <a href="{{ .RedirectTo }}?token_hash={{ .TokenHash }}&type=recovery" target="_blank" style="display:block; padding:17px 24px; font-family:Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size:17px; font-weight:700; line-height:22px; color:#FBF4EF; text-decoration:none; border-radius:14px;">Yeni Şifremi Belirle&nbsp;&nbsp;→</a>
+                        </td>
+                      </tr>
+                    </table>
+                    <!--<![endif]-->
+                  </td>
+                </tr>
+
+                <!-- Facts -->
+                <tr>
+                  <td class="pad" style="padding:20px 44px 0 44px;">
+                    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
+                      <tr>
+                        <td class="chip" width="33%" valign="top" style="padding:0 4px 0 0;">
+                          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color:#F1EDE8; border-radius:12px;">
+                            <tr><td style="padding:12px 12px; font-family:Inter, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size:13px; line-height:18px; color:#3A3028;"><span style="font-size:16px;">⏱️</span><br><strong style="color:#2A211B;">5 dakika</strong><br>geçerli</td></tr>
+                          </table>
+                        </td>
+                        <td class="chip" width="33%" valign="top" style="padding:0 2px;">
+                          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color:#F1EDE8; border-radius:12px;">
+                            <tr><td style="padding:12px 12px; font-family:Inter, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size:13px; line-height:18px; color:#3A3028;"><span style="font-size:16px;">🔒</span><br><strong style="color:#2A211B;">Tek</strong><br>kullanımlık</td></tr>
+                          </table>
+                        </td>
+                        <td class="chip" width="33%" valign="top" style="padding:0 0 0 4px;">
+                          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color:#F1EDE8; border-radius:12px;">
+                            <tr><td style="padding:12px 12px; font-family:Inter, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size:13px; line-height:18px; color:#3A3028;"><span style="font-size:16px;">📱</span><br><strong style="color:#2A211B;">Her cihazda</strong><br>açılır</td></tr>
+                          </table>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+
+                <!-- Fallback link -->
+                <tr>
+                  <td class="pad" style="padding:28px 44px 0 44px; font-family:Inter, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size:13px; line-height:20px; color:#62564C;">
+                    Buton açılmazsa bu bağlantıyı tarayıcına yapıştır:<br>
+                    <a href="{{ .RedirectTo }}?token_hash={{ .TokenHash }}&type=recovery" target="_blank" style="color:#A55335; word-break:break-all;">{{ .RedirectTo }}?token_hash={{ .TokenHash }}&type=recovery</a>
+                  </td>
+                </tr>
+
+                <!-- Divider -->
+                <tr>
+                  <td class="pad" style="padding:28px 44px 0 44px;">
+                    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0"><tr><td style="height:1px; line-height:1px; font-size:0; background-color:#E7DFD7;">&nbsp;</td></tr></table>
+                  </td>
+                </tr>
+
+                <!-- Safety note -->
+                <tr>
+                  <td class="pad" style="padding:20px 44px 40px 44px;">
+                    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
+                      <tr>
+                        <td width="28" valign="top" style="font-size:18px; line-height:22px;">🛡️</td>
+                        <td style="font-family:Inter, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size:14px; line-height:22px; color:#62564C;">
+                          <strong style="color:#3A3028;">Bu isteği sen yapmadıysan</strong> endişelenme: bu e-postayı yok sayabilirsin. Butona dokunup yeni bir şifre kaydetmedikçe şifren değişmez.
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+
+              </table>
+            </td>
+          </tr>
+
+          <!-- Footer -->
+          <tr>
+            <td align="center" style="padding:24px 16px 8px 16px; font-family:Inter, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size:12px; line-height:18px; color:#6D6157;">
+              <strong style="color:#3A3028;">Helix</strong> · Kişisel finansın, tek yerde.<br>
+              Bu e-posta hesabınla ilgili bir işlem için otomatik gönderildi; yanıtlamana gerek yok.
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>

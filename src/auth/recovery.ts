@@ -1,6 +1,7 @@
 /** Pure password-recovery deep-link parsing for web and native URLs. */
 
 type RecoveryLink =
+  | { kind: "tokenHash"; tokenHash: string }
   | { kind: "code"; code: string }
   | { kind: "tokens"; accessToken: string; refreshToken: string }
   | { kind: "expired" }
@@ -86,6 +87,16 @@ export function parsePasswordRecoveryUrl(url: string | null, target: RecoveryTar
   if (expired) return { kind: "expired" };
   if (params.has("error") || params.has("error_code")) return { kind: "invalid" };
 
+  // The link the recovery e-mail carries now. It lands on this screen with the
+  // token still unspent, instead of passing through Supabase's own verify
+  // endpoint first. That endpoint spends the token on the first GET — a mail
+  // client's link checker, or a second tap after an in-app browser failed —
+  // and hands back a PKCE code only the browser that REQUESTED the reset can
+  // redeem. Both were reported: "the link expired" seconds after it arrived,
+  // and the sign-in screen opening instead of this one.
+  const tokenHash = params.get("token_hash");
+  if (tokenHash) return params.get("type") === "recovery" ? { kind: "tokenHash", tokenHash } : { kind: "invalid" };
+  // Kept for links already sitting in inboxes from before the template moved.
   const code = params.get("code");
   if (code) return { kind: "code", code };
   const accessToken = params.get("access_token");

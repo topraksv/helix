@@ -52,7 +52,12 @@ export default function ResetPasswordScreen() {
       setError(null);
       try {
         const result = await completePasswordRecovery(password);
-        if (result) setError(result);
+        // A spent or foreign link leaves nothing to retry on this form, so it
+        // gets the screen that offers a new link rather than a line under a
+        // button that can no longer work.
+        if (result === tr.auth.resetExpiredBody) setState("expired");
+        else if (result === tr.auth.resetInvalidBody) setState("invalid");
+        else if (result) setError(result);
         else setState("success");
       } catch {
         setError(tr.errors.requestFailed);
