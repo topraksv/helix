@@ -305,6 +305,16 @@ describe("release contract", () => {
     expect(full).toContain("fetch-depth: 0");
   });
 
+  it("divides the mutation gate across as many runners as the matrix holds, and covers once", () => {
+    const full = ci.slice(ci.indexOf("  full-gate:"), ci.indexOf("  web-build:"));
+    const shards = full.match(/shard: \[([\d, ]+)\]/)?.[1]?.split(",").map((value) => Number(value.trim()));
+    expect(shards).toEqual([1, 2, 3]);
+    expect(full).toContain(`MUTATION_SHARD: \${{ matrix.shard }}/${shards!.length}`);
+    expect(full).toMatch(/if: matrix\.shard == 1\n\s+run: npm run test:coverage/);
+    // A shard dealt nothing skips the pass rather than running it on an empty list.
+    expect(full).toMatch(/if: steps\.scope\.outputs\.files != '0'\n\s+run: npm run test:mutation:ci/);
+  });
+
   it("gates automatic and manual deploys on the same successful run", () => {
     for (const job of ["deploy-web", "deploy-mobile"] as const) {
       const condition = ci.slice(ci.indexOf(`  ${job}:\n`), ci.indexOf("steps:", ci.indexOf(`  ${job}:\n`)));

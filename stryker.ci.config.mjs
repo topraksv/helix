@@ -1,6 +1,6 @@
 import broadConfig from "./stryker.config.mjs";
 import { execFileSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, statSync } from "node:fs";
 import { resolve } from "node:path";
 
 /**
@@ -169,11 +169,38 @@ export function selectMutationScope({ base, head, eventName = "local", cwd = pro
   }
 }
 
-const mutate = selectMutationScope({
-  base: process.env.MUTATION_BASE_SHA,
-  head: process.env.MUTATION_HEAD_SHA,
-  eventName: process.env.MUTATION_EVENT_NAME,
-});
+/**
+ * The part of the scope one runner mutates, when `MUTATION_SHARD` is `k/n`.
+ *
+ * `.github/workflows/ci.yml` records why the gate is divided. Files are dealt
+ * largest first to the lightest shard, weighed in bytes — close enough to a
+ * mutant count, and known to every runner from the checkout alone, so each one
+ * deals the same hand and the shards together are exactly the scope.
+ */
+export function shardOfScope(files, spec, sizeOf) {
+  if (!spec) return files;
+  const match = /^(\d+)\/(\d+)$/.exec(spec);
+  const index = Number(match?.[1]) - 1;
+  const count = Number(match?.[2]);
+  if (!match || index < 0 || index >= count) throw new Error(`MUTATION_SHARD must be k/n with 1 <= k <= n, got "${spec}".`);
+  const shards = Array.from({ length: count }, () => ({ files: [], bytes: 0 }));
+  for (const file of [...files].sort((a, b) => sizeOf(b) - sizeOf(a) || a.localeCompare(b))) {
+    const lightest = shards.reduce((best, shard) => (shard.bytes < best.bytes ? shard : best));
+    lightest.files.push(file);
+    lightest.bytes += sizeOf(file);
+  }
+  return shards[index].files.sort();
+}
+
+const mutate = shardOfScope(
+  selectMutationScope({
+    base: process.env.MUTATION_BASE_SHA,
+    head: process.env.MUTATION_HEAD_SHA,
+    eventName: process.env.MUTATION_EVENT_NAME,
+  }),
+  process.env.MUTATION_SHARD,
+  (file) => statSync(resolve(process.cwd(), file)).size,
+);
 
 export default {
   ...broadConfig,

@@ -172,6 +172,22 @@ jobs:
     if: needs.classify.outputs.full_gate == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 90
+    # Divided across runners rather than given a longer limit. One runner
+    # stopped being enough on 2026-09-15: the 1.8.0 release changed 28 files in
+    # scope, 9,832 mutants, which took 67 minutes on four local workers and ran
+    # past this job's 90 minutes on a GitHub runner — the deploy waited behind a
+    # gate that had found nothing. Every job keeps its limit
+    # (`tests/release-config.test.ts`); `stryker.ci.config.mjs` deals each shard
+    # its part of the scope.
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
+    env:
+      MUTATION_BASE_SHA: ${{ github.event.before }}
+      MUTATION_HEAD_SHA: ${{ github.sha }}
+      MUTATION_EVENT_NAME: ${{ github.event_name }}
+      MUTATION_SHARD: ${{ matrix.shard }}/3
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -186,15 +202,22 @@ jobs:
       - run: npm ci
       # Coverage repeats the unit suite to enforce the per-file financial and
       # persistence thresholds; the light run remains mandatory on every push.
-      - run: npm run test:coverage
+      # Once per run, so on one shard.
+      - if: matrix.shard == 1
+        run: npm run test:coverage
+      # A shard dealt no file skips the pass instead of handing Stryker an
+      # empty list, which a change touching one file does to two of the three.
+      - id: scope
+        run: |
+          set -euo pipefail
+          files=$(node --input-type=module -e 'const { default: config } = await import("./stryker.ci.config.mjs"); console.log(config.mutate.length)')
+          echo "files=$files" >> "$GITHUB_OUTPUT"
+          echo "shard $MUTATION_SHARD mutates $files file(s)"
       # Mutate high-risk production files changed after the Phase 6 cutover.
       # Config-only changes and the cutover push use the proven sentinel scope;
       # the canonical broad command remains the honest red gap inventory.
-      - run: npm run test:mutation:ci
-        env:
-          MUTATION_BASE_SHA: ${{ github.event.before }}
-          MUTATION_HEAD_SHA: ${{ github.sha }}
-          MUTATION_EVENT_NAME: ${{ github.event_name }}
+      - if: steps.scope.outputs.files != '0'
+        run: npm run test:mutation:ci
 
   web-build:
     needs: classify

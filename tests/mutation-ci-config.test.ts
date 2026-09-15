@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { isMutationScoped, selectMutationScope } from "../stryker.ci.config.mjs";
+import { isMutationScoped, selectMutationScope, shardOfScope } from "../stryker.ci.config.mjs";
 
 const read = (path: string) => readFileSync(resolve(process.cwd(), path), "utf8");
 
@@ -154,6 +154,25 @@ describe("CI mutation contract", () => {
     expect(isMutationScoped("src/db/ids.ts")).toBe(true);
     // Outside the high-risk directories entirely: never mutated, never was.
     expect(isMutationScoped("src/ui/charts.tsx")).toBe(false);
+  });
+
+  /**
+   * The delivery gate runs in shards (`ci.yml`). What has to hold is that
+   * together they are exactly the scope — nothing mutated twice, nothing left
+   * out — and that every runner deals the same hand from the same tree.
+   */
+  it("deals every file of the scope to exactly one shard, heaviest first", () => {
+    const sizes: Record<string, number> = { "a.ts": 900, "b.ts": 500, "c.ts": 400, "d.ts": 300, "e.ts": 100 };
+    const files = Object.keys(sizes);
+    const sizeOf = (file: string) => sizes[file]!;
+    const shards = [1, 2, 3].map((shard) => shardOfScope(files, `${shard}/3`, sizeOf));
+    expect(shards).toEqual([["a.ts"], ["b.ts", "e.ts"], ["c.ts", "d.ts"]]);
+    expect(shards.flat().sort()).toEqual(files);
+    expect(shardOfScope(files, undefined, sizeOf)).toBe(files);
+    expect(shardOfScope(["only.ts"], "3/3", () => 1)).toEqual([]);
+    for (const spec of ["0/3", "4/3", "1/0", "2", "a/b"]) {
+      expect(() => shardOfScope(files, spec, sizeOf), spec).toThrow(/MUTATION_SHARD/);
+    }
   });
 
   it("allows a ref-free sentinel only for an explicit manual dispatch", () => {
