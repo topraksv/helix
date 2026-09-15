@@ -147,9 +147,15 @@ async function checkWeb(base, { expected, waitSeconds, version, slug }) {
   // shell is caught too.
   const route = await get(`${site}/upcoming`);
   if (route.status !== 200) return fail(`${site}/upcoming answered HTTP ${route.status}`);
-  const record = `production serves ${entry}, declaring ${version}`;
-  console.log(record);
-  if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, `### Web publication\n\n${record}\n`);
+  console.log(`production serves ${entry}, declaring ${version}`);
+  // The summary is Markdown rendered on the run page, so it records what this
+  // run asserted and has now confirmed — the bundle name it was handed and the
+  // version `app.json` names — and nothing the site sent. Where no bundle was
+  // expected, the version is the whole claim.
+  if (process.env.GITHUB_STEP_SUMMARY) {
+    const confirmed = expected ? `serves \`${expected}\`, declaring ${version}` : `declares ${version}`;
+    appendFileSync(process.env.GITHUB_STEP_SUMMARY, `### Web publication\n\nProduction ${confirmed}\n`);
+  }
 }
 
 async function checkExpoGo(projectMajor) {
