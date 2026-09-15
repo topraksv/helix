@@ -21,6 +21,7 @@ interface BackRouter<T> {
   canGoBack: () => boolean;
   back: () => void;
   replace: (href: T) => void;
+  dismissTo: (href: T) => void;
 }
 
 type DirtyExitFallback = (action: () => void) => boolean;
@@ -44,7 +45,15 @@ export function navigateBack<T>(router: BackRouter<T>, fallback: T): void {
   // opened more than once. A focused dirty form has the route-owned parent and
   // must get first refusal, otherwise Back can revisit the same form without
   // firing the native remove guard.
-  const dirtyHandled = dirtyExitFallback?.(() => router.replace(fallback)) ?? false;
+  //
+  // The confirmed exit goes back TO that parent; it never replaces the form
+  // with it. A form opened from a screen inside a tab lives on the root stack,
+  // and a replacement there mounted a second copy of the tabs holding the
+  // parent alone — whose own Back, with nothing to pop, fell through to the
+  // tab router's first route, so Taksitler went back to Durum. `dismissTo`
+  // pops to the parent where it already stands and replaces only when it is
+  // nowhere in the stack, which is the direct link this guard was written for.
+  const dirtyHandled = dirtyExitFallback?.(() => router.dismissTo(fallback)) ?? false;
   if (dirtyHandled) return;
   if (router.canGoBack()) router.back();
   // No history: a direct link, a hand-typed URL or a stale bookmark. The

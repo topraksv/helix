@@ -235,3 +235,31 @@ test("a direct link to Analysis falls back to its own parent", async ({ page }) 
   await page.getByRole("button", { name: "Geri" }).click();
   await expect(page).toHaveURL(/\/helix\/cash-flow$/);
 });
+
+/**
+ * Every screen goes back to its own section's main screen, whatever was done
+ * on it first.
+ *
+ * Reported on 2026-09-15: after trying a few buttons inside Taksitler, Back
+ * went to Durum instead of the Financial Table. The button was a form's Back
+ * with a draft in it. The confirmed discard REPLACED the form — which lives on
+ * the root stack — with Taksitler, mounting a second copy of the tabs that
+ * held Taksitler alone, and Taksitler's own Back, with nothing to pop, fell
+ * through to the tab router's first route.
+ */
+test("Installments goes back to the Financial Table after a dirty form is discarded", async ({ page }) => {
+  await onboard(page);
+  await page.getByRole("tab", { name: "Mali Tablo" }).click();
+  await page.getByRole("button", { name: "Taksitler", exact: true }).first().click();
+  await expect(page).toHaveURL(/\/helix\/cash-flow\/installments$/);
+
+  await page.getByRole("button", { name: "Taksit veya Kredi Ekle" }).first().click();
+  await page.getByRole("textbox", { name: "Başlık", exact: true }).fill("Kaydedilmeyecek plan");
+  await page.getByRole("button", { name: "Geri", exact: true }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Değişiklikleri sil", exact: true }).click();
+  await expect(page).toHaveURL(/\/helix\/cash-flow\/installments$/);
+
+  await page.getByRole("button", { name: "Geri", exact: true }).click();
+  await expect(page).toHaveURL(/\/helix\/cash-flow$/);
+  await expect(page.getByRole("heading", { name: "Mali Tablo", exact: true })).toBeVisible();
+});

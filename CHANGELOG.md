@@ -6,6 +6,12 @@ defterinde yazılıdır ve bu depoya dahil değildir.
 
 Notlar kısa tutulur: ne değişti, tek cümle. Sebebi ve ölçümü commit'te.
 
+## 1.8.1
+
+### Patch Changes
+
+- Bir formdan yazdıklarını kaydetmeden "Değişiklikleri sil" ile çıkınca geri tuşu artık ekranın kendi bölümüne dönüyor; önceden Taksitler'de geri tuşu Mali Tablo yerine Durum'u açıyordu.
+
 ## 1.8.0
 
 ### Minor Changes

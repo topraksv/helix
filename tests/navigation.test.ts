@@ -9,6 +9,7 @@ const mockRouter = (canGoBack: boolean) => ({
   canGoBack: () => canGoBack,
   back: vi.fn(),
   replace: vi.fn(),
+  dismissTo: vi.fn(),
 });
 
 describe("safe back navigation", () => {
@@ -26,7 +27,7 @@ describe("safe back navigation", () => {
     expect(router.replace).toHaveBeenCalledWith("/fallback");
   });
 
-  it("lets a focused dirty form confirm before a direct-link fallback", () => {
+  it("lets a focused dirty form confirm before it leaves for its parent", () => {
     const router = mockRouter(false);
     const confirm = vi.fn((action: () => void) => {
       action();
@@ -36,18 +37,29 @@ describe("safe back navigation", () => {
     navigateBack(router, "/fallback");
     unregister();
     expect(confirm).toHaveBeenCalledOnce();
-    expect(router.replace).toHaveBeenCalledWith("/fallback");
+    expect(router.dismissTo).toHaveBeenCalledWith("/fallback");
   });
 
-  it("does not replace a direct link twice when the guard owns the exit", () => {
+  it("does not leave twice when the guard owns the exit", () => {
     const router = mockRouter(false);
     const unregister = registerDirtyExitFallback(() => true);
     navigateBack(router, "/fallback");
     unregister();
+    expect(router.dismissTo).not.toHaveBeenCalled();
     expect(router.replace).not.toHaveBeenCalled();
   });
 
-  it("lets a dirty form choose its deterministic parent before browser history", () => {
+  /**
+   * Back TO the parent, never the form replaced by it.
+   *
+   * A form opened from a screen inside a tab lives on the root stack. Replacing
+   * it with that screen mounted a second copy of the tabs holding the screen
+   * alone, and the screen's own Back then fell through to the first tab:
+   * Taksitler went back to Durum after a discarded draft (2026-09-15). The
+   * browser-history case the guard exists for still never pops to a copy of
+   * the form, because `dismissTo` finds the parent or replaces with it.
+   */
+  it("lets a dirty form return to its deterministic parent instead of browser history", () => {
     const router = mockRouter(true);
     const unregister = registerDirtyExitFallback((action) => {
       action();
@@ -55,7 +67,8 @@ describe("safe back navigation", () => {
     });
     navigateBack(router, "/fallback");
     unregister();
-    expect(router.replace).toHaveBeenCalledWith("/fallback");
+    expect(router.dismissTo).toHaveBeenCalledWith("/fallback");
+    expect(router.replace).not.toHaveBeenCalled();
     expect(router.back).not.toHaveBeenCalled();
   });
 });
