@@ -534,16 +534,17 @@ jobs:
       - id: deployment
         uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5
         with:
-          # The action's 10-minute default is below what the Pages backend
-          # actually takes. On `8ac62ab` it sat in `deployment_in_progress`
-          # past the limit, the action aborted the run red — and Pages then
-          # published the very same artifact anyway. So the default buys no
-          # safety: it only converts a slow deploy into a false failure that
-          # also skips the live check below. Prior runs took 3m51s, 4m05s and
-          # 5m57s for identical bytes, so the ceiling has to clear that spread
-          # by a wide margin, not track it — and stay under the job's own
-          # limit, or the job's is the one that fires.
-          timeout: "1200000"
+          # Ten minutes is the most this action accepts: a higher value is
+          # clamped to 600000 with a warning on the run. Measured on this
+          # repository's own deploys — the thirty minutes this input asked for
+          # on 949f19d, and twenty on 5d2556c, were both clamped, so no deploy
+          # here has ever waited longer than ten. On `8ac62ab` the backend sat
+          # in `deployment_in_progress` past the limit, the action went red and
+          # Pages published the artifact anyway; prior runs took 3m51s to
+          # 5m57s. A deploy that crosses the cap is therefore a false failure,
+          # not a lost one: the run fails, and the next push measures from the
+          # last green run and publishes again.
+          timeout: "600000"
       # Not a 200: Pages answers 200 with the PREVIOUS deploy while the new one
       # propagates. The shell must reference the entry bundle `web-build` named,
       # the site must serve it, and it must declare the version `app.json`
