@@ -50,6 +50,7 @@ import { resolve } from "node:path";
 const CI_EXECUTED_SCRIPTS = [
   "scripts/check-lint-ratchet.mjs",
   "scripts/check-mutation-ratchet.mjs",
+  "scripts/check-published.mjs",
   "scripts/check-web-budget.mjs",
   "scripts/classify-changes.mjs",
   "scripts/export-e2e-web.mjs",
@@ -125,10 +126,12 @@ const NOT_SHIPPED = [
 /**
  * Controls whose own correctness decides whether either delivery can finish.
  *
- * A shipped change can fail its shared gate before publication. Its follow-up
- * may change only the classifier or delivery workflow, so these two paths must
- * rebuild and republish both surfaces after the repaired gate passes; otherwise
- * the already-built application bytes remain stranded behind the old failure.
+ * A change to either republishes both surfaces after the full gate, so a
+ * broken deploy job is found by the push that broke it rather than by the next
+ * release that needs it. This was also, once, the only way a shipping push
+ * that failed before publication got its bytes out; `ci.yml` now measures
+ * every push from the last green run, which carries those changes forward on
+ * its own.
  */
 const DELIVERY_CONTROL = [
   /^\.github\/workflows\/ci\.yml$/,
@@ -160,7 +163,7 @@ const AFFECTS_WEB_BUILD = [
   /^(babel|metro)\.config\.js$/,
   /^tsconfig\.json$/,
   /^\.npmrc$/,
-  /^scripts\/(check-web-budget|export-e2e-web|serve-static)\.mjs$/,
+  /^scripts\/(check-published|check-web-budget|export-e2e-web|serve-static)\.mjs$/,
 ];
 
 /** Verification and release plumbing that provably cannot change web bytes. */

@@ -15,7 +15,12 @@ export default defineConfig({
   forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 1 : 0,
   workers: 1,
-  reporter: process.env.CI ? [["line"], ["html", { open: "never" }]] : "list",
+  // `github` turns a failure AND a flaky pass into an annotation on the run's
+  // summary page. A test that failed once and passed on its retry was otherwise
+  // a line in one shard's log: measured, two of the six nightly runs before
+  // this change carried one each, and nothing outside that log said so. `line`
+  // keeps the progress a hung shard needs.
+  reporter: process.env.CI ? [["github"], ["line"], ["html", { open: "never" }]] : "list",
   expect: { timeout: 15_000 },
   use: {
     baseURL: "http://127.0.0.1:4173/helix",

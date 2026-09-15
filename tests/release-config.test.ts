@@ -32,6 +32,7 @@ const security = read(".github/workflows/security.yml");
 const nightly = read(".github/workflows/nightly.yml");
 const keepalive = read(".github/workflows/keepalive.yml");
 const database = read(".github/workflows/database.yml");
+const releaseWorkflow = read(".github/workflows/release.yml");
 const dependabot = read(".github/dependabot.yml");
 const packageJson = JSON.parse(read("package.json"));
 const packageLock = JSON.parse(read("package-lock.json"));
@@ -231,7 +232,7 @@ describe("release contract", () => {
     const mobile = ci.slice(ci.indexOf("  deploy-mobile:"));
     const deploy = mobile.split("\n").find((line) => line.includes("eas-cli@") && line.includes(" update "));
     expect(deploy).toBeDefined();
-    expect(deploy).toMatch(/npx --yes eas-cli@\d+\.\d+\.\d+ update /);
+    expect(deploy).toMatch(/npx --yes=false eas-cli@\d+\.\d+\.\d+ update /);
     expect(deploy).toContain("--branch preview");
     expect(deploy).toContain("--platform all");
     expect(deploy).toContain("--clear-cache");
@@ -295,11 +296,13 @@ describe("release contract", () => {
     expect(light).toContain("npx vitest run");
 
     const full = ci.slice(ci.indexOf("  full-gate:"), ci.indexOf("  web-build:"));
-    expect(full).toContain("needs: classify");
+    // Mutation waits for typecheck and lint: a push that fails either cannot
+    // deploy whatever a half-hour mutation shard finds.
+    expect(full).toContain("needs: [classify, light-gate]");
     expect(full).toContain("needs.classify.outputs.full_gate == 'true'");
     expect(full).toContain("npm run test:coverage");
     expect(full).toContain("npm run test:mutation:ci");
-    expect(full).toContain("MUTATION_BASE_SHA: ${{ github.event.before }}");
+    expect(full).toContain("MUTATION_BASE_SHA: ${{ needs.classify.outputs.base }}");
     expect(full).toContain("MUTATION_HEAD_SHA: ${{ github.sha }}");
     expect(full).toContain("MUTATION_EVENT_NAME: ${{ github.event_name }}");
     expect(full).toContain("fetch-depth: 0");
@@ -327,6 +330,68 @@ describe("release contract", () => {
       expect(condition, job).toContain(`needs.classify.outputs.deploy_${job === "deploy-web" ? "web" : "mobile"} == 'true'`);
     }
     expect(ci).not.toContain("release_approval");
+  });
+
+  /**
+   * What a push is measured from, and why it is not the previous push.
+   *
+   * Only a green run publishes what its diff selected. Measured from
+   * `github.event.before`, a push that followed a failed or cancelled run could
+   * not see that run's unpublished changes: replayed over 100 runs, eight
+   * windows per surface in which a green `main` was ahead of production, the
+   * longest 2.6 days, five of them closed by a manual dispatch.
+   */
+  it("measures a push from the last green run it descends from, and mutates that range", () => {
+    const classify = ci.slice(ci.indexOf("  classify:"), ci.indexOf("  light-gate:"));
+    expect(classify).toMatch(/permissions:\n\s+contents: read\n(?:\s+#.*\n)*\s+actions: read/);
+    expect(classify).toContain("base: ${{ steps.base.outputs.sha }}");
+    expect(classify).toContain("actions/workflows/ci.yml/runs?branch=main&event=push&status=success&per_page=1");
+    // Ancestry, not recency: a green run this commit does not descend from is
+    // not what production was built from.
+    expect(classify).toContain('git merge-base --is-ancestor "$green" "$HEAD_SHA"');
+    expect(classify).toContain("BASE_SHA: ${{ steps.base.outputs.sha }}");
+    expect(classify).not.toContain("BASE_SHA: ${{ github.event.before }}");
+    // A dispatch keeps no base, and with it the fail-open full gate.
+    expect(classify).toMatch(/if \[ "\$EVENT_NAME" = "push" \]; then\n\s+base="\$BEFORE_SHA"/);
+  });
+
+  it("never publishes a commit main has already moved past", () => {
+    for (const job of ["deploy-web", "deploy-mobile"] as const) {
+      const start = ci.indexOf(`  ${job}:\n`);
+      const end = job === "deploy-web" ? ci.indexOf("\n  deploy-mobile:", start) : ci.length;
+      const block = ci.slice(start, end);
+      const guard = block.indexOf("- name: Refuse to publish a commit main has moved past");
+      expect(guard, job).toBeGreaterThan(0);
+      for (const later of ["actions/checkout@", "actions/deploy-pages@", "eas-cli@"]) {
+        const at = block.indexOf(later);
+        if (at >= 0) expect(at, `${job}: ${later} must come after the guard`).toBeGreaterThan(guard);
+      }
+      // Failing, not skipping: a superseded run that went green would become
+      // the next push's base while having published nothing.
+      expect(block.slice(guard)).toMatch(/if \[ "\$head" != "\$GITHUB_SHA" \]; then\n[^\n]*\n\s+exit 1/);
+    }
+  });
+
+  it("counts a publication only when what is live is what this run built", () => {
+    const build = ci.slice(ci.indexOf("  web-build:"), ci.indexOf("  e2e-smoke:"));
+    expect(build).toContain("entry: ${{ steps.entry.outputs.path }}");
+    expect(build).toContain('node scripts/check-published.mjs entry dist >> "$GITHUB_OUTPUT"');
+    const web = ci.slice(ci.indexOf("  deploy-web:\n"), ci.indexOf("\n  deploy-mobile:"));
+    expect(web).toContain("ENTRY: ${{ needs.web-build.outputs.entry }}");
+    expect(web).toMatch(/node scripts\/check-published\.mjs web "\$BASE" --entry "\$ENTRY" --wait \d+/);
+    expect(web).not.toContain("curl");
+    // The mobile publication is verified and recorded by the same script…
+    expect(ci).toContain('node scripts/check-published.mjs ota "$RUNNER_TEMP/eas-update.json"');
+    // …and the nightly asks both surfaces again, of whatever is live.
+    expect(nightly).toContain("node scripts/check-published.mjs web https://topraksv.github.io/helix");
+    expect(nightly).toContain("node scripts/check-published.mjs expo-go");
+  });
+
+  it("turns a tag into a release only when the tagged commit shipped", () => {
+    expect(releaseWorkflow).toMatch(/contents: write\n(?:\s+#.*\n)*\s+actions: read/);
+    const shipped = releaseWorkflow.indexOf("runs?head_sha=$GITHUB_SHA&event=push&status=success&per_page=1");
+    expect(shipped).toBeGreaterThan(0);
+    expect(shipped).toBeLessThan(releaseWorkflow.indexOf('gh release create "$TAG"'));
   });
 
   it("keeps manual target overrides including a dual redeploy", () => {
@@ -438,7 +503,7 @@ describe("release contract", () => {
    * hang and never on ordinary variance.
    */
   it("bounds every job so a hang fails instead of occupying a runner for six hours", () => {
-    for (const [name, workflow] of Object.entries({ ci, security, nightly, keepalive, database })) {
+    for (const [name, workflow] of Object.entries({ ci, security, nightly, keepalive, database, release: releaseWorkflow })) {
       const jobsSection = workflow.slice(workflow.indexOf("\njobs:"));
       const jobs = [...jobsSection.matchAll(/^  ([a-z0-9-]+):$/gm)].map((match) => match[1]);
       expect(jobs.length, name).toBeGreaterThan(0);
@@ -484,7 +549,7 @@ describe("release contract", () => {
   });
 
   it("removes the checkout token before dependency or build code runs", () => {
-    for (const [name, workflow] of Object.entries({ ci, security, nightly })) {
+    for (const [name, workflow] of Object.entries({ ci, security, nightly, database, release: releaseWorkflow })) {
       const checkouts = workflow.split("uses: actions/checkout@").length - 1;
       const removals = workflow.split("persist-credentials: false").length - 1;
       expect(removals, name).toBe(checkouts);
@@ -511,16 +576,20 @@ describe("release contract", () => {
      * this move for the same reason.
      *
      * What replaces the lockfile hash is an EXACT version, taken from
-     * `eas.json` so the two cannot drift, and a hard ban on any floating
-     * range. A publisher that resolves at runtime is only acceptable while it
-     * cannot resolve to something new.
+     * `eas.json` so the two cannot drift, a hard ban on any floating range,
+     * and a resolution date for everything beneath it. A publisher that
+     * resolves at runtime is only acceptable while it cannot resolve to
+     * something new, and an exact top-level version alone did not make that
+     * true: each of its transitive ranges still took whatever was newest on
+     * the day of the publish.
      */
     const mobile = ci.slice(ci.indexOf("  deploy-mobile:"));
     const deploy = mobile.split("\n").find((line) => line.includes("eas-cli@") && line.includes(" update "));
     expect(deploy).toBeDefined();
-    expect(deploy).toContain(`npx --yes eas-cli@${eas.cli.version} update`);
+    expect(deploy).toContain(`npx --yes=false eas-cli@${eas.cli.version} update`);
     expect(deploy).not.toContain("@latest");
     expect(deploy).not.toMatch(/eas-cli@[\^~]/);
+    expect(mobile).toMatch(/npm_config_before: "\d{4}-\d{2}-\d{2}"/);
 
     // Not installed anywhere: that is the point of the move.
     expect(packageJson.devDependencies["eas-cli"]).toBeUndefined();
@@ -529,18 +598,32 @@ describe("release contract", () => {
     expect(Object.keys(packageJson.overrides)).not.toContain(`eas-cli@${eas.cli.version}`);
   });
 
-  it("withholds the Expo publish credential from dependency installation", () => {
+  it("withholds the Expo publish credential from everything that installs", () => {
     const mobile = ci.slice(ci.indexOf("  deploy-mobile:"));
     const jobHeader = mobile.slice(0, mobile.indexOf("    steps:"));
     expect(jobHeader).not.toContain("EXPO_TOKEN");
 
     const installAt = mobile.indexOf("- run: npm ci");
+    const cliAt = mobile.indexOf("- name: Install the pinned EAS CLI without the credential");
     const publishAt = mobile.indexOf("- name: Publish Expo Go preview update");
     expect(installAt).toBeGreaterThanOrEqual(0);
-    expect(publishAt).toBeGreaterThan(installAt);
+    expect(cliAt).toBeGreaterThan(installAt);
+    expect(publishAt).toBeGreaterThan(cliAt);
+
+    // The CLI's tree arrives in a step without the token and runs no install
+    // hook — dtrace-provider's native build and protobufjs's postinstall are
+    // the two it carries.
+    const cliStep = mobile.slice(cliAt, publishAt);
+    expect(cliStep).not.toContain("EXPO_TOKEN");
+    expect(cliStep).toContain(`npx --yes --ignore-scripts eas-cli@${eas.cli.version} --version`);
+
+    // The step that holds the token may not install anything. `--yes=false`
+    // makes npx refuse a package it does not already have; `--no` looks the
+    // same and is not — npm takes the package name as that flag's value.
     const publishStep = mobile.slice(publishAt);
     expect(publishStep).toContain("EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}");
-    expect(publishStep).toContain("npx --yes eas-cli@");
+    expect(publishStep).toContain(`npx --yes=false eas-cli@${eas.cli.version} update`);
+    expect(publishStep).not.toMatch(/npx --no\b|npx --yes(?!=false)|npm (ci|install)/);
   });
 
   it("denies the repository token to the standalone keepalive job", () => {

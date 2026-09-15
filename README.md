@@ -222,6 +222,13 @@ tarayıcı senaryolarının tamamı ve mutasyon testi. Mutasyon testi kodu kası
 olarak bozar ve testlerin bunu fark edip etmediğini ölçer;
 `mutation-baseline.json` her dosyanın en son ne kadarını yakaladığını tutar.
 
+Yayın da ölçülür, varsayılmaz. Bir koşu düşer ya da iptal edilirse sonraki
+push, son yeşil koşudan bu yana yayımlanmamış ne varsa onu taşır. Web işi,
+canlı sitenin tam bu derlemenin paketini ve `app.json` sürümünü sunduğunu
+görmeden yayını başarılı saymaz; mobil iş, iki platformun update'ini de doğru
+SDK runtime'ında görmeden. Bir sürüm tag'i ancak yayımlanmış bir commit'i
+gösteriyorsa Releases sayfasına düşer.
+
 İki kapı da aynı biçimde çalışır: bir sayıyı eşik değil, geçmiş olarak tutar.
 `lint-baseline.json` her lint kuralının kaç kez tetiklendiğini kaydeder ve daha
 sık tetiklenmesi push'u düşürür — mevcut bulguları temizlemeden yenisinin

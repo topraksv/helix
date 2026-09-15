@@ -305,6 +305,8 @@ const limits = {
   // if one is approved later; neither map files nor bundle references ship.
   sourceMapFiles: 0,
   sourceMapReferences: 0,
+  // Nothing a server holds may reach a public site. See `CREDENTIAL_SHAPES`.
+  serverCredentialReferences: 0,
 };
 
 async function walk(directory) {
@@ -329,6 +331,44 @@ const sourceMapReferences = (
     (await readFile(file.path, "utf8")).includes("sourceMappingURL=") ? file : null
   )))
 ).filter(Boolean);
+/**
+ * Server credentials, by the shapes their issuers give them.
+ *
+ * The export is a public site, and the likeliest way a secret reaches it
+ * bypasses everything that scans the repository: an `EXPO_PUBLIC_*` value fed
+ * from a CI secret or a build environment never passes through a commit, so
+ * push protection never sees it. This is the one place that does. A finding
+ * names the shape and the file, never the value, because this output is a
+ * public log. Measured against the production and E2E exports when this was
+ * written: no match, and no JWT-shaped string at all.
+ */
+const CREDENTIAL_SHAPES = [
+  ["Supabase secret key", /\bsb_secret_[\w-]{16,}/],
+  ["Supabase access token", /\bsbp_[A-Za-z0-9]{40}\b/],
+  ["GitHub token", /\b(?:gh[pousr]_[A-Za-z0-9]{36}|github_pat_\w{40,})\b/],
+  ["private key", /-----BEGIN [A-Z ]*PRIVATE KEY-----\s+[A-Za-z0-9+/=\s]{64,}/],
+];
+// A JWT is a leak only when it carries the server role: the legacy anon key is
+// a JWT too, and it ships by design.
+const carriesServiceRole = (payload) => {
+  try {
+    return JSON.parse(Buffer.from(payload, "base64url").toString("utf8")).role === "service_role";
+  } catch {
+    return false;
+  }
+};
+const credentialFindings = (
+  await Promise.all(files
+    .filter((file) => [".js", ".css", ".html", ".json", ".txt", ".xml", ".svg", ".webmanifest"].includes(extname(file.path)))
+    .map(async (file) => {
+      const body = await readFile(file.path, "utf8");
+      const found = CREDENTIAL_SHAPES.filter(([, shape]) => shape.test(body)).map(([name]) => name);
+      const jwts = [...body.matchAll(/\beyJ[\w-]{8,}\.(eyJ[\w-]{8,})\.[\w-]{8,}/g)];
+      if (jwts.some((match) => carriesServiceRole(match[1]))) found.push("service-role JWT");
+      return found.map((name) => `${name} in ${relative(root, file.path)}`);
+    }))
+).flat();
+if (credentialFindings.length > 0) console.error(`Server credentials found: ${credentialFindings.join(", ")}`);
 const sum = (items) => items.reduce((total, item) => total + item.size, 0);
 const metrics = {
   entryJavaScript: entry?.size ?? 0,
@@ -338,6 +378,7 @@ const metrics = {
   fontBytes: sum(fonts),
   sourceMapFiles: sourceMaps.length,
   sourceMapReferences: sourceMapReferences.length,
+  serverCredentialReferences: credentialFindings.length,
 };
 
 for (const [name, value] of Object.entries(metrics)) {

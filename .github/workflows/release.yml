@@ -39,6 +39,8 @@ jobs:
     permissions:
       # The one job in this repository that writes to the repository itself.
       contents: write
+      # Reads `ci`'s run history for the tagged commit.
+      actions: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -60,6 +62,20 @@ jobs:
             echo "::error::tag $TAG does not match app.json's $shipped"
             exit 1
           fi
+          # A tag is what bisecting and rolling back trust, so it has to name a
+          # commit that shipped: one whose `ci` push run finished green, which
+          # is the run that publishes. The runbook said so and nothing held it.
+          # The tags stay the owner's own, signed; this only refuses to turn a
+          # mistaken one into a release. A tag pushed before its run finishes
+          # stops here too, and re-running this job once that run is green
+          # publishes it.
+          shipped_in=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?head_sha=$GITHUB_SHA&event=push&status=success&per_page=1" \
+            --jq '.workflow_runs[0].html_url // ""')
+          if [ -z "$shipped_in" ]; then
+            echo "::error::$TAG names $GITHUB_SHA, which has no green ci push run; tag the commit that shipped, or re-run this job once its run is green"
+            exit 1
+          fi
+          echo "$TAG shipped in $shipped_in"
           node scripts/release-notes.mjs "$version" > /tmp/notes.md
           # `gh release create` is not idempotent, and this job has every reason
           # to run twice: a transient `gh` failure after the release was already
