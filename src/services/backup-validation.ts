@@ -53,6 +53,8 @@ const DATE_COLUMNS = new Set([
   "entry_date",
   "effective_date",
   "purchase_date",
+  "paid_on",
+  "closed_on",
   "statement_date",
   "next_due_date",
   "trial_end_date",
@@ -276,6 +278,11 @@ interface TableRuleContext {
  * synced table is a decision made here rather than a table that quietly has
  * no rules. A table with nothing table-specific to say is simply absent.
  */
+/** A plan's instalment count, or the count an early closure remembers: 1–600. */
+function isPlanCount(value: unknown): boolean {
+  return isPositiveInteger(value) && value <= MAX_INSTALLMENT_COUNT;
+}
+
 const TABLE_RULES: Partial<Record<SyncedTableName, (raw: Record<string, unknown>, ctx: TableRuleContext) => boolean>> = {
   settings: (raw, { enforceInputLimits }) => {
     if (enforceInputLimits && (!requiredText(raw.key, 120) || !optionalText(raw.value, 50_000))) return false;
@@ -379,6 +386,14 @@ const TABLE_RULES: Partial<Record<SyncedTableName, (raw: Record<string, unknown>
 
   price_history: (raw) => isPositiveMoney(raw.amount_minor),
 
+  card_statement_payments: (raw, { enforceInputLimits }) => !(
+    !isPositiveMoney(raw.amount_minor)
+    || !["full", "minimum", "partial"].includes(String(raw.kind))
+    || typeof raw.statement_id !== "string"
+    || !isIsoDate(raw.paid_on)
+    || (enforceInputLimits && !optionalText(raw.note, 1_000))
+  ),
+
   recurring_incomes: (raw, { enforceInputLimits }) => {
     if (!isPositiveMoney(raw.default_amount_minor)) return false;
     if (enforceInputLimits && (!requiredText(raw.name, 120) || !optionalText(raw.note, 1_000))) return false;
@@ -397,8 +412,12 @@ const TABLE_RULES: Partial<Record<SyncedTableName, (raw: Record<string, unknown>
       : isPositiveMoney(raw.amount_minor);
   },
 
+  // A declared opening carries the same bounds as any amount: Postgres refuses
+  // one outside them, and a refused row stops its whole push batch.
   balance_adjustments: (raw, { enforceInputLimits }) =>
-    isSupportedMoney(raw.amount_minor) && (!enforceInputLimits || optionalText(raw.note, 1_000)),
+    isSupportedMoney(raw.amount_minor)
+    && (raw.declared_minor == null || isSupportedMoney(raw.declared_minor))
+    && (!enforceInputLimits || optionalText(raw.note, 1_000)),
 
   category_budgets: (raw) => isPositiveMoney(raw.amount_minor),
 
@@ -440,8 +459,8 @@ const TABLE_RULES: Partial<Record<SyncedTableName, (raw: Record<string, unknown>
 
   installment_plans: (raw, { enforceInputLimits }) => {
     if (
-      !isPositiveInteger(raw.installment_count)
-      || raw.installment_count > MAX_INSTALLMENT_COUNT
+      !isPlanCount(raw.installment_count)
+      || (raw.original_installment_count != null && !isPlanCount(raw.original_installment_count))
       || (enforceInputLimits && (
         !requiredText(raw.title, 120)
         || !optionalText(raw.note, 1_000)

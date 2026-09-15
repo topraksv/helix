@@ -49,7 +49,10 @@ async function coverageBundle(): Promise<ExportBundle> {
         start_month: "2026-08",
       }],
       computed_columns: [{ id: await deterministicId(naturalKeys.ccColumn(SOURCE_USER)) }],
-      balance_adjustments: [{ id: await deterministicId(naturalKeys.balanceAdjustment(SOURCE_USER, "2026-08-10")), date: "2026-08-10" }],
+      balance_adjustments: [
+        { id: await deterministicId(naturalKeys.balanceAdjustment(SOURCE_USER, "2026-08-10")), date: "2026-08-10" },
+        { id: await deterministicId(naturalKeys.monthOpeningDeclaration(SOURCE_USER, "2026-08")), date: "2026-07-31", declared_minor: 500_000 },
+      ],
       category_budgets: [{
         id: await deterministicId(naturalKeys.categoryBudget(SOURCE_USER, "2026-08", categoryId)),
         month: "2026-08",
@@ -85,6 +88,7 @@ async function coverageBundle(): Promise<ExportBundle> {
           import_key: STATEMENT_KEY,
           origin: "statement",
         },
+        { id: await deterministicId(naturalKeys.planPayoff(planId)), installment_plan_id: planId, installment_no: null },
       ],
       matrix_colors: [{
         id: await deterministicId(naturalKeys.matrixColor(SOURCE_USER, "cell", categoryId, "2026-08")),
@@ -109,5 +113,15 @@ describe("cross-account backup remap coverage", () => {
     expect(unresolved, "every deterministic fixture row must be proven by a resolver").toEqual([]);
     expect(new Set(idMap.values()).size).toBe(deterministicRows.length);
     expect([...idMap.values()].every((id) => isDeterministicId(id))).toBe(true);
+  });
+
+  it("keeps a declared opening and a loan payoff on the keys devices already hold", async () => {
+    const bundle = await coverageBundle();
+    const idMap = await buildIdRemap(bundle, SOURCE_USER, TARGET_USER);
+    const planId = String(bundle.tables.installment_plans![0]!.id);
+    // Spelled out rather than rebuilt from `naturalKeys`: synced rows were keyed
+    // this way, and a restore keying them any other way would fork every one.
+    expect(idMap.get(await deterministicId(`baldecl:${SOURCE_USER}:2026-08`))).toBe(await deterministicId(`baldecl:${TARGET_USER}:2026-08`));
+    expect(idMap.get(await deterministicId(`planpayoff:${planId}`))).toBe(await deterministicId(`planpayoff:${idMap.get(planId)}`));
   });
 });

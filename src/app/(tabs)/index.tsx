@@ -28,6 +28,7 @@ import { kv } from "../../services/kv";
 import {
   settingValue,
   useCategoriesState,
+  useCardSettlement,
   useCreditCardStatementsState,
   useLedgerState,
   useSettingsMapState,
@@ -439,6 +440,17 @@ export default function DashboardScreen() {
   const incomes = incomesState.data;
   const sources = sourcesState.data;
   const cardStatements = cardStatementsState.data;
+  // Payments recorded by hand. A partly paid statement still owes the rest on
+  // the list, and its charges no longer come off the forecast (spec §3.1f).
+  const { byStatement } = useCardSettlement();
+  const statementPaidMinor = useMemo(
+    () => new Map([...byStatement.values()].map((settled) => [settled.statementId, settled.paidMinor])),
+    [byStatement],
+  );
+  const partlyPaidStatementIds = useMemo(
+    () => new Set([...byStatement.values()].filter((settled) => settled.paidInFullOn == null).map((settled) => settled.statementId)),
+    [byStatement],
+  );
   const { status: dataStatus, retry: retryData } = combineLiveStates([
     ledgerState,
     categoriesState,
@@ -491,6 +503,7 @@ export default function DashboardScreen() {
     currentMonth: month,
     year,
     expectedTryMinor,
+    partlyPaidStatementIds,
   });
   const { lateItems: late, incomingMinor, outgoingMinor: remainingFixedMinor } = model;
   // Derived from every transaction the account has, so it is derived from the
@@ -518,10 +531,11 @@ export default function DashboardScreen() {
     categories: categories.map((category) => ({ id: category.id, name: category.name })),
     cards: sources.filter((source) => source.type === "credit_card"),
     statements: cardStatements,
+    statementPaidMinor,
     today,
     horizonDays: 31,
   }).filter((item) => item.status === "upcoming"),
-  [expected, txLike, subscriptions, incomes, categories, sources, cardStatements, today, catName]);
+  [expected, txLike, subscriptions, incomes, categories, sources, cardStatements, statementPaidMinor, today, catName]);
   const dashboardLate = late.slice(0, 5);
   const dashboardUpcoming = upcoming.slice(0, Math.max(0, 5 - dashboardLate.length));
   const timelineTypeLabel = (sourceType: (typeof upcoming)[number]["sourceType"]) => ({
@@ -1054,7 +1068,7 @@ export default function DashboardScreen() {
                 icon={u.direction === "in" ? ArrowDownLeft : CalendarClock}
                 iconColor={u.direction === "in" ? palette.positive : undefined}
                 title={u.name ?? u.categoryName ?? tr.common.paymentFallback}
-                subtitle={`${timelineTypeLabel(u.sourceType)} · ${tr.dashboard.inDays(daysBetweenISO(today, u.date))} · ${amountFragment(u)}`}
+                subtitle={`${timelineTypeLabel(u.sourceType)} · ${tr.dashboard.inDays(daysBetweenISO(today, u.date))} · ${amountFragment(u)}${u.paidMinor ? ` · ${tr.dashboard.cardStatementPaid(formatMinorCompact(u.paidMinor))}` : ""}`}
                 // A card statement is not an expected payment you confirm — it
                 // is a due date derived from the transactions on the card — so
                 // it has no button. It used to have nothing at all: half the
@@ -1062,14 +1076,13 @@ export default function DashboardScreen() {
                 // identically, and the largest amount on screen was always one
                 // of the inert ones.
                 //
-                // It opens Taksitler filtered to that card. The path needs the
-                // group: this tab is not inside the cash-flow stack, so the
-                // bare `/cash-flow/installments` matched no route from here —
-                // and the `as Href` cast was what let a path that does not
-                // exist compile. This one is uncast, so a wrong path here is a
-                // type error rather than a screen nobody asked for.
+                // It opens that statement, at a ROOT-level route: a screen
+                // pushed into the Mali Tablo tab's own stack became that stack's
+                // only screen, and the tab showed it until the app restarted.
+                // See `src/app/installments.tsx`. Uncast, so a wrong path here
+                // is a type error rather than a screen nobody asked for.
                 onPress={u.kind === "card_statement"
-                  ? () => router.push({ pathname: "/(tabs)/cash-flow/installments", params: { card: u.refId } })
+                  ? () => router.push({ pathname: "/card-statement", params: { card: u.refId, ...(u.statementId ? { statement: u.statementId } : {}) } })
                   : undefined}
                 chevron={u.kind === "card_statement"}
                 right={u.kind === "expected" && u.expectedId ? (

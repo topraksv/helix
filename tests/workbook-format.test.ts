@@ -3,7 +3,15 @@ import { tr } from "../src/i18n/tr";
 import {
   buildLedgerGrids,
   INVESTMENT_COLUMNS,
+  INVESTMENT_HEADERS,
+  quantityKey,
+  readDate,
+  readInvestmentSheet,
+  readMoney,
+  readSubscriptionSheet,
+  recordKey,
   SUBSCRIPTION_COLUMNS,
+  SUBSCRIPTION_HEADERS,
   WORKBOOK_COLUMNS,
   writeDate,
   writeFlag,
@@ -130,6 +138,7 @@ describe("workbook format", () => {
     expect(writeDate("2026-03"), "no day").toBe("");
     expect(writeDate("2026"), "no month").toBe("");
     expect(writeDate("--"), "nothing at all").toBe("");
+    expect(writeDate("-03-05"), "no year").toBe("");
     expect(writeFlag(true)).toBe("evet");
     expect(writeFlag(false)).toBe("");
   });
@@ -244,5 +253,166 @@ describe("workbook format", () => {
       // A total arriving as a string still counts.
       expect(toLedgerTotal({ item: "Market", month: "2026-01", total: "250" }, "Kategorisiz").minor).toBe(250);
     });
+  });
+});
+
+/**
+ * The record sheets come back (owner decision, 2026-09-14): what the writer
+ * puts in a cell is what the reader takes out, and what a spreadsheet does to
+ * a retyped cell is still read rather than refused.
+ */
+describe("reading the record sheets back", () => {
+  const sheetOf = <Row>(columns: WorkbookColumn<Row>[], rows: Row[]): string[][] =>
+    [columns.map((column) => column.header), ...rows.map((row) => columns.map((column) => column.write(row)))];
+
+  it("reads back every subscription field it writes", () => {
+    const yearly: SubscriptionRow = {
+      ...subscription, name: "Spotify", currency: "USD", amountMode: "variable", cycle: "yearly", intervalMonths: 12,
+      trialEndDate: "2026-05-01", autoPay: false, isActive: false, websiteDomain: "",
+    };
+    expect(readSubscriptionSheet(sheetOf(SUBSCRIPTION_COLUMNS, [subscription, yearly]))).toEqual({
+      problems: [],
+      records: [
+        {
+          row: 2, name: "Netflix", amountMinor: 22999, currency: "TRY", amountMode: "fixed", cycle: "monthly", intervalMonths: 1,
+          billingDay: 12, nextDueDate: "2026-04-12", trialEndDate: null, category: "Abonelik", source: "Worldcard",
+          person: "Toprak", autoPay: true, isActive: true, websiteDomain: "netflix.com",
+        },
+        {
+          row: 3, name: "Spotify", amountMinor: 22999, currency: "USD", amountMode: "variable", cycle: "yearly", intervalMonths: 12,
+          billingDay: 12, nextDueDate: "2026-04-12", trialEndDate: "2026-05-01", category: "Abonelik", source: "Worldcard",
+          person: "Toprak", autoPay: false, isActive: false, websiteDomain: "",
+        },
+      ],
+    });
+  });
+
+  it("reads back every investment field it writes, and an amount-only contribution as one", () => {
+    const contribution: InvestmentRow = {
+      product: "BES", assetType: "pension", marketCode: "", operationDate: "2026-03-05",
+      kind: "contribution", quantity: "", unitPriceMinor: 0, totalMinor: 150000, note: "Mart katkısı",
+    };
+    expect(readInvestmentSheet(sheetOf(INVESTMENT_COLUMNS, [{ ...investment, marketCode: "XAU" }, contribution]))).toEqual({
+      problems: [],
+      records: [
+        { row: 2, product: "Gram Altın", assetType: "metal", marketCode: "XAU", operationDate: "2026-02-01", kind: "buy", quantity: "12.5", unitPriceMinor: 480000, totalMinor: 6000000, note: "" },
+        { row: 3, product: "BES", assetType: "pension", marketCode: "", operationDate: "2026-03-05", kind: "contribution", quantity: null, unitPriceMinor: null, totalMinor: 150000, note: "Mart katkısı" },
+      ],
+    });
+  });
+
+  it("reads what a spreadsheet makes of a retyped cell, and a column moved or deleted", () => {
+    const read = readSubscriptionSheet([
+      ["Döngü", "Tutar", "Abonelik", "Sonraki Ödeme", "Ödeme Günü", "Otomatik Ödeme"],
+      ["yıllık", "1234.5", "'=Oyun", "2026-06-01", "3", "EVET"],
+    ]);
+    expect(read?.problems).toEqual([]);
+    expect(read?.records).toEqual([{
+      row: 2, name: "=Oyun", amountMinor: 123450, currency: "TRY", amountMode: "fixed", cycle: "yearly", intervalMonths: 12,
+      billingDay: 3, nextDueDate: "2026-06-01", trialEndDate: null, category: "", source: "", person: "",
+      autoPay: true, isActive: true, websiteDomain: "",
+    }]);
+  });
+
+  it("names the row and heading of a cell that does not read, and passes over a blank row", () => {
+    const grid = sheetOf(SUBSCRIPTION_COLUMNS, [subscription, subscription, subscription, subscription]);
+    const heading = (header: string) => grid[0]!.indexOf(header);
+    grid[1]![heading("Sonraki Ödeme")] = "31.02.2026";
+    grid[2] = grid[2]!.map(() => " ");
+    grid[3]![heading("Aktif")] = "belki";
+    const read = readSubscriptionSheet(grid);
+    expect(read?.problems).toEqual([
+      { sheet: "Abonelikler", row: 2, column: "Sonraki Ödeme" },
+      { sheet: "Abonelikler", row: 4, column: "Aktif" },
+    ]);
+    expect(read?.records.map((record) => record.row)).toEqual([5]);
+
+    const investments = sheetOf(INVESTMENT_COLUMNS, [investment, investment, investment]);
+    investments[1]![investments[0]!.indexOf("Adet")] = "on iki";
+    investments[2]![investments[0]!.indexOf("Varlık Türü")] = "Arsa";
+    expect(readInvestmentSheet(investments)?.problems).toEqual([
+      { sheet: "Yatırımlar", row: 2, column: "Adet" },
+      { sheet: "Yatırımlar", row: 3, column: "Varlık Türü" },
+    ]);
+  });
+
+  it("does not claim a sheet whose headings are not its own", () => {
+    expect(readSubscriptionSheet([["", "Maaş", "Kira"], ["Ocak 2026", "1", "2"]])).toBeNull();
+    expect(readInvestmentSheet([["Altın", "Dolar"], ["24gr", "760$"]])).toBeNull();
+    expect(readSubscriptionSheet([])).toBeNull();
+  });
+
+  it("reads money, days and keys the way a person writes them", () => {
+    expect(readMoney("1.234,56")).toBe(123456);
+    expect(readMoney("-5,00")).toBe(-500);
+    expect(readMoney("12.345")).toBe(1234500);
+    expect(readMoney("on lira")).toBeUndefined();
+    expect(readDate("5.3.2026")).toBe("2026-03-05");
+    expect(readDate("2026-03-05")).toBe("2026-03-05");
+    expect(readDate("30.02.2026")).toBeUndefined();
+    expect(recordKey(" Netflix ", "monthly")).toBe(recordKey("NETFLIX", "Monthly"));
+    expect(recordKey("Netflix", "monthly")).not.toBe(recordKey("Netflix", "yearly"));
+    expect(quantityKey("12,50")).toBe(quantityKey("12.5"));
+    expect(quantityKey(null)).toBe("");
+    expect(quantityKey(" ")).toBe("");
+    expect(quantityKey("12,50")).toBe("12.5");
+    expect(readMoney("12.34")).toBe(1234);
+    expect(recordKey("Netflix", null)).toBe(recordKey("Netflix", ""));
+    expect(recordKey("ab", "c")).not.toBe(recordKey("a", "bc"));
+  });
+
+  it("reads each cell trimmed once, a short row as blank, and a sheet only with every heading it needs", () => {
+    const S = SUBSCRIPTION_HEADERS;
+    const read = readSubscriptionSheet([
+      [` ${S.name} `, S.amount, S.cycle, S.billingDay, S.nextDue, S.category, S.active],
+      // A formula guard with a space after it, a decimal dot, and no cell at all under Aktif.
+      ["' =Oyun", " 12.34 ", ` ${tr.subs.monthly} `, " 7 ", " 5.3.2026 ", "' +Özel"],
+    ]);
+    expect(read).toEqual({
+      problems: [],
+      records: [{
+        row: 2, name: "=Oyun", amountMinor: 1234, currency: "TRY", amountMode: "fixed", cycle: "monthly", intervalMonths: 1,
+        billingDay: 7, nextDueDate: "2026-03-05", trialEndDate: null, category: "+Özel", source: "", person: "",
+        autoPay: false, isActive: false, websiteDomain: "",
+      }],
+    });
+    expect(readSubscriptionSheet([[S.name, S.amount], ["Oyun", "1,00"]])).toBeNull();
+  });
+
+  it("reads a day, a whole number and a quantity only when the whole cell is one", () => {
+    const S = SUBSCRIPTION_HEADERS;
+    const row = (billingDay: string, nextDue: string) => ["Oyun", "1,00", tr.subs.monthly, billingDay, nextDue];
+    expect(readSubscriptionSheet([
+      [S.name, S.amount, S.cycle, S.billingDay, S.nextDue],
+      row("a3", "05.03.2026"), row("3a", "05.03.2026"), row("3", "x5.3.2026"), row("3", "5.3.20261"),
+    ])?.problems).toEqual([
+      { sheet: "Abonelikler", row: 2, column: S.billingDay },
+      { sheet: "Abonelikler", row: 3, column: S.billingDay },
+      { sheet: "Abonelikler", row: 4, column: S.nextDue },
+      { sheet: "Abonelikler", row: 5, column: S.nextDue },
+    ]);
+
+    const I = INVESTMENT_HEADERS;
+    const metal = tr.investments.types.metal;
+    const sheet = readInvestmentSheet([
+      [I.product, I.assetType, I.kind, I.date, I.quantity, I.unitPrice, I.total],
+      ["Altın", metal, "Alış", "01.02.2026", "12,50", "100,00", "1250,00"],
+      ["Altın", metal, "Alış", "01.02.2026", "7", "", "700,00"],
+      // No quantity but a price is a price, not an amount-only contribution.
+      ["Altın", metal, "Alış", "01.02.2026", "", "100,00", "100,00"],
+      ["Altın", metal, "Alış", "01.02.2026", "2", "0,00", "0,00"],
+      ["Altın", metal, "Alış", "01.02.2026", "a1", "", ""],
+      ["Altın", metal, "Alış", "01.02.2026", "1a", "", ""],
+    ]);
+    expect(sheet?.records.map((record) => [record.quantity, record.unitPriceMinor, record.totalMinor])).toEqual([
+      ["12.50", 10000, 125000],
+      ["7", null, 70000],
+      [null, 10000, 10000],
+      ["2", 0, 0],
+    ]);
+    expect(sheet?.problems).toEqual([
+      { sheet: "Yatırımlar", row: 6, column: I.quantity },
+      { sheet: "Yatırımlar", row: 7, column: I.quantity },
+    ]);
   });
 });

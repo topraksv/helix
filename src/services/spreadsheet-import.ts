@@ -17,8 +17,9 @@ import type * as XLSXTypes from "xlsx";
 import { tr } from "../i18n/tr";
 import { UserFacingError } from "../domain/user-error";
 import type { MonthKey } from "../domain/dates";
-import { addMonthsToKey, yearOf } from "../domain/dates";
+import { addMonthsToKey, todayISO, yearOf } from "../domain/dates";
 import { isSupportedMinorAmount, roundHalfAwayFromZero, type Minor } from "../domain/money";
+import { readInvestmentSheet, readSubscriptionSheet, WORKBOOK_SHEETS, type InvestmentRecord, type RecordProblem, type SubscriptionRecord } from "../domain/workbook-format";
 
 export const MAX_WORKBOOK_BYTES = 15 * 1024 * 1024;
 const MAX_WORKBOOK_SHEETS = 100;
@@ -99,6 +100,12 @@ export interface UnparsedSheet {
   reason: string;
 }
 
+export interface WorkbookRecords {
+  subscriptions: SubscriptionRecord[];
+  investments: InvestmentRecord[];
+  problems: RecordProblem[];
+}
+
 export interface ParsedWorkbook {
   sheets: ParsedSheet[];
   unparsed: UnparsedSheet[];
@@ -106,6 +113,8 @@ export interface ParsedWorkbook {
    *  (e.g. a family member's card). Their installments are tracked but excluded
    *  from the ledger so they don't wrongly hit the balance. */
   informationalCards: string[];
+  /** Helix's own Abonelikler and Yatırımlar sheets, read back as records. */
+  records: WorkbookRecords;
 }
 
 /** Minimal cell shape mirroring SheetJS ({ v: value, f: formula, c: comments }). */
@@ -778,6 +787,7 @@ export function parseWorkbook(wb: XLSXTypes.WorkBook, xlsx: XlsxModule): ParsedW
   const sheets: ParsedSheet[] = [];
   const unparsed: UnparsedSheet[] = [];
   const informational = new Set<string>();
+  const records: WorkbookRecords = { subscriptions: [], investments: [], problems: [] };
   let totalCells = 0;
   for (const name of wb.SheetNames) {
     const worksheet = wb.Sheets[name];
@@ -797,6 +807,7 @@ export function parseWorkbook(wb: XLSXTypes.WorkBook, xlsx: XlsxModule): ParsedW
       }
     }
     const grid = worksheetToRawGrid(worksheet, xlsx);
+    if (readRecords(name, grid, records)) continue;
     for (const row of grid) {
       for (const cell of row) {
         const s = typeof cell?.v === "string" ? cell.v : "";
@@ -810,7 +821,34 @@ export function parseWorkbook(wb: XLSXTypes.WorkBook, xlsx: XlsxModule): ParsedW
     if ("year" in result) sheets.push(result);
     else unparsed.push(result);
   }
-  return { sheets, unparsed, informationalCards: [...informational] };
+  return { sheets, unparsed, informationalCards: [...informational], records };
+}
+
+/**
+ * Helix's own record sheets, recognised by name AND headings, so an owner's own
+ * "Yatırım" sheet of holdings is still refused rather than misread.
+ */
+function readRecords(name: string, grid: RawCell[][], into: WorkbookRecords): boolean {
+  const title = name.trim();
+  if (title !== WORKBOOK_SHEETS.subscriptions && title !== WORKBOOK_SHEETS.investments) return false;
+  const text = grid.map((row) => row.map(recordCellText));
+  if (title === WORKBOOK_SHEETS.subscriptions) {
+    const sheet = readSubscriptionSheet(text);
+    if (sheet) into.subscriptions.push(...sheet.records);
+    if (sheet) into.problems.push(...sheet.problems);
+    return sheet != null;
+  }
+  const sheet = readInvestmentSheet(text);
+  if (sheet) into.investments.push(...sheet.records);
+  if (sheet) into.problems.push(...sheet.problems);
+  return sheet != null;
+}
+
+/** A cell as the record readers take it: a spreadsheet's own date as its local day, anything else as written. */
+function recordCellText(cell: RawCell | undefined): string {
+  const value = cell?.v;
+  if (value instanceof Date) return todayISO(value);
+  return value == null ? "" : String(value);
 }
 
 /**

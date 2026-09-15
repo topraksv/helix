@@ -49,7 +49,7 @@ describe("upcoming transaction boundaries", () => {
       { id: "card-2", name: "İki" },
       { id: "card-3", name: "Üç" },
     ], statements, TODAY, 45)).toEqual([
-      { cardId: "card-1", cardName: "Bir", amountMinor: 200, dueDate: "2026-07-20" },
+      { cardId: "card-1", cardName: "Bir", statementId: "early", amountMinor: 200, paidMinor: 0, dueDate: "2026-07-20" },
     ]);
   });
 });
@@ -84,6 +84,6 @@ describe("upcoming timeline boundaries", () => {
     expect(result.find((item) => item.key === "expected:a")).toMatchObject({ sourceType: "subscription", name: null, categoryName: null });
     expect(result.find((item) => item.key === "expected:z")).toMatchObject({ sourceType: "recurring_income", direction: "in" });
     expect(result.find((item) => item.key === "transaction:unknown-category")).toMatchObject({ name: null, categoryName: null, direction: "in" });
-    expect(result.find((item) => item.key === "card:card-1")).toMatchObject({ kind: "card_statement", amountMinor: 400, direction: "out" });
+    expect(result.find((item) => item.key === "card:card-1")).toMatchObject({ kind: "card_statement", statementId: "statement", paidMinor: 0, amountMinor: 400, direction: "out" });
   });
 });

@@ -25,9 +25,10 @@ vi.mock("@supabase/supabase-js", () => ({
   createClient: vi.fn(() => harness.client),
 }));
 
-const { clearPasswordRecoveryDetected, getSupabase, wasPasswordRecoveryDetected } = await import(
+const { clearPasswordRecoveryDetected, createRecoveryClient, getSupabase, wasPasswordRecoveryDetected } = await import(
   "../src/sync/supabase"
 );
+const { createClient } = await import("@supabase/supabase-js");
 
 describe("password recovery session binding", () => {
   it("clears a recovery marker when a different account signs in", () => {
@@ -43,5 +44,25 @@ describe("password recovery session binding", () => {
     expect(wasPasswordRecoveryDetected()).toBe(false);
 
     clearPasswordRecoveryDetected();
+  });
+
+  /**
+   * A reset link is redeemed on a client that keeps its session in this
+   * document's memory. supabase-js mirrors a persisted session to every tab
+   * over a BroadcastChannel named after its storage key, and opens that
+   * channel only for a persisted session — so this is what keeps the account a
+   * link belongs to out of the tab already running Helix.
+   */
+  it("redeems reset links on a client whose session never leaves the tab", () => {
+    vi.mocked(createClient).mockClear();
+    expect(createRecoveryClient()).toBe(harness.client);
+    expect(createClient).toHaveBeenCalledWith("https://example.supabase.co", "publishable-test-key", {
+      auth: {
+        persistSession: false,
+        autoRefreshToken: false,
+        detectSessionInUrl: false,
+        storageKey: "helix-password-recovery",
+      },
+    });
   });
 });

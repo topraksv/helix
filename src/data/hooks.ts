@@ -5,7 +5,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { addDatabaseChangeListener } from "expo-sqlite";
-import { and, asc, desc, eq, getTableColumns, gte, isNull, lte } from "drizzle-orm";
+import { and, asc, desc, eq, getTableColumns, isNull } from "drizzle-orm";
 import { getDb } from "../db/client";
 import * as s from "../db/schema";
 import { useSession } from "../auth/session";
@@ -15,6 +15,8 @@ import { projectInvestmentState } from "../domain/investment-projection";
 import type { InvestmentState } from "../domain/investments";
 import { daysBetweenISO, todayISO, type MonthKey } from "../domain/dates";
 import type { TxLike } from "../domain/types";
+import { isWorkbookRemainderRow } from "../domain/transactions";
+import { settleCardStatements, type CardSettlement } from "../domain/card-statements";
 import { devError } from "../services/logger";
 import { decodeSettingValue, type SettingKey } from "../domain/settings";
 import { balanceColumnLabel, type StoredBalanceColumns } from "../domain/matrix-preferences";
@@ -550,26 +552,6 @@ export function usePendingExpectedState() {
   );
 }
 
-export function useTransactionsBetweenState(from: string, to: string) {
-  const userId = useUserId();
-  return useLive(
-    getDb()
-      .select()
-      .from(s.transactions)
-      .where(
-        and(
-          eq(s.transactions.userId, userId),
-          isNull(s.transactions.deletedAt),
-          gte(s.transactions.effectiveDate, from),
-          lte(s.transactions.effectiveDate, to),
-        ),
-      )
-      .orderBy(asc(s.transactions.effectiveDate)),
-    [userId, from, to],
-    ["transactions"],
-  );
-}
-
 export function useAllTransactionsState() {
   const userId = useUserId();
   return useSharedLive(
@@ -686,6 +668,7 @@ function toTxLike(
     cardStatementId: r.cardStatementId,
     subscriptionId: r.subscriptionId,
     isAggregate: r.isAggregate,
+    isWorkbookRemainder: isWorkbookRemainderRow(r),
   }));
 }
 
@@ -708,19 +691,89 @@ let txLikeCache: {
   rows: unknown;
   persons: unknown;
   categories: unknown;
-  value: TxLike[];
+  payments: unknown;
+  today: string;
+  raw: TxLike[];
+  settlement: CardSettlement;
 } | null = null;
 
-export function useTxLike(): TxLike[] {
+export function useStatementPaymentsState() {
+  const userId = useUserId();
+  return useSharedLive(
+    `card_statement_payments:${userId}`,
+    () =>
+      getDb()
+        .select()
+        .from(s.cardStatementPayments)
+        .where(and(eq(s.cardStatementPayments.userId, userId), isNull(s.cardStatementPayments.deletedAt))),
+    ["card_statement_payments"],
+  );
+}
+
+/**
+ * The ledger as recorded statement payments leave it, cached in the same entry
+ * as the list it starts from and for the same reason: one module value, so the
+ * list and its settlement can never be from two different reads.
+ *
+ * Every whole-account derivation reads `useTxLike`, so settling here is what
+ * makes a fully paid statement's charges land on the day they were paid in
+ * the table, the charts, the budgets and the dashboard alike — not in one of
+ * them. With no payment recorded the list keeps its identity.
+ */
+export function useCardSettlement(): CardSettlement {
   const rows = useAllTransactionsState().data;
   const persons = usePersonsState().data;
   const categories = useCategoriesState().data;
-  if (txLikeCache && txLikeCache.rows === rows && txLikeCache.persons === persons && txLikeCache.categories === categories) {
-    return txLikeCache.value;
+  const payments = useStatementPaymentsState().data;
+  const today = todayISO();
+  const cached = txLikeCache;
+  const sameRows = cached != null && cached.rows === rows && cached.persons === persons && cached.categories === categories;
+  if (sameRows && cached.payments === payments && cached.today === today) return cached.settlement;
+  const raw = sameRows ? cached.raw : toTxLike(rows, persons, categories);
+  const settlement = settleCardStatements(
+    raw,
+    payments.map((row) => ({ id: row.id, statementId: row.statementId, paidOn: row.paidOn, amountMinor: row.amountMinor, kind: row.kind })),
+    today,
+  );
+  txLikeCache = { rows, persons, categories, payments, today, raw, settlement };
+  return settlement;
+}
+
+export function useTxLike(): TxLike[] {
+  return useCardSettlement().transactions;
+}
+
+/**
+ * A date range's rows as the ledger counts them.
+ *
+ * A statement paid in full puts its charges on the day it was paid
+ * (`settleCardStatements`), so the month holding them in the table is not the
+ * month their stored date names. Read by stored date, the due month's list
+ * showed rows its cell had already let go, and the payment month's cell
+ * counted rows its list did not have. A moved row keeps every stored field;
+ * `settledOn` says where the ledger put it, and its status follows.
+ */
+export function useSettledTransactionsBetweenState(from: string, to: string) {
+  const state = useAllTransactionsState();
+  const settlement = useCardSettlement();
+  const rows = state.data;
+  const data = useMemo(() => settledRowsBetween(rows, settlement, from, to), [rows, settlement, from, to]);
+  return { ...state, data };
+}
+
+type StoredTransaction = ReturnType<typeof useAllTransactionsState>["data"][number];
+
+function settledRowsBetween(rows: readonly StoredTransaction[], settlement: CardSettlement, from: string, to: string) {
+  const settledById = settlement.byStatement.size === 0 ? null : new Map(settlement.transactions.map((tx) => [tx.id, tx]));
+  const inRange: (StoredTransaction & { settledOn: string | null })[] = [];
+  for (const row of rows) {
+    const moved = settledById?.get(row.id);
+    const settledOn = moved && moved.effectiveDate !== row.effectiveDate ? moved.effectiveDate : null;
+    const date = settledOn ?? row.effectiveDate;
+    if (date < from || date > to) continue;
+    inRange.push(moved && (settledOn || moved.status !== row.status) ? { ...row, status: moved.status, settledOn } : { ...row, settledOn: null });
   }
-  const value = toTxLike(rows, persons, categories);
-  txLikeCache = { rows, persons, categories, value };
-  return value;
+  return inRange.sort((a, b) => (a.settledOn ?? a.effectiveDate).localeCompare(b.settledOn ?? b.effectiveDate));
 }
 
 /**
@@ -837,7 +890,9 @@ export function useLedgerState(year: number): LiveValueResult<LedgerBundle | nul
   const categoriesState = useCategoriesState();
   const transactionsState = useAllTransactionsState();
   const adjustmentsState = useAdjustmentsState();
-  const txLike = useTxLike();
+  const paymentsState = useStatementPaymentsState();
+  const settlement = useCardSettlement();
+  const txLike = settlement.transactions;
   const settings = settingsState.data;
   const adjustments = adjustmentsState.data;
   const { status, ready, error, updatedAt, retry } = combineLiveStates([
@@ -846,6 +901,7 @@ export function useLedgerState(year: number): LiveValueResult<LedgerBundle | nul
     categoriesState,
     transactionsState,
     adjustmentsState,
+    paymentsState,
   ]);
 
   // `null` means ONE thing now: the queries have not answered yet. It used to
@@ -860,7 +916,7 @@ export function useLedgerState(year: number): LiveValueResult<LedgerBundle | nul
   const configuredStart = settingValue<MonthKey | null>(settings, "start_month", null);
   const openingBalanceMinor = settingValue<number>(settings, "opening_balance_minor", 0);
   const includePendingInCells = settingValue<boolean>(settings, "show_pending_in_table", true);
-  const inputs = [configuredStart, openingBalanceMinor, includePendingInCells, txLike, adjustments, today] as const;
+  const inputs = [configuredStart, openingBalanceMinor, includePendingInCells, txLike, adjustments, settlement.flows, today] as const;
   const endYear = ledgerChainEndYear(year, today);
   const cached = ledgerChainCache.get(endYear);
   let chain: LedgerChain;
@@ -872,7 +928,8 @@ export function useLedgerState(year: number): LiveValueResult<LedgerBundle | nul
       openingBalanceMinor,
       includePendingInCells,
       transactions: txLike,
-      adjustments: adjustments.map((row) => ({ date: row.date, amountMinor: row.amountMinor })),
+      adjustments: adjustments.map((row) => ({ id: row.id, date: row.date, amountMinor: row.amountMinor, declaredMinor: row.declaredMinor })),
+      settlements: settlement.flows,
       endYear,
       today,
     });

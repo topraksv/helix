@@ -211,6 +211,14 @@ function seedStatement(
   );
 }
 
+function seedStatementPayment(id: string, statementId: string, amountMinor = 250_00): void {
+  harness.db!.prepare(
+    `INSERT INTO card_statement_payments
+      (id, user_id, created_at, updated_at, deleted_at, tombstone_version, statement_id, paid_on, amount_minor, kind, note)
+     VALUES (?, ?, ?, ?, NULL, 0, ?, '2026-08-01', ?, 'partial', NULL)`,
+  ).run(id, USER, NOW, NOW, statementId, amountMinor);
+}
+
 function seedTransaction(
   id: string,
   options: {
@@ -754,6 +762,7 @@ describe("accounts repository persistence", () => {
     seedStatement("statement-july", "old-card", "2026-07");
     seedStatement("statement-june", "old-card", "2026-06", { dueDate: "2026-07-05" });
     seedStatement("deleted-statement", "old-card", "2026-05", { deletedAt: DELETED_AT });
+    seedStatementPayment("payment-july", "statement-july");
 
     const snapshot = await deleteUnreferencedPaymentSource(USER, "old-card");
 
@@ -766,9 +775,13 @@ describe("accounts repository persistence", () => {
       });
     }
     expect(row("credit_card_statements", "deleted-statement").deleted_at).toBe(DELETED_AT);
+    // A payment is a row of its statement's: it goes with it and returns with it.
+    expect(row("card_statement_payments", "payment-july")).toMatchObject({ deleted_at: NOW, tombstone_version: 1 });
+    expect(snapshot?.payments?.map((payment) => payment.id)).toEqual(["payment-july"]);
     expect(domainOutbox().map((entry) => [entry.table_name, entry.row_id])).toEqual([
       ["payment_sources", "old-card"],
       ...snapshot!.statements.map((statement) => ["credit_card_statements", String(statement.id)]),
+      ["card_statement_payments", "payment-july"],
     ]);
 
     clearOutbox();
@@ -777,10 +790,60 @@ describe("accounts repository persistence", () => {
     expect(row("credit_card_statements", "statement-july")).toMatchObject({ deleted_at: null, tombstone_version: 1 });
     expect(row("credit_card_statements", "statement-june")).toMatchObject({ deleted_at: null, tombstone_version: 1 });
     expect(row("credit_card_statements", "deleted-statement").deleted_at).toBe(DELETED_AT);
+    expect(row("card_statement_payments", "payment-july")).toMatchObject({ deleted_at: null, tombstone_version: 1 });
     expect(domainOutbox().map((entry) => [entry.table_name, entry.row_id])).toEqual([
       ["payment_sources", "old-card"],
       ...snapshot!.statements.map((statement) => ["credit_card_statements", String(statement.id)]),
+      ["card_statement_payments", "payment-july"],
     ]);
+  });
+
+  it("moves a statement payment onto the replacement card's statement for the same month, beside its charges", async () => {
+    seedSource("old-card", "credit_card", { statementDay: 25, dueDay: 5 });
+    seedSource("new-card", "credit_card", { statementDay: 20, dueDay: 10 });
+    seedStatement("old-july", "old-card", "2026-07", { statementDate: "2026-07-25", dueDate: "2026-08-05" });
+    seedStatement("old-june", "old-card", "2026-06", { statementDate: "2026-06-25", dueDate: "2026-07-05" });
+    seedTransaction("july-charge", { sourceId: "old-card", cardStatementId: "old-july" });
+    seedStatementPayment("paid-july", "old-july");
+    seedStatementPayment("paid-june", "old-june");
+
+    await reassignAndDeletePaymentSource(USER, "old-card", "new-card");
+
+    expect(row("transactions", "july-charge").card_statement_id).toBe(`det:cardStatement|${USER}|new-card|2026-07`);
+    expect(row("card_statement_payments", "paid-june").statement_id).toBe(`det:cardStatement|${USER}|new-card|2026-06`);
+    // July's statement is built for its charge and June's for its payment; neither is built twice.
+    expect(harness.cardStatementLookups).toBe(2);
+
+    expect(row("card_statement_payments", "paid-july")).toMatchObject({
+      statement_id: `det:cardStatement|${USER}|new-card|2026-07`,
+      deleted_at: null,
+    });
+    expect(row("credit_card_statements", `det:cardStatement|${USER}|new-card|2026-07`)).toMatchObject({
+      statement_date: "2026-07-20",
+      due_date: "2026-08-10",
+      deleted_at: null,
+    });
+  });
+
+  it("takes a statement payment with its card when the replacement cannot hold a statement, or there is none", async () => {
+    const cards = ["old-card", "debit-bound-card", "lone-card"];
+    for (const card of cards) {
+      seedSource(card, "credit_card", { statementDay: 25, dueDay: 5 });
+      seedStatement(`${card}-july`, card, "2026-07");
+      seedStatementPayment(`${card}-paid`, `${card}-july`);
+    }
+    seedSource("cash", "cash");
+    // A debit card can still carry the days it was created with; they do not make it a credit card.
+    seedSource("debit", "debit_card", { statementDay: 20, dueDay: 10 });
+
+    await reassignAndDeletePaymentSource(USER, "old-card", "cash");
+    await reassignAndDeletePaymentSource(USER, "debit-bound-card", "debit");
+    await reassignAndDeletePaymentSource(USER, "lone-card", null);
+
+    for (const card of cards) {
+      expect(row("card_statement_payments", `${card}-paid`)).toMatchObject({ statement_id: `${card}-july`, deleted_at: NOW });
+    }
+    expect(liveCount("credit_card_statements")).toBe(0);
   });
 
   it("restores a legacy source-only snapshot and rejects a stale compound restore atomically", async () => {
@@ -1024,10 +1087,18 @@ describe("accounts repository persistence", () => {
       status: "realized",
       card_statement_id: `det:cardStatement|${USER}|new-card|2026-07`,
     });
+    // A month-only card charge moves with the statement month it was entered
+    // for: July's statement on the new card closes on the 20th, due 10 August.
+    expect(row("transactions", "aggregate")).toMatchObject({
+      payment_source_id: "new-card",
+      purchase_date: "2026-07-20",
+      effective_date: "2026-08-10",
+      status: "realized",
+      card_statement_id: `det:cardStatement|${USER}|new-card|2026-07`,
+    });
     for (const [id, effectiveDate, status] of [
       ["historical", "2026-07-05", "realized"],
       ["pending-income", "2026-08-20", "pending"],
-      ["aggregate", "2026-08-20", "pending"],
     ] as const) {
       expect(row("transactions", id)).toMatchObject({
         payment_source_id: "new-card",
@@ -1083,6 +1154,22 @@ describe("accounts repository persistence", () => {
       effective_date: "2026-08-13",
       status: "realized",
       card_statement_id: `det:cardStatement|${USER}|new-card|2026-07`,
+    });
+  });
+
+  it("leaves a month total written before statements existed where it was", async () => {
+    seedSource("old-card", "credit_card", { statementDay: 25, dueDay: 5 });
+    seedSource("new-card", "credit_card", { statementDay: 20, dueDay: 10 });
+    seedTransaction("legacy-total", { sourceId: "old-card", cardStatementId: null, isAggregate: true });
+
+    await reassignAndDeletePaymentSource(USER, "old-card", "new-card");
+
+    expect(row("transactions", "legacy-total")).toMatchObject({
+      payment_source_id: "new-card",
+      purchase_date: null,
+      effective_date: "2026-08-20",
+      status: "pending",
+      card_statement_id: null,
     });
   });
 

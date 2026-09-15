@@ -76,6 +76,125 @@ function makeCmapBombPdf(rangeCount: number): Uint8Array {
   return new Uint8Array(Buffer.concat(parts));
 }
 
+/** `body` between a PDF header and a trailer, uncompressed. */
+const plainPdf = (body: string) =>
+  new Uint8Array(Buffer.from(`%PDF-1.5\n${body}trailer\n<< /Root 1 0 R >>\n%%EOF\n`, "latin1"));
+const MEGABYTE = "a".repeat(1_000_000);
+const NO_TEXT = { ok: false, reason: "no_text_layer" } as const;
+
+/** A PDF from numbered objects; a stream object is `[extra dictionary entries, body]`, deflated. */
+function pdfOf(objects: Record<number, string | [string, string]>): Uint8Array {
+  const parts: Buffer[] = [Buffer.from("%PDF-1.5\n", "latin1")];
+  for (const [number, object] of Object.entries(objects)) {
+    if (typeof object === "string") {
+      parts.push(Buffer.from(`${number} 0 obj\n${object}\nendobj\n`, "latin1"));
+      continue;
+    }
+    const body = deflateSync(Buffer.from(object[1], "latin1"));
+    parts.push(
+      Buffer.from(`${number} 0 obj\n<< ${object[0]} /Length ${body.length} /Filter /FlateDecode >>\nstream\n`, "latin1"),
+      body,
+      Buffer.from("\nendstream\nendobj\n", "latin1"),
+    );
+  }
+  parts.push(Buffer.from("trailer\n<< /Root 1 0 R >>\n%%EOF\n", "latin1"));
+  return new Uint8Array(Buffer.concat(parts));
+}
+
+/** A `ToUnicode` CMap naming each glyph id's character. */
+function toUnicode(glyphs: Record<string, string>): [string, string] {
+  const pairs = Object.entries(glyphs).map(([id, text]) => `<${id}> <${text.charCodeAt(0).toString(16).padStart(4, "0")}>`);
+  return ["", `begincmap\nbeginbfchar\n${pairs.join("\n")}\nendbfchar\nendcmap`];
+}
+
+/** An object stream holding `objects`, with the `number offset` header PDF 1.5 writes before `/First`. */
+function objectStream(objects: [number, string][]): [string, string] {
+  let offset = 0;
+  const header: string[] = [];
+  for (const [number, body] of objects) {
+    header.push(`${number} ${offset}`);
+    offset += body.length + 1;
+  }
+  const head = `${header.join(" ")}\n`;
+  return [`/Type /ObjStm /N ${objects.length} /First ${head.length}`, head + objects.map(([, body]) => body).join("\n") + "\n"];
+}
+
+const glyphFont = (map: number) => `<< /Type /Font /Subtype /Type0 /BaseFont /Sub /Encoding /Identity-H /ToUnicode ${map} 0 R >>`;
+const CATALOG = "<< /Type /Catalog /Pages 2 0 R >>";
+const page = (contents: number, fonts: string) => `<< /Type /Page /Parent 2 0 R /Contents ${contents} 0 R /Resources << /Font << ${fonts} >> >> >>`;
+
+describe("reading the fonts a statement's text is set in", () => {
+  it("decodes glyph ids through a font packed, with its pages, into an object stream", async () => {
+    const result = await extractPdfText(pdfOf({
+      1: CATALOG,
+      2: "<< /Type /Pages /Kids [3 0 R 10 0 R] /Count 2 >>",
+      4: ["", "BT /F1 10 Tf 40 800 Td <00010002> Tj ET"],
+      6: toUnicode({ "0001": "M", "0002": "G" }),
+      11: ["", "BT /F1 10 Tf 40 800 Td <0002> Tj ET"],
+      12: objectStream([[3, page(4, "/F1 5 0 R")], [5, glyphFont(6)], [10, page(11, "/F1 5 0 R")]]),
+    }));
+    expect(result.ok && result.pageCount).toBe(2);
+    expect(result.ok && result.text.split("\n").filter(Boolean)).toEqual(["MG", "G"]);
+  });
+
+  it("decodes each glyph font on a page through its own map", async () => {
+    const result = await extractPdfText(pdfOf({
+      1: CATALOG,
+      2: "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+      3: page(4, "/F1 5 0 R /F2 7 0 R"),
+      4: ["", "BT /F1 10 Tf 40 800 Td <0001> Tj /F2 10 Tf <0001> Tj ET"],
+      5: glyphFont(6),
+      6: toUnicode({ "0001": "M" }),
+      7: glyphFont(8),
+      8: toUnicode({ "0001": "Z" }),
+    }));
+    expect(result).toEqual({ ok: true, text: "MZ", pageCount: 1 });
+  });
+
+  it("reads a plain font's text beside a glyph font's, through a font dictionary of its own", async () => {
+    const result = await extractPdfText(pdfOf({
+      1: CATALOG,
+      2: "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+      3: "<< /Type /Page /Parent 2 0 R /Contents 4 0 R /Resources << /Font 9 0 R >> >>",
+      4: ["", "BT /F1 10 Tf 40 800 Td <0001> Tj /F2 10 Tf (PLAIN) Tj <41> Tj ET"],
+      5: glyphFont(6),
+      6: toUnicode({ "0001": "M" }),
+      7: "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+      9: "<< /F1 5 0 R /F2 7 0 R >>",
+    }));
+    expect(result).toEqual({ ok: true, text: "MPLAINA", pageCount: 1 });
+  });
+
+  it("refuses a glyph font that ships no map instead of guessing its letters", async () => {
+    const result = await extractPdfText(pdfOf({
+      1: CATALOG,
+      2: "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+      3: page(4, "/F1 5 0 R /F2 7 0 R"),
+      4: ["", "BT /F2 10 Tf 40 800 Td <0001> Tj ET"],
+      5: glyphFont(6),
+      6: toUnicode({ "0001": "M" }),
+      7: "<< /Type /Font /Subtype /Type0 /BaseFont /Bare /Encoding /Identity-H >>",
+    }));
+    expect(result).toEqual({ ok: false, reason: "unmapped_font" });
+  });
+
+  it("refuses a font name that means two different fonts on two pages", async () => {
+    const result = await extractPdfText(pdfOf({
+      1: CATALOG,
+      2: "<< /Type /Pages /Kids [3 0 R 9 0 R] /Count 2 >>",
+      3: page(4, "/F1 5 0 R"),
+      4: ["", "BT /F1 10 Tf 40 800 Td <0001> Tj ET"],
+      5: glyphFont(6),
+      6: toUnicode({ "0001": "M" }),
+      7: glyphFont(8),
+      8: toUnicode({ "0001": "Z" }),
+      9: page(10, "/F1 7 0 R"),
+      10: ["", "BT /F1 10 Tf 40 800 Td <0001> Tj ET"],
+    }));
+    expect(result).toEqual({ ok: false, reason: "unmapped_font" });
+  });
+});
+
 describe("reading a PDF's text layer", () => {
   it("reads a compressed text layer without any new dependency", async () => {
     const result = await extractPdfText(makePdf(["MIGROS MARKET", "1.234,56"]));
@@ -169,6 +288,45 @@ describe("refusing what it cannot read, with a reason", () => {
   });
 
   /**
+   * Files whose shape is the attack: each is sized past a second and a half on
+   * the reader it guards against — the measurement behind each is beside it —
+   * and linear work reads it in milliseconds, so the bound is orders of
+   * magnitude rather than a load-sensitive assertion.
+   */
+  it.each<[shape: string, build: () => Uint8Array, expected: Partial<Awaited<ReturnType<typeof extractPdfText>>>]>([
+    // 20_000 took 264 ms, four times that at twice as many: about 26 s here.
+    ["objects that never close", () => plainPdf("1 0 obj\n".repeat(200_000)), NO_TEXT],
+    // 60_000 digits took 1.3 s, four times that at twice as many.
+    ["a run of digits no object header ends", () => plainPdf(`${"1".repeat(120_000)}\n`), NO_TEXT],
+    // 10_000 took 108 ms, four times that at twice as many.
+    ["headers that one endobj closes", () => plainPdf(`${Array.from({ length: 60_000 }, (_, i) => `${i + 1} 0 obj\n`).join("")}endobj\n`), NO_TEXT],
+    // 2_000 took 160 ms, growing with the count.
+    ["an object stream whose offsets go back", () => {
+      const head = `${Array.from({ length: 40_000 }, (_, i) => `${i + 1} ${i % 2 ? MEGABYTE.length : 0}`).join(" ")}\n`;
+      const text = head + MEGABYTE;
+      return plainPdf(`9 0 obj\n<< /Type /ObjStm /N 40000 /First ${head.length} /Length ${text.length} >>\nstream\n${text}\nendstream\nendobj\n`);
+    }, NO_TEXT],
+    // 2_000 took 536 ms, growing with the count.
+    ["a megabyte named as the font dictionary of every page", () => plainPdf(`5 0 obj\n<< /Filler (${MEGABYTE}) >>\nendobj\n6 0 obj\n<< ${"/Font 5 0 R ".repeat(12_000)} >>\nendobj\n`), NO_TEXT],
+    // 4_000 took 463 ms, growing with the count.
+    ["a megabyte selected as a font by thousands of names", () => plainPdf(`5 0 obj\n<< /Filler (${MEGABYTE}) >>\nendobj\n6 0 obj\n<< /Font << ${Array.from({ length: 24_000 }, (_, i) => `/F${i} 5 0 R`).join(" ")} >> >>\nendobj\n`), NO_TEXT],
+    // 400 took 962 ms, growing with the count.
+    ["streams that share one full CMap", () => {
+      const cmap = "begincmap\nbeginbfrange\n<0000> <FFFF> <0041>\nendbfrange\nendcmap";
+      const streams = Array.from({ length: 3_000 }, (_, i) => `${i + 10} 0 obj\n<< /Length 15 >>\nstream\nBT <0041> Tj ET\nendstream\nendobj\n`).join("");
+      return plainPdf(`3 0 obj\n<< /Subtype /Type0 >>\nendobj\n4 0 obj\n<< /Length ${cmap.length} >>\nstream\n${cmap}\nendstream\nendobj\n${streams}`);
+    }, { ok: true }],
+    // 4_000 took 2 s, growing with the count.
+    ["streams with no dictionary before them", () => plainPdf(`${MEGABYTE}\n${">>stream\nendstream\n".repeat(8_000)}`), NO_TEXT],
+  ])("bounds the work of %s", async (_shape, build, expected) => {
+    const bytes = build();
+    const started = performance.now();
+    const result = await extractPdfText(bytes);
+    expect(performance.now() - started).toBeLessThan(1_500);
+    expect(result).toMatchObject(expected);
+  });
+
+  /**
    * The defect that made this module's inflate a dependency decision.
    *
    * The old inflate allocated 12x the compressed length and read the whole
@@ -226,5 +384,17 @@ describe("refusing what it cannot read, with a reason", () => {
     expect(Date.now() - started).toBeLessThan(10_000);
     // Whatever it decides, it must decide rather than exhaust memory.
     expect(typeof result.ok).toBe("boolean");
+  });
+
+  it("names a file of streams that each expand to the ceiling unreadable", async () => {
+    // A refused stream counted towards nothing, so each was inflated in full
+    // again: twenty took 450 ms, and a file this size may hold hundreds.
+    const bomb = deflateSync(Buffer.alloc(25 * 1024 * 1024));
+    const parts = [Buffer.from("%PDF-1.4\n", "latin1")];
+    for (let object = 10; object < 16; object += 1) {
+      parts.push(Buffer.from(`${object} 0 obj\n<< /Length ${bomb.length} /Filter /FlateDecode >>\nstream\n`, "latin1"), bomb, Buffer.from("\nendstream\nendobj\n", "latin1"));
+    }
+    parts.push(Buffer.from("trailer\n<< /Root 1 0 R >>\n%%EOF\n", "latin1"));
+    expect(await extractPdfText(new Uint8Array(Buffer.concat(parts)))).toEqual({ ok: false, reason: "unreadable" });
   });
 });

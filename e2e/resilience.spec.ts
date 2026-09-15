@@ -112,6 +112,39 @@ test("a second tab fails safely and its retry really recovers", async ({ page, c
   await assertNoRuntimeErrors(errors, testInfo);
 });
 
+/**
+ * The one route a second tab may open.
+ *
+ * A reset e-mail opens its link in a NEW tab, and whoever clicks it usually has
+ * Helix open already — so the tab that needs the reset screen is exactly the
+ * tab the database refuses. It used to ask for the other tab to be closed. The
+ * screen needs no database, so it is drawn instead of the wait, and the tab
+ * holding Helix keeps its session and every row.
+ *
+ * Which state the screen lands in depends on whether this build talks to
+ * Supabase at all, so the assertion is the screen itself, never the wait.
+ */
+test("a reset link opens its screen in a second tab while Helix holds the database", async ({ page, context }, testInfo) => {
+  const errors = collectRuntimeErrors(page);
+  await onboard(page);
+  await addMarketExpense(page, "Sıfırlama sekmesi", "275,00");
+
+  const second = await context.newPage();
+  await second.goto("/helix/reset-password?token_hash=pkce_e2e&type=recovery");
+  await expect(
+    second.getByRole("heading", { name: "Yeni şifreni belirle" })
+      .or(second.getByText("Helix başka bir sekmede açık. Devam etmek için o sekmeye dön.")),
+  ).toBeVisible();
+  await expect(second.getByText("Diğer Sekmede Açık")).toHaveCount(0);
+  await second.close();
+
+  await page.bringToFront();
+  await page.goto(`/helix/cash-flow/${currentMonthKey()}`);
+  await expect(page.getByRole("button", { name: /Market.*275,00/ })).toBeVisible();
+
+  await assertNoRuntimeErrors(errors, testInfo);
+});
+
 test("protected and modal deep links keep deterministic navigation @smoke @cross-browser", async ({ page }, testInfo) => {
   const errors = collectRuntimeErrors(page);
   await onboard(page);

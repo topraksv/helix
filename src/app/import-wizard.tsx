@@ -23,7 +23,8 @@ import * as Sharing from "expo-sharing";
 import { saveBinaryFile } from "../services/export-import";
 import { buildTemplateBytes, WORKBOOK_MIME } from "../services/workbook-export";
 import { appAlert } from "../ui/dialog";
-import { ImportBatchUnreadableError, importSheets, importedYears, openingBalanceFromSheets } from "../data/repo";
+import { ImportBatchUnreadableError, importSheets, importedYears, importWorkbookRecords, openingBalanceFromSheets, planWorkbookRecords, type RecordImportPlan } from "../data/repo";
+import type { RecordProblem } from "../domain/workbook-format";
 import { settingValue, usePersonsState, useSettingsMapState, useSourcesState, useUserId } from "../data/hooks";
 import { combineLiveStates } from "../data/live-state";
 import { isMonthDay, yearOf, type MonthKey } from "../domain/dates";
@@ -255,6 +256,42 @@ const STEP_MARK = 20;
 
 const hasBreakdown = (c: CellData) => Boolean(c.formulaParts || c.comment);
 
+/** How many unreadable rows are listed by name before the rest are counted. */
+const LISTED_PROBLEMS = 5;
+
+const hasRecords = (wb: ParsedWorkbook): boolean => wb.records.subscriptions.length + wb.records.investments.length > 0;
+
+function RecordProblems({ problems }: { problems: RecordProblem[] }) {
+  const { palette } = useTheme();
+  if (problems.length === 0) return null;
+  return (
+    <View style={{ marginTop: spacing.sm, gap: spacing.xs }}>
+      {problems.slice(0, LISTED_PROBLEMS).map((problem) => (
+        <Text key={`${problem.sheet}-${problem.row}`} style={[type.small, { color: palette.errorText }]}>
+          {tr.importer.recordsProblem(problem.sheet, problem.row, problem.column)}
+        </Text>
+      ))}
+      {problems.length > LISTED_PROBLEMS ? (
+        <Text style={[type.small, { color: palette.textSecondary }]}>{tr.importer.recordsMoreProblems(problems.length - LISTED_PROBLEMS)}</Text>
+      ) : null}
+    </View>
+  );
+}
+
+/** What the record sheets will do, said before anything is written. */
+function RecordsCard({ plan }: { plan: RecordImportPlan }) {
+  return (
+    <Card>
+      <SectionHeader>{tr.importer.recordsTitle}</SectionHeader>
+      <Body muted style={{ marginBottom: spacing.sm }}>{tr.importer.recordsHint}</Body>
+      <Body>{tr.importer.recordsCounts(tr.importer.recordsSubscriptions, plan.subscriptions)}</Body>
+      <Body>{tr.importer.recordsCounts(tr.importer.recordsInvestments, plan.investments)}</Body>
+      {plan.walletMissing ? <Body muted style={{ marginTop: spacing.sm }}>{tr.importer.recordsWalletMissing}</Body> : null}
+      <RecordProblems problems={plan.problems} />
+    </Card>
+  );
+}
+
 // --- screen ----------------------------------------------------------------
 export default function ImportWizardModal() {
   const userId = useUserId();
@@ -273,6 +310,11 @@ export default function ImportWizardModal() {
   const [reimportYears, setReimportYears] = useState<number[] | null>(null);
   const [doneCount, setDoneCount] = useState<number | null>(null);
   const [donePlans, setDonePlans] = useState(0);
+  const [recordPlan, setRecordPlan] = useState<RecordImportPlan | null>(null);
+  const [doneRecords, setDoneRecords] = useState<RecordImportPlan | null>(null);
+  // Whether the ledger was written too: a records-only import has no totals to
+  // split and no notes to place, so the ledger's own summary would be untrue.
+  const [doneLedger, setDoneLedger] = useState(false);
   const [cardCycleDrafts, setCardCycleDrafts] = useState<Record<string, { statementDay: string; dueDay: string }>>({});
   /**
    * Whether this import may move the ledger's anchor.
@@ -329,11 +371,13 @@ export default function ImportWizardModal() {
         if (signal.aborted) throw signal.reason;
         const parsed = await parseWorkbookBytes(bytes);
         if (signal.aborted) throw signal.reason;
-        if (parsed.sheets.length === 0) {
+        if (parsed.sheets.length === 0 && !hasRecords(parsed)) {
           setError(parsed.unparsed[0]?.reason ?? tr.importer.parseError);
           setWorkbook(null);
           return;
         }
+        // Said before anything is written, like the ledger's own preview.
+        setRecordPlan(hasRecords(parsed) ? await planWorkbookRecords(userId, parsed.records) : null);
         setWorkbook(parsed);
         setSelectedYears(yearsOf(parsed));
         // Balances and running totals start OFF: importing a sum of the columns
@@ -430,12 +474,39 @@ export default function ImportWizardModal() {
     context.report(2, 4);
     if (context.signal.aborted) throw context.signal.reason;
     setCommitting(true);
-    const { imported, plans } = await importSheets(userId, request).finally(() => setCommitting(false));
+    const { imported, plans } = await importSheets(userId, request)
+      .then(async (result) => {
+        setDoneRecords(workbook && hasRecords(workbook) ? await importWorkbookRecords(userId, workbook.records) : null);
+        return result;
+      })
+      .finally(() => setCommitting(false));
     context.report(3, 4);
     scheduleSync(userId);
     context.report(4, 4);
+    setDoneLedger(true);
     setDonePlans(plans);
     setDoneCount(imported);
+  };
+
+  /** A workbook holding only the record sheets: no year to choose, nothing of the ledger to write. */
+  const importRecordsOnly = async () => {
+    if (!workbook || !hasRecords(workbook)) return;
+    await operation.run(async () => {
+      setError(null);
+      try {
+        setCommitting(true);
+        const outcome = await importWorkbookRecords(userId, workbook.records).finally(() => setCommitting(false));
+        scheduleSync(userId);
+        setDoneRecords(outcome);
+        setDoneLedger(false);
+        setDonePlans(0);
+        setDoneCount(outcome.subscriptions.added + outcome.subscriptions.updated + outcome.investments.added + outcome.investments.updated);
+      } catch (e) {
+        if (e instanceof OperationCancelledError) return;
+        devError("import.records", e);
+        setError(userMessage(e, tr.errors.requestFailed));
+      }
+    });
   };
 
   const doImport = async (mode: "replace" | "add") => {
@@ -469,12 +540,26 @@ export default function ImportWizardModal() {
           <Row gap={spacing.md} style={{ alignItems: "center" }}>
             <CheckCircle2 accessible={false} size={26} color={palette.success} />
             <View style={{ flex: 1 }}>
-              <Text accessibilityRole="header" style={[type.heading, { color: palette.text }]}>{tr.importer.doneTitle(doneCount)}</Text>
-              <Body muted style={{ marginTop: spacing.xs }}>{tr.importer.doneHint}</Body>
+              <Text accessibilityRole="header" style={[type.heading, { color: palette.text }]}>
+                {doneLedger ? tr.importer.doneTitle(doneCount) : tr.importer.recordsTitle}
+              </Text>
+              {doneLedger ? <Body muted style={{ marginTop: spacing.xs }}>{tr.importer.doneHint}</Body> : null}
               {/* Said out loud, because it is the half of the import nobody can
                   see from the table: a workbook whose comments list instalments
                   produces plans, and "kayıt geldi" alone never mentioned them. */}
               {donePlans > 0 ? <Body muted style={{ marginTop: spacing.xs }}>{tr.importer.donePlans(donePlans)}</Body> : null}
+              {doneRecords ? (
+                <>
+                  <Body muted style={{ marginTop: spacing.xs }}>
+                    {tr.importer.recordsDone(
+                      doneRecords.subscriptions.added + doneRecords.subscriptions.updated,
+                      doneRecords.investments.added + doneRecords.investments.updated,
+                    )}
+                  </Body>
+                  {doneRecords.walletMissing ? <Body muted style={{ marginTop: spacing.xs }}>{tr.importer.recordsWalletMissing}</Body> : null}
+                  <RecordProblems problems={doneRecords.problems} />
+                </>
+              ) : null}
             </View>
           </Row>
         </Card>
@@ -511,10 +596,11 @@ export default function ImportWizardModal() {
     openingColumn,
   );
   const currentStartMonth = settingValue<MonthKey | null>(settingsState.data, "start_month", null);
-  // Earlier data wins without being asked, figure or no figure: the balance is
-  // the opening plus every row whatever its date, so history reaching back
-  // before the anchor has to bring the anchor with it. A sheet with no opening
-  // column states zero for its first month, and the line below shows that.
+  // Earlier data wins without being asked, figure or no figure: the workbook's
+  // first month opens at its own figure or at zero, which is the owner's rule.
+  // The line below states that month and amount. A balance typed at setup is
+  // not lost with the old anchor: the import keeps it as that month's declared
+  // opening (spec §3.1e).
   const openingIsEarlier = workbookOpening != null
     && (currentStartMonth == null || workbookOpening.month < currentStartMonth);
   const preview: ParsedSheet | undefined = activeSheets[0];
@@ -562,23 +648,31 @@ export default function ImportWizardModal() {
         </View>
       ) : (
         <>
-          {/* which years to import */}
-          <SectionHeader>{tr.importer.yearSelectTitle}</SectionHeader>
-          <SelectionGrid
-            options={years.map((y) => ({
-              value: String(y),
-              label: tr.importer.yearChip(y, monthCount(workbook, y)),
-            }))}
-            values={selectedYears.map(String)}
-            onToggle={(v) => {
-              const y = Number(v);
-              setSelectedYears((xs) => (xs.includes(y) ? xs.filter((x) => x !== y) : [...xs, y]));
-            }}
-          />
+          {years.length > 0 ? (
+            <>
+              {/* which years to import */}
+              <SectionHeader>{tr.importer.yearSelectTitle}</SectionHeader>
+              <SelectionGrid
+                options={years.map((y) => ({
+                  value: String(y),
+                  label: tr.importer.yearChip(y, monthCount(workbook, y)),
+                }))}
+                values={selectedYears.map(String)}
+                onToggle={(v) => {
+                  const y = Number(v);
+                  setSelectedYears((xs) => (xs.includes(y) ? xs.filter((x) => x !== y) : [...xs, y]));
+                }}
+              />
+            </>
+          ) : null}
           {workbook.unparsed.length > 0 ? (
             <Body muted style={{ marginBottom: spacing.md }}>
               {tr.importer.unparsedNote(workbook.unparsed.map((s) => s.sheetName).join(", "))}
             </Body>
+          ) : null}
+          {recordPlan ? <RecordsCard plan={recordPlan} /> : null}
+          {!preview && hasRecords(workbook) ? (
+            <Button icon={FileSpreadsheet} label={tr.importer.recordsImport} onPress={() => void importRecordsOnly()} loading={busy} disabled={busy} />
           ) : null}
 
           {preview ? (

@@ -29,7 +29,7 @@ describe("upcoming card statements", () => {
       { id: "st-2", paymentSourceId: "card-1", periodMonth: "2026-08", statementDate: "2026-08-20", dueDate: "2026-08-28" },
     ];
     expect(upcomingCardStatements(rows, [{ id: "card-1", name: "Kartım" }], statements, TODAY)).toEqual([
-      { cardId: "card-1", cardName: "Kartım", amountMinor: 350_00, dueDate: "2026-07-28" },
+      { cardId: "card-1", cardName: "Kartım", statementId: "st-1", amountMinor: 350_00, paidMinor: 0, dueDate: "2026-07-28" },
     ]);
   });
 
@@ -52,8 +52,26 @@ describe("upcoming card statements", () => {
       { id: "card-1", name: "Birinci" },
       { id: "card-2", name: "İkinci" },
     ], statements, TODAY)).toEqual([
-      { cardId: "card-1", cardName: "Birinci", amountMinor: 100_00, dueDate: "2026-07-28" },
-      { cardId: "card-2", cardName: "İkinci", amountMinor: 200_00, dueDate: "2026-07-29" },
+      { cardId: "card-1", cardName: "Birinci", statementId: "st-1", amountMinor: 100_00, paidMinor: 0, dueDate: "2026-07-28" },
+      { cardId: "card-2", cardName: "İkinci", statementId: "st-2", amountMinor: 200_00, paidMinor: 0, dueDate: "2026-07-29" },
+    ]);
+  });
+
+  it("owes only what a partial payment left, and moves on once nothing is left", () => {
+    const rows = [
+      tx({ type: "expense", status: "pending", effectiveDate: "2026-07-28", paymentSourceId: "card-1", cardStatementId: "st-1", amountTryMinor: 1_000_00 }),
+      tx({ type: "expense", status: "pending", effectiveDate: "2026-08-28", paymentSourceId: "card-1", cardStatementId: "st-2", amountTryMinor: 400_00 }),
+    ];
+    const statements = [
+      { id: "st-1", paymentSourceId: "card-1", periodMonth: "2026-07", statementDate: "2026-07-20", dueDate: "2026-07-28" },
+      { id: "st-2", paymentSourceId: "card-1", periodMonth: "2026-08", statementDate: "2026-08-20", dueDate: "2026-08-28" },
+    ];
+    const card = [{ id: "card-1", name: "Kartım" }];
+    expect(upcomingCardStatements(rows, card, statements, TODAY, 45, new Map([["st-1", 300_00]]))).toEqual([
+      { cardId: "card-1", cardName: "Kartım", statementId: "st-1", amountMinor: 700_00, paidMinor: 300_00, dueDate: "2026-07-28" },
+    ]);
+    expect(upcomingCardStatements(rows, card, statements, TODAY, 45, new Map([["st-1", 1_000_00]]))).toEqual([
+      { cardId: "card-1", cardName: "Kartım", statementId: "st-2", amountMinor: 400_00, paidMinor: 0, dueDate: "2026-08-28" },
     ]);
   });
 });

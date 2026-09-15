@@ -4,7 +4,7 @@ import { countsTowardBalance, projectedBalance, type MonthLedger, type UpcomingF
 import { addMonthsToKey, firstDayOf, monthKeyOf, type ISODate } from "./dates";
 import type { Distribution } from "./analytics";
 import type { ExpectedPaymentLike, TxLike } from "./types";
-import { financialFlow, projectedTransactionFlow } from "./transactions";
+import { financialFlow, projectedTransactionFlow, signedBalanceEffect } from "./transactions";
 
 interface DashboardModel<TExpected extends ExpectedPaymentLike = ExpectedPaymentLike> {
   pendingItems: TExpected[];
@@ -41,6 +41,13 @@ interface DashboardModelInput<TExpected extends ExpectedPaymentLike = ExpectedPa
   currentMonth: string;
   year: number;
   expectedTryMinor: (currency: string, amountMinor: number) => number | null;
+  /**
+   * Statements paid in part. Their charges stay pending on the due date, but
+   * the ledger gives every one of them back there: the balance has already
+   * lost what was paid, and the rest is owed to the card, not taken from the
+   * account (spec §3.1f). Counting them here would take them twice.
+   */
+  partlyPaidStatementIds?: ReadonlySet<string>;
 }
 
 /**
@@ -105,6 +112,7 @@ export function buildDashboardModel<TExpected extends ExpectedPaymentLike>(
   let expenseTotalMinor = 0;
   let transferTotalMinor = 0;
   let incomeTotalMinor = 0;
+  let workbookRemainderMinor = 0;
   let fixedMinor = 0;
   let variableMinor = 0;
   /**
@@ -123,7 +131,8 @@ export function buildDashboardModel<TExpected extends ExpectedPaymentLike>(
       transaction.personIsSelf &&
       transaction.status === "pending" &&
       transaction.effectiveDate >= input.today &&
-      transaction.effectiveDate <= input.monthEnd
+      transaction.effectiveDate <= input.monthEnd &&
+      !(transaction.cardStatementId && input.partlyPaidStatementIds?.has(transaction.cardStatementId))
     ) {
       monthEndFlows.push({ ...projectedTransactionFlow(transaction), date: transaction.effectiveDate });
       if (transaction.subscriptionId) {
@@ -134,6 +143,16 @@ export function buildDashboardModel<TExpected extends ExpectedPaymentLike>(
     }
 
     if (!countsTowardBalance(transaction, input.today)) continue;
+
+    // A workbook remainder keeps an imported column equal to the file. It is
+    // not spending, so it stays out of every split below and out of what a
+    // typical month is learned from; the balance already carries it.
+    if (transaction.isWorkbookRemainder) {
+      if (transaction.effectiveDate >= input.monthStart && transaction.effectiveDate <= input.monthEnd) {
+        workbookRemainderMinor += signedBalanceEffect(transaction);
+      }
+      continue;
+    }
 
     if (transaction.effectiveDate >= historyStart && transaction.effectiveDate < input.monthStart) {
       if (!transaction.installmentPlanId && !transaction.subscriptionId) {
@@ -200,6 +219,7 @@ export function buildDashboardModel<TExpected extends ExpectedPaymentLike>(
       expenseTotalMinor,
       transferTotalMinor,
       incomeTotalMinor,
+      workbookRemainderMinor,
     },
     fixedMinor,
     variableMinor,

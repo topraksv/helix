@@ -9,7 +9,7 @@ import { monthKeyOf, monthRange, type ISODate, type MonthKey } from "./dates";
 import type { Minor } from "./money";
 import { countsTowardBalance } from "./balance";
 import type { TxLike } from "./types";
-import { financialFlow } from "./transactions";
+import { financialFlow, signedBalanceEffect } from "./transactions";
 
 interface CategoryYearRow {
   categoryId: string;
@@ -37,7 +37,8 @@ export function categoryRangeMatrix(
     if (
       !countsTowardBalance(tx, today) ||
       (flow.type === "transfer" && !options.includeTransfers) ||
-      !tx.categoryId
+      !tx.categoryId ||
+      tx.isWorkbookRemainder
     ) continue;
     const month = monthKeyOf(tx.effectiveDate);
     if (month < start || month > end) continue;
@@ -78,6 +79,13 @@ export interface Distribution {
   /** Transfers (e.g. Yatırım) reported separately, never mixed into spending. */
   transferTotalMinor: Minor;
   incomeTotalMinor: Minor;
+  /**
+   * Workbook column remainders in the range, as their signed balance effect,
+   * and in none of the totals above (spec §3.1e). They keep the imported
+   * column equal to the file and are not spending: counted as it, a negative
+   * one shrank its category like a refund nobody made.
+   */
+  workbookRemainderMinor: Minor;
 }
 
 export function distributionForRange(
@@ -91,9 +99,14 @@ export function distributionForRange(
   let uncategorizedExpense = 0;
   let transferTotal = 0;
   let incomeTotal = 0;
+  let workbookRemainder = 0;
   for (const tx of transactions) {
     if (!countsTowardBalance(tx, today)) continue;
     if (tx.effectiveDate < from || tx.effectiveDate > to) continue;
+    if (tx.isWorkbookRemainder) {
+      workbookRemainder += signedBalanceEffect(tx);
+      continue;
+    }
     const flow = financialFlow(tx);
     if (flow.type === "expense") {
       expenseTotal += flow.amountTryMinor;
@@ -112,6 +125,7 @@ export function distributionForRange(
     expenseTotalMinor: expenseTotal,
     transferTotalMinor: transferTotal,
     incomeTotalMinor: incomeTotal,
+    workbookRemainderMinor: workbookRemainder,
   };
 }
 
@@ -137,7 +151,7 @@ export function fixedVsVariable(
   let variable = 0;
   for (const tx of transactions) {
     const flow = financialFlow(tx);
-    if (!countsTowardBalance(tx, today) || flow.type !== "expense") continue;
+    if (!countsTowardBalance(tx, today) || flow.type !== "expense" || tx.isWorkbookRemainder) continue;
     if (tx.effectiveDate < from || tx.effectiveDate > to) continue;
     if (tx.installmentPlanId || tx.subscriptionId) fixed += flow.amountTryMinor;
     else variable += flow.amountTryMinor;

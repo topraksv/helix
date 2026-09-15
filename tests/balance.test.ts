@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildLedger, buildLedgerChain, currentBalance, ledgerChainEndYear, projectedBalance, reconciliationDelta, sliceLedgerYear, type LedgerBundle } from "../src/domain/balance";
+import { buildLedger, buildLedgerChain, ledgerChainEndYear, monthFlowTotals, projectedBalance, reconciliationDelta, sliceLedgerYear, type LedgerBundle } from "../src/domain/balance";
 import type { ISODate, MonthKey } from "../src/domain/dates";
 import type { TxLike } from "../src/domain/types";
 import { required, tl, tx } from "./helpers";
@@ -80,12 +80,20 @@ describe("balance chain (Excel golden)", () => {
   });
 });
 
-describe("§2.7 future-dated payments", () => {
-  const base = {
+/** Today's balance the way every screen reads it: the chain's current month close. */
+function balanceOn(transactions: TxLike[], today: ISODate): number {
+  return buildLedgerChain({
+    configuredStart: "2026-07",
     openingBalanceMinor: 1000_00,
-    startMonth: "2026-07",
+    includePendingInCells: false,
+    transactions,
     adjustments: [],
-  };
+    endYear: 2026,
+    today,
+  }).actualBalanceMinor;
+}
+
+describe("§2.7 future-dated payments", () => {
   const future = tx({
     type: "expense",
     amountTryMinor: 300_00,
@@ -94,16 +102,16 @@ describe("§2.7 future-dated payments", () => {
   });
 
   it("does not count a transaction before its effective date", () => {
-    expect(currentBalance({ ...base, transactions: [future], today: "2026-07-05" })).toBe(1000_00);
+    expect(balanceOn([future], "2026-07-05")).toBe(1000_00);
   });
 
   it("counts it once today reaches the effective date", () => {
-    expect(currentBalance({ ...base, transactions: [future], today: "2026-07-06" })).toBe(700_00);
+    expect(balanceOn([future], "2026-07-06")).toBe(700_00);
   });
 
   it("never counts status=pending regardless of date", () => {
     const pending = { ...future, status: "pending" as const };
-    expect(currentBalance({ ...base, transactions: [pending], today: "2026-07-10" })).toBe(1000_00);
+    expect(balanceOn([pending], "2026-07-10")).toBe(1000_00);
   });
 
   it("projected balance includes future flows up to the horizon only", () => {
@@ -125,14 +133,7 @@ describe("§2.8 payer-other exclusion", () => {
       personIsSelf: false,
     });
     const mine = tx({ type: "expense", amountTryMinor: 200_00, effectiveDate: "2026-07-01" });
-    expect(
-      currentBalance({
-        openingBalanceMinor: 1000_00,
-        transactions: [other, mine],
-        adjustments: [],
-        today: "2026-07-05",
-      }),
-    ).toBe(800_00);
+    expect(balanceOn([other, mine], "2026-07-05")).toBe(800_00);
   });
 });
 
@@ -554,5 +555,229 @@ describe("the earliest month that actually holds something", () => {
     });
     expect(bundle.startMonth).toBe("2025-11");
     expect(bundle.firstRecordedMonth).toBe("2025-11");
+  });
+});
+
+/**
+ * A declaration holds the balance at the end of its day to the figure the owner
+ * wrote down (owner decision, 2026-09-13). What it adds is recomputed from the
+ * rows as they stand, so a row entered later on or before that day is absorbed
+ * and one after it still counts.
+ */
+describe("dated balance declarations", () => {
+  const today = "2026-03-31" as ISODate;
+  const chain = (transactions: TxLike[], adjustments: Parameters<typeof buildLedgerChain>[0]["adjustments"], configuredStart: MonthKey | null = "2026-01", opening = 1000_00) =>
+    buildLedgerChain({ configuredStart, openingBalanceMinor: opening, includePendingInCells: true, transactions, adjustments, endYear: 2026, today });
+  const month = (built: ReturnType<typeof chain>, key: MonthKey) => required(built.ledger.find((entry) => entry.month === key));
+  const income = tx({ type: "income", amountTryMinor: 500_00, effectiveDate: "2026-02-10", categoryKind: "income" });
+  const march = tx({ type: "expense", amountTryMinor: 200_00, effectiveDate: "2026-03-05", categoryKind: "expense" });
+  const declaration = { id: "feb-close", date: "2026-02-28" as ISODate, amountMinor: 0, declaredMinor: 2000_00 };
+
+  it("opens the next month on the declared figure and says what it corrected", () => {
+    const built = chain([income, march], [declaration]);
+    expect(month(built, "2026-03").openingMinor).toBe(2000_00);
+    expect(month(built, "2026-02").adjustmentMinor).toBe(500_00);
+    expect(built.declarationDeltaById.get("feb-close")).toBe(500_00);
+    expect(built.actualBalanceMinor).toBe(1800_00);
+  });
+
+  it("absorbs a row entered later on or before its day, and not one after it", () => {
+    const forgotten = tx({ type: "expense", amountTryMinor: 100_00, effectiveDate: "2026-02-28", categoryKind: "expense" });
+    const nextDay = tx({ type: "expense", amountTryMinor: 50_00, effectiveDate: "2026-03-01", categoryKind: "expense" });
+    const built = chain([income, forgotten, march, nextDay], [declaration]);
+    expect(month(built, "2026-03").openingMinor).toBe(2000_00);
+    expect(built.declarationDeltaById.get("feb-close")).toBe(600_00);
+    expect(built.actualBalanceMinor).toBe(1750_00);
+  });
+
+  it("counts a movement adjustment on its day before holding the declared figure", () => {
+    const built = chain([income], [{ date: "2026-02-28", amountMinor: 70_00 }, declaration]);
+    expect(month(built, "2026-02").closingMinor).toBe(2000_00);
+    expect(built.declarationDeltaById.get("feb-close")).toBe(430_00);
+  });
+
+  it("ignores a declaration dated after today", () => {
+    const built = chain([income], [{ ...declaration, date: "2026-04-30" as ISODate }]);
+    expect(built.actualBalanceMinor).toBe(1500_00);
+    expect(built.declarationDeltaById.size).toBe(0);
+  });
+
+  it("opens from a declaration dated before the anchor and still holds the anchor's own month", () => {
+    const early = { id: "jan-close", date: "2026-01-31" as ISODate, amountMinor: 0, declaredMinor: 1000_00 };
+    const built = chain([income], [early], "2026-03", 5000_00);
+    expect(built.startMonth).toBe("2026-01");
+    expect(month(built, "2026-01").openingMinor).toBe(1000_00);
+    expect(month(built, "2026-03").openingMinor).toBe(5000_00);
+    // The anchor rides along without an id, so it says nothing about itself.
+    expect([...built.declarationDeltaById.keys()]).toEqual(["jan-close"]);
+  });
+
+  it("lets a declaration on the anchor's own day win over the anchor", () => {
+    const sameDay = { id: "same-day", date: "2026-02-28" as ISODate, amountMinor: 0, declaredMinor: 4000_00 };
+    const built = chain([income], [sameDay], "2026-03", 5000_00);
+    // The anchor is still the earliest statement, so February opens on its figure.
+    expect(month(built, "2026-02").openingMinor).toBe(4500_00);
+    expect(month(built, "2026-03").openingMinor).toBe(4000_00);
+    expect(built.declarationDeltaById.get("same-day")).toBe(-1000_00);
+  });
+
+  it("opens an unanchored table so its earliest declaration holds", () => {
+    const built = chain([income, march], [declaration], null);
+    expect(month(built, "2026-02").openingMinor).toBe(1500_00);
+    expect(month(built, "2026-03").openingMinor).toBe(2000_00);
+    expect(built.declarationDeltaById.get("feb-close")).toBe(0);
+  });
+
+  it("holds several declarations in one month, each to the end of its own day", () => {
+    const later = tx({ type: "expense", amountTryMinor: 100_00, effectiveDate: "2026-02-20", categoryKind: "expense" });
+    const built = buildLedgerChain({
+      configuredStart: "2026-01", openingBalanceMinor: 1000_00, includePendingInCells: true, transactions: [income, later],
+      adjustments: [
+        { id: "feb-close-b", date: "2026-02-28", amountMinor: 0, declaredMinor: 2100_00 },
+        { date: "2026-02-25", amountMinor: 30_00 },
+        { id: "feb-close", date: "2026-02-28", amountMinor: 0, declaredMinor: 2000_00 },
+        { id: "feb-mid", date: "2026-02-15", amountMinor: 0, declaredMinor: 1800_00 },
+      ],
+      settlements: [{ statementId: "st", date: "2026-02-28", amountMinor: -50_00, kind: "payment", planned: false }],
+      endYear: 2026, today,
+    });
+    // Mid-month: only the income is on or before its day.
+    expect(built.declarationDeltaById.get("feb-mid")).toBe(300_00);
+    // Month end: the later expense, the adjustment and the payment all count first.
+    expect(built.declarationDeltaById.get("feb-close")).toBe(320_00);
+    // Two on one day hold in id order, so the last one written down wins.
+    expect(built.declarationDeltaById.get("feb-close-b")).toBe(100_00);
+    expect(month(built, "2026-02").closingMinor).toBe(2100_00);
+    expect(month(built, "2026-03").openingMinor).toBe(2100_00);
+  });
+
+  it("keeps an unconfirmed row before it planned rather than cancelling it", () => {
+    const unconfirmed = tx({ type: "expense", amountTryMinor: 300_00, effectiveDate: "2026-02-15", status: "pending", categoryKind: "expense" });
+    const built = chain([income, unconfirmed], [declaration]);
+    expect(month(built, "2026-02").closingMinor).toBe(2000_00);
+    expect(month(built, "2026-02").projectedClosingMinor).toBe(1700_00);
+  });
+
+  it("holds two declarations on one day in id order, whichever was read first", () => {
+    const second = { ...declaration, id: "feb-close-b", declaredMinor: 2100_00 };
+    for (const adjustments of [[declaration, second], [second, declaration]]) {
+      const built = chain([income], adjustments);
+      expect(built.declarationDeltaById.get("feb-close")).toBe(500_00);
+      expect(built.declarationDeltaById.get("feb-close-b")).toBe(100_00);
+    }
+  });
+
+  it("opens on the anchor's figure whatever is written after it", () => {
+    // A later declaration keeps the difference it made for an older client.
+    const later = { id: "mar-close", date: "2026-03-10" as ISODate, amountMinor: 25_00, declaredMinor: 1600_00 };
+    const built = chain([income], [{ date: "2026-02-20", amountMinor: 70_00 }, later]);
+    expect(month(built, "2026-01").openingMinor).toBe(1000_00);
+  });
+
+  it("opens an unanchored table from the earliest declaration on or before today, however they were read", () => {
+    const movement = { date: "2026-02-01" as ISODate, amountMinor: 10_00 };
+    const opens = (...declarations: (typeof declaration)[]) =>
+      month(chain([income, march], [movement, ...declarations], null), "2026-02").openingMinor;
+    // Ids that sort against their days, so only the day can pick February.
+    const february = { ...declaration, id: "z-feb" };
+    const midMarch = { id: "a-mar", date: "2026-03-15" as ISODate, amountMinor: 0, declaredMinor: 3000_00 };
+    const april = { id: "b-apr", date: "2026-04-30" as ISODate, amountMinor: 0, declaredMinor: 9000_00 };
+    expect(opens(midMarch, february, april)).toBe(1490_00);
+    expect(opens(april, february, midMarch)).toBe(1490_00);
+    // Nothing stated on or before today yet.
+    expect(opens(april)).toBe(0);
+    expect(opens({ id: "today", date: today, amountMinor: 0, declaredMinor: 1000_00 })).toBe(690_00);
+    const sameDay = { ...declaration, id: "feb-close-b", declaredMinor: 2100_00 };
+    expect(opens(sameDay, declaration)).toBe(1490_00);
+    expect(opens(declaration, sameDay)).toBe(1490_00);
+  });
+});
+
+/**
+ * A recorded statement payment moves the balance on the day it was made, and
+ * the month says why: its charges stay in their cells, the unpaid part is
+ * owed, and a payment made in another month is given back where the charges
+ * land (owner decision, 2026-09-13).
+ */
+describe("statement payments in the chain", () => {
+  const today = "2026-09-20" as ISODate;
+  const charge = tx({ type: "expense", amountTryMinor: 12_000_00, effectiveDate: "2026-09-10", status: "realized", categoryKind: "expense", categoryId: "kart", cardStatementId: "aug" });
+  const build = (settlements: Parameters<typeof buildLedgerChain>[0]["settlements"]) =>
+    buildLedgerChain({ configuredStart: "2026-08", openingBalanceMinor: 20_000_00, includePendingInCells: true, transactions: [charge], adjustments: [], settlements, endYear: 2026, today });
+  const month = (built: ReturnType<typeof build>, key: MonthKey) => required(built.ledger.find((entry) => entry.month === key));
+
+  it("takes only what was paid when the minimum is paid in the due month", () => {
+    const built = build([
+      { statementId: "aug", date: "2026-09-10", amountMinor: 8_000_00, kind: "owed", planned: false },
+      { statementId: "aug", date: "2026-09-08", amountMinor: -4_000_00, kind: "payment", planned: false },
+      { statementId: "aug", date: "2026-09-10", amountMinor: 4_000_00, kind: "paidElsewhere", planned: false },
+    ]);
+    const september = month(built, "2026-09");
+    expect(september.byCategory.get("kart")).toBe(12_000_00);
+    expect(september.cardOwedMinor).toBe(8_000_00);
+    expect(september.cardPaymentsMinor).toBe(0);
+    expect(built.actualBalanceMinor).toBe(16_000_00);
+    const totals = monthFlowTotals(september);
+    expect(totals.openingMinor - totals.expenseMinor + totals.cardOwedMinor + totals.cardPaymentsMinor).toBe(totals.closingMinor);
+  });
+
+  it("moves a payment made in an earlier month into that month", () => {
+    const built = build([
+      { statementId: "aug", date: "2026-09-10", amountMinor: 8_000_00, kind: "owed", planned: false },
+      { statementId: "aug", date: "2026-08-30", amountMinor: -4_000_00, kind: "payment", planned: false },
+      { statementId: "aug", date: "2026-09-10", amountMinor: 4_000_00, kind: "paidElsewhere", planned: false },
+    ]);
+    expect(month(built, "2026-08").closingMinor).toBe(16_000_00);
+    expect(month(built, "2026-08").cardPaymentsMinor).toBe(-4_000_00);
+    expect(month(built, "2026-09").cardPaymentsMinor).toBe(4_000_00);
+    expect(built.actualBalanceMinor).toBe(16_000_00);
+  });
+
+  it("keeps planned settlement lines out of the balance and in the projection", () => {
+    const pending = { ...charge, effectiveDate: "2026-10-05" as ISODate, status: "pending" as const };
+    const built = buildLedgerChain({
+      configuredStart: "2026-08", openingBalanceMinor: 20_000_00, includePendingInCells: true, transactions: [pending], adjustments: [],
+      settlements: [
+        { statementId: "aug", date: "2026-10-05", amountMinor: 8_000_00, kind: "owed", planned: true },
+        { statementId: "aug", date: "2026-09-15", amountMinor: -4_000_00, kind: "payment", planned: false },
+        { statementId: "aug", date: "2026-10-05", amountMinor: 4_000_00, kind: "paidElsewhere", planned: true },
+      ],
+      endYear: 2026, today,
+    });
+    expect(built.actualBalanceMinor).toBe(16_000_00);
+    expect(month(built, "2026-10").closingMinor).toBe(16_000_00);
+    expect(month(built, "2026-10").projectedClosingMinor).toBe(16_000_00);
+    expect(month(built, "2026-10").plannedCardSettlementMinor).toBe(12_000_00);
+    expect(month(built, "2026-10").cardPaymentsMinor).toBe(4_000_00);
+  });
+
+  it("reaches back to a payment made before anything else was recorded", () => {
+    const built = buildLedgerChain({
+      configuredStart: "2026-09", openingBalanceMinor: 20_000_00, includePendingInCells: true, transactions: [charge], adjustments: [],
+      settlements: [
+        { statementId: "aug", date: "2026-09-10", amountMinor: 8_000_00, kind: "owed", planned: false },
+        { statementId: "aug", date: "2026-08-30", amountMinor: -4_000_00, kind: "payment", planned: false },
+        { statementId: "aug", date: "2026-09-10", amountMinor: 4_000_00, kind: "paidElsewhere", planned: false },
+      ],
+      endYear: 2026, today,
+    });
+    expect(built.startMonth).toBe("2026-08");
+    expect(month(built, "2026-09").openingMinor).toBe(20_000_00);
+    expect(built.actualBalanceMinor).toBe(20_000_00);
+  });
+
+  it("opens on what was paid, not on settlement lines that are still planned", () => {
+    const overdue = { ...charge, effectiveDate: "2026-08-10" as ISODate, status: "pending" as const };
+    const built = buildLedgerChain({
+      configuredStart: "2026-09", openingBalanceMinor: 20_000_00, includePendingInCells: true, transactions: [overdue], adjustments: [],
+      settlements: [
+        { statementId: "aug", date: "2026-08-10", amountMinor: 8_000_00, kind: "owed", planned: true },
+        { statementId: "aug", date: "2026-08-05", amountMinor: -4_000_00, kind: "payment", planned: false },
+        { statementId: "aug", date: "2026-08-10", amountMinor: 4_000_00, kind: "paidElsewhere", planned: true },
+      ],
+      endYear: 2026, today,
+    });
+    expect(month(built, "2026-08").openingMinor).toBe(24_000_00);
+    expect(month(built, "2026-09").openingMinor).toBe(20_000_00);
   });
 });

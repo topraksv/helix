@@ -50,6 +50,12 @@ appId: com.toprak.helix
     timeout: 20000
 - tapOn: "Ürünü Kaydet"
 
+# Saving a product returns to the list where it was scrolled; the action sits at its top.
+- scrollUntilVisible:
+    element:
+      text: "İşlem Ekle"
+    direction: UP
+    timeout: 20000
 - tapOn: "İşlem Ekle"
 - scrollUntilVisible:
     element:
@@ -85,10 +91,14 @@ appId: com.toprak.helix
 
 # The compact product-level affordance exists inside a deliberately chosen
 # movement editor, so it cannot be confused with this movement's own trash.
+# Centred: the tab bar floats over the page, and a row scrolled only until it
+# is on screen can sit under it — the tap then presses Yatırımlar, which
+# scrolls the list to its top instead of opening the editor.
 - scrollUntilVisible:
     element:
       text: "Düzenle"
     direction: DOWN
+    centerElement: true
     timeout: 20000
 - tapOn: "Düzenle"
 - scrollUntilVisible:

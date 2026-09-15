@@ -12,36 +12,148 @@ import ChevronRight from "lucide-react-native/icons/chevron-right";
 import CreditCard from "lucide-react-native/icons/credit-card";
 import Landmark from "lucide-react-native/icons/landmark";
 import Plus from "lucide-react-native/icons/plus";
+import Undo2 from "lucide-react-native/icons/undo-2";
 import { installmentDisplayTitle, planProgress, type GeneratedInstallment } from "../../../domain/installments";
-import { monthKeyOf, todayISO } from "../../../domain/dates";
+import { monthKeyOf, todayISO, type MonthKey } from "../../../domain/dates";
 import { formatMinorCompact } from "../../../domain/money";
 import { monthLabel, tr } from "../../../i18n/tr";
 import {
+  useCardSettlement,
+  useCategoriesState,
   usePersonsState,
   usePlansState,
   useSourcesState,
   useAllTransactionsState,
 } from "../../../data/hooks";
 import { combineLiveStates } from "../../../data/live-state";
-import { Amount, Badge, Body, Button, Card, CardList, DataGateScreen, DataStateNotice, EmptyState, MonthStepper, Screen, SectionHeader, SegmentBar, Select } from "../../../ui/components";
-import { font, radius, spacing, type, useTheme } from "../../../ui/theme";
+import { Amount, Badge, Body, Button, Card, CardList, DataGateScreen, DataStateNotice, EmptyState, Heading, MonthStepper, Screen, SectionHeader, SegmentBar, Segmented, Select } from "../../../ui/components";
+import { Bars, ChartFrame, Donut, distributionDonutData, useSeriesColors } from "../../../ui/charts";
+import { font, radius, segmentedMaxWidth, spacing, type, useTheme } from "../../../ui/theme";
 import { WorkspaceSplit } from "../../../ui/workspace-layout";
+import { shouldUseCompactInstallmentCard, shouldUseWideWorkspace } from "../../../ui/responsive";
 
 /** The Select's own icon column, so a source mark fits it exactly. */
 const SOURCE_MARK = 22;
+
+/**
+ * The viewed month's instalments, taken apart by the category each plan was
+ * entered under.
+ *
+ * It is the header total and nothing else — same month, same card filter, the
+ * owner's own plans — so the chart can never disagree with the figure above
+ * it. The card, the two views and the ring are Analiz's, because a pie and a
+ * bar chart that look different on two screens read as two different kinds of
+ * fact.
+ */
+function InstallmentCategoryChart({
+  items,
+  categories,
+  month,
+  compact,
+}: {
+  items: { categoryId: string | null; amountMinor: number }[];
+  categories: { id: string; name: string }[];
+  month: MonthKey;
+  compact: boolean;
+}) {
+  const colors = useSeriesColors();
+  const [chartType, setChartType] = useState<"pie" | "bars">("pie");
+  const byCategory = new Map<string, number>();
+  let uncategorizedMinor = 0;
+  let totalMinor = 0;
+  for (const item of items) {
+    totalMinor += item.amountMinor;
+    if (item.categoryId) byCategory.set(item.categoryId, (byCategory.get(item.categoryId) ?? 0) + item.amountMinor);
+    else uncategorizedMinor += item.amountMinor;
+  }
+  if (totalMinor <= 0) return null;
+  const names = new Map(categories.map((category) => [category.id, category.name]));
+  const donut = distributionDonutData(
+    { expenseByCategory: byCategory, uncategorizedExpenseMinor: uncategorizedMinor, expenseTotalMinor: totalMinor, transferTotalMinor: 0, incomeTotalMinor: 0, workbookRemainderMinor: 0 },
+    colors,
+    (id) => names.get(id) ?? tr.common.none,
+  );
+  return (
+    <Card testID="installments-category-chart">
+      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: spacing.md, marginBottom: spacing.md }}>
+        <Heading style={{ marginTop: 0, marginBottom: 0, flexShrink: 1 }}>{tr.installments.byCategoryTitle(monthLabel(month))}</Heading>
+        <View style={{ flexGrow: 1, flexBasis: segmentedMaxWidth(2), maxWidth: segmentedMaxWidth(2), minWidth: 160 }}>
+          <Segmented
+            noMargin
+            options={[
+              { value: "pie", label: tr.analysis.chartPie },
+              { value: "bars", label: tr.analysis.chartBars },
+            ]}
+            value={chartType}
+            onChange={setChartType}
+          />
+        </View>
+      </View>
+      {chartType === "pie" ? (
+        <Donut slices={donut.slices} supplementalSlices={donut.supplementalSlices} totalMinor={donut.totalMinor} size={compact ? 168 : 220} />
+      ) : (
+        <ChartFrame>
+          {(chartWidth) => (
+            <Bars
+              width={chartWidth}
+              groups={donut.slices.map((slice) => ({ label: slice.label, values: [slice.valueMinor] }))}
+              series={[{ label: monthLabel(month), color: colors[0] }]}
+            />
+          )}
+        </ChartFrame>
+      )}
+    </Card>
+  );
+}
+
+/**
+ * What is true of a plan beyond its figures, beside its count.
+ *
+ * "x/y ödendi" counts a card instalment paid once its statement is due, which
+ * is the assumption a statement without a payment record keeps. A recorded
+ * payment is a fact, so the viewed month's statement says which it was.
+ */
+function PlanBadges({
+  watchedBy,
+  closedOn,
+  refundedMinor,
+  statementId,
+  byStatement,
+}: {
+  watchedBy: string | undefined;
+  closedOn: string | null;
+  refundedMinor: number;
+  statementId: string | undefined;
+  byStatement: ReturnType<typeof useCardSettlement>["byStatement"];
+}) {
+  const statementState = statementId ? byStatement.get(statementId)?.state : undefined;
+  return (
+    <>
+      {watchedBy ? <Badge text={`${tr.installments.watchOnly}: ${watchedBy}`} tone="warning" /> : null}
+      {closedOn ? <Badge text={tr.installments.closedBadge} tone="success" /> : null}
+      {refundedMinor > 0 ? <Badge text={tr.installments.refundBadge(formatMinorCompact(refundedMinor))} tone="success" /> : null}
+      {statementState ? <Badge text={tr.installments.statementState[statementState]} tone={statementState === "full" ? "success" : "warning"} /> : null}
+    </>
+  );
+}
 
 export default function InstallmentsScreen() {
   const plansState = usePlansState();
   const sourcesState = useSourcesState();
   const personsState = usePersonsState();
   const transactionsState = useAllTransactionsState();
+  const categoriesState = useCategoriesState();
   const plans = plansState.data;
   const sources = sourcesState.data;
   const persons = personsState.data;
   const allTx = transactionsState.data;
   const router = useRouter();
   const { palette } = useTheme();
-  const compact = useContentWidth() < 560;
+  const contentWidth = useContentWidth();
+  const compact = shouldUseCompactInstallmentCard(contentWidth);
+  // Beside the list on a desktop, under the month's total; under everything on
+  // a phone, where the list is what the screen is opened for.
+  const wide = shouldUseWideWorkspace(contentWidth);
   const [requestedMonth, setRequestedMonth] = useState(monthKeyOf(todayISO()));
   /**
    * Arriving with a card already chosen.
@@ -55,7 +167,8 @@ export default function InstallmentsScreen() {
    */
   const { card } = useLocalSearchParams<{ card?: string }>();
   const [cardFilter, setCardFilter] = useState<string | null>(card ?? null);
-  const { status: dataStatus, ready: dataReady, retry: retryData } = combineLiveStates([plansState, sourcesState, personsState, transactionsState]);
+  const { status: dataStatus, ready: dataReady, retry: retryData } = combineLiveStates([plansState, sourcesState, personsState, transactionsState, categoriesState]);
+  const { byStatement } = useCardSettlement();
 
   const selfIds = new Set(persons.filter((p) => p.isSelf).map((p) => p.id));
   const sourceName = new Map(sources.map((s) => [s.id, s.name]));
@@ -91,8 +204,24 @@ export default function InstallmentsScreen() {
     : requestedMonth > lastPlanMonth ? lastPlanMonth : requestedMonth;
 
   const itemsByPlan = new Map<string, GeneratedInstallment[]>();
+  // Refunds are the plan's rows without an instalment number: credits the
+  // statement shows beside the instalments, netted out of what a month costs.
+  // A closed loan's payoff is unnumbered too: it costs its month like an
+  // instalment, and it refunds nothing.
+  const refundedByPlan = new Map<string, number>();
+  const refundInMonth = new Map<string, number>();
+  /** The statement each card plan's instalment in the viewed month is billed on. */
+  const statementInMonth = new Map<string, string>();
   for (const t of allTx) {
-    if (!t.installmentPlanId || t.installmentNo == null) continue;
+    if (!t.installmentPlanId) continue;
+    if (t.installmentNo == null) {
+      if (t.amountTryMinor < 0) refundedByPlan.set(t.installmentPlanId, (refundedByPlan.get(t.installmentPlanId) ?? 0) - t.amountTryMinor);
+      if (monthKeyOf(t.effectiveDate) === viewMonth) {
+        refundInMonth.set(t.installmentPlanId, (refundInMonth.get(t.installmentPlanId) ?? 0) + t.amountTryMinor);
+      }
+      continue;
+    }
+    if (t.cardStatementId && monthKeyOf(t.effectiveDate) === viewMonth) statementInMonth.set(t.installmentPlanId, t.cardStatementId);
     const list = itemsByPlan.get(t.installmentPlanId) ?? [];
     list.push({
       installmentNo: t.installmentNo,
@@ -107,6 +236,10 @@ export default function InstallmentsScreen() {
 
   // The one installment (if any) a plan pays in the viewed month.
   const itemInMonth = (planId: string) => itemsByPlan.get(planId)?.find((it) => it.month === viewMonth);
+  /** Whether the viewed month holds anything of this plan's: an instalment or a refund. */
+  const inMonth = (planId: string) => itemInMonth(planId) != null || refundInMonth.has(planId);
+  /** What the plan costs in the viewed month, its refunds netted out. */
+  const netInMonth = (planId: string) => (itemInMonth(planId)?.amountMinor ?? 0) + (refundInMonth.get(planId) ?? 0);
   /** How far into the plan the viewed month is, or the paid count outside it. */
   const reachedNo = (planId: string, paidSoFar: number) => itemInMonth(planId)?.installmentNo ?? paidSoFar;
   /**
@@ -142,19 +275,19 @@ export default function InstallmentsScreen() {
   ];
 
   const matchesCard = (p: (typeof plans)[number]) => cardFilter == null || p.paymentSourceId === cardFilter;
-  const activeThisMonth = (p: (typeof plans)[number]) => itemInMonth(p.id) != null && matchesCard(p);
+  const activeThisMonth = (p: (typeof plans)[number]) => inMonth(p.id) && matchesCard(p);
   const selfPlans = plans.filter((p) => selfIds.has(p.personId) && activeThisMonth(p));
   const otherPlans = plans.filter((p) => !selfIds.has(p.personId) && activeThisMonth(p));
 
   // Header total = what this month's shown installments actually cost.
-  const monthObligationMinor = selfPlans.reduce((sum, p) => sum + (itemInMonth(p.id)?.amountMinor ?? 0), 0);
-  const watchedObligationMinor = otherPlans.reduce((sum, p) => sum + (itemInMonth(p.id)?.amountMinor ?? 0), 0);
+  const monthObligationMinor = selfPlans.reduce((sum, p) => sum + netInMonth(p.id), 0);
+  const watchedObligationMinor = otherPlans.reduce((sum, p) => sum + netInMonth(p.id), 0);
 
   const renderPlan = (plan: (typeof plans)[number], watchedBy?: string) => {
     const items = itemsByPlan.get(plan.id) ?? [];
     const progress = planProgress(items);
     const finished = progress.remaining === 0;
-    const thisMonth = itemInMonth(plan.id);
+    const refunded = refundedByPlan.get(plan.id) ?? 0;
     // The plan's own count, not the number of rows it happens to have: an
     // imported plan can be missing the months its workbook kept in another
     // column, and "3/21" of a 24-month loan is a figure nobody recognises.
@@ -167,7 +300,7 @@ export default function InstallmentsScreen() {
     return (
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel={`${installmentDisplayTitle(plan.title, noteByPlan.get(plan.id), tr.installments.plan)}. ${thisMonth ? formatMinorCompact(thisMonth.amountMinor) : ""}. ${tr.installments.progress(progress.paid, total)}`}
+        accessibilityLabel={`${installmentDisplayTitle(plan.title, noteByPlan.get(plan.id), tr.installments.plan)}. ${inMonth(plan.id) ? formatMinorCompact(netInMonth(plan.id)) : ""}. ${tr.installments.progress(progress.paid, total)}`}
         onPress={() => router.push({ pathname: "/installment-new", params: { id: plan.id } })}
         style={({ pressed }) => [pressed && { opacity: 0.6 }]}
       >
@@ -201,13 +334,19 @@ export default function InstallmentsScreen() {
               <Text style={[type.small, { color: palette.textSecondary }]}>
                 {asOfToday(plan.id, progress.paid, total)}
               </Text>
-              {thisMonth ? <Amount minor={thisMonth.amountMinor} colorized={false} style={{ fontSize: compact ? type.moneyInput.fontSize : type.heading.fontSize, textAlign: "left", marginTop: 2 }} /> : null}
+              {inMonth(plan.id) ? <Amount minor={netInMonth(plan.id)} colorized={false} style={{ fontSize: compact ? type.moneyInput.fontSize : type.heading.fontSize, textAlign: "left", marginTop: 2 }} /> : null}
             </View>
             <View style={{ alignItems: "flex-end", gap: spacing.xs }}>
               {/* Moves with the bar under it: both answer "where is this plan in
                   the month I am looking at". */}
               <Text style={[type.label, { color: finished ? palette.positiveText : palette.textStrong }]}>{reached}/{total}</Text>
-              {watchedBy ? <Badge text={`${tr.installments.watchOnly}: ${watchedBy}`} tone="warning" /> : null}
+              <PlanBadges
+                watchedBy={watchedBy}
+                closedOn={plan.closedOn}
+                refundedMinor={refunded}
+                statementId={statementInMonth.get(plan.id)}
+                byStatement={byStatement}
+              />
             </View>
           </View>
 
@@ -228,6 +367,14 @@ export default function InstallmentsScreen() {
   };
 
   const nothingThisMonth = selfPlans.length === 0 && otherPlans.length === 0;
+  const categoryChart = (
+    <InstallmentCategoryChart
+      items={selfPlans.map((plan) => ({ categoryId: plan.categoryId, amountMinor: netInMonth(plan.id) }))}
+      categories={categoriesState.data}
+      month={viewMonth}
+      compact={compact}
+    />
+  );
 
   if (!dataReady) return <DataGateScreen status={dataStatus} retry={retryData} />;
 
@@ -258,7 +405,13 @@ export default function InstallmentsScreen() {
                 />
               </View>
               <Button icon={Plus} label={tr.installments.newPlan} onPress={() => router.push("/installment-new")} />
+              {/* A refund belongs to a purchase, so the button opens a list of
+                  purchases to choose from rather than an empty form. */}
+              <View style={{ marginTop: spacing.sm }}>
+                <Button icon={Undo2} label={tr.installments.refundAdd} variant="secondary" onPress={() => router.push("/installment-refund")} />
+              </View>
             </Card>
+            {wide ? categoryChart : null}
           </View>
         )}
         secondary={(
@@ -285,6 +438,7 @@ export default function InstallmentsScreen() {
           </View>
         )}
       />
+      {wide ? null : categoryChart}
     </Screen>
   );
 }

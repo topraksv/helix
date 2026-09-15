@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AppState, Platform } from "react-native";
+import { useNavigationContainerRef } from "expo-router";
 import * as Notifications from "expo-notifications";
 import * as LocalAuthentication from "expo-local-authentication";
 import { kv } from "../services/kv";
@@ -234,6 +235,58 @@ export function useBiometricLock(ready: boolean, userId: string | null) {
   }, [locked, unlock]);
 
   return { locked, unlock };
+}
+
+/**
+ * Put the owner back where the lock found them.
+ *
+ * The lock screen replaces the navigator instead of covering it, and it has to:
+ * the app's sheets are native modals, so a cover drawn in the tree would sit
+ * UNDER any sheet left open when the app went away. A navigator that unmounts
+ * forgets its stack, though, so every unlock rebuilt navigation from the
+ * initial route — on an iPhone the owner came back to a screen whose Back did
+ * not lead to Mali Tablo, and only restarting the app got them there.
+ *
+ * So the last stack the container reported is kept while the lock is up and
+ * handed back once a navigator is mounted again for the same account. The
+ * saved root key belongs to the navigator that unmounted; a reset aimed at it
+ * would be dropped as unhandled, so the new navigator's key replaces it.
+ *
+ * Call this BEFORE `useNotificationTapRouting`: effects run in call order, and
+ * a reminder tapped while locked must be pushed on top of the restored stack,
+ * not wiped by it.
+ */
+export function useNavigationAcrossLock(locked: boolean | null, navigatorShown: boolean, userId: string | null): void {
+  const navigation = useNavigationContainerRef();
+  type RootState = NonNullable<ReturnType<typeof navigation.getRootState>>;
+  const last = useRef<RootState | null>(null);
+  const parked = useRef<RootState | null>(null);
+
+  useEffect(
+    () =>
+      navigation.addListener("state", (event) => {
+        // The unmount itself reports no state; that is the moment to remember.
+        if (event.data.state) last.current = event.data.state as RootState;
+      }),
+    [navigation],
+  );
+
+  useEffect(() => {
+    last.current = null;
+    parked.current = null;
+  }, [userId]);
+
+  useEffect(() => {
+    if (locked === true && last.current) parked.current = last.current;
+  }, [locked]);
+
+  useEffect(() => {
+    if (locked !== false || !navigatorShown || !parked.current || !navigation.isReady()) return;
+    const root = navigation.getRootState();
+    const state = parked.current;
+    parked.current = null;
+    if (root) navigation.resetRoot({ ...state, key: root.key });
+  }, [locked, navigatorShown, navigation]);
 }
 
 export function useFirstPullGrace(input: {

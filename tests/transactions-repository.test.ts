@@ -35,17 +35,21 @@ import {
   assertSignedTransactionAmounts,
   assertTransactionCategory,
   bulkMonthEntry,
+  addStatementPayment,
+  declareMonthOpeningBalance,
   deleteBalanceAdjustment,
+  deleteStatementPayment,
   deleteTransaction,
   livePaymentSource,
   restoreBalanceAdjustment,
+  restoreStatementPayment,
   restoreTransaction,
   setCurrentBalance,
   updateTransaction,
   type NewTransaction,
   type TransactionPatch,
 } from "../src/data/repo/transactions";
-import { CreditCardCycleRequiredError } from "../src/data/repo/errors";
+import { CreditCardCycleRequiredError, RefundExceedsExpenseError, StatementPaymentTooLargeError } from "../src/data/repo/errors";
 import { fromDbShape } from "../src/db/mutations";
 import { MAX_ABS_AMOUNT_MINOR } from "../src/domain/money";
 import { migrationStatements } from "./helpers";
@@ -343,9 +347,28 @@ describe("transaction repository persistence", () => {
     expect(outbox("transactions")).toHaveLength(2);
   });
 
-  it("limits statement resolution to nonaggregate credit-card expenses", async () => {
-    await expect(addTransaction(USER, transactionInput({
+  it("puts a month-only card charge on that month's statement, dated by its closing day", async () => {
+    const id = await addTransaction(USER, transactionInput({
       paymentSourceId: "card",
+      isAggregate: true,
+      effectiveDate: "2026-08-01",
+    }));
+    const statement = harness.db!.prepare(
+      "SELECT id, period_month, statement_date, due_date FROM credit_card_statements",
+    ).get() as Record<string, unknown>;
+    expect(statement).toMatchObject({ period_month: "2026-08", statement_date: "2026-08-25", due_date: "2026-09-05" });
+    expect(rawTransaction(id)).toMatchObject({
+      purchase_date: "2026-08-25",
+      effective_date: "2026-09-05",
+      status: "pending",
+      is_aggregate: 1,
+      card_statement_id: statement.id,
+    });
+  });
+
+  it("refuses a card expense whose card has no cycle, and leaves other flows undated by it", async () => {
+    await expect(addTransaction(USER, transactionInput({
+      paymentSourceId: "broken-card",
       isAggregate: true,
     }))).rejects.toBeInstanceOf(CreditCardCycleRequiredError);
     await expect(addTransaction(USER, transactionInput({
@@ -373,6 +396,7 @@ describe("transaction repository persistence", () => {
       [{ currency: "BTC" }, "Invalid transaction currency"],
       [{ amountMinor: 0 }, "Invalid signed transaction amount"],
       [{ amountTryMinor: 0 }, "Invalid signed transaction amount"],
+      [{ amountMinor: 0, amountTryMinor: 0 }, "Invalid signed transaction amount"],
       [{ amountMinor: 1.5 }, "Invalid signed transaction amount"],
       [{ amountTryMinor: MAX_ABS_AMOUNT_MINOR + 1 }, "Invalid signed transaction amount"],
       [{ amountMinor: -1_000, amountTryMinor: 1_000 }, "Invalid signed transaction amount"],
@@ -692,6 +716,11 @@ describe("transaction repository persistence", () => {
     await expect(deleteBalanceAdjustment(OTHER_USER, id)).resolves.toBeNull();
   });
 
+  it("keeps where an entry came from", async () => {
+    const id = await addTransaction(USER, transactionInput({ origin: "statement", importKey: "stmt:card:2026-08:0001" }));
+    expect(rawTransaction(id)).toMatchObject({ origin: "statement", import_key: "stmt:card:2026-08:0001" });
+  });
+
   it("persists past-month aggregates and rejects invalid, current and future batches atomically", async () => {
     await expect(bulkMonthEntry(USER, "2026-7" as never, "self", []))
       .rejects.toThrow("Invalid bulk entry month");
@@ -731,7 +760,7 @@ describe("transaction repository persistence", () => {
       {
         type: "expense", amount_minor: 11_000, currency: "TRY", fx_rate: null,
         amount_try_minor: 11_000, entry_date: "2026-08-13", purchase_date: null,
-        effective_date: "2026-07-15", status: "realized", category_id: "expense",
+        effective_date: "2026-07-01", status: "realized", category_id: "expense",
         payment_source_id: null, person_id: "self", installment_plan_id: null,
         installment_no: null, card_statement_id: null, subscription_id: null,
         is_aggregate: 1, note: null, deleted_at: null,
@@ -739,7 +768,7 @@ describe("transaction repository persistence", () => {
       {
         type: "income", amount_minor: 22_000, currency: "TRY", fx_rate: null,
         amount_try_minor: 22_000, entry_date: "2026-08-13", purchase_date: null,
-        effective_date: "2026-07-15", status: "realized", category_id: "income",
+        effective_date: "2026-07-01", status: "realized", category_id: "income",
         payment_source_id: null, person_id: "self", installment_plan_id: null,
         installment_no: null, card_statement_id: null, subscription_id: null,
         is_aggregate: 1, note: null, deleted_at: null,
@@ -747,7 +776,7 @@ describe("transaction repository persistence", () => {
       {
         type: "transfer", amount_minor: -3_000, currency: "TRY", fx_rate: null,
         amount_try_minor: -3_000, entry_date: "2026-08-13", purchase_date: null,
-        effective_date: "2026-07-15", status: "realized", category_id: "transfer",
+        effective_date: "2026-07-01", status: "realized", category_id: "transfer",
         payment_source_id: null, person_id: "self", installment_plan_id: null,
         installment_no: null, card_statement_id: null, subscription_id: null,
         is_aggregate: 1, note: null, deleted_at: null,
@@ -758,11 +787,138 @@ describe("transaction repository persistence", () => {
       rows.map((row) => expect.objectContaining({
         type: row.type,
         amount_minor: row.amount_minor,
-        effective_date: "2026-07-15",
+        effective_date: "2026-07-01",
         status: "realized",
         is_aggregate: true,
+        // Typed by hand, so it says so; it was written with no origin at all.
+        origin: "manual",
         deleted_at: null,
       })),
     );
+  });
+
+  /**
+   * A payment against a statement (spec §3.1f), a declared opening balance
+   * (§2.7), and a refund linked to the expense it returns. Each one refuses
+   * the figure that would read as a typo: more than is owed, more than is left.
+   */
+  describe("statement payments, declarations and refund links", () => {
+    async function cardStatementWithCharge(amountMinor: number): Promise<string> {
+      await addTransaction(USER, transactionInput({ paymentSourceId: "card", amountMinor, amountTryMinor: amountMinor }));
+      const statement = harness.db!.prepare("SELECT id FROM credit_card_statements").get() as { id: string };
+      return statement.id;
+    }
+
+    it("records a payment against the owner's statement and refuses more than is still owed", async () => {
+      const statementId = await cardStatementWithCharge(1_000_00);
+      const id = await addStatementPayment(USER, { statementId, paidOn: "2026-08-13", amountMinor: 400_00, kind: "partial", note: "Mobil" });
+      expect(harness.db!.prepare("SELECT statement_id, paid_on, amount_minor, kind, note, deleted_at FROM card_statement_payments WHERE id = ?").get(id))
+        .toEqual({ statement_id: statementId, paid_on: "2026-08-13", amount_minor: 400_00, kind: "partial", note: "Mobil", deleted_at: null });
+      expect(outbox("card_statement_payments")).toHaveLength(1);
+
+      const refused = addStatementPayment(USER, { statementId, paidOn: "2026-08-13", amountMinor: 600_01, kind: "full", note: null });
+      await expect(refused).rejects.toBeInstanceOf(StatementPaymentTooLargeError);
+      await expect(refused).rejects.toMatchObject({ remainingMinor: 600_00 });
+      await addStatementPayment(USER, { statementId, paidOn: "2026-08-12", amountMinor: 600_00, kind: "full", note: null });
+      await expect(addStatementPayment(USER, { statementId, paidOn: "2026-08-13", amountMinor: 1, kind: "full", note: null }))
+        .rejects.toMatchObject({ remainingMinor: 0 });
+    });
+
+    it("refuses a payment dated after today, of an unknown kind, of nothing, or against a statement that is not the owner's", async () => {
+      const statementId = await cardStatementWithCharge(1_000_00);
+      await expect(addStatementPayment(USER, { statementId, paidOn: "2026-08-14", amountMinor: 1_00, kind: "full", note: null }))
+        .rejects.toThrow("Invalid statement payment date");
+      await expect(addStatementPayment(USER, { statementId, paidOn: "2026-8-13" as never, amountMinor: 1_00, kind: "full", note: null }))
+        .rejects.toThrow("Invalid statement payment date");
+      await expect(addStatementPayment(USER, { statementId, paidOn: "2026-08-13", amountMinor: 1_00, kind: "late" as never, note: null }))
+        .rejects.toThrow("Invalid statement payment kind");
+      await expect(addStatementPayment(USER, { statementId, paidOn: "2026-08-13", amountMinor: 0, kind: "full", note: null }))
+        .rejects.toThrow("Statement payment must be positive");
+      await expect(addStatementPayment(USER, { statementId, paidOn: "2026-08-13", amountMinor: -1_00, kind: "full", note: null }))
+        .rejects.toThrow("Statement payment must be positive");
+      await expect(addStatementPayment(OTHER_USER, { statementId, paidOn: "2026-08-13", amountMinor: 1_00, kind: "full", note: null }))
+        .rejects.toThrow("Statement does not belong to the owner's card");
+      harness.db!.prepare("UPDATE persons SET is_self = 0 WHERE id = 'self'").run();
+      await expect(addStatementPayment(USER, { statementId, paidOn: "2026-08-13", amountMinor: 1_00, kind: "full", note: null }))
+        .rejects.toThrow("Statement does not belong to the owner's card");
+      expect(outbox("card_statement_payments")).toHaveLength(0);
+    });
+
+    it("tombstones a payment and brings it back on undo", async () => {
+      const statementId = await cardStatementWithCharge(1_000_00);
+      const id = await addStatementPayment(USER, { statementId, paidOn: "2026-08-13", amountMinor: 100_00, kind: "minimum", note: null });
+      const snapshot = await deleteStatementPayment(USER, id);
+      expect(harness.db!.prepare("SELECT deleted_at FROM card_statement_payments WHERE id = ?").get(id)).not.toEqual({ deleted_at: null });
+      await restoreStatementPayment(USER, snapshot!);
+      expect(harness.db!.prepare("SELECT deleted_at FROM card_statement_payments WHERE id = ?").get(id)).toEqual({ deleted_at: null });
+    });
+
+    it("declares a month's opening balance on the day before it, once per month", async () => {
+      await declareMonthOpeningBalance(USER, "2026-08", 5_000_00, 1_250_00);
+      vi.setSystemTime(new Date("2026-08-13T09:05:00.000Z"));
+      expect(await declareMonthOpeningBalance(USER, "2026-08", 6_000_00, 2_250_00)).toBe(`det:monthOpeningDeclaration|${USER}|2026-08`);
+      // What goes to the cloud still says when the month was first declared.
+      expect(JSON.parse(String(outbox("balance_adjustments").at(-1)!.payload))).toMatchObject({ declared_minor: 6_000_00, created_at: NOW });
+      expect(harness.db!.prepare("SELECT id, date, amount_minor, declared_minor, deleted_at FROM balance_adjustments").all()).toEqual([
+        { id: `det:monthOpeningDeclaration|${USER}|2026-08`, date: "2026-07-31", amount_minor: 2_250_00, declared_minor: 6_000_00, deleted_at: null },
+      ]);
+      await expect(declareMonthOpeningBalance(USER, "2026-09", 1_00, 0)).rejects.toThrow("Invalid declaration month");
+      await expect(declareMonthOpeningBalance(USER, "2026-8" as never, 1_00, 0)).rejects.toThrow("Invalid declaration month");
+    });
+
+    it("links a refund to its expense and refuses more than is left of it", async () => {
+      const expenseId = await addTransaction(USER, transactionInput({ amountMinor: 1_000_00, amountTryMinor: 1_000_00 }));
+      const refund = (amountMinor: number, overrides: Partial<NewTransaction> = {}) =>
+        transactionInput({ amountMinor: -amountMinor, amountTryMinor: -amountMinor, refundOfTransactionId: expenseId, ...overrides });
+      const firstId = await addTransaction(USER, refund(300_00));
+      expect(rawTransaction(firstId)).toMatchObject({ refund_of_transaction_id: expenseId, amount_minor: -300_00 });
+
+      const tooMuch = addTransaction(USER, refund(700_01));
+      await expect(tooMuch).rejects.toBeInstanceOf(RefundExceedsExpenseError);
+      await expect(tooMuch).rejects.toMatchObject({ remainingMinor: 700_00 });
+      await expect(addTransaction(USER, refund(100_00, { currency: "USD", fxRate: "40", amountTryMinor: -4_000_00 })))
+        .rejects.toThrow("Refund must be linked to a live single expense in its currency");
+      await expect(addTransaction(USER, refund(-100_00)))
+        .rejects.toThrow("Refund must be linked to a live single expense in its currency");
+      await expect(addTransaction(USER, refund(100_00, { refundOfTransactionId: firstId })))
+        .rejects.toThrow("Refund must be linked to a live single expense in its currency");
+      await expect(addTransaction(USER, refund(100_00, { refundOfTransactionId: "missing" })))
+        .rejects.toThrow("Refund must be linked to a live single expense in its currency");
+    });
+
+    it("checks an edited refund against the rest of its expense, and ends the link when it stops being a refund", async () => {
+      const expenseId = await addTransaction(USER, transactionInput({ amountMinor: 1_000_00, amountTryMinor: 1_000_00 }));
+      const refundId = await addTransaction(USER, transactionInput({ amountMinor: -600_00, amountTryMinor: -600_00, refundOfTransactionId: expenseId }));
+      const existing = fromDbShape("transactions", rawTransaction(refundId));
+      const patch = (amountMinor: number): TransactionPatch => ({
+        type: "expense", amountMinor, currency: "TRY", fxRate: null, amountTryMinor: amountMinor,
+        effectiveDate: "2026-08-12", categoryId: "expense", paymentSourceId: null, personId: "self", note: null,
+      });
+      // Its own 600 does not count against it.
+      await updateTransaction(USER, existing, patch(-1_000_00));
+      expect(rawTransaction(refundId)).toMatchObject({ amount_minor: -1_000_00, refund_of_transaction_id: expenseId });
+      await expect(updateTransaction(USER, existing, patch(-1_000_01))).rejects.toMatchObject({ remainingMinor: 1_000_00 });
+      await updateTransaction(USER, existing, patch(50_00));
+      expect(rawTransaction(refundId)).toMatchObject({ amount_minor: 50_00, refund_of_transaction_id: null });
+    });
+
+    it("links a refund only to a live positive single expense, however that row came to be", async () => {
+      const refusal = "Refund must be linked to a live single expense in its currency";
+      const refundOf = (refundOfTransactionId: string, overrides: Partial<NewTransaction> = {}) =>
+        transactionInput({ amountMinor: -100_00, amountTryMinor: -100_00, refundOfTransactionId, ...overrides });
+      const expense = await addTransaction(USER, transactionInput({ amountMinor: 1_000_00, amountTryMinor: 1_000_00 }));
+      const income = await addTransaction(USER, transactionInput({ type: "income", categoryId: "income" }));
+      const unlinkedRefund = await addTransaction(USER, transactionInput({ amountMinor: -500_00, amountTryMinor: -500_00 }));
+      const instalment = await addTransaction(USER, transactionInput({ amountMinor: 1_000_00, amountTryMinor: 1_000_00 }));
+      harness.db!.prepare("UPDATE transactions SET installment_plan_id = 'plan' WHERE id = ?").run(instalment);
+      // A client older than the link edits a refund into a charge and leaves the column as it was.
+      const reverted = await addTransaction(USER, refundOf(expense));
+      harness.db!.prepare("UPDATE transactions SET amount_minor = 10000, amount_try_minor = 10000 WHERE id = ?").run(reverted);
+
+      for (const target of [income, unlinkedRefund, instalment, reverted]) {
+        await expect(addTransaction(USER, refundOf(target))).rejects.toThrow(refusal);
+      }
+      await expect(addTransaction(USER, refundOf(expense, { type: "income", categoryId: "income" }))).rejects.toThrow(refusal);
+    });
   });
 });

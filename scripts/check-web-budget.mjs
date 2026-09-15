@@ -259,13 +259,46 @@ const root = process.argv[2] ?? "dist";
 // already set: a ceiling the next one-line change trips is a ceiling that stops
 // being read. `entryJavaScript` and `totalExport` do NOT move — the entry rose
 // by 133 bytes and the export clears by 79_392.
+//
+// 2026-09-13, 1.8.0: the first rise here that is entirely this app's own
+// feature code. Instalment refunds (a new route with a purchase picker), a
+// category chart on the instalments tab, an amount mode and an editable paid
+// count on the plan form, and a reset screen that can open beside a tab that
+// holds the database. Attributed with source maps against HEAD, not by
+// subtraction: entry +21_882 including the source-map comment, of which the
+// refund screen is 7_283, the plan form 3_267, the instalments tab 3_192, the
+// new strings 2_748 and the refund repository 2_209; one lucide icon (`search`,
+// 244) is the only dependency byte in it, and `ui/charts.tsx` is not in the
+// delta because Analiz already carried it in the entry chunk.
+//
+// Both JavaScript ceilings move to measured plus the usual ~1%: entry measured
+// 3_249_092, total 3_912_648. Total export measured 7_547_551 and does NOT move.
+//
+// 2026-09-14, still 1.8.0: the rest of the release, again all this app's own
+// code. Card statements with recorded payments, declared month openings, early
+// loan closure and restructure, refunds linked to an expense, and the lock
+// keeping its place. Attributed with source maps against HEAD — the same two
+// exports, same empty Supabase env, a clean `git archive` of HEAD beside the
+// tree — so the line above is inside the figure: entry +79_444 over HEAD, 47
+// files grew, none shrank, and the only dependency bytes are that line's
+// `search` icon. Beyond what the line above already attributed, the loan cards
+// in the plan form are ~7_540, the new strings ~7_390, the statement screen
+// 9_019, closure and FX in the instalment repository ~4_790, refund mode and
+// the card-bill warning in the entry form 5_154, statement payments,
+// declarations and refund links in the transaction repository 3_826, the
+// declaration editor 2_041 and settlement in the statement domain 1_988.
+//
+// Measured from the gate's own export: entry 3_306_932, total JavaScript
+// 3_970_488, total export 7_651_879 — all three past their ceilings. The
+// JavaScript ceilings move to measured plus the usual ~1%, the export to
+// measured plus ~1.5%, the rule the realtime line set for it.
 const limits = {
-  entryJavaScript: 3_235_000,
-  totalJavaScript: 3_906_000,
+  entryJavaScript: 3_340_000,
+  totalJavaScript: 4_010_000,
   // Fonts are 1_534_728 of this and the rest is one HTML file per route, so it
   // grows in coarser steps than the JavaScript above it — measured 8_037_112
   // with ~3% of slack rather than the ~1% the JS ceilings carry.
-  totalExport: 7_591_000,
+  totalExport: 7_767_000,
   fontFiles: 6,
   fontBytes: 800_000,
   // Pages is public. Symbolication maps belong only in a private crash service,

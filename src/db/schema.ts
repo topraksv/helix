@@ -136,6 +136,10 @@ export const installmentPlans = sqliteTable("installment_plans", {
   personId: text("person_id").notNull(),
   categoryId: text("category_id"),
   note: text("note"),
+  /** The day an early closure paid the plan off; null while it runs. */
+  closedOn: text("closed_on"),
+  /** The instalment count the plan had before it was closed, so the closure can be undone. */
+  originalInstallmentCount: integer("original_installment_count"),
 });
 
 /**
@@ -156,6 +160,24 @@ export const creditCardStatements = sqliteTable(
     index("idx_card_statement_source_period").on(t.paymentSourceId, t.periodMonth),
     index("idx_card_statement_due").on(t.dueDate),
   ],
+);
+
+/**
+ * A payment the owner made against one statement, by hand. A statement with
+ * none is paid in full on its due date; one with any is settled by them
+ * instead (`settleCardStatements`).
+ */
+export const cardStatementPayments = sqliteTable(
+  "card_statement_payments",
+  {
+    ...syncColumns,
+    statementId: text("statement_id").notNull(),
+    paidOn: text("paid_on").notNull(),
+    amountMinor: integer("amount_minor").notNull(),
+    kind: text("kind", { enum: ["full", "minimum", "partial"] }).notNull(),
+    note: text("note"),
+  },
+  (t) => [index("idx_statement_payment_statement").on(t.statementId)],
 );
 
 export const transactions = sqliteTable(
@@ -196,9 +218,16 @@ export const transactions = sqliteTable(
      * instead of doubling the ledger. Null for anything hand-entered.
      */
     importKey: text("import_key"),
+    /**
+     * The expense this row refunds. Deliberately no foreign key on the server:
+     * both rows live in this table and can reach it in different push batches.
+     * A link to a row this device does not hold reads as no link.
+     */
+    refundOfTransactionId: text("refund_of_transaction_id"),
   },
   (t) => [
     index("idx_tx_effective").on(t.effectiveDate),
+    index("idx_tx_refund_of").on(t.refundOfTransactionId),
     index("idx_tx_import_key").on(t.importKey),
     index("idx_tx_category_effective").on(t.categoryId, t.effectiveDate),
     index("idx_tx_plan").on(t.installmentPlanId),
@@ -296,6 +325,12 @@ export const balanceAdjustments = sqliteTable("balance_adjustments", {
   date: text("date").notNull(),
   amountMinor: integer("amount_minor").notNull(), // signed
   note: text("note"),
+  /**
+   * Set on a declaration: the balance at the end of `date` was this figure.
+   * `amountMinor` then keeps the difference it made when it was written, which
+   * is all a client without declarations can read (spec §2.7).
+   */
+  declaredMinor: integer("declared_minor"),
 });
 
 export const cellNotes = sqliteTable("cell_notes", {
@@ -413,6 +448,7 @@ export const SYNCED_TABLES = {
   computed_columns: computedColumns,
   installment_plans: installmentPlans,
   credit_card_statements: creditCardStatements,
+  card_statement_payments: cardStatementPayments,
   subscriptions,
   transactions,
   attachments,

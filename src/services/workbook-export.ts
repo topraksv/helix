@@ -159,9 +159,10 @@ export async function composeWorkbook(rows: {
  * too complex for anyone but its author.
  *
  * The export (`composeWorkbook`) is a different file with a different job: a
- * readable record of everything, which the wizard does not read back. The two
- * are not the same document and pretending otherwise is what produced a
- * template that could not be imported.
+ * readable record of everything, which the wizard reads back sheet by sheet —
+ * the ledger years as grids and the two record sheets as records. The two are
+ * not the same document and pretending otherwise is what produced a template
+ * that could not be imported.
  */
 const TEMPLATE_YEAR = 2026;
 

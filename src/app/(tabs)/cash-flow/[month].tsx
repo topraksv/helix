@@ -23,16 +23,16 @@ import {
   useLedgerState,
   usePersonsState,
   usePlansState,
-  useTransactionsBetweenState,
+  useSettledTransactionsBetweenState,
   useUserId,
 } from "../../../data/hooks";
 import { combineLiveStates } from "../../../data/live-state";
 import { installmentDisplayTitle } from "../../../domain/installments";
 import { formatMinorCompact } from "../../../domain/money";
-import { signedBalanceEffectOf } from "../../../domain/transactions";
+import { isWorkbookRemainderRow, signedBalanceEffectOf } from "../../../domain/transactions";
 import { transactionDateText } from "../../../ui/transaction-date";
 import { CategoryIcon } from "../../../ui/category-icon";
-import { monthLabel, tr } from "../../../i18n/tr";
+import { dateLabel, monthLabel, tr } from "../../../i18n/tr";
 import { Amount, Body, Button, Card, DataGateScreen, DataStateNotice, DisclosureChevron, EmptyState, Field, Heading, Row, Screen, Spread } from "../../../ui/components";
 import { useDrawIn } from "../../../ui/motion-primitives";
 import { TransactionRow } from "../../../ui/transaction-row";
@@ -46,7 +46,7 @@ import { appAlert } from "../../../ui/dialog";
 import { renderKeyboardSafeListScroll } from "../../../ui/keyboard-safe";
 
 type Categories = ReturnType<typeof useCategoriesState>["data"];
-type MonthTransactions = ReturnType<typeof useTransactionsBetweenState>["data"];
+type MonthTransactions = ReturnType<typeof useSettledTransactionsBetweenState>["data"];
 
 type MonthListItem =
   | { kind: "summary" }
@@ -156,6 +156,28 @@ function MonthFlowSummary({
           backgroundColor: palette.surfaceAlt,
         }]
       : []),
+    // A statement paid by hand moves money on the day it was paid, and what a
+    // partial payment left is owed to the card rather than taken from the
+    // account (spec §3.1f). Without these two the bridge from opening to
+    // closing would not add up for any month that holds one.
+    ...(flows.cardPaymentsMinor !== 0
+      ? [{
+          key: "card-payments",
+          label: tr.cashflow.cardPayments,
+          minor: flows.cardPaymentsMinor,
+          color: flows.cardPaymentsMinor < 0 ? palette.negativeText : palette.positiveText,
+          backgroundColor: palette.surfaceAlt,
+        }]
+      : []),
+    ...(flows.cardOwedMinor !== 0
+      ? [{
+          key: "card-owed",
+          label: tr.cashflow.cardOwed,
+          minor: flows.cardOwedMinor,
+          color: palette.warningText,
+          backgroundColor: palette.surfaceAlt,
+        }]
+      : []),
   ];
   return (
     <Card>
@@ -239,7 +261,7 @@ export default function MonthDetailScreen() {
   // month, then leave for the parent list.
   const validMonth = isMonthKey(month) ? month : null;
   const rangeMonth = validMonth ?? monthKeyOf(todayISO());
-  const transactionsState = useTransactionsBetweenState(firstDayOf(rangeMonth), lastDayOf(rangeMonth));
+  const transactionsState = useSettledTransactionsBetweenState(firstDayOf(rangeMonth), lastDayOf(rangeMonth));
   const ledgerState = useLedgerState(yearOf(rangeMonth));
   const transactions = transactionsState.data;
   const bundle = ledgerState.data;
@@ -402,15 +424,18 @@ export default function MonthDetailScreen() {
                 transactionDateText(t) +
                 (t.installmentNo ? `  ·  ${tr.installments.nthInstallment(t.installmentNo)}` : "") +
                 (t.isAggregate ? `  ·  ${tr.bulk.aggregateBadge}` : "") +
+                (t.settledOn ? `  ·  ${tr.cashflow.statementPaidOn(dateLabel(t.settledOn))}` : "") +
                 (!selfIds.has(t.personId) ? `  ·  ${personName.get(t.personId) ?? ""}` : "")
               }
               note={t.note}
               pending={t.status === "pending"}
               hasDocuments={documented.has(t.id)}
               reversalBadge={
-                t.amountTryMinor < 0
-                  ? { text: tr.tx.reversalLabel(t.type), tone: t.type === "income" ? "negative" : "positive" }
-                  : null
+                isWorkbookRemainderRow(t)
+                  ? { text: tr.analysis.remainderBadge, tone: "muted" }
+                  : t.amountTryMinor < 0
+                    ? { text: tr.tx.reversalLabel(t.type), tone: t.type === "income" ? "negative" : "positive" }
+                    : null
               }
               amountMinor={signedBalanceEffectOf(t.type, t.amountTryMinor, category?.kind ?? null)}
               onEdit={() => router.push({ pathname: "/transaction", params: { id: t.id } })}

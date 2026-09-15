@@ -81,6 +81,18 @@ export function shouldUseWideWorkspace(viewportWidth: number): boolean {
 }
 
 /**
+ * Where an instalment card's month figure drops from the heading size to the
+ * money-input size. Below it the figure shares a row with the paid count and a
+ * watch badge, and at heading size it wrapped the count onto a line of its own.
+ * The same width decides the category ring's ceiling on that screen.
+ */
+const COMPACT_INSTALLMENT_CARD_WIDTH = 560;
+
+export function shouldUseCompactInstallmentCard(contentWidth: number): boolean {
+  return contentWidth < COMPACT_INSTALLMENT_CARD_WIDTH;
+}
+
+/**
  * Where two filter cards stop being a stack and become a row.
  *
  * They waited for the workspace width, so a tablet held in portrait spent its

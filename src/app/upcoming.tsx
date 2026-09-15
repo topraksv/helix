@@ -5,6 +5,7 @@ import ChevronRight from "lucide-react-native/icons/chevron-right";
 import PartyPopper from "lucide-react-native/icons/party-popper";
 import {
   useAllTransactionsState,
+  useCardSettlement,
   useCategoriesState,
   useCreditCardStatementsState,
   usePendingExpectedState,
@@ -13,7 +14,6 @@ import {
   useSourcesState,
   useSubscriptionsState,
   useUserId,
-  useTxLike,
 } from "../data/hooks";
 import { combineLiveStates } from "../data/live-state";
 import { monthKeyOf, todayISO } from "../domain/dates";
@@ -47,7 +47,11 @@ export default function UpcomingScreen() {
   const statementsState = useCreditCardStatementsState();
   const { status, retry } = combineLiveStates([transactionsState, categoriesState, personsState, expectedState, subscriptionsState, incomesState, sourcesState, statementsState]);
   const categories = categoriesState.data;
-  const txLike = useTxLike();
+  const { transactions: txLike, byStatement } = useCardSettlement();
+  const statementPaidMinor = useMemo(
+    () => new Map([...byStatement.values()].map((settled) => [settled.statementId, settled.paidMinor])),
+    [byStatement],
+  );
   const today = todayISO();
   const categoryById = useMemo(() => new Map(categories.map((category) => [category.id, category.name])), [categories]);
   // Walks every transaction the account has, so it follows the data rather
@@ -72,8 +76,9 @@ export default function UpcomingScreen() {
     categories: categories.map((category) => ({ id: category.id, name: category.name })),
     cards: sourcesState.data.filter((source) => source.type === "credit_card"),
     statements: statementsState.data,
+    statementPaidMinor,
     today,
-  }), [expectedState.data, txLike, subscriptionsState.data, incomesState.data, categories, categoryById, sourcesState.data, statementsState.data, today]);
+  }), [expectedState.data, txLike, subscriptionsState.data, incomesState.data, categories, categoryById, sourcesState.data, statementsState.data, statementPaidMinor, today]);
   const grouped = useMemo(() => [...timeline.reduce((groups, item) => {
     const month = monthKeyOf(item.date);
     const current = groups.get(month) ?? [];
@@ -96,12 +101,12 @@ export default function UpcomingScreen() {
     if (item.kind === "transaction") return router.push({ pathname: "/transaction", params: { id: item.refId } });
     if (item.sourceType === "subscription") return router.push({ pathname: "/subscription-form", params: { id: item.refId } });
     if (item.sourceType === "recurring_income") return router.push("/incomes");
-    // A card statement asks "what is on this card?", and the answer is
-    // Taksitler filtered to it. It used to fall through to the catch-all below
-    // and open the payment-source list — the screen for ADDING a card — which
-    // answers a question nobody on this row was asking.
+    // A card statement asks "what is on this statement, and is it paid?", and
+    // the statement's own screen answers both. It used to fall through to the
+    // catch-all below and open the payment-source list — the screen for ADDING
+    // a card — which answers a question nobody on this row was asking.
     if (item.sourceType === "card_statement") {
-      return router.push({ pathname: "/(tabs)/cash-flow/installments", params: { card: item.refId } });
+      return router.push({ pathname: "/card-statement", params: { card: item.refId, ...(item.statementId ? { statement: item.statementId } : {}) } });
     }
     return router.push("/payment-sources");
   };
@@ -178,7 +183,7 @@ export default function UpcomingScreen() {
                   </View>
                 )}
                 title={item.name ?? item.categoryName ?? tr.common.paymentFallback}
-                subtitle={`${sourceLabel(item)} · ${dateLabel(item.date)}${item.amountIsEstimated ? ` · ${amountUnknown(item) ? tr.subs.unknownAmount : tr.subs.estimatedAmount}` : ""}`}
+                subtitle={`${sourceLabel(item)} · ${dateLabel(item.date)}${item.paidMinor ? ` · ${tr.dashboard.cardStatementPaid(formatMinorCompact(item.paidMinor))}` : ""}${item.amountIsEstimated ? ` · ${amountUnknown(item) ? tr.subs.unknownAmount : tr.subs.estimatedAmount}` : ""}`}
                 /* The amount is a column, not the tail of a sentence. Buried in
                    the subtitle it left the middle of every row empty while the
                    figures it should be scanned against stayed unaligned. Same

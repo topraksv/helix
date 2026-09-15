@@ -30,7 +30,7 @@ export function TransactionRow({
   dateText: string;
   note: string | null;
   pending: boolean;
-  reversalBadge: { text: string; tone: "negative" | "positive" } | null;
+  reversalBadge: { text: string; tone: "negative" | "positive" | "muted" } | null;
   /**
    * A receipt, invoice or warranty is filed against this row.
    *

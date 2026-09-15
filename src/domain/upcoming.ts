@@ -12,7 +12,10 @@ interface CardDueSource {
 interface UpcomingCardStatement {
   cardId: string;
   cardName: string;
+  statementId: string;
+  /** What is still owed on it: its charges less the payments recorded for it. */
   amountMinor: number;
+  paidMinor: number;
   dueDate: ISODate;
 }
 
@@ -43,6 +46,10 @@ export function standaloneUpcomingTransactions(
  * Collapse every card's earliest persisted, pending statement into exactly one
  * payment. Unlinked legacy charges are omitted: no synthetic date is invented
  * from today's date or a nominal card day.
+ *
+ * A statement the owner has already paid part of still owes the rest, and the
+ * rest is what this row is for; one paid in full has no pending charge left
+ * (`settleCardStatements` realizes them) and drops out on its own.
  */
 export function upcomingCardStatements(
   transactions: TxLike[],
@@ -50,6 +57,7 @@ export function upcomingCardStatements(
   statements: CardStatementLike[],
   today: ISODate,
   horizonDays = 45,
+  paidByStatement: ReadonlyMap<string, number> = new Map(),
 ): UpcomingCardStatement[] {
   const amountByStatementAndCard = new Map<string, number>();
   for (const transaction of transactions) {
@@ -72,14 +80,17 @@ export function upcomingCardStatements(
     if (cardName == null) continue;
     const distance = daysBetweenISO(today, statement.dueDate);
     if (distance < 0 || distance > horizonDays) continue;
-    const amountMinor = amountByStatementAndCard.get(`${statement.id}\u0000${statement.paymentSourceId}`) ?? 0;
+    const paidMinor = paidByStatement.get(statement.id) ?? 0;
+    const amountMinor = (amountByStatementAndCard.get(`${statement.id}\u0000${statement.paymentSourceId}`) ?? 0) - paidMinor;
     if (amountMinor <= 0) continue;
     const current = nextByCard.get(statement.paymentSourceId);
     if (current && current.dueDate <= statement.dueDate) continue;
     nextByCard.set(statement.paymentSourceId, {
       cardId: statement.paymentSourceId,
       cardName,
+      statementId: statement.id,
       amountMinor,
+      paidMinor,
       dueDate: statement.dueDate,
     });
   }
@@ -108,6 +119,10 @@ export interface UpcomingTimelineItem {
   sourceType: "subscription" | "recurring_income" | "scheduled_transaction" | "card_statement";
   refId: string;
   expectedId?: string;
+  /** A card statement row's own statement, which is what tapping it opens. */
+  statementId?: string;
+  /** Already paid of a card statement; `amountMinor` is what is left. */
+  paidMinor?: number;
   direction: "in" | "out";
   name: string | null;
   categoryName: string | null;
@@ -126,6 +141,8 @@ export function buildUpcomingTimeline(input: {
   categories: TimelineCategory[];
   cards: CardDueSource[];
   statements: CardStatementLike[];
+  /** Payments recorded per statement, as `settleCardStatements` counted them. */
+  statementPaidMinor?: ReadonlyMap<string, number>;
   today: ISODate;
   horizonDays?: number;
 }): UpcomingTimelineItem[] {
@@ -185,11 +202,14 @@ export function buildUpcomingTimeline(input: {
     input.statements,
     input.today,
     horizonDays,
+    input.statementPaidMinor,
   ).map((statement) => ({
     key: `card:${statement.cardId}`,
     kind: "card_statement" as const,
     sourceType: "card_statement" as const,
     refId: statement.cardId,
+    statementId: statement.statementId,
+    paidMinor: statement.paidMinor,
     direction: "out" as const,
     name: statement.cardName,
     categoryName: null,

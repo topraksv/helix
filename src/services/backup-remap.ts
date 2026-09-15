@@ -30,6 +30,7 @@
  */
 
 import { deterministicId, naturalKeys } from "../db/ids";
+import { addMonthsToKey, isISODate, monthKeyOf } from "../domain/dates";
 import type { SyncedTableName } from "../db/schema";
 import type { ExportBundle } from "./backup-validation";
 
@@ -70,6 +71,8 @@ export const REMAPPED_NATURAL_KEY_COVERAGE = {
   cellNote: "cell_notes",
   categoryBudget: "category_budgets",
   balanceAdjustment: "balance_adjustments",
+  monthOpeningDeclaration: "balance_adjustments",
+  planPayoff: "transactions",
   investmentProfile: "investment_profiles",
   importSource: "payment_sources",
   importInstallmentPlan: "installment_plans",
@@ -282,7 +285,11 @@ async function resolveComputedColumns(
   }
 }
 
-/** `balanceAdjustment(userId, date)`. */
+/**
+ * `balanceAdjustment(userId, date)`, then `monthOpeningDeclaration(userId,
+ * month)` — a declaration sits on the last day of the month before the one it
+ * opens, so its month is read back off that date.
+ */
 async function resolveBalanceAdjustments(
   bundle: ExportBundle,
   sourceUserId: string,
@@ -293,8 +300,14 @@ async function resolveBalanceAdjustments(
     const id = row.id as string;
     const date = typeof row.date === "string" ? row.date : "";
     const sourceHash = await deterministicId(naturalKeys.balanceAdjustment(sourceUserId, date));
-    if (sourceHash !== id) continue;
-    record(idMap, id, await deterministicId(naturalKeys.balanceAdjustment(targetUserId, date)));
+    if (sourceHash === id) {
+      record(idMap, id, await deterministicId(naturalKeys.balanceAdjustment(targetUserId, date)));
+      continue;
+    }
+    if (!isISODate(date)) continue;
+    const month = addMonthsToKey(monthKeyOf(date), 1);
+    if (await deterministicId(naturalKeys.monthOpeningDeclaration(sourceUserId, month)) !== id) continue;
+    record(idMap, id, await deterministicId(naturalKeys.monthOpeningDeclaration(targetUserId, month)));
   }
 }
 
@@ -450,6 +463,13 @@ async function resolveTransactions(
       if (sourceHash === id) {
         const remappedPlanId = remappedOrSame(idMap, planId);
         record(idMap, id, await deterministicId(naturalKeys.installmentTx(remappedPlanId, row.installment_no)));
+        continue;
+      }
+    }
+    if (typeof row.installment_plan_id === "string" && row.installment_no == null) {
+      const planId = row.installment_plan_id;
+      if (await deterministicId(naturalKeys.planPayoff(planId)) === id) {
+        record(idMap, id, await deterministicId(naturalKeys.planPayoff(remappedOrSame(idMap, planId))));
         continue;
       }
     }

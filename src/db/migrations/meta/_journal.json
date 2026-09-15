@@ -99,6 +99,13 @@
       "when": 1788953139563,
       "tag": "0013_drop_investment_setup_flag",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "6",
+      "when": 1789321913827,
+      "tag": "0014_statement_payments_declarations_closures",
+      "breakpoints": true
     }
   ]
 }

@@ -1,14 +1,17 @@
 import { describe, expect, it } from "vitest";
 import { MONTH_END_DAY, addDaysISO } from "../src/domain/dates";
+import { tx } from "./helpers";
 import {
   CARD_CYCLE_GRACE,
   cardCycleGraceDays,
   cardCycleProgress,
   daysUntilStatementClose,
+  firstInstallmentMonth,
   isCardCycleDayConflict,
   isValidCardCycle,
   isValidCardCycleGrace,
   refusedCardCycleDays,
+  settleCardStatements,
   statementForDueDate,
   statementForPurchase,
   statementPeriod,
@@ -248,3 +251,123 @@ describe("where today sits in a card's cycle", () => {
   });
 });
 
+
+describe("firstInstallmentMonth", () => {
+  it("bills the first instalment on the statement the purchase joins", () => {
+    // Closes on the 25th, paid on the 5th of the next month.
+    const nextMonthDue = { statementDay: 25, dueDay: 5 };
+    expect(firstInstallmentMonth("2026-09-13", nextMonthDue)).toBe("2026-10");
+    // After this period has closed the purchase waits a statement longer.
+    expect(firstInstallmentMonth("2026-09-26", nextMonthDue)).toBe("2026-11");
+    // Closing day itself still joins the closing statement.
+    expect(firstInstallmentMonth("2026-09-25", nextMonthDue)).toBe("2026-10");
+    // Closes on the 10th, paid on the 20th of the same month.
+    const sameMonthDue = { statementDay: 10, dueDay: 20 };
+    expect(firstInstallmentMonth("2026-09-08", sameMonthDue)).toBe("2026-09");
+    expect(firstInstallmentMonth("2026-09-13", sameMonthDue)).toBe("2026-10");
+  });
+});
+
+/**
+ * Recorded statement payments (owner decision, 2026-09-13: "ödediğin ay").
+ * Paid in full, the charges land on the day they were paid; paid in part, the
+ * balance loses only what was paid and the rest is owed.
+ */
+describe("settleCardStatements", () => {
+  const today = "2026-09-20";
+  const charge = (id: string, amount: number, overrides: Partial<Parameters<typeof tx>[0]> = {}) =>
+    tx({ id, type: "expense", amountTryMinor: amount, effectiveDate: "2026-10-05", status: "pending", categoryKind: "expense", cardStatementId: "sep", paymentSourceId: "card", ...overrides });
+  const pay = (id: string, paidOn: string, amountMinor: number, kind: "full" | "minimum" | "partial" = "full") =>
+    ({ id, statementId: "sep", paidOn, amountMinor, kind });
+
+  it("changes nothing for a statement with no payment recorded", () => {
+    const transactions = [charge("a", 500_00)];
+    const settled = settleCardStatements(transactions, [], today);
+    expect(settled.transactions).toBe(transactions);
+    expect(settled.flows).toEqual([]);
+    expect(settled.byStatement.size).toBe(0);
+  });
+
+  it("counts a fully paid statement's charges on the day it was paid", () => {
+    const transactions = [charge("a", 700_00), charge("refund", -200_00), charge("other", 900_00, { cardStatementId: "oct" })];
+    const settled = settleCardStatements(transactions, [pay("p", "2026-08-30", 500_00)], today);
+    expect(settled.transactions.filter((row) => row.cardStatementId === "sep").map((row) => [row.effectiveDate, row.status]))
+      .toEqual([["2026-08-30", "realized"], ["2026-08-30", "realized"]]);
+    expect(settled.transactions.find((row) => row.id === "other")).toBe(transactions[2]);
+    expect(settled.flows).toEqual([]);
+    expect(settled.byStatement.get("sep")).toEqual({
+      statementId: "sep", chargesMinor: 500_00, paidMinor: 500_00, remainingMinor: 0, state: "full", paidInFullOn: "2026-08-30",
+    });
+  });
+
+  it("lets an earlier payment leave on its own day when a later one completes the statement", () => {
+    const settled = settleCardStatements([charge("a", 1200_00)], [pay("late", "2026-09-08", 800_00), pay("early", "2026-08-20", 400_00, "partial")], today);
+    expect(settled.transactions[0]?.effectiveDate).toBe("2026-09-08");
+    expect(settled.flows).toEqual([
+      { statementId: "sep", date: "2026-08-20", amountMinor: -400_00, kind: "payment", planned: false },
+      { statementId: "sep", date: "2026-09-08", amountMinor: 400_00, kind: "paidElsewhere", planned: false },
+    ]);
+  });
+
+  it("keeps a partly paid statement on its due date and takes only what was paid", () => {
+    const transactions = [charge("a", 12_000_00)];
+    const settled = settleCardStatements(transactions, [pay("min", "2026-09-10", 4_000_00, "minimum")], today);
+    expect(settled.transactions).toBe(transactions);
+    expect(settled.flows).toEqual([
+      { statementId: "sep", date: "2026-10-05", amountMinor: 8_000_00, kind: "owed", planned: true },
+      { statementId: "sep", date: "2026-09-10", amountMinor: -4_000_00, kind: "payment", planned: false },
+      { statementId: "sep", date: "2026-10-05", amountMinor: 4_000_00, kind: "paidElsewhere", planned: true },
+    ]);
+    expect(settled.byStatement.get("sep")).toMatchObject({ remainingMinor: 8_000_00, state: "minimum", paidInFullOn: null });
+    const partial = settleCardStatements(transactions, [pay("min", "2026-09-10", 4_000_00, "partial")], today);
+    expect(partial.byStatement.get("sep")?.state).toBe("partial");
+  });
+
+  it("settles the owed part beside charges that are already in the balance", () => {
+    const settled = settleCardStatements(
+      [charge("a", 1000_00, { effectiveDate: "2026-09-05", status: "realized" })],
+      [pay("p", "2026-09-01", 300_00, "partial")],
+      today,
+    );
+    expect(settled.flows.every((flow) => !flow.planned)).toBe(true);
+  });
+
+  it("ignores payments dated after today and charges of people the owner only watches", () => {
+    const watched = charge("watched", 900_00, { personIsSelf: false });
+    const settled = settleCardStatements([charge("a", 100_00), watched], [pay("future", "2026-09-21", 100_00)], today);
+    expect(settled.byStatement.size).toBe(0);
+    const counted = settleCardStatements([charge("a", 100_00), watched], [pay("now", "2026-09-20", 100_00)], today);
+    expect(counted.byStatement.get("sep")?.chargesMinor).toBe(100_00);
+    expect(counted.transactions.find((row) => row.id === "watched")).toBe(watched);
+  });
+
+  it("covers a statement holding none of the owner's charges with any payment", () => {
+    const settled = settleCardStatements([charge("watched", 900_00, { personIsSelf: false })], [pay("p", "2026-09-10", 100_00)], today);
+    expect(settled.byStatement.get("sep")).toEqual({
+      statementId: "sep", chargesMinor: 0, paidMinor: 100_00, remainingMinor: 0, state: "full", paidInFullOn: "2026-09-10",
+    });
+    expect(settled.flows).toEqual([]);
+  });
+
+  it("orders payments made on one day by id, whichever was recorded first", () => {
+    const flows = (payments: ReturnType<typeof pay>[]) => settleCardStatements([charge("a", 1_000_00)], payments, today).flows;
+    const larger = pay("b", "2026-09-10", 600_00, "partial");
+    const smaller = pay("a", "2026-09-10", 400_00, "partial");
+    const expected = [
+      { statementId: "sep", date: "2026-09-10", amountMinor: -400_00, kind: "payment", planned: false },
+      { statementId: "sep", date: "2026-09-10", amountMinor: 400_00, kind: "paidElsewhere", planned: false },
+    ];
+    expect(flows([larger, smaller])).toEqual(expected);
+    expect(flows([smaller, larger])).toEqual(expected);
+  });
+
+  it("keeps what is owed planned while any charge beside it is not in the balance yet", () => {
+    const owedIsPlanned = (...charges: ReturnType<typeof charge>[]) =>
+      settleCardStatements(charges, [pay("p", "2026-09-10", 100_00, "partial")], today).flows.find((flow) => flow.kind === "owed")?.planned;
+    // Past its day but never confirmed.
+    expect(owedIsPlanned(charge("a", 500_00, { effectiveDate: "2026-09-15" }), charge("b", 500_00, { effectiveDate: "2026-09-15", status: "realized" }))).toBe(true);
+    // Marked realized by a device whose day had already turned.
+    expect(owedIsPlanned(charge("a", 500_00, { effectiveDate: "2026-09-21", status: "realized" }))).toBe(true);
+    expect(owedIsPlanned(charge("a", 500_00, { effectiveDate: "2026-09-20", status: "realized" }))).toBe(false);
+  });
+});

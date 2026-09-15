@@ -1,7 +1,21 @@
 /** Canonical transaction classification and signed-flow helpers. */
 
+import { tr } from "../i18n/tr";
 import type { Minor } from "./money";
 import type { CategoryKind, TransactionType, TxLike } from "./types";
+
+/**
+ * Whether a stored row is a workbook column's remainder (spec §3.1e).
+ *
+ * Recognised by the three things only the importer writes together: its
+ * origin, its month-level shape and its exact note. There is no marker column,
+ * and the rows imported since 1.7.2 carry nothing else to recognise them by.
+ * An owner who rewrites the note has made the row their own, and it then
+ * counts like any other entry.
+ */
+export function isWorkbookRemainderRow(row: { origin?: string | null; isAggregate: boolean; note?: string | null }): boolean {
+  return row.origin === "spreadsheet" && row.isAggregate && row.note === tr.importer.columnRemainder;
+}
 
 interface FinancialFlow {
   type: TransactionType;

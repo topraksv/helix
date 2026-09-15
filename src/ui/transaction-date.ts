@@ -10,6 +10,14 @@ interface TransactionDateDisplay {
 
 /** One date hierarchy for every transaction list. */
 export function transactionDateText(transaction: TransactionDateDisplay): string {
+  // A month-only card charge carries the statement's closing date as its
+  // purchase day, and printing that day would claim a date nobody entered.
+  if (transaction.isAggregate && transaction.purchaseDate) {
+    return tr.tx.cardMonthAndDue(
+      monthLabel(monthKeyOf(transaction.purchaseDate)),
+      dateLabel(transaction.effectiveDate),
+    );
+  }
   if (transaction.purchaseDate) {
     return tr.tx.cardPurchaseAndDue(
       dateLabel(transaction.purchaseDate),

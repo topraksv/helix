@@ -2,7 +2,36 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import type { DatabaseSync } from "node:sqlite";
 
-import type { TxLike } from "../src/domain/types";
+import { countsTowardBalance } from "../src/domain/balance";
+import type { ISODate } from "../src/domain/dates";
+import { signedBalanceEffect } from "../src/domain/transactions";
+import type { AdjustmentLike, TxLike } from "../src/domain/types";
+
+/**
+ * Today's balance in one pass: the opening plus every counted row and every
+ * adjustment dated today or earlier.
+ *
+ * A second, deliberately naive path to the figure the ledger chain produces,
+ * for the suites that hold the two against each other. It lived in `src` once
+ * and no screen called it; a release was justified with its number while the
+ * app showed the chain's. `openingBalanceMinor` must be the balance at the
+ * anchor `resolveLedgerAnchor` returned, because this sums with no month window.
+ */
+export function directBalance(input: {
+  openingBalanceMinor: number;
+  transactions: TxLike[];
+  adjustments: AdjustmentLike[];
+  today: ISODate;
+}): number {
+  let balance = input.openingBalanceMinor;
+  for (const transaction of input.transactions) {
+    if (countsTowardBalance(transaction, input.today)) balance += signedBalanceEffect(transaction);
+  }
+  for (const adjustment of input.adjustments) {
+    if (adjustment.date <= input.today) balance += adjustment.amountMinor;
+  }
+  return balance;
+}
 
 let txCounter = 0;
 

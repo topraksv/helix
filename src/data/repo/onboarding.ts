@@ -1,12 +1,14 @@
 import { deterministicId, naturalKeys } from "../../db/ids";
 import { getSqliteAsync } from "../../db/client";
 import { fromDbShape, nowIso, readSetting, settingRow, writeRows, writeSetting, type RowWrite } from "../../db/mutations";
-import { isMonthKey, monthKeyOf, todayISO, type MonthKey } from "../../domain/dates";
+import { addMonthsToKey, isMonthKey, lastDayOf, monthKeyOf, todayISO, type ISODate, type MonthKey } from "../../domain/dates";
 import { assertSupportedMinorAmount, type Minor } from "../../domain/money";
 import { assertInputWithinLimit } from "../../domain/input";
-import type { PaymentSourceType } from "../../domain/types";
+import type { CategoryKind, PaymentSourceType, TransactionType } from "../../domain/types";
+import { signedBalanceEffectOf } from "../../domain/transactions";
 import { isValidCardCycle } from "../../domain/card-statements";
 import { CreditCardCycleRequiredError } from "./errors";
+import { monthOpeningDeclarationWrite } from "./transactions";
 import { tr } from "../../i18n/tr";
 
 // ---------------------------------------------------------------------------
@@ -233,10 +235,9 @@ export async function seedWorkspace(userId: string, input: SeedInput): Promise<v
 }
 
 /**
- * Write the onboarding opening balance + start month, but never overwrite an
+ * Write the onboarding opening balance + start month, but never move an
  * EARLIER anchor already set (e.g. by an Excel import that seeded the ledger
- * from an earlier year). The ledger back-anchors to the earliest data, so the
- * earliest start wins; for the same-or-later month the form value is authoritative.
+ * from an earlier year); for the same-or-later month the form value is authoritative.
  */
 async function onboardingBalanceRows(
   userId: string,
@@ -247,12 +248,46 @@ async function onboardingBalanceRows(
     throw new Error("Invalid opening balance month");
   }
   assertSupportedMinorAmount(openingBalanceMinor);
-  const currentStart = await readSetting<string>(userId, "start_month");
-  if (currentStart && startMonth > currentStart) return []; // keep the earlier imported anchor
-  return [
-    await settingRow(userId, "start_month", startMonth),
-    await settingRow(userId, "opening_balance_minor", openingBalanceMinor),
-  ];
+  const currentStart = await readSetting<MonthKey>(userId, "start_month");
+  if (!currentStart || startMonth <= currentStart) {
+    return [
+      await settingRow(userId, "start_month", startMonth),
+      await settingRow(userId, "opening_balance_minor", openingBalanceMinor),
+    ];
+  }
+  // An import already reached back past this month and kept the figure typed
+  // here as the month's declared opening (spec §3.1e), so coming back to change
+  // it restates that declaration. A zero is the form's empty optional field.
+  if (openingBalanceMinor === 0) return [];
+  const date = lastDayOf(addMonthsToKey(startMonth, -1));
+  const differenceMinor = openingBalanceMinor - (await balanceBeforeDeclaring(userId, currentStart, date, startMonth));
+  return [await monthOpeningDeclarationWrite(userId, startMonth, openingBalanceMinor, differenceMinor, tr.importer.openingKept)];
+}
+
+/**
+ * The balance at the end of `date` as a client older than declarations reads
+ * it, which sees a declaration only as the difference stored with it: the
+ * anchor's opening plus every counted row and adjustment from the anchor's
+ * month on, the declaration about to be written excepted.
+ */
+async function balanceBeforeDeclaring(userId: string, anchorMonth: MonthKey, date: ISODate, declaredMonth: MonthKey): Promise<Minor> {
+  const sqlite = await getSqliteAsync();
+  const from = `${anchorMonth}-01`;
+  const rows = await sqlite.getAllAsync<{ type: TransactionType; amount_try_minor: number; category_kind: CategoryKind | null }>(
+    `SELECT t.type, t.amount_try_minor, c.kind AS category_kind FROM transactions t
+     JOIN persons p ON p.id = t.person_id AND p.user_id = t.user_id AND p.is_self = 1
+     LEFT JOIN categories c ON c.id = t.category_id AND c.user_id = t.user_id
+     WHERE t.user_id = ? AND t.deleted_at IS NULL AND t.status = 'realized' AND t.effective_date BETWEEN ? AND ?`,
+    [userId, from, date],
+  );
+  const adjusted = await sqlite.getFirstAsync<{ total: number | null }>(
+    `SELECT SUM(amount_minor) AS total FROM balance_adjustments
+     WHERE user_id = ? AND deleted_at IS NULL AND id != ? AND date BETWEEN ? AND ?`,
+    [userId, await deterministicId(naturalKeys.monthOpeningDeclaration(userId, declaredMonth)), from, date],
+  );
+  const opening = (await readSetting<Minor>(userId, "opening_balance_minor")) ?? 0;
+  return rows.reduce((sum, row) => sum + signedBalanceEffectOf(row.type, row.amount_try_minor, row.category_kind), opening)
+    + Number(adjusted?.total ?? 0);
 }
 
 /** Replace the historical ledger anchor as one validated atomic write. */

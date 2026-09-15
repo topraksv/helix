@@ -208,17 +208,73 @@ Deno.serve(async (request: Request): Promise<Response> => {
     });
   }
 
-  const html = `
-    <div style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;font-size:15px;line-height:1.55">
-      <p style="margin:0 0 4px"><strong>Kategori:</strong> ${escapeHtml(CATEGORY_LABEL[category] ?? category)}</p>
-      <p style="margin:0 0 4px"><strong>Gönderen:</strong> ${escapeHtml(user.email ?? user.id)}</p>
-      <p style="margin:0 0 4px"><strong>Platform:</strong> ${escapeHtml(platform)} · <strong>Sürüm:</strong> ${escapeHtml(appVersion)}</p>
-      <p style="margin:0 0 4px"><strong>Tarih:</strong> ${new Date().toISOString()}</p>
-      <p style="margin:0 0 16px"><strong>Ek:</strong> ${attachments.length} görsel</p>
-      <hr style="border:0;border-top:1px solid #ddd;margin:0 0 16px" />
-      <p style="white-space:pre-wrap;margin:0">${escapeHtml(message)}</p>
-    </div>
-  `;
+  // Categories carry a colour the owner can scan an inbox by: a broken screen
+  // and a suggestion should not look the same at a glance. Inline styles and
+  // tables only — mail clients drop <style> blocks and flexbox.
+  const CATEGORY_TONE: Record<string, { bg: string; fg: string; mark: string }> = {
+    visual: { bg: "#EED8CC", fg: "#7B3A28", mark: "🎨" },
+    functional: { bg: "#F6D5D1", fg: "#8A2A22", mark: "🛠️" },
+    performance: { bg: "#EDDFC5", fg: "#775624", mark: "⏱️" },
+    data: { bg: "#F6D5D1", fg: "#8A2A22", mark: "📊" },
+    suggestion: { bg: "#E2E1C9", fg: "#555937", mark: "💡" },
+    other: { bg: "#E7DFD7", fg: "#3A3028", mark: "💬" },
+  };
+  const tone = CATEGORY_TONE[category] ?? CATEGORY_TONE.other;
+  const sentAt = new Intl.DateTimeFormat("tr-TR", {
+    dateStyle: "long", timeStyle: "short", timeZone: "Europe/Istanbul",
+  }).format(new Date());
+  const font = "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif";
+  const serif = "'IBM Plex Serif', Georgia, 'Times New Roman', serif";
+  const metaRow = (label: string, value: string) => `
+    <tr>
+      <td style="padding:7px 0; font-family:${font}; font-size:13px; color:#6D6157; width:96px; vertical-align:top;">${label}</td>
+      <td style="padding:7px 0; font-family:${font}; font-size:14px; color:#2A211B; vertical-align:top;">${value}</td>
+    </tr>`;
+  const reporter = escapeHtml(user.email ?? user.id);
+
+  const html = `<!DOCTYPE html>
+<html lang="tr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="color-scheme" content="light"></head>
+<body style="margin:0; padding:0; background-color:#F1EDE8;">
+  <div style="display:none; max-height:0; overflow:hidden; font-size:1px; color:#F1EDE8;">${escapeHtml(message.slice(0, 120))}</div>
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color:#F1EDE8;">
+    <tr><td align="center" style="padding:28px 12px;">
+      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="max-width:600px;">
+        <tr><td align="center" style="padding:0 0 18px 0;">
+          <table role="presentation" cellspacing="0" cellpadding="0" border="0"><tr>
+            <td width="36" height="36" align="center" valign="middle" style="width:36px; height:36px; background-color:#A55335; border-radius:10px; font-family:${serif}; font-size:20px; font-weight:600; line-height:36px; color:#FBF4EF;">H</td>
+            <td style="padding-left:10px; font-family:${serif}; font-size:20px; font-weight:600; color:#2A211B;">Helix <span style="font-family:${font}; font-size:13px; font-weight:500; color:#6D6157;">· Geri bildirim</span></td>
+          </tr></table>
+        </td></tr>
+        <tr><td style="background-color:#FFFDFB; border:1px solid #E7DFD7; border-radius:18px;">
+          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
+            <tr><td style="height:6px; line-height:6px; font-size:0; background-color:#A55335; border-radius:18px 18px 0 0;">&nbsp;</td></tr>
+            <tr><td style="padding:28px 32px 0 32px;">
+              <span style="display:inline-block; padding:6px 12px; border-radius:999px; background-color:${tone.bg}; color:${tone.fg}; font-family:${font}; font-size:13px; font-weight:600;">${tone.mark}&nbsp; ${escapeHtml(CATEGORY_LABEL[category] ?? category)}</span>
+              <h1 style="margin:16px 0 0 0; font-family:${serif}; font-size:24px; line-height:30px; font-weight:600; color:#2A211B;">Yeni bir geri bildirim geldi</h1>
+            </td></tr>
+            <tr><td style="padding:20px 32px 0 32px;">
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color:#F7F3EF; border-left:4px solid #A55335; border-radius:10px;">
+                <tr><td style="padding:18px 20px; font-family:${font}; font-size:16px; line-height:26px; color:#2A211B; white-space:pre-wrap;">${escapeHtml(message)}</td></tr>
+              </table>
+            </td></tr>
+            <tr><td style="padding:22px 32px 0 32px;">
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="border-top:1px solid #E7DFD7;">
+                ${metaRow("Gönderen", `<a href="mailto:${reporter}" style="color:#A55335; text-decoration:none;">${reporter}</a>`)}
+                ${metaRow("Tarih", escapeHtml(sentAt))}
+                ${metaRow("Cihaz", `${escapeHtml(platform)} · sürüm ${escapeHtml(appVersion)}`)}
+                ${metaRow("Ekler", attachments.length === 0 ? "Ekran görüntüsü yok" : `📎 ${attachments.length} ekran görüntüsü`)}
+              </table>
+            </td></tr>
+            <tr><td style="padding:22px 32px 30px 32px; font-family:${font}; font-size:13px; line-height:20px; color:#62564C;">
+              ↩️ Bu maili yanıtladığında cevabın doğrudan <strong style="color:#3A3028;">${reporter}</strong> adresine gider.
+            </td></tr>
+          </table>
+        </td></tr>
+        <tr><td align="center" style="padding:18px 16px 4px 16px; font-family:${font}; font-size:12px; color:#6D6157;">Helix uygulamasındaki Geri Bildirim ekranından gönderildi.</td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body></html>`;
 
   const transport = nodemailer.createTransport({
     host: Deno.env.get("SMTP_HOST") ?? "smtp.gmail.com",

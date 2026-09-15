@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { readFile } from "node:fs/promises";
+import { composeWorkbook, WORKBOOK_MIME } from "../src/services/workbook-export";
 import {
   addMarketExpense,
   assertNoRuntimeErrors,
@@ -8,6 +9,7 @@ import {
   currentMonthKey,
   isolateExternalData,
   onboard,
+  openCashFlow,
   pickOption,
   renderedContrast,
 } from "./helpers";
@@ -568,5 +570,141 @@ test("an id that names no row still answers, instead of waiting for ever", async
   await page.goto("/helix/transaction?id=01a06b2c-0000-7000-8000-000000000000");
   await expect(page).toHaveURL(/\/cash-flow/u, { timeout: 10_000 });
 
+  await assertNoRuntimeErrors(errors, testInfo);
+});
+
+/**
+ * A refund recorded against an instalment purchase.
+ *
+ * A new screen behind a new route, and the ways it fails are the ones a unit
+ * test cannot see: the route not registered, the picker drawing nothing, a card
+ * that cannot hold its rows. The flow is the one the owner described — the
+ * button lists purchases, the refund attaches to the one chosen, and the
+ * purchase's own screen shows it and what the purchase now comes to.
+ */
+test("records a refund against an instalment purchase and shows it on the plan", async ({ page }, testInfo) => {
+  const errors = collectRuntimeErrors(page);
+  await onboard(page);
+
+  await page.goto("/helix/installment-new");
+  await page.getByRole("radio", { name: "Kredi" }).click();
+  await page.getByRole("textbox", { name: "Başlık", exact: true }).fill("Çamaşır makinesi");
+  await page.getByRole("textbox", { name: "Aylık Taksit", exact: true }).fill("1.000,00");
+  const savePlan = page.getByRole("button", { name: "Kaydet", exact: true });
+  await expect(savePlan).toBeEnabled();
+  await savePlan.click();
+
+  const addRefund = page.getByRole("button", { name: "İade Ekle" });
+  await expect(addRefund).toBeVisible();
+  await addRefund.click();
+  await expect(page.getByText("Hangi alışverişi iade ettin?")).toBeVisible();
+  await page.getByRole("button", { name: /Çamaşır makinesi/ }).click();
+  await page.getByRole("textbox", { name: "İade tutarı", exact: true }).fill("300,00");
+  await page.getByRole("radio", { name: "Tek Seferde" }).click();
+  const saveRefund = page.getByRole("button", { name: "İadeyi Kaydet" });
+  await expect(saveRefund).toBeEnabled();
+  await saveRefund.click();
+
+  // Back on the list, the purchase carries its refund.
+  await expect(page.getByText(/^İade .*300/)).toBeVisible();
+  await page.getByRole("button", { name: /Çamaşır makinesi/ }).click();
+  await expect(page.getByText("İadeler", { exact: true })).toBeVisible();
+  await expect(page.getByText("Güncel Tutar", { exact: true })).toBeVisible();
+
+  await assertNoRuntimeErrors(errors, testInfo);
+});
+
+/**
+ * A card statement is its own record, opened where it is listed.
+ *
+ * Durum lists a card's next statement as one row. That row used to open
+ * Taksitler, where a single charge is invisible, and pushed into the Mali Tablo
+ * tab's own stack it left that tab stuck on the pushed screen until the app
+ * restarted. It opens the statement at the root now: Back returns to Durum, the
+ * tab still shows the table, and a partial payment takes only what was paid.
+ */
+test("a card statement opens from Durum, takes a partial payment, and Back returns to Durum", async ({ page }, testInfo) => {
+  const errors = collectRuntimeErrors(page);
+  await onboard(page);
+
+  // Closing today (or on the 27th) and due the day after, so the statement
+  // sits inside Durum's 31-day window whatever day the run lands on.
+  const statementDay = Math.min(Number(currentIstanbulDay()), 27);
+  await page.goto("/helix/settings/payment-sources");
+  await page.getByRole("radio", { name: "Kredi Kartı" }).click();
+  await page.getByRole("textbox", { name: "Yöntem adı" }).fill("Deneme Kart");
+  await page.getByRole("textbox", { name: "Ekstre kesim günü" }).fill(String(statementDay));
+  await page.getByRole("textbox", { name: "Son ödeme günü" }).fill(String(statementDay + 1));
+  await page.getByRole("button", { name: "Ekle", exact: true }).click();
+  await expect(page.getByText("Deneme Kart").first()).toBeVisible();
+
+  await page.goto("/helix/");
+  await openCashFlow(page);
+  await page.getByRole("button", { name: "İşlem Ekle" }).click();
+  await page.getByRole("textbox", { name: "Tutar · TRY" }).fill("1.000,00");
+  await pickOption(page, "Kategori", /Market/);
+  await pickOption(page, "Ödeme Yöntemi", /Deneme Kart/);
+  await page.getByRole("button", { name: "Kaydet", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Mali Tablo", exact: true })).toBeVisible();
+
+  // A fresh launch, so the Mali Tablo tab has never mounted its own stack.
+  await page.goto("/helix/");
+  await expect(page.getByRole("tab", { name: "Durum", selected: true })).toBeVisible();
+  await page.getByRole("button", { name: /Deneme Kart/ }).locator("visible=true").first().click();
+  await expect(page.getByText(/Deneme Kart · .* ekstresi/u)).toBeVisible();
+
+  await page.getByRole("radio", { name: /Kısmi Ödeme/u }).click();
+  await page.getByRole("textbox", { name: "Ödenen tutar", exact: true }).fill("400,00");
+  const pay = page.getByRole("button", { name: "Ödemeyi Kaydet" });
+  await expect(pay).toBeEnabled();
+  await pay.click();
+  await expect(page.getByText("Kısmen ödendi", { exact: true })).toBeVisible();
+
+  await page.getByRole("button", { name: "Geri", exact: true }).locator("visible=true").first().click();
+  await expect(page.getByRole("tab", { name: "Durum", selected: true })).toBeVisible();
+  // The row now owes what is left, and says what was paid.
+  await expect(page.getByText(/400,00 ödendi/u).first()).toBeVisible();
+
+  await page.getByRole("tab", { name: "Mali Tablo" }).click();
+  await expect(page.getByRole("heading", { name: "Mali Tablo", exact: true })).toBeVisible();
+
+  await assertNoRuntimeErrors(errors, testInfo);
+});
+
+/**
+ * The record sheets of an exported workbook come back through the ordinary
+ * import wizard (owner decision, 2026-09-14): what they will do is said before
+ * anything is written, a row naming someone the workspace does not have is
+ * named rather than guessed at, and the subscription lands.
+ */
+test("the subscription sheet of an exported workbook comes back through the import wizard", async ({ page }, testInfo) => {
+  const errors = collectRuntimeErrors(page);
+  await page.setViewportSize({ width: 1280, height: 1000 });
+  await onboard(page);
+  const row = {
+    name: "E2E Müzik", amountMinor: 5999, currency: "TRY", amountMode: "fixed", cycle: "monthly", intervalMonths: 1,
+    billingDay: 12, nextDueDate: `${currentMonthKey()}-12`, trialEndDate: "", category: "", source: "", person: "",
+    autoPay: false, isActive: true, websiteDomain: "", monthlyLoadMinor: 5999,
+  };
+  const bytes = await composeWorkbook({ years: [], subscriptions: [row, { ...row, name: "E2E Başkası", person: "Tanımadığım Kişi" }], investments: [] });
+
+  await page.goto("/helix/import-wizard");
+  const chooser = page.waitForEvent("filechooser");
+  await page.getByRole("button", { name: "Dosyayı Seç" }).click();
+  await (await chooser).setFiles({ name: "helix.xlsx", mimeType: WORKBOOK_MIME, buffer: Buffer.from(bytes) });
+
+  await expect(page.getByText("Abonelik: 1 yeni, 0 güncellenecek, 0 aynı", { exact: true })).toBeVisible();
+  await expect(page.getByText("Abonelikler, 3. satır: Kişi okunamadı", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Abonelik ve Yatırımları Aktar" }).click();
+  await expect(page.getByText("1 abonelik ve 0 yatırım işlemi eklendi ya da güncellendi.", { exact: true })).toBeVisible();
+  // Nothing of the ledger was written, so its summary is not claimed.
+  await expect(page.getByRole("heading", { name: "Abonelikler ve yatırımlar", exact: true })).toBeVisible();
+  await expect(page.getByText(/kayıt geldi|Toplamlar tek tek ayrıldı/u)).toHaveCount(0);
+
+  // The wizard is a page over the tabs; leaving it is what brings them back.
+  await page.getByRole("button", { name: "Tamam", exact: true }).click();
+  await page.getByRole("tab", { name: "Abonelikler" }).click();
+  await expect(page.getByText("E2E Müzik", { exact: true }).first()).toBeVisible();
+  await expect(page.getByText("E2E Başkası", { exact: true })).toHaveCount(0);
   await assertNoRuntimeErrors(errors, testInfo);
 });

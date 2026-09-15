@@ -9,6 +9,7 @@ import { create } from "zustand";
 import { Platform } from "react-native";
 import {
   clearPasswordRecoveryDetected,
+  createRecoveryClient,
   getSupabase,
   isSupabaseConfigured,
   markPasswordRecoverySession,
@@ -54,24 +55,38 @@ let invalidationCleanup: Promise<void> | null = null;
  */
 let pendingRecoveryTokenHash: string | null = null;
 
+/** The recovery session a redeemed token opened, kept for a retried save. */
+let recoveryClient: ReturnType<typeof createRecoveryClient> = null;
+
 /**
- * Spend the held recovery token: null once redeemed (or when none is held),
- * otherwise the message the reset screen shows. Needs no PKCE verifier, so the
- * link works in whichever browser the mail app opens — not only the one that
- * asked for the reset.
+ * Redeem the held token and set the password, on a client of its own.
+ *
+ * Needs no PKCE verifier, so the link works in whichever browser the mail app
+ * opens. And it touches nothing the device is signed in with: the account the
+ * link belongs to may not be the one this workspace belongs to, and the tab it
+ * opens in may not be the tab that holds Helix. A save refused after the token
+ * was spent — the old password chosen again, a dropped connection — keeps the
+ * session, so the next press does not need a link that no longer exists.
  */
-async function redeemPendingRecoveryToken(supabase: NonNullable<ReturnType<typeof getSupabase>>): Promise<string | null> {
-  if (!pendingRecoveryTokenHash) return null;
-  const { data, error } = await supabase.auth.verifyOtp({ token_hash: pendingRecoveryTokenHash, type: "recovery" });
-  if (error) {
-    // A request that never reached Auth spent nothing: the same link can be
-    // tried again. Auth's own refusal is final for this token.
-    if (error.name === "AuthRetryableFetchError") return friendlyAuthError(error.message);
+async function completeWithRecoveryToken(newPassword: string): Promise<string | null> {
+  if (!recoveryClient) {
+    const client = createRecoveryClient();
+    if (!client) return tr.errors.supabaseNotConfigured;
+    const { error } = await client.auth.verifyOtp({ token_hash: pendingRecoveryTokenHash!, type: "recovery" });
+    if (error) {
+      // A request that never reached Auth spent nothing: the same link can be
+      // tried again. Auth's own refusal is final for this token.
+      if (error.name === "AuthRetryableFetchError") return friendlyAuthError(error.message);
+      pendingRecoveryTokenHash = null;
+      return error.code === "otp_expired" ? tr.auth.resetExpiredBody : tr.auth.resetInvalidBody;
+    }
     pendingRecoveryTokenHash = null;
-    return error.code === "otp_expired" ? tr.auth.resetExpiredBody : tr.auth.resetInvalidBody;
+    recoveryClient = client;
   }
-  pendingRecoveryTokenHash = null;
-  if (data.session?.user) markPasswordRecoverySession(data.session.user.id);
+  const { error } = await recoveryClient.auth.updateUser({ password: newPassword });
+  if (error) return friendlyAuthError(error.message);
+  await recoveryClient.auth.signOut({ scope: "local" }).catch(() => {});
+  recoveryClient = null;
   return null;
 }
 
@@ -288,8 +303,10 @@ interface SessionStore {
   /** Send a neutral, expiring Supabase password-reset link. */
   requestPasswordReset: (email: string) => Promise<string | null>;
   /** Read a recovery link. A token link is held unspent until save; older code
-   *  and token links are exchanged for a short-lived session here. */
-  preparePasswordRecovery: (url: string | null) => Promise<"ready" | "expired" | "invalid">;
+   *  and token links are exchanged for a short-lived session here — except in
+   *  a `standalone` tab, where that session would be shared with the tab that
+   *  holds Helix, so only a token link is accepted. */
+  preparePasswordRecovery: (url: string | null, options?: { standalone?: boolean }) => Promise<"ready" | "expired" | "invalid">;
   /** Spend a held recovery token, update the password and end that session. */
   completePasswordRecovery: (newPassword: string) => Promise<string | null>;
   /** End the session on THIS device and wipe its local finance data. Returns an
@@ -454,7 +471,7 @@ export const useSession = create<SessionStore>((set, get) => ({
     return requestPasswordRecoveryEmail(supabase.auth, email, redirectTo);
   },
 
-  preparePasswordRecovery: async (url) => {
+  preparePasswordRecovery: async (url, options) => {
     const supabase = getSupabase();
     if (!supabase) return "invalid";
     const target = Platform.OS === "web" && globalThis.location
@@ -462,11 +479,13 @@ export const useSession = create<SessionStore>((set, get) => ({
       : { platform: "native" as const, scheme: "helix" };
     const link = parsePasswordRecoveryUrl(url, target);
     pendingRecoveryTokenHash = null;
+    recoveryClient = null;
     if (link.kind === "expired") return "expired";
     if (link.kind === "tokenHash") {
       pendingRecoveryTokenHash = link.tokenHash;
       return "ready";
     }
+    if (options?.standalone) return "invalid";
     const acceptRecoverySession = async (recoveryUserId: string): Promise<boolean> => {
       const workspaceUserId = get().userId;
       if (workspaceUserId && workspaceUserId !== recoveryUserId) {
@@ -510,8 +529,7 @@ export const useSession = create<SessionStore>((set, get) => ({
     const supabase = getSupabase();
     if (!supabase) return tr.errors.supabaseNotConfigured;
     if (!isValidNewPassword(newPassword)) return tr.auth.errWeakPassword;
-    const redeemError = await redeemPendingRecoveryToken(supabase);
-    if (redeemError) return redeemError;
+    if (recoveryClient || pendingRecoveryTokenHash) return completeWithRecoveryToken(newPassword);
     const { data } = await supabase.auth.getSession();
     const recoveryUserId = data.session?.user.id;
     if (!recoveryUserId || !wasPasswordRecoveryDetected(recoveryUserId)) return tr.auth.resetInvalidBody;

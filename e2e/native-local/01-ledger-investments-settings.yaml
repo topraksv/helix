@@ -115,6 +115,12 @@ appId: com.toprak.helix
     direction: DOWN
     timeout: 20000
 - tapOn: "Ürünü Kaydet"
+# Saving a product returns to the list where it was scrolled; the action sits at its top.
+- scrollUntilVisible:
+    element:
+      text: "İşlem Ekle"
+    direction: UP
+    timeout: 20000
 - tapOn: "İşlem Ekle"
 - scrollUntilVisible:
     element:

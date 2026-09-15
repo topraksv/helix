@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { classifyRootRoute, resolveRootGuard } from "../src/domain/app-guard";
+import { classifyRootRoute, resolveRootGuard, drawsWithoutDatabase } from "../src/domain/app-guard";
 import {
   completeLiveQuery,
   initialLiveSnapshot,
@@ -174,5 +174,21 @@ describe("returning to an account that is already set up", () => {
         route: "protected",
       }),
     ).toEqual({ view: "wait", redirect: null });
+  });
+});
+
+/**
+ * A reset e-mail opens its link in a new tab beside the one already running
+ * Helix, which holds the database. The reset screen reads nothing local, so it
+ * is the one route drawn instead of the wait — and only for that failure.
+ */
+describe("routes drawn without the database", () => {
+  it("draws only the reset screen, and only while another tab holds the database", () => {
+    expect(drawsWithoutDatabase("busy", "recovery")).toBe(true);
+    for (const route of ["auth", "public", "onboarding", "setup-helper", "protected", "root"] as const) {
+      expect(drawsWithoutDatabase("busy", route), route).toBe(false);
+    }
+    expect(drawsWithoutDatabase("unknown", "recovery")).toBe(false);
+    expect(drawsWithoutDatabase(null, "recovery")).toBe(false);
   });
 });

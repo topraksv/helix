@@ -55,11 +55,11 @@ select is(
         'subscriptions','price_history','recurring_incomes','expected_payments',
         'balance_adjustments','cell_notes','settings','fx_rates','category_budgets',
         'investment_profiles','investment_products','investment_operations',
-        'attachments','matrix_colors'
+        'attachments','matrix_colors','card_statement_payments'
       ])
   ),
-  63::bigint,
-  'all 21 synced tables have select, insert and update owner policies'
+  66::bigint,
+  'all 22 synced tables have select, insert and update owner policies'
 );
 
 select is(
@@ -73,11 +73,11 @@ select is(
         'subscriptions','price_history','recurring_incomes','expected_payments',
         'balance_adjustments','cell_notes','settings','fx_rates','category_budgets',
         'investment_profiles','investment_products','investment_operations',
-        'attachments','matrix_colors'
+        'attachments','matrix_colors','card_statement_payments'
       ])
       and roles = array['authenticated']::name[]
   ),
-  63::bigint,
+  66::bigint,
   'every owner policy is restricted to authenticated'
 );
 
@@ -93,11 +93,11 @@ select is(
         'subscriptions','price_history','recurring_incomes','expected_payments',
         'balance_adjustments','cell_notes','settings','fx_rates','category_budgets',
         'investment_profiles','investment_products','investment_operations',
-        'attachments','matrix_colors'
+        'attachments','matrix_colors','card_statement_payments'
       ])
       and c.relrowsecurity
   ),
-  21::bigint,
+  22::bigint,
   'RLS is enabled on every synced table'
 );
 
@@ -113,12 +113,12 @@ select is(
         'subscriptions','price_history','recurring_incomes','expected_payments',
         'balance_adjustments','cell_notes','settings','fx_rates','category_budgets',
         'investment_profiles','investment_products','investment_operations',
-        'attachments','matrix_colors'
+        'attachments','matrix_colors','card_statement_payments'
       ])
       and with_check like '%auth.uid()%'
       and with_check like '%user_id%'
   ),
-  21::bigint,
+  22::bigint,
   'every insert policy checks the authenticated owner'
 );
 
@@ -134,14 +134,14 @@ select is(
         'subscriptions','price_history','recurring_incomes','expected_payments',
         'balance_adjustments','cell_notes','settings','fx_rates','category_budgets',
         'investment_profiles','investment_products','investment_operations',
-        'attachments','matrix_colors'
+        'attachments','matrix_colors','card_statement_payments'
       ])
       and qual like '%auth.uid()%'
       and qual like '%user_id%'
       and with_check like '%auth.uid()%'
       and with_check like '%user_id%'
   ),
-  21::bigint,
+  22::bigint,
   'every update policy filters and re-checks the authenticated owner'
 );
 
@@ -154,7 +154,7 @@ select is(
       'subscriptions','price_history','recurring_incomes','expected_payments',
       'balance_adjustments','cell_notes','settings','fx_rates','category_budgets',
       'investment_profiles','investment_products','investment_operations',
-      'attachments','matrix_colors'
+      'attachments','matrix_colors','card_statement_payments'
     ]) as tables(name)
     where has_table_privilege('authenticated', format('public.%I', name), 'SELECT')
       and has_table_privilege('authenticated', format('public.%I', name), 'INSERT')
@@ -165,7 +165,7 @@ select is(
       and not has_table_privilege('authenticated', format('public.%I', name), 'TRIGGER')
       and not has_table_privilege('authenticated', format('public.%I', name), 'MAINTAIN')
   ),
-  21::bigint,
+  22::bigint,
   'authenticated grants are limited to select, insert and update'
 );
 
@@ -178,7 +178,7 @@ select is(
       'subscriptions','price_history','recurring_incomes','expected_payments',
       'balance_adjustments','cell_notes','settings','fx_rates','category_budgets',
       'investment_profiles','investment_products','investment_operations',
-      'attachments','matrix_colors'
+      'attachments','matrix_colors','card_statement_payments'
     ]) as tables(name)
     where has_table_privilege('anon', format('public.%I', name), 'SELECT')
        or has_table_privilege('anon', format('public.%I', name), 'INSERT')
@@ -245,6 +245,7 @@ select is(
   (
     with expected(table_name, index_name, column_names) as (
       values
+        ('card_statement_payments', 'card_statement_payments_user_statement', array['user_id', 'statement_id']),
         ('category_budgets', 'category_budgets_user_category', array['user_id', 'category_id']),
         ('cell_notes', 'cell_notes_user_category', array['user_id', 'category_id']),
         ('expected_payments', 'expected_payments_user_transaction', array['user_id', 'transaction_id']),
@@ -289,7 +290,7 @@ select is(
     from expected
     join actual using (table_name, index_name, column_names)
   ),
-  18::bigint,
+  19::bigint,
   'every owner-aware foreign key has the expected composite referencing index'
 );
 
@@ -310,7 +311,7 @@ select is(
         'subscriptions','price_history','recurring_incomes','expected_payments',
         'balance_adjustments','cell_notes','settings','fx_rates','category_budgets',
         'investment_profiles','investment_products','investment_operations',
-        'attachments','matrix_colors'
+        'attachments','matrix_colors','card_statement_payments'
       ])
   ),
   0::bigint,
@@ -467,7 +468,7 @@ select extensions.ok(
 );
 
 -- migration 32: the sync change probe. Its whole safety argument is that it is
--- SECURITY INVOKER, so the 21 reads it performs are subject to the same RLS
+-- SECURITY INVOKER, so the 22 reads it performs are subject to the same RLS
 -- policies asserted above. A future edit that made it DEFINER — the reflex
 -- when a function "needs" to read many tables — would turn one RPC into a
 -- read of every user's ledger, and nothing else in this suite would notice.

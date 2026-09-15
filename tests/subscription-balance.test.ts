@@ -34,10 +34,9 @@ vi.mock("../src/sync/engine", () => ({ scheduleSync: vi.fn() }));
 import { upsertSubscription } from "../src/data/repo/rules";
 import { runMaintenance } from "../src/data/repo/maintenance";
 import { confirmExpected, revertExpected, setExpectedAmount } from "../src/data/repo/expected";
-import { currentBalance } from "../src/domain/balance";
 import { todayISO } from "../src/domain/dates";
 import type { TxLike } from "../src/domain/types";
-import { migrationStatements } from "./helpers";
+import { migrationStatements, directBalance } from "./helpers";
 
 const USER = "subscription-balance-user";
 const SEEDED_AT = "2020-01-01T09:00:00.000Z";
@@ -101,7 +100,7 @@ function balanceNow(): number {
     subscriptionId: row.subscription_id,
     isAggregate: Boolean(row.is_aggregate),
   }));
-  return currentBalance({
+  return directBalance({
     openingBalanceMinor: OPENING_MINOR,
     transactions,
     adjustments: [],

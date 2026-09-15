@@ -71,16 +71,24 @@ describe("workbook round trip", () => {
     expect(salary.kindGuess).toBe("income");
   });
 
-  it("names the two record sheets as unread rather than failing the import", async () => {
+  it("reads the two record sheets back as records, beside a ledger that still imports", async () => {
     const bytes = await composeWorkbook({ years: year2026, subscriptions: [subscription], investments: [investment] });
     const parsed = await parseWorkbookBytes(bytes);
-    // A subscription is not a month grid and never will be, so the wizard is
-    // right to refuse these two. What matters is that refusing them does not
-    // refuse the file: the ledger still imports and the owner is told which
-    // sheets were left alone.
-    expect(parsed.unparsed.map((sheet) => sheet.sheetName).sort())
-      .toEqual([WORKBOOK_SHEETS.subscriptions, WORKBOOK_SHEETS.investments].sort());
-    expect(parsed.sheets.length, "and the file is still importable").toBeGreaterThan(0);
+    expect(parsed.unparsed, "no sheet the wizard has to refuse").toEqual([]);
+    expect(parsed.records.problems).toEqual([]);
+    expect(parsed.records.subscriptions.map((record) => [record.name, record.amountMinor, record.nextDueDate, record.source]))
+      .toEqual([["Netflix", 22999, "2026-04-12", "Worldcard"]]);
+    expect(parsed.records.investments.map((record) => [record.product, record.kind, record.quantity, record.totalMinor]))
+      .toEqual([["Gram Altın", "buy", "12.5", 6000000]]);
+    expect(parsed.sheets.length, "and the ledger is still importable").toBeGreaterThan(0);
+  });
+
+  it("still refuses an owner's own investment sheet that only shares the name", async () => {
+    const book = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(book, XLSX.utils.aoa_to_sheet([["Altın", "Dolar"], ["24gr", "760$"]]), WORKBOOK_SHEETS.investments);
+    const parsed = await parseWorkbookBytes(new Uint8Array(XLSX.write(book, { bookType: "xlsx", type: "array" }) as ArrayBuffer));
+    expect(parsed.unparsed.map((sheet) => sheet.sheetName)).toEqual([WORKBOOK_SHEETS.investments]);
+    expect(parsed.records).toEqual({ subscriptions: [], investments: [], problems: [] });
   });
 
   it("gives each year its own sheet, so two years cannot be filed under one", async () => {

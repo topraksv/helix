@@ -3,17 +3,29 @@ import { tr } from "../../i18n/tr";
 import { deterministicId, naturalKeys, newId } from "../../db/ids";
 import { fromDbShape, nowIso, readSetting, writeRowsValidated, type RowWrite } from "../../db/mutations";
 import type { ImportBatchKey } from "../../domain/settings";
-import { addMonthsToKey, lastDayOf, todayISO, yearOf, type MonthKey } from "../../domain/dates";
+import { addMonthsToKey, lastDayOf, monthKeyOf, todayISO, yearOf, type MonthKey } from "../../domain/dates";
 import type { PaymentSourceType } from "../../domain/types";
 import type { Minor } from "../../domain/money";
 import { isValidCardCycle, type CardCycle } from "../../domain/card-statements";
-import { collectInstallmentPlans, type ParsedSheet } from "../../services/spreadsheet-import";
+import { collectInstallmentPlans, type ParsedSheet, type WorkbookRecords } from "../../services/spreadsheet-import";
+import {
+  folded,
+  quantityKey,
+  recordKey,
+  SUBSCRIPTION_HEADERS,
+  WORKBOOK_SHEETS,
+  type InvestmentRecord,
+  type RecordProblem,
+  type SubscriptionRecord,
+} from "../../domain/workbook-format";
 import { suggestCategoryIcon } from "../../domain/category-icons";
 import { nameMentions } from "../../domain/logo-domain";
 import { CreditCardCycleRequiredError, ImportBatchUnreadableError } from "./errors";
 import { buildPlanRows, linkDueRowsToCardStatements } from "./installments";
 import { buildSpreadsheetImportPlan, importCategoryKey } from "./import-plan";
 import { assertInvestmentWrites } from "./investment-validation";
+import { addInvestmentOperation, saveInvestmentProduct, updateInvestmentOperation } from "./investments";
+import { ensureSubscriptionCategory, upsertSubscription, type SubscriptionInput } from "./rules";
 
 // ---------------------------------------------------------------------------
 // Spreadsheet import (faithful, multi-year, per-year columns)
@@ -144,9 +156,13 @@ async function importBatchMap(userId: string): Promise<ImportBatchIndex> {
       }
     });
     if (importedPlanIds.size > 0) {
+      // The plan's GENERATED instalments, and only those. A refund recorded
+      // against an imported purchase is linked to the same plan but typed by
+      // hand, and replacing a batch leaves what a person entered alone.
       const generated = await sqlite.getAllAsync<{ id: string; installment_plan_id: string }>(
         `SELECT id, installment_plan_id FROM transactions
-         WHERE user_id = ? AND installment_plan_id IS NOT NULL AND deleted_at IS NULL`,
+         WHERE user_id = ? AND installment_plan_id IS NOT NULL AND installment_no IS NOT NULL
+           AND deleted_at IS NULL`,
         [userId],
       );
       const byPlan = new Map<string, string[]>();
@@ -189,13 +205,31 @@ async function tombstoneImportRows(
   for (let offset = 0; offset < uniqueIds.length; offset += 400) {
     const chunk = uniqueIds.slice(offset, offset + 400);
     const placeholders = chunk.map(() => "?").join(", ");
+    // Live rows only. One already deleted keeps its own moment, and undoing a
+    // loan closure restores exactly the rows that share the closure's.
     const rows = await sqlite.getAllAsync<Record<string, unknown>>(
-      `SELECT * FROM ${table} WHERE user_id = ? AND id IN (${placeholders})`,
+      `SELECT * FROM ${table} WHERE user_id = ? AND deleted_at IS NULL AND id IN (${placeholders})`,
       [userId, ...chunk],
     );
     writes.push(...rows.map((row) => ({ table, row: { ...fromDbShape(table, row), deletedAt: nowIso() } })));
   }
   return writes;
+}
+
+interface ImportedPlanClosure { closed_on: string; installment_count: number; kind: string }
+
+/**
+ * A closed plan's rows as its closure left them: nothing due after the closing
+ * day, the count it ended on, and the loan the owner turned it into — which is
+ * what keeps the closure undoable on its screen.
+ */
+function withinClosure(rows: RowWrite[], closure: ImportedPlanClosure | undefined): RowWrite[] {
+  if (!closure) return rows;
+  return rows
+    .filter((write) => write.table !== "transactions" || String(write.row.effectiveDate) <= closure.closed_on)
+    .map((write) => (write.table === "installment_plans"
+      ? { ...write, row: { ...write.row, kind: closure.kind, installmentCount: closure.installment_count } }
+      : write));
 }
 
 /** Years (of the given set) that already carry a prior import batch. */
@@ -287,6 +321,14 @@ export async function importSheets(userId: string, req: ImportRequest): Promise<
   );
   const requestedCycles = new Map(
     Object.entries(req.cardCycles ?? {}).map(([name, cycle]) => [normalizedName(name), cycle]),
+  );
+  // A loan closed in the app stays closed through a re-import: the closure is
+  // the owner's later word on it (owner decision, 2026-09-14).
+  const closures = new Map(
+    (await sqlite.getAllAsync<ImportedPlanClosure & { id: string }>(
+      `SELECT id, closed_on, installment_count, kind FROM installment_plans WHERE user_id = ? AND closed_on IS NOT NULL`,
+      [userId],
+    )).map((plan) => [plan.id, plan]),
   );
 
   const catWrites: RowWrite[] = [];
@@ -641,7 +683,7 @@ export async function importSheets(userId: string, req: ImportRequest): Promise<
       );
       // No cycle, no statement to link to: the rows stand on their own months.
       const linked = cycle ? await linkDueRowsToCardStatements(userId, sourceId, cycle, rows) : rows;
-      return { ...built, rows: linked, planId, spec };
+      return { ...built, rows: withinClosure(linked, closures.get(planId)), planId, spec };
     }),
   );
   for (const built of planRowBatches) {
@@ -665,12 +707,13 @@ export async function importSheets(userId: string, req: ImportRequest): Promise<
   }
   imported += planSpecs.length;
 
-  const { writes: anchorWrites, anchorMonth, anchorMinor } = await anchorFromImport(
+  const { writes: anchorWrites, anchorMonth, anchorMinor, preservedOpening } = await anchorFromImport(
     userId,
     req.sheets,
     yearAllowed,
     req.adoptOpeningBalance === true,
     req.openingColumnLabel ?? null,
+    priorBatches.size > 0,
   );
   /**
    * Where the workbook restarts its own running balance, the ledger restarts
@@ -694,19 +737,39 @@ export async function importSheets(userId: string, req: ImportRequest): Promise<
   // ledger is already anchored to writes no anchor and still owns the chain,
   // and testing for the write dropped both corrections on every second import.
   if (anchorMonth != null) {
-    const stated = statedOpenings(req.sheets, yearAllowed, req.openingColumnLabel ?? null);
-    const targetByMonth = new Map(stated.filter((entry) => entry.minor != null).map((entry) => [entry.month, entry.minor!]));
+    const columnLabel = req.openingColumnLabel ?? null;
+    const targetByMonth = new Map(
+      [...statedOpenings(req.sheets, yearAllowed, columnLabel), ...statedMonthOpenings(req.sheets, yearAllowed, columnLabel, monthKeyOf(today))]
+        .filter((entry) => entry.minor != null)
+        .map((entry) => [entry.month, entry.minor!]),
+    );
+    // The balance the owner typed for the anchor this import moved away from
+    // is a statement too, and a later one than the file's: it holds its month.
+    if (preservedOpening) targetByMonth.set(preservedOpening.month, preservedOpening.minor);
     let running = anchorMinor;
     for (const month of [...new Set([...netByMonth.keys(), ...targetByMonth.keys()])].sort()) {
       const target = targetByMonth.get(month);
       if (target != null && month !== anchorMonth && target !== running) {
         const date = lastDayOf(addMonthsToKey(month, -1));
-        const id = await deterministicId(naturalKeys.balanceAdjustment(userId, date));
+        const id = await deterministicId(naturalKeys.monthOpeningDeclaration(userId, month));
+        // A declaration, not a movement: the ledger holds the month to the
+        // stated figure whatever else is later entered before it. The amount is
+        // the difference as this import sees it, for a client that predates
+        // declarations.
         adjustmentWrites.push({
           table: "balance_adjustments",
-          row: { id, date, amountMinor: target - running, note: tr.importer.openingRestated, deletedAt: null },
+          row: {
+            id,
+            date,
+            amountMinor: target - running,
+            declaredMinor: target,
+            note: month === preservedOpening?.month ? tr.importer.openingKept : tr.importer.openingRestated,
+            deletedAt: null,
+          },
         });
-        batchFor(yearOf(month)).adjustments!.push(id);
+        // The typed balance is the owner's and outlives this file: replacing
+        // the import must not take it with the rows the import wrote.
+        if (month !== preservedOpening?.month) batchFor(yearOf(month)).adjustments!.push(id);
         running = target;
       }
       running += netByMonth.get(month) ?? 0;
@@ -781,12 +844,43 @@ function statedOpenings(
         .filter((entry) => yearAllowed(yearOf(entry.month)))
         .sort((a, b) => a.month.localeCompare(b.month))[0];
       if (!first) return [];
-      const label = columnLabel ?? sheet.openingColumn;
-      const column = label == null ? -1 : sheet.columns.findIndex((entry) => entry.label === label);
+      const column = openingColumnIndex(sheet, columnLabel);
       const minor = column < 0 ? null : sheet.cells[first.row]?.[column]?.valueMinor ?? null;
       return [{ month: first.month, minor }];
     })
     .sort((a, b) => a.month.localeCompare(b.month));
+}
+
+function openingColumnIndex(sheet: ParsedSheet, columnLabel: string | null | undefined): number {
+  const label = columnLabel ?? sheet.openingColumn;
+  return label == null ? -1 : sheet.columns.findIndex((entry) => entry.label === label);
+}
+
+/**
+ * Every month-opening figure the imported sheets state, through `throughMonth`.
+ *
+ * A sheet's opening column is its own running balance, and the formula behind
+ * it can change between months: the file this was measured against leaves rent
+ * and a conscription payment out of "Kalan" until mid-2023 and counts them
+ * after, which left sixteen months up to 5.324,11 out while every cell matched.
+ * Holding each stated month to its figure reproduces the file without guessing
+ * which columns a month's formula counted. A later month has not happened yet,
+ * so its figure is the sheet's forecast rather than a statement.
+ */
+function statedMonthOpenings(
+  sheets: ParsedSheet[],
+  yearAllowed: (year: number) => boolean,
+  columnLabel: string | null,
+  throughMonth: MonthKey,
+): { month: MonthKey; minor: Minor }[] {
+  return sheets.flatMap((sheet) => {
+    const column = openingColumnIndex(sheet, columnLabel);
+    if (column < 0) return [];
+    return sheet.months.flatMap((month, row) => {
+      const minor = sheet.cells[row]?.[column]?.valueMinor;
+      return minor != null && month <= throughMonth && yearAllowed(yearOf(month)) ? [{ month, minor }] : [];
+    });
+  });
 }
 
 /**
@@ -817,13 +911,14 @@ export function openingBalanceFromSheets(
  * Seed the ledger anchor from the earliest imported month.
  *
  * An import that reaches back before the configured anchor MOVES it, whether or
- * not the workbook states a figure of its own. The balance is the opening plus
- * every row, with no regard for whether a row predates the anchor — so an
- * anchor left later than the data does not merely look untidy, it adds the
- * whole imported history on top of a figure that described a later moment.
- * Measured on the owner's file: a first run that opened at 50.000,00 for Eylül
- * 2026 and then imported from Ağustos 2021 read 70.953,72 where the same
- * workbook into an empty workspace reads −16.462,53.
+ * not the workbook states a figure of its own. That is the owner's rule — the
+ * workbook's first month opens at the figure given for it, or at zero — and not
+ * an arithmetic necessity: left alone, the ledger chain back-computes the
+ * earlier months to keep the balance typed for the configured month, and the
+ * imported history then disagrees with the workbook it came from. The cost is
+ * that a current balance typed at setup gives way to the one the workbook's
+ * history produces; measured 2026-09-13 on the owner's file, same rows, 30.657,28
+ * kept against −18.053,53 adopted.
  *
  * The figure is the workbook's where it states one and zero where it does not,
  * which is what the owner describes: the first month opens at the figure given
@@ -835,15 +930,32 @@ async function anchorFromImport(
   yearAllowed: (y: number) => boolean,
   adopt: boolean,
   columnLabel: string | null,
-): Promise<{ writes: RowWrite[]; anchorMonth: MonthKey | null; anchorMinor: Minor }> {
-  const none = { writes: [], anchorMonth: null, anchorMinor: 0 };
+  importedBefore: boolean,
+): Promise<{
+  writes: RowWrite[];
+  anchorMonth: MonthKey | null;
+  anchorMinor: Minor;
+  /** The typed opening this import moved the anchor away from, kept as a declaration. */
+  preservedOpening: { month: MonthKey; minor: Minor } | null;
+}> {
+  const none = { writes: [], anchorMonth: null, anchorMinor: 0, preservedOpening: null };
   const opening = openingBalanceFromSheets(sheets, yearAllowed, columnLabel);
   if (!opening) return none;
-  const currentStart = await readSetting<string>(userId, "start_month");
+  const currentStart = await readSetting<MonthKey>(userId, "start_month");
   // Earlier data always wins without being asked. Moving the anchor later, or
   // restating it where the workbook starts at the same month, is the owner's
   // call and arrives as `adopt`.
   if (adopt || !currentStart || opening.month < currentStart) {
+    // Reaching back before an anchor the owner set by hand used to throw the
+    // balance they typed away (measured 2026-09-13: 30.657,28 became
+    // −18.053,53). It is kept as that month's declared opening instead, so the
+    // history reads as the file says and the present as the owner said. Only
+    // a figure someone actually typed: an anchor an earlier import wrote is the
+    // file's own, and a zero is the setup screen's empty optional field.
+    const currentOpening = currentStart ? await readSetting<Minor>(userId, "opening_balance_minor") : null;
+    const preservedOpening = !adopt && currentStart && opening.month < currentStart && !importedBefore && currentOpening
+      ? { month: currentStart, minor: currentOpening }
+      : null;
     return {
       writes: [
         await settingWrite(userId, "start_month", opening.month),
@@ -851,13 +963,252 @@ async function anchorFromImport(
       ],
       anchorMonth: opening.month,
       anchorMinor: opening.minor ?? 0,
+      preservedOpening,
     };
   }
   // The anchor is already this workbook's — a second import of the same file.
   // Nothing moves, and the chain still starts here, from the figure the ledger
   // actually holds rather than the one this run would have written.
   if (currentStart === opening.month) {
-    return { writes: [], anchorMonth: opening.month, anchorMinor: (await readSetting<Minor>(userId, "opening_balance_minor")) ?? 0 };
+    return { writes: [], anchorMonth: opening.month, anchorMinor: (await readSetting<Minor>(userId, "opening_balance_minor")) ?? 0, preservedOpening: null };
   }
   return none;
+}
+
+// ---------------------------------------------------------------------------
+// Record sheets read back from a Helix workbook (Abonelikler, Yatırımlar)
+// ---------------------------------------------------------------------------
+
+export interface RecordCounts {
+  added: number;
+  updated: number;
+  unchanged: number;
+}
+
+export interface RecordImportPlan {
+  subscriptions: RecordCounts;
+  investments: RecordCounts;
+  /** Rows that cannot land as they are, named by row and heading. */
+  problems: RecordProblem[];
+  /** Investment rows wait for the investment wallet; they are skipped, and said to be. */
+  walletMissing: boolean;
+}
+
+type LiveRow = Record<string, unknown>;
+
+/** Everything a record row is matched against, read once. */
+interface RecordContext {
+  selfId: string | null;
+  persons: Map<string, string>;
+  sources: Map<string, string>;
+  expenseCategories: Map<string, string>;
+  subscriptions: Map<string, LiveRow>;
+  products: Map<string, string>;
+  operations: Map<string, LiveRow>;
+  hasWallet: boolean;
+}
+
+const operationKey = (productId: string, day: unknown, kind: unknown, quantity: unknown): string =>
+  recordKey(productId, String(day), String(kind), quantityKey(quantity == null ? null : String(quantity)));
+
+async function recordContext(userId: string): Promise<RecordContext> {
+  const sqlite = await getSqliteAsync();
+  const live = (table: string) =>
+    sqlite.getAllAsync<LiveRow>(`SELECT * FROM ${table} WHERE user_id = ? AND deleted_at IS NULL`, [userId]);
+  const [persons, sources, categories, subscriptions, products, operations, wallets] = await Promise.all([
+    live("persons"), live("payment_sources"), live("categories"), live("subscriptions"),
+    live("investment_products"), live("investment_operations"), live("investment_profiles"),
+  ]);
+  const byName = (rows: LiveRow[]) => new Map(rows.map((row) => [folded(String(row.name)), String(row.id)]));
+  const self = persons.find((person) => Number(person.is_self) === 1);
+  return {
+    selfId: self ? String(self.id) : null,
+    persons: byName(persons),
+    sources: byName(sources),
+    expenseCategories: byName(categories.filter((category) => category.kind === "expense")),
+    subscriptions: new Map(subscriptions.map((row) => [recordKey(String(row.name), String(row.cycle)), row])),
+    products: new Map(products.map((row) => [recordKey(String(row.name), String(row.asset_type)), String(row.id)])),
+    operations: new Map(operations.map((row) => [operationKey(String(row.product_id), row.operation_date, row.kind, row.quantity), row])),
+    hasWallet: wallets.length > 0,
+  };
+}
+
+const noCounts = (): RecordCounts => ({ added: 0, updated: 0, unchanged: 0 });
+
+function tally(existing: LiveRow | undefined, same: (row: LiveRow) => boolean): keyof RecordCounts {
+  if (!existing) return "added";
+  return same(existing) ? "unchanged" : "updated";
+}
+
+/**
+ * A subscription row as `upsertSubscription` takes it, or the heading of the
+ * name nobody in this workspace has. A missing category is not a problem: the
+ * write creates it, the way the subscription form does.
+ */
+function subscriptionTarget(
+  record: SubscriptionRecord,
+  context: RecordContext,
+): { input: SubscriptionInput; categoryName: string; existing: LiveRow | undefined } | RecordProblem {
+  const problem = (column: string): RecordProblem => ({ sheet: WORKBOOK_SHEETS.subscriptions, row: record.row, column });
+  const personId = record.person === "" ? context.selfId : context.persons.get(folded(record.person));
+  if (!personId) return problem(SUBSCRIPTION_HEADERS.person);
+  const sourceId = record.source === "" ? null : context.sources.get(folded(record.source));
+  if (sourceId === undefined) return problem(SUBSCRIPTION_HEADERS.source);
+  const existing = context.subscriptions.get(recordKey(record.name, record.cycle));
+  const categoryName = record.category || tr.subs.suggestedCategoryName;
+  return {
+    existing,
+    categoryName,
+    input: {
+      id: existing ? String(existing.id) : undefined,
+      name: record.name,
+      amountMinor: record.amountMinor,
+      amountMode: record.amountMode,
+      currency: record.currency,
+      cycle: record.cycle,
+      intervalMonths: record.intervalMonths,
+      billingDay: record.billingDay,
+      nextDueDate: record.nextDueDate,
+      paymentSourceId: sourceId,
+      categoryId: context.expenseCategories.get(folded(categoryName)) ?? "",
+      personId,
+      isActive: record.isActive,
+      trialEndDate: record.trialEndDate,
+      autoPay: record.autoPay,
+      websiteDomain: record.websiteDomain || null,
+      // The sheet has no note column, so a matched subscription keeps its own.
+      note: existing?.note == null ? null : String(existing.note),
+    },
+  };
+}
+
+/** Whether saving `input` over `row` would change nothing a person can see. */
+function sameSubscription(row: LiveRow, input: SubscriptionInput): boolean {
+  const pairs: [unknown, unknown][] = [
+    [row.name, input.name], [row.amount_minor, input.amountMinor], [row.currency, input.currency],
+    [row.amount_mode, input.amountMode], [row.interval_months, input.intervalMonths], [row.billing_day, input.billingDay],
+    [row.next_due_date, input.nextDueDate], [row.trial_end_date ?? null, input.trialEndDate], [row.category_id, input.categoryId],
+    [row.payment_source_id ?? null, input.paymentSourceId], [row.person_id, input.personId],
+    [Boolean(row.auto_pay), input.autoPay], [Boolean(row.is_active), input.isActive], [row.website_domain ?? null, input.websiteDomain],
+  ];
+  return pairs.every(([stored, next]) => stored === next);
+}
+
+function sameOperation(row: LiveRow, record: InvestmentRecord): boolean {
+  return (record.unitPriceMinor == null || row.unit_price_minor === record.unitPriceMinor)
+    && (record.totalMinor == null || row.total_minor === record.totalMinor)
+    && folded(String(row.note ?? "")) === folded(record.note);
+}
+
+function investmentTarget(record: InvestmentRecord, context: RecordContext): LiveRow | undefined {
+  const productId = context.products.get(recordKey(record.product, record.assetType));
+  return productId == null ? undefined : context.operations.get(operationKey(productId, record.operationDate, record.kind, record.quantity));
+}
+
+/** What the record sheets would add, update and leave alone, without writing anything. */
+export async function planWorkbookRecords(userId: string, records: WorkbookRecords): Promise<RecordImportPlan> {
+  const context = await recordContext(userId);
+  const plan: RecordImportPlan = {
+    subscriptions: noCounts(),
+    investments: noCounts(),
+    problems: [...records.problems],
+    walletMissing: records.investments.length > 0 && !context.hasWallet,
+  };
+  for (const record of records.subscriptions) {
+    const target = subscriptionTarget(record, context);
+    if ("sheet" in target) plan.problems.push(target);
+    else plan.subscriptions[tally(target.existing, (row) => sameSubscription(row, target.input))] += 1;
+  }
+  if (!context.hasWallet) return plan;
+  for (const record of records.investments) {
+    plan.investments[tally(investmentTarget(record, context), (row) => sameOperation(row, record))] += 1;
+  }
+  return plan;
+}
+
+/**
+ * Bring the record sheets in (owner decision, 2026-09-14): a subscription
+ * matching by name and cycle, or an operation by product, day, kind and
+ * quantity, is updated; anything else is added; nothing is deleted.
+ *
+ * Each row goes through the validated write its own screen uses, one at a
+ * time, so a row the app refuses — a sale beyond what is held, a card without a
+ * cycle — is reported by its row and the rest still land. Matching is what
+ * makes a second run of the same file converge instead of duplicating.
+ */
+export async function importWorkbookRecords(userId: string, records: WorkbookRecords): Promise<RecordImportPlan> {
+  const context = await recordContext(userId);
+  const outcome: RecordImportPlan = {
+    subscriptions: noCounts(),
+    investments: noCounts(),
+    problems: [...records.problems],
+    walletMissing: records.investments.length > 0 && !context.hasWallet,
+  };
+  for (const record of records.subscriptions) await importSubscriptionRecord(userId, record, context, outcome);
+  if (!context.hasWallet) return outcome;
+  // Oldest first, so a sale meets the purchase it sells.
+  const byDay = [...records.investments].sort((a, b) => a.operationDate.localeCompare(b.operationDate));
+  for (const record of byDay) await importInvestmentRecord(userId, record, context, outcome);
+  return outcome;
+}
+
+async function importSubscriptionRecord(
+  userId: string,
+  record: SubscriptionRecord,
+  context: RecordContext,
+  outcome: RecordImportPlan,
+): Promise<void> {
+  const target = subscriptionTarget(record, context);
+  if ("sheet" in target) {
+    outcome.problems.push(target);
+    return;
+  }
+  const change = tally(target.existing, (row) => sameSubscription(row, target.input));
+  try {
+    if (change !== "unchanged") {
+      const categoryId = target.input.categoryId || await ensureSubscriptionCategory(userId, target.categoryName);
+      context.expenseCategories.set(folded(target.categoryName), categoryId);
+      const id = await upsertSubscription(userId, { ...target.input, categoryId });
+      // A second row for the same subscription updates this one rather than adding another.
+      context.subscriptions.set(recordKey(record.name, record.cycle), { id, note: target.input.note });
+    }
+    outcome.subscriptions[change] += 1;
+  } catch {
+    outcome.problems.push({ sheet: WORKBOOK_SHEETS.subscriptions, row: record.row, column: null });
+  }
+}
+
+async function importInvestmentRecord(
+  userId: string,
+  record: InvestmentRecord,
+  context: RecordContext,
+  outcome: RecordImportPlan,
+): Promise<void> {
+  try {
+    const productKey = recordKey(record.product, record.assetType);
+    const productId = context.products.get(productKey)
+      ?? await saveInvestmentProduct(userId, { assetType: record.assetType, name: record.product, marketCode: record.marketCode || null });
+    context.products.set(productKey, productId);
+    const key = operationKey(productId, record.operationDate, record.kind, record.quantity);
+    const existing = context.operations.get(key);
+    const change = tally(existing, (row) => sameOperation(row, record));
+    const input = {
+      productId,
+      kind: record.kind,
+      operationDate: record.operationDate,
+      quantity: record.quantity,
+      unitPriceMinor: record.unitPriceMinor,
+      totalMinor: record.totalMinor,
+      note: record.note || null,
+    };
+    if (change === "added") {
+      const id = await addInvestmentOperation(userId, input);
+      context.operations.set(key, { id, unit_price_minor: record.unitPriceMinor, total_minor: record.totalMinor, note: record.note });
+    } else if (change === "updated") {
+      await updateInvestmentOperation(userId, String(existing!.id), input);
+    }
+    outcome.investments[change] += 1;
+  } catch {
+    outcome.problems.push({ sheet: WORKBOOK_SHEETS.investments, row: record.row, column: null });
+  }
 }

@@ -12,7 +12,7 @@ import TrendingUp from "lucide-react-native/icons/trending-up";
 import Undo2 from "lucide-react-native/icons/undo-2";
 import WalletCards from "lucide-react-native/icons/wallet-cards";
 import type { LucideIcon } from "lucide-react-native";
-import { addTransaction, createInstallmentPlan, CreditCardCycleRequiredError, updateTransaction } from "../data/repo";
+import { addTransaction, createInstallmentPlan, CreditCardCycleRequiredError, RefundExceedsExpenseError, updateTransaction } from "../data/repo";
 import {
   useAllTransactionsState,
   useAttachmentsState,
@@ -31,7 +31,7 @@ import { combineLiveStates } from "../data/live-state";
 import { classifyRecordId } from "../domain/route-params";
 import { previewTryMinor, resolveTransactionSave } from "../domain/transaction-draft";
 import { assertISODate, isISODate, lastDayOf, monthKeyOf, todayISO, type MonthKey } from "../domain/dates";
-import { isValidCardCycle, statementForPurchase } from "../domain/card-statements";
+import { isValidCardCycle, statementForPurchase, statementPeriod } from "../domain/card-statements";
 import { formatMinorCompact, formatMinorInput, installmentShareRange } from "../domain/money";
 import { currencyLabel } from "../domain/fx-provider";
 import { deriveStartMonth, isValidInstallmentCount } from "../domain/installments";
@@ -41,7 +41,7 @@ import { PaymentSourceLogo } from "../ui/logo";
 import { CurrencyPicker } from "../ui/currency-picker";
 import { scheduleSync } from "../sync/engine";
 import { dateLabel, monthLabel, tr } from "../i18n/tr";
-import { Amount, Badge, Body, Button, Card, ChipPicker, ChoiceTile, DataGateScreen, DataStateNotice, Divider, Field, FieldNote, HeroCard, InlineDisclosure, Label, MoneyField, MonthStepper, PanelHeader, Row, Screen, SectionHeader, Select, Toggle } from "../ui/components";
+import { Amount, Badge, Body, Button, Card, CardList, ChipPicker, ChoiceTile, DataGateScreen, DataStateNotice, Divider, Field, FieldNote, HeroCard, InlineDisclosure, Label, ListRow, MetricStrip, MoneyField, MonthStepper, PanelHeader, Row, Screen, SectionHeader, Select, Toggle } from "../ui/components";
 import { useSubmitOnEnter } from "../ui/keyboard";
 import { appAlert } from "../ui/dialog";
 import { DateField } from "../ui/calendar";
@@ -62,6 +62,14 @@ import { PersonAssignment } from "../ui/person-assignment";
 
 /** The Select's own icon column, so a source mark fits it exactly. */
 const SOURCE_MARK = 22;
+
+/**
+ * What an expense paid from an account says when it is a card bill. The card's
+ * own charges already leave the balance on its due date, so such a row takes
+ * the same money twice; the form points at the statement payment instead of
+ * refusing, because an owner who never enters card charges is right to use it.
+ */
+const CARD_BILL = /kredi\s*kart|kart\s*(borc|borç|ekstre|ödeme|odeme)|ekstre/i;
 
 type EntryType = "expense" | "income" | "transfer";
 
@@ -89,8 +97,31 @@ function EntryTypeChoice({
   );
 }
 
+/**
+ * The expense a new refund is opened for (spec §2.7). Only a live, positive,
+ * single expense can take one — the repository holds the same rule — and while
+ * the rows are still loading the screen waits instead of opening a plain form.
+ */
+function refundTargetOf(
+  state: { data: ExistingTx[]; status: string },
+  record: NonNullable<ReturnType<typeof classifyRecordId>>,
+  refundOf: string | undefined,
+  intent: string | undefined,
+) {
+  const wanted = record.mode === "new" ? refundOf : undefined;
+  const target = wanted
+    ? state.data.find((row) => row.id === wanted && row.type === "expense" && row.amountMinor > 0 && !row.installmentPlanId && !row.refundOfTransactionId)
+    : undefined;
+  return {
+    target,
+    /** The key a form that is not an edit mounts under, so each kind of new entry starts clean. */
+    newFormKey: target ? `refund-${target.id}` : `new-${intent ?? "default"}`,
+    waiting: Boolean(wanted) && !target && state.status === "loading",
+  };
+}
+
 export default function TransactionModal() {
-  const { id, intent } = useLocalSearchParams<{ id?: string; intent?: string }>();
+  const { id, intent, refundOf } = useLocalSearchParams<{ id?: string; intent?: string; refundOf?: string }>();
   const record = classifyRecordId(id);
   const txState = useAllTransactionsState();
   const existing = record?.mode === "edit" ? txState.data.find((t) => t.id === record.id) : undefined;
@@ -112,7 +143,22 @@ export default function TransactionModal() {
   if (intent === "investment-refund" && record.mode === "new") {
     return <InvestmentRefundForm transactionsState={txState} />;
   }
-  return <TransactionForm key={existing?.id ?? `new-${intent ?? "default"}`} existing={existing} investmentRefund={intent === "investment-refund"} />;
+  const refund = refundTargetOf(txState, record, refundOf, intent);
+  if (refund.waiting) {
+    return (
+      <Screen scroll={false}>
+        <DataStateNotice status={txState.status} retry={txState.retry} />
+      </Screen>
+    );
+  }
+  return (
+    <TransactionForm
+      key={existing?.id ?? refund.newFormKey}
+      existing={existing}
+      refundOf={refund.target}
+      investmentRefund={intent === "investment-refund"}
+    />
+  );
 }
 
 function InvestmentRefundForm({ transactionsState }: { transactionsState: ReturnType<typeof useAllTransactionsState> }) {
@@ -282,12 +328,68 @@ function InvestmentRefundForm({ transactionsState }: { transactionsState: Return
   );
 }
 
-function TransactionForm({ existing, investmentRefund = false }: { existing?: ExistingTx; investmentRefund?: boolean }) {
+/**
+ * The refunds recorded against one expense, and what it comes to after them
+ * (spec §2.7). A refund stays its own row in its own month; the link only says
+ * which purchase it gave money back for.
+ */
+function ExpenseRefunds({ expense }: { expense: ExistingTx }) {
+  const router = useRouter();
+  const transactionsState = useAllTransactionsState();
+  const refunds = transactionsState.data
+    .filter((row) => row.refundOfTransactionId === expense.id)
+    .sort((a, b) => a.effectiveDate.localeCompare(b.effectiveDate));
+  const refundedTryMinor = -refunds.reduce((sum, row) => sum + row.amountTryMinor, 0);
+  const leftMinor = expense.amountMinor + refunds.reduce((sum, row) => sum + row.amountMinor, 0);
+  return (
+    <>
+      <Card>
+        <PanelHeader icon={Undo2} title={tr.tx.refundsTitle} description={tr.tx.refundsHint} />
+        {refunds.length > 0 ? (
+          <MetricStrip
+            items={[
+              { label: tr.tx.refundsPurchase, minor: expense.amountTryMinor },
+              { label: tr.tx.refundsTotal, minor: -refundedTryMinor },
+              { label: tr.tx.refundsNet, minor: expense.amountTryMinor - refundedTryMinor },
+            ]}
+          />
+        ) : (
+          <Body muted>{tr.tx.refundsEmpty}</Body>
+        )}
+        {leftMinor > 0 ? (
+          <View style={{ marginTop: spacing.md }}>
+            <Button
+              icon={Undo2}
+              variant="secondary"
+              label={tr.tx.refundAdd}
+              onPress={() => router.push({ pathname: "/transaction", params: { refundOf: expense.id } })}
+            />
+          </View>
+        ) : null}
+      </Card>
+      <CardList
+        items={refunds}
+        keyExtractor={(row) => row.id}
+        renderItem={(row) => (
+          <ListRow
+            title={formatMinorCompact(-row.amountMinor, row.currency)}
+            subtitle={[dateLabel(row.effectiveDate), row.note].filter(Boolean).join(" · ")}
+            chevron
+            onPress={() => router.push({ pathname: "/transaction", params: { id: row.id } })}
+          />
+        )}
+      />
+    </>
+  );
+}
+
+function TransactionForm({ existing, refundOf, investmentRefund = false }: { existing?: ExistingTx; refundOf?: ExistingTx; investmentRefund?: boolean }) {
   const userId = useUserId();
   const categoriesState = useCategoriesState();
   const attachmentsState = useAttachmentsState();
   const sourcesState = useSourcesState();
   const personsState = usePersonsState();
+  const transactionsState = useAllTransactionsState();
   const categories = categoriesState.data;
   const sources = sourcesState.data;
   const persons = personsState.data;
@@ -304,17 +406,21 @@ function TransactionForm({ existing, investmentRefund = false }: { existing?: Ex
   const [entryType, setEntryType] = useState<EntryType>((existing?.type as EntryType) ?? (investmentRefund ? "transfer" : "expense"));
   const [amountRaw, setAmountRaw] = useState(existing ? formatMinorInput(Math.abs(existing.amountMinor)) : "");
   const [amountMinor, setAmountMinor] = useState<number | null>(existing ? Math.abs(existing.amountMinor) : null);
-  const [isReversal, setIsReversal] = useState((existing?.amountMinor ?? 0) < 0 || investmentRefund);
-  const [currency, setCurrency] = useState<string>(existing?.currency ?? "TRY");
-  const [showCurrency, setShowCurrency] = useState((existing?.currency ?? "TRY") !== "TRY");
+  const [isReversal, setIsReversal] = useState((existing?.amountMinor ?? 0) < 0 || investmentRefund || refundOf != null);
+  // A refund takes its expense's currency, category, source and person: the
+  // repository refuses a link across currencies, and the rest is what the
+  // statement that credits it will say.
+  const initialCurrency = existing?.currency ?? refundOf?.currency ?? "TRY";
+  const [currency, setCurrency] = useState<string>(initialCurrency);
+  const [showCurrency, setShowCurrency] = useState(initialCurrency !== "TRY");
   const [showAmountOptions, setShowAmountOptions] = useState(
-    (existing?.amountMinor ?? 0) < 0 || (existing?.currency ?? "TRY") !== "TRY",
+    (existing?.amountMinor ?? 0) < 0 || initialCurrency !== "TRY" || refundOf != null,
   );
-  const [categoryId, setCategoryId] = useState<string | null>(existing?.categoryId ?? null);
-  const [sourceId, setSourceId] = useState<string | null>(existing?.paymentSourceId ?? null);
+  const [categoryId, setCategoryId] = useState<string | null>(existing?.categoryId ?? refundOf?.categoryId ?? null);
+  const [sourceId, setSourceId] = useState<string | null>(existing?.paymentSourceId ?? refundOf?.paymentSourceId ?? null);
   // persons load async (live query) — deriving keeps "self" as the default
   // even when the modal mounts before the first query resolves.
-  const [personChoice, setPersonChoice] = useState<string | null>(existing?.personId ?? null);
+  const [personChoice, setPersonChoice] = useState<string | null>(existing?.personId ?? refundOf?.personId ?? null);
   const personId = personChoice ?? persons.find((p) => p.isSelf)?.id ?? persons[0]?.id ?? null;
   // The person ROW, not just the id. The installment path needs `isSelf` and
   // used to assert the lookup could not miss — but a person deleted on another
@@ -355,7 +461,7 @@ function TransactionForm({ existing, investmentRefund = false }: { existing?: Ex
 
   // Smart defaults (new entries only): remember last used category/source.
   React.useEffect(() => {
-    if (isEdit || !dataReady) return;
+    if (isEdit || refundOf || !dataReady) return;
     // Switching the entry type starts a second read while the first is still
     // in flight, and storage does not promise to answer in order. The stale
     // answer checks the kind it was STARTED with, so landing last is how an
@@ -423,11 +529,16 @@ function TransactionForm({ existing, investmentRefund = false }: { existing?: Ex
     ? { statementDay: selectedSource.statementDay, dueDay: selectedSource.dueDay }
     : { statementDay: null, dueDay: null };
   const cardCycleValid = !isCreditCardExpense || isValidCardCycle(cardCycle);
+  const looksLikeCardBill = entryType === "expense"
+    && selectedSource?.type !== "credit_card"
+    && sources.some((source) => source.type === "credit_card" && persons.some((person) => person.isSelf && person.id === source.personId))
+    && CARD_BILL.test(`${categories.find((category) => category.id === categoryId)?.name ?? ""} ${note}`);
 
   // Resolve the two date modes to one effective date + a dateless flag. Month
   // mode anchors to the first of the month and marks the row dateless (shown by
-  // month, kept out of "upcoming"); day mode uses the exact day.
-  const dateless = dateMode === "month" && !isCreditCardExpense;
+  // month, kept out of "upcoming"); day mode uses the exact day. A month-only
+  // card charge joins that month's statement, which the repository resolves.
+  const dateless = dateMode === "month";
   const effectiveDate = dateless ? (`${monthKey}-01` as string) : dateStr;
   const dateValid = dateless || isISODate(dateStr);
   const count = Number(countStr);
@@ -451,10 +562,27 @@ function TransactionForm({ existing, investmentRefund = false }: { existing?: Ex
     cardCycleValid,
     installment,
   });
-  const canSave = saveable != null;
+  // The expense this row refunds: the one it was opened from, or the one an
+  // existing refund is already linked to.
+  const refundLink = refundOf ?? (existing?.refundOfTransactionId
+    ? transactionsState.data.find((row) => row.id === existing.refundOfTransactionId)
+    : undefined);
+  const refundLeftMinor = refundLink
+    ? refundLink.amountMinor + transactionsState.data
+      .filter((row) => row.refundOfTransactionId === refundLink.id && row.id !== existing?.id)
+      .reduce((sum, row) => sum + row.amountMinor, 0)
+    : 0;
+  let refundProblem: string | null = null;
+  if (refundLink && (refundOf != null || isReversal)) {
+    if (!isReversal || entryType !== "expense" || currency !== refundLink.currency) refundProblem = tr.tx.refundMismatch;
+    else if (amountMinor != null && amountMinor > refundLeftMinor) {
+      refundProblem = tr.tx.refundTooLarge(formatMinorCompact(refundLeftMinor, refundLink.currency));
+    }
+  }
+  const canSave = saveable != null && refundProblem == null;
 
   const cardStatementPreview = isCreditCardExpense && isValidCardCycle(cardCycle) && dateValid
-    ? statementForPurchase(dateStr, cardCycle)
+    ? dateless ? statementPeriod(monthKey, cardCycle) : statementForPurchase(dateStr, cardCycle)
     : null;
 
   const fail = (msg: string) => void appAlert(msg, tr.errors.title);
@@ -556,7 +684,7 @@ function TransactionForm({ existing, investmentRefund = false }: { existing?: Ex
             tryFactor: saveable.rateTry,
           });
         } else {
-          createdId = await addTransaction(userId, written);
+          createdId = await addTransaction(userId, refundOf ? { ...written, refundOfTransactionId: refundOf.id } : written);
         }
         void kv.set(`helix.last.${entryType}`, JSON.stringify({ categoryId, sourceId }));
         scheduleSync(userId);
@@ -582,7 +710,13 @@ function TransactionForm({ existing, investmentRefund = false }: { existing?: Ex
       } catch (e) {
         // Never surface a raw engine error (English, technical) to the user.
         devError("transaction.save", e);
-        fail(e instanceof CreditCardCycleRequiredError ? tr.sources.cycleRequired : tr.errors.saveFailed);
+        fail(
+          e instanceof CreditCardCycleRequiredError
+            ? tr.sources.cycleRequired
+            : e instanceof RefundExceedsExpenseError && refundLink
+              ? tr.tx.refundTooLarge(formatMinorCompact(e.remainingMinor, refundLink.currency))
+              : tr.errors.saveFailed,
+        );
       } finally {
         setBusy(false);
       }
@@ -628,6 +762,21 @@ function TransactionForm({ existing, investmentRefund = false }: { existing?: Ex
         primary={(
       <HeroCard>
       <PanelHeader icon={WalletCards} title={tr.tx.amountDetails} description={tr.tx.amountDetailsHint} />
+      {refundLink ? (
+        // A linked refund is an expense refund and nothing else, so the type
+        // is stated rather than offered.
+        <View style={{ marginBottom: spacing.md, padding: spacing.md, borderRadius: radius.md, backgroundColor: palette.surfaceAlt, gap: spacing.xs }}>
+          <Body style={{ color: palette.primaryText }}>
+            {tr.tx.refundOfLine(
+              categories.find((category) => category.id === refundLink.categoryId)?.name ?? tr.common.none,
+              formatMinorCompact(refundLink.amountMinor, refundLink.currency),
+              dateLabel(refundLink.purchaseDate ?? refundLink.effectiveDate),
+            )}
+          </Body>
+          <Body muted style={{ fontSize: type.small.fontSize }}>{tr.tx.refundOfLeft(formatMinorCompact(refundLeftMinor, refundLink.currency))}</Body>
+          {refundProblem ? <Body accessibilityRole="alert" style={{ color: palette.warningText }}>{refundProblem}</Body> : null}
+        </View>
+      ) : (
       <View
         role="radiogroup"
         accessibilityLabel={tr.tx.type}
@@ -655,6 +804,7 @@ function TransactionForm({ existing, investmentRefund = false }: { existing?: Ex
           onPress={() => chooseEntryType("transfer")}
         />
       </View>
+      )}
 
       <MoneyField
         testID="transaction-amount"
@@ -766,35 +916,44 @@ function TransactionForm({ existing, investmentRefund = false }: { existing?: Ex
           onCreate={{ label: tr.tx.addSource, run: () => router.push("/payment-sources") }}
         />
       ) : null}
+      {looksLikeCardBill ? (
+        <View accessibilityRole="alert" style={{ marginBottom: spacing.md, gap: spacing.xs }}>
+          <Body style={{ color: palette.warningText }}>{tr.tx.cardBillTitle}</Body>
+          <Body muted>{tr.tx.cardBillWarning}</Body>
+          <View style={{ alignItems: "flex-start", marginTop: spacing.xs }}>
+            <Button size="sm" variant="secondary" label={tr.tx.cardBillAction} onPress={() => router.push("/card-statement")} />
+          </View>
+        </View>
+      ) : null}
 
       <PersonAssignment people={persons} value={personId} onChange={setPersonChoice} />
       </HeroCard>
         )}
         secondary={(
       <Card>
-      {/* This label heads the month/day switch. A credit-card expense has no
-          switch — its date is always the purchase day — and the `DateField`
-          below already carries that name, so heading nothing here printed
-          "Harcama Günü" twice, once above the other. */}
       <PanelHeader icon={CalendarClock} title={tr.tx.timing} description={tr.tx.timingHint} />
-      {!isCreditCardExpense ? (
-        <>
-          <Label>{tr.tx.whenLabel}</Label>
-          <ChipPicker
-            options={[
-              { value: "month", label: tr.tx.monthOnly },
-              { value: "day", label: tr.tx.specificDay },
-            ]}
-            value={dateMode}
-            onChange={setDateMode}
-          />
-        </>
-      ) : null}
+      <Label>{tr.tx.whenLabel}</Label>
+      <ChipPicker
+        options={[
+          { value: "month", label: tr.tx.monthOnly },
+          { value: "day", label: tr.tx.specificDay },
+        ]}
+        value={dateMode}
+        onChange={setDateMode}
+      />
       {dateless ? (
         <>
-          <FieldNote note={tr.tx.monthOnlyHint(monthLabel(monthKey))}>
+          <FieldNote
+            note={cardStatementPreview
+              ? tr.tx.cardMonthOnlyHint(monthLabel(monthKey), dateLabel(cardStatementPreview.statementDate), dateLabel(cardStatementPreview.dueDate))
+              : isCreditCardExpense ? tr.tx.cardCycleMissing
+              : tr.tx.monthOnlyHint(monthLabel(monthKey))}
+          >
             <MonthStepper value={monthKey} onChange={setMonthKey} />
           </FieldNote>
+          {isCreditCardExpense && !cardCycleValid ? (
+            <Button size="sm" variant="secondary" label={tr.settings.sources} onPress={() => router.push("/payment-sources")} />
+          ) : null}
         </>
       ) : (
         <>
@@ -812,7 +971,7 @@ function TransactionForm({ existing, investmentRefund = false }: { existing?: Ex
         </>
       )}
 
-      {!isEdit && entryType === "expense" && sources.find((s) => s.id === sourceId)?.type === "credit_card" ? (
+      {!isEdit && !refundOf && entryType === "expense" && sources.find((s) => s.id === sourceId)?.type === "credit_card" ? (
         <View style={{ marginVertical: spacing.md }}>
           <ChipPicker
             options={[
@@ -836,9 +995,9 @@ function TransactionForm({ existing, investmentRefund = false }: { existing?: Ex
             <Body muted>{(() => {
                 const shares = installmentShareRange(amountMinor, count);
                 if (!shares) return null;
-                return shares.first === shares.last
+                return shares.first === shares.rest
                   ? tr.tx.installmentInfo(formatMinorCompact(shares.first, currency), count)
-                  : tr.tx.installmentInfoUneven(count, formatMinorCompact(shares.first, currency), formatMinorCompact(shares.last, currency));
+                  : tr.tx.installmentInfoUneven(count, formatMinorCompact(shares.first, currency), formatMinorCompact(shares.rest, currency));
               })()}</Body>
           ) : null}
         </View>
@@ -902,6 +1061,9 @@ function TransactionForm({ existing, investmentRefund = false }: { existing?: Ex
       </Card>
         )}
       />
+      {existing && existing.type === "expense" && existing.amountMinor > 0 && !existing.refundOfTransactionId
+        ? <ExpenseRefunds expense={existing} />
+        : null}
     </Screen>
   );
 }

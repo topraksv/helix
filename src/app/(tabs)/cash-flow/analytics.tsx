@@ -7,13 +7,14 @@ import { FlatList, Pressable, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import ChevronLeft from "lucide-react-native/icons/chevron-left";
 import ChevronRight from "lucide-react-native/icons/chevron-right";
+import FileSpreadsheet from "lucide-react-native/icons/file-spreadsheet";
 import Inbox from "lucide-react-native/icons/inbox";
 import SlidersHorizontal from "lucide-react-native/icons/sliders-horizontal";
 import Target from "lucide-react-native/icons/target";
 import { categoryRangeMatrix, distributionForRange, monthlySeries } from "../../../domain/analytics";
 import { addMonthsToKey, firstDayOf, lastDayOf, makeMonthKey, monthKeyOf, monthRange, todayISO, yearOf, type MonthKey } from "../../../domain/dates";
 import { formatMinorCompact } from "../../../domain/money";
-import { signedBalanceEffectOf } from "../../../domain/transactions";
+import { isWorkbookRemainderRow, signedBalanceEffectOf } from "../../../domain/transactions";
 import { filterTransactions, sortTransactions, type TransactionSortMode } from "../../../domain/transaction-search";
 import { budgetProgress } from "../../../domain/budgets";
 import { categoryIconComponent,  } from "../../../ui/category-icon";
@@ -29,7 +30,7 @@ import {
   useTxLike,
 } from "../../../data/hooks";
 import { combineLiveStates } from "../../../data/live-state";
-import { Amount, Badge, Body, Button, Card, CardList, DataGateScreen, DataStateNotice, Divider, EmptyState, Field, FieldNote, Heading, IconButton, ListRow, MetricStrip, Row, Screen, SectionHeader, Segmented, Select, Spread } from "../../../ui/components";
+import { Amount, Badge, Body, Button, Card, CardList, DataGateScreen, DataStateNotice, Divider, EmptyState, Field, FieldNote, Heading, IconButton, ListRow, MetricStrip, PanelHeader, Row, Screen, SectionHeader, Segmented, Select, Spread } from "../../../ui/components";
 import { Bars, ChartFrame, Donut, Lines, distributionDonutData, useSeriesColors } from "../../../ui/charts";
 import { Collapse } from "../../../ui/motion-primitives";
 import { StickyTable } from "../../../ui/sticky-table";
@@ -481,7 +482,11 @@ export default function AnalysisScreen() {
               {t.paymentSourceId && sourceNameById.get(t.paymentSourceId) ? ` · ${sourceNameById.get(t.paymentSourceId)}` : ""}
               {t.note ? ` · ${t.note}` : ""}
             </Body>
-            {t.amountTryMinor < 0 ? (
+            {isWorkbookRemainderRow(t) ? (
+              <View style={{ marginTop: spacing.xs, alignItems: "flex-start" }}>
+                <Badge text={tr.analysis.remainderBadge} tone="muted" />
+              </View>
+            ) : t.amountTryMinor < 0 ? (
               <View style={{ marginTop: spacing.xs, alignItems: "flex-start" }}>
                 <Badge text={tr.tx.reversalLabel(t.type)} tone={t.type === "income" ? "negative" : "positive"} />
               </View>
@@ -597,6 +602,20 @@ export default function AnalysisScreen() {
         </Card>
       ) : null}
       </View>
+
+      {/* Kept beside the chart rather than inside it: these rows hold an
+          imported column equal to its file and are not spending, so the ring,
+          the bars and the category table leave them out and say so here. */}
+      {periodDistribution.workbookRemainderMinor !== 0 ? (
+        <Card testID="analysis-workbook-remainder">
+          <PanelHeader
+            icon={FileSpreadsheet}
+            title={tr.analysis.remainderTitle}
+            description={tr.analysis.remainderHint}
+            right={<Amount minor={periodDistribution.workbookRemainderMinor} />}
+          />
+        </Card>
+      ) : null}
 
       <View>
       {activeBudgetRows.length === 0 ? (

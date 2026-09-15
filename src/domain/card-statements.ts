@@ -16,6 +16,8 @@ import {
   type MonthKey,
   daysBetweenISO,
 } from "./dates";
+import { financialFlow } from "./transactions";
+import type { SettlementFlow, StatementPaymentKind, StatementPaymentLike, TxLike } from "./types";
 
 export interface CardCycle {
   statementDay: number;
@@ -59,6 +61,22 @@ export function statementForPurchase(purchaseDate: ISODate, cycle: CardCycle): C
   const closingDate = clampDayToMonth(yearOf(purchaseMonth), monthOf(purchaseMonth), cycle.statementDay);
   const periodMonth = dayOf(purchaseDate) <= dayOf(closingDate) ? purchaseMonth : addMonthsToKey(purchaseMonth, 1);
   return statementPeriod(periodMonth, cycle);
+}
+
+/**
+ * The month a card purchase made on `purchaseDate` bills its first instalment.
+ *
+ * A plan's instalments fall on the card's due day of consecutive months, so the
+ * first one belongs to the statement the purchase joins — due next month when
+ * the card is paid after it closes, or later still once this period has already
+ * closed. The plan form used to start every new plan in the current month, so
+ * on a card due on the 5th a plan entered on the 13th wrote an instalment dated
+ * the 5th, counted it as already paid and took it off today's balance, while an
+ * identical purchase entered through the transaction form waited for its
+ * statement.
+ */
+export function firstInstallmentMonth(purchaseDate: ISODate, cycle: CardCycle): MonthKey {
+  return monthKeyOf(statementForPurchase(purchaseDate, cycle).dueDate);
 }
 
 /**
@@ -172,6 +190,134 @@ export function refusedCardCycleDays(
  */
 export function daysUntilStatementClose(today: ISODate, cycle: CardCycle): number {
   return Math.max(0, daysBetweenISO(today, statementForPurchase(today, cycle).statementDate));
+}
+
+export interface StatementSettlement {
+  statementId: string;
+  /** The owner's charges on the statement, refunds netted. */
+  chargesMinor: number;
+  /** Payments recorded for it on or before today. */
+  paidMinor: number;
+  remainingMinor: number;
+  state: StatementPaymentKind;
+  /** The day its charges reach the balance once it is paid in full; null while any of it is owed. */
+  paidInFullOn: ISODate | null;
+}
+
+export interface CardSettlement {
+  /** The same rows, with a fully paid statement's charges on the day it was paid. */
+  transactions: TxLike[];
+  flows: SettlementFlow[];
+  byStatement: Map<string, StatementSettlement>;
+}
+
+/**
+ * What recorded statement payments do to the ledger (owner decision,
+ * 2026-09-13: "ödediğin ay").
+ *
+ * A statement with no payment recorded is paid in full on its due date, which
+ * is how every card charge already reaches the balance. Recording one replaces
+ * that for its statement:
+ *
+ * - Paid in full: its charges are counted on the day the last payment covered
+ *   them, in that month's cells, rather than on a due date still to come. A
+ *   payment made on an earlier day than that leaves the balance on its own day
+ *   and is given back on the day the charges land.
+ * - Paid in part: the charges keep their due date; the balance loses only what
+ *   was paid, on the day it was paid, and the rest is owed. No interest and no
+ *   carrying into the next statement — that is the bank's arithmetic.
+ *
+ * Only the owner's own charges count, as everywhere else in the balance, and a
+ * payment dated after today is not a payment yet.
+ */
+export function settleCardStatements(
+  transactions: TxLike[],
+  payments: readonly StatementPaymentLike[],
+  today: ISODate,
+): CardSettlement {
+  const paymentsByStatement = groupBy(payments, (payment) => (payment.paidOn > today ? null : payment.statementId));
+  const byStatement = new Map<string, StatementSettlement>();
+  if (paymentsByStatement.size === 0) return { transactions, flows: [], byStatement };
+
+  const chargesByStatement = groupBy(transactions, (tx) =>
+    tx.cardStatementId && paymentsByStatement.has(tx.cardStatementId) && tx.personIsSelf && financialFlow(tx).type === "expense"
+      ? tx.cardStatementId
+      : null);
+  const moved = new Map<string, TxLike>();
+  const flows: SettlementFlow[] = [];
+  for (const [statementId, list] of paymentsByStatement) {
+    const settled = settleStatement(statementId, list, chargesByStatement.get(statementId) ?? [], today);
+    byStatement.set(statementId, settled.settlement);
+    flows.push(...settled.flows);
+    for (const tx of settled.moved) moved.set(tx.id, tx);
+  }
+  return {
+    transactions: moved.size === 0 ? transactions : transactions.map((tx) => moved.get(tx.id) ?? tx),
+    flows,
+    byStatement,
+  };
+}
+
+/** One statement's settlement, the balance lines it makes, and the charges it moves. */
+function settleStatement(
+  statementId: string,
+  payments: StatementPaymentLike[],
+  charges: TxLike[],
+  today: ISODate,
+): { settlement: StatementSettlement; flows: SettlementFlow[]; moved: TxLike[] } {
+  const paid = [...payments].sort((a, b) => a.paidOn.localeCompare(b.paidOn) || a.id.localeCompare(b.id));
+  const chargesMinor = charges.reduce((sum, tx) => sum + financialFlow(tx).amountTryMinor, 0);
+  const paidMinor = paid.reduce((sum, payment) => sum + payment.amountMinor, 0);
+  let covered = 0;
+  const completion = paid.find((payment) => (covered += payment.amountMinor) >= chargesMinor);
+  const flows: SettlementFlow[] = [];
+  if (completion) {
+    for (const payment of paid.slice(0, paid.indexOf(completion))) {
+      flows.push({ statementId, date: payment.paidOn, amountMinor: -payment.amountMinor, kind: "payment", planned: false });
+      flows.push({ statementId, date: completion.paidOn, amountMinor: payment.amountMinor, kind: "paidElsewhere", planned: false });
+    }
+    return {
+      settlement: { statementId, chargesMinor, paidMinor, remainingMinor: 0, state: "full", paidInFullOn: completion.paidOn },
+      flows,
+      moved: charges.map((tx) => ({ ...tx, effectiveDate: completion.paidOn, status: "realized" as const })),
+    };
+  }
+  // Paid in part. Every charge on a statement shares its due date, so the
+  // latest of them is that date; the flows given back there are exactly as
+  // settled as the charges they sit beside. A statement with no charge is
+  // covered by any payment, so a partial one always has at least one.
+  const dueDate = charges.reduce((latest, tx) => (tx.effectiveDate > latest ? tx.effectiveDate : latest), charges[0]!.effectiveDate);
+  const planned = charges.some((tx) => tx.status !== "realized" || tx.effectiveDate > today);
+  flows.push({ statementId, date: dueDate, amountMinor: chargesMinor - paidMinor, kind: "owed", planned });
+  for (const payment of paid) {
+    flows.push({ statementId, date: payment.paidOn, amountMinor: -payment.amountMinor, kind: "payment", planned: false });
+    flows.push({ statementId, date: dueDate, amountMinor: payment.amountMinor, kind: "paidElsewhere", planned });
+  }
+  return {
+    settlement: {
+      statementId,
+      chargesMinor,
+      paidMinor,
+      remainingMinor: chargesMinor - paidMinor,
+      state: paid.at(-1)!.kind === "minimum" ? "minimum" : "partial",
+      paidInFullOn: null,
+    },
+    flows,
+    moved: [],
+  };
+}
+
+/** `items` grouped by `key`, leaving out the ones it gives no key. */
+function groupBy<T>(items: readonly T[], key: (item: T) => string | null): Map<string, T[]> {
+  const groups = new Map<string, T[]>();
+  for (const item of items) {
+    const group = key(item);
+    if (group == null) continue;
+    const list = groups.get(group);
+    if (list) list.push(item);
+    else groups.set(group, [item]);
+  }
+  return groups;
 }
 
 export function cardCycleProgress(today: ISODate, cycle: CardCycle): number {

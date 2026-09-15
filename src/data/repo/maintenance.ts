@@ -11,6 +11,8 @@ import { InvestmentDomainError } from "../../domain/investments";
 import { assertInvestmentWrites } from "./investment-validation";
 import { confirmExpected, type ExpectedRow } from "./expected";
 import { cardStatementWrite, type LivePaymentSource } from "./transactions";
+import { storedRateOnOrBefore } from "./installments";
+import { convertToTryMinor } from "../../domain/fx";
 
 // ---------------------------------------------------------------------------
 // Daily maintenance: §2.7 date flips, expected generation, late marking, auto-pay
@@ -99,6 +101,12 @@ export async function repairCardStatementLinks(userId: string, today: ISODate): 
        AND NOT EXISTS (
          SELECT 1 FROM transactions t
          WHERE t.user_id = cs.user_id AND t.card_statement_id = cs.id AND t.deleted_at IS NULL
+       )
+       -- A statement the owner recorded a payment against is not an orphan:
+       -- the money left the account whatever became of its charges.
+       AND NOT EXISTS (
+         SELECT 1 FROM card_statement_payments p
+         WHERE p.user_id = cs.user_id AND p.statement_id = cs.id AND p.deleted_at IS NULL
        )`,
     [userId],
   );
@@ -112,6 +120,23 @@ export async function repairCardStatementLinks(userId: string, today: ISODate): 
       false,
     );
   }
+}
+
+/**
+ * The TRY figure of a foreign-currency instalment at the rate stored for
+ * `rateDate` or before it, or nothing to change: a TRY row, a row outside a
+ * plan, no usable rate, or a figure too small to survive conversion.
+ */
+async function billedInTry(
+  userId: string,
+  row: Record<string, unknown>,
+  rateDate: ISODate,
+): Promise<{ amountTryMinor: number; fxRate: string } | null> {
+  if (row.currency === "TRY" || row.installment_plan_id == null) return null;
+  const rate = await storedRateOnOrBefore(userId, String(row.currency), rateDate);
+  if (rate == null) return null;
+  const amountTryMinor = convertToTryMinor(Number(row.amount_minor), rate);
+  return amountTryMinor === 0 ? null : { amountTryMinor, fxRate: String(rate) };
 }
 
 export async function runMaintenance(userId: string): Promise<void> {
@@ -242,7 +267,7 @@ async function runMaintenanceInner(userId: string): Promise<void> {
     for (const row of [...due].sort((a, b) => priority(a) - priority(b) || String(a.id).localeCompare(String(b.id)))) {
       const writes: RowWrite[] = [{
         table: "transactions",
-        row: { ...fromDbShape("transactions", row), status: "realized" },
+        row: { ...fromDbShape("transactions", row), status: "realized", ...(await billedInTry(userId, row, String(row.effective_date))) },
       }];
       try {
         await writeRowsValidated(
@@ -259,6 +284,23 @@ async function runMaintenanceInner(userId: string): Promise<void> {
       }
     }
   }
+
+  // 1b) A coming instalment of a foreign-currency plan is worth what the
+  // currency is worth now, not on the day the plan was entered: its TRY figure
+  // follows the last known rate until its own day arrives and fixes it above.
+  const comingForeign = await sqlite.getAllAsync<Record<string, unknown>>(
+    `SELECT * FROM transactions
+     WHERE user_id = ? AND status = 'pending' AND installment_plan_id IS NOT NULL
+       AND currency != 'TRY' AND effective_date > ? AND deleted_at IS NULL`,
+    [userId, today],
+  );
+  const repriced: RowWrite[] = [];
+  for (const row of comingForeign) {
+    const billed = await billedInTry(userId, row, today);
+    if (!billed || (billed.amountTryMinor === Number(row.amount_try_minor) && billed.fxRate === row.fx_rate)) continue;
+    repriced.push({ table: "transactions", row: { ...fromDbShape("transactions", row), ...billed } });
+  }
+  if (repriced.length > 0) await writeRows(userId, repriced, false);
 
   // 2) Generate missing expected items (subscriptions + recurring incomes).
   const subs = await sqlite.getAllAsync<Record<string, unknown>>(

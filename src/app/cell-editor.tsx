@@ -17,7 +17,7 @@ import {
   useCellNotesState,
   usePersonsState,
   usePlansState,
-  useTransactionsBetweenState,
+  useSettledTransactionsBetweenState,
   useUserId,
 } from "../data/hooks";
 import { combineLiveStates } from "../data/live-state";
@@ -25,9 +25,9 @@ import { dateForMonthEntry, firstDayOf, lastDayOf, todayISO } from "../domain/da
 import { isValidCellParams } from "../domain/route-params";
 import { installmentDisplayTitle } from "../domain/installments";
 import { formatMinorCompact, parseAmountExpression } from "../domain/money";
-import { categoryTableEntryType, signedBalanceEffectOf } from "../domain/transactions";
+import { categoryTableEntryType, isWorkbookRemainderRow, signedBalanceEffectOf } from "../domain/transactions";
 import { transactionDateText } from "../ui/transaction-date";
-import { monthLabel, tr } from "../i18n/tr";
+import { dateLabel, monthLabel, tr } from "../i18n/tr";
 import { scheduleSync } from "../sync/engine";
 import { Amount, Body, Button, Card, DataGateScreen, DataStateNotice, EmptyState, Field, MoneyField, PanelHeader, Row, Screen, SectionHeader } from "../ui/components";
 import { TransactionRow } from "../ui/transaction-row";
@@ -73,7 +73,7 @@ function CellEditor({ month, categoryId }: { month: string; categoryId: string }
   const persons = personsState.data;
   const plans = plansState.data;
   const rangeMonth = month;
-  const transactionsState = useTransactionsBetweenState(firstDayOf(rangeMonth), lastDayOf(rangeMonth));
+  const transactionsState = useSettledTransactionsBetweenState(firstDayOf(rangeMonth), lastDayOf(rangeMonth));
   const transactions = transactionsState.data;
   const undo = useUndo();
   const { palette } = useTheme();
@@ -289,15 +289,18 @@ function CellEditor({ month, categoryId }: { month: string; categoryId: string }
               dateText={
                 transactionDateText(t) +
                 (t.installmentNo ? `  ·  ${tr.installments.nthInstallment(t.installmentNo)}` : "") +
-                (t.isAggregate ? `  ·  ${tr.bulk.aggregateBadge}` : "")
+                (t.isAggregate ? `  ·  ${tr.bulk.aggregateBadge}` : "") +
+                (t.settledOn ? `  ·  ${tr.cashflow.statementPaidOn(dateLabel(t.settledOn))}` : "")
               }
               note={t.note}
               pending={t.status === "pending"}
               hasDocuments={documented.has(t.id)}
               reversalBadge={
-                t.amountTryMinor < 0
-                  ? { text: tr.tx.reversalLabel(t.type), tone: t.type === "income" ? "negative" : "positive" }
-                  : null
+                isWorkbookRemainderRow(t)
+                  ? { text: tr.analysis.remainderBadge, tone: "muted" }
+                  : t.amountTryMinor < 0
+                    ? { text: tr.tx.reversalLabel(t.type), tone: t.type === "income" ? "negative" : "positive" }
+                    : null
               }
               amountMinor={signedBalanceEffectOf(t.type, t.amountTryMinor, category?.kind ?? null)}
               onEdit={() => router.push({ pathname: "/transaction", params: { id: t.id } })}

@@ -97,6 +97,7 @@ export type Database = {
           amount_minor: number
           created_at: string
           date: string
+          declared_minor: number | null
           deleted_at: string | null
           id: string
           note: string | null
@@ -108,6 +109,7 @@ export type Database = {
           amount_minor: number
           created_at?: string
           date: string
+          declared_minor?: number | null
           deleted_at?: string | null
           id: string
           note?: string | null
@@ -119,6 +121,7 @@ export type Database = {
           amount_minor?: number
           created_at?: string
           date?: string
+          declared_minor?: number | null
           deleted_at?: string | null
           id?: string
           note?: string | null
@@ -127,6 +130,56 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      card_statement_payments: {
+        Row: {
+          amount_minor: number
+          created_at: string
+          deleted_at: string | null
+          id: string
+          kind: string
+          note: string | null
+          paid_on: string
+          statement_id: string
+          tombstone_version: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          amount_minor: number
+          created_at?: string
+          deleted_at?: string | null
+          id: string
+          kind: string
+          note?: string | null
+          paid_on: string
+          statement_id: string
+          tombstone_version?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Update: {
+          amount_minor?: number
+          created_at?: string
+          deleted_at?: string | null
+          id?: string
+          kind?: string
+          note?: string | null
+          paid_on?: string
+          statement_id?: string
+          tombstone_version?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "card_statement_payments_user_statement_fk"
+            columns: ["user_id", "statement_id"]
+            isOneToOne: false
+            referencedRelation: "credit_card_statements"
+            referencedColumns: ["user_id", "id"]
+          },
+        ]
       }
       categories: {
         Row: {
@@ -517,6 +570,7 @@ export type Database = {
       installment_plans: {
         Row: {
           category_id: string | null
+          closed_on: string | null
           created_at: string
           currency: string
           deleted_at: string | null
@@ -526,6 +580,7 @@ export type Database = {
           kind: string
           monthly_amount_minor: number | null
           note: string | null
+          original_installment_count: number | null
           payment_source_id: string | null
           person_id: string
           start_month: string
@@ -537,6 +592,7 @@ export type Database = {
         }
         Insert: {
           category_id?: string | null
+          closed_on?: string | null
           created_at?: string
           currency?: string
           deleted_at?: string | null
@@ -546,6 +602,7 @@ export type Database = {
           kind: string
           monthly_amount_minor?: number | null
           note?: string | null
+          original_installment_count?: number | null
           payment_source_id?: string | null
           person_id: string
           start_month: string
@@ -557,6 +614,7 @@ export type Database = {
         }
         Update: {
           category_id?: string | null
+          closed_on?: string | null
           created_at?: string
           currency?: string
           deleted_at?: string | null
@@ -566,6 +624,7 @@ export type Database = {
           kind?: string
           monthly_amount_minor?: number | null
           note?: string | null
+          original_installment_count?: number | null
           payment_source_id?: string | null
           person_id?: string
           start_month?: string
@@ -1182,6 +1241,7 @@ export type Database = {
           payment_source_id: string | null
           person_id: string
           purchase_date: string | null
+          refund_of_transaction_id: string | null
           status: string
           subscription_id: string | null
           tombstone_version: number
@@ -1210,6 +1270,7 @@ export type Database = {
           payment_source_id?: string | null
           person_id: string
           purchase_date?: string | null
+          refund_of_transaction_id?: string | null
           status: string
           subscription_id?: string | null
           tombstone_version?: number
@@ -1238,6 +1299,7 @@ export type Database = {
           payment_source_id?: string | null
           person_id?: string
           purchase_date?: string | null
+          refund_of_transaction_id?: string | null
           status?: string
           subscription_id?: string | null
           tombstone_version?: number

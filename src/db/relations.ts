@@ -10,6 +10,7 @@ export const RELATIONS = [
   ["installment_plans", "payment_source_id", "payment_sources"],
   ["installment_plans", "person_id", "persons"],
   ["credit_card_statements", "payment_source_id", "payment_sources"],
+  ["card_statement_payments", "statement_id", "credit_card_statements"],
   ["transactions", "category_id", "categories"],
   ["transactions", "payment_source_id", "payment_sources"],
   ["transactions", "person_id", "persons"],

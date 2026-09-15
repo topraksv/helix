@@ -109,7 +109,14 @@ describe("RLS suite coverage", () => {
  */
 describe("sync change probe coverage", () => {
   it("names exactly the synced tables in sync_cursors()", () => {
-    const sql = readFileSync(join(migrationsDir, "00000000000032_sync_change_probe.sql"), "utf8");
+    // The LATEST migration that defines the function, because a table added
+    // later replaces the whole body rather than patching one branch in.
+    const definer = readdirSync(migrationsDir)
+      .filter((name) => name.endsWith(".sql"))
+      .sort()
+      .filter((name) => readFileSync(join(migrationsDir, name), "utf8").includes("create or replace function public.sync_cursors()"))
+      .at(-1)!;
+    const sql = readFileSync(join(migrationsDir, definer), "utf8");
     // One `union all` branch per table, each reading one relation. Parsed from
     // the relation the branch actually reads rather than from the label it
     // returns, because a copy-paste that updates the label and not the table is

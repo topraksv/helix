@@ -77,6 +77,65 @@ describe("dashboard model parity", () => {
     expect(model.outgoingMinor).toBe(125_00);
     expect(model.projectedMinor).toBe(875_00);
   });
+
+  it("does not take a partly paid statement's charges from the month-end balance again", () => {
+    const charge = (id: string, statementId: string, amountTryMinor: number) => tx({
+      id, type: "expense", amountTryMinor, effectiveDate: "2026-07-28", status: "pending",
+      paymentSourceId: "card", cardStatementId: statementId,
+    });
+    const model = buildDashboardModel({
+      transactions: [charge("partly-paid", "st-partial", 1_000_00), charge("unpaid", "st-open", 200_00)],
+      expected: [],
+      ledger: [],
+      actualBalanceMinor: 5_000_00,
+      today: "2026-07-18",
+      monthStart: "2026-07-01",
+      monthEnd: "2026-07-31",
+      currentMonth: "2026-07",
+      year: 2026,
+      expectedTryMinor: (_currency, amount) => amount,
+      partlyPaidStatementIds: new Set(["st-partial"]),
+    });
+
+    expect(model.outgoingMinor).toBe(200_00);
+    expect(model.projectedMinor).toBe(4_800_00);
+  });
+
+  it("counts a card charge still due this month when no statement is partly paid", () => {
+    const model = buildDashboardModel({
+      transactions: [tx({ id: "card", type: "expense", amountTryMinor: 300_00, effectiveDate: "2026-07-28", status: "pending", paymentSourceId: "card", cardStatementId: "st" })],
+      expected: [],
+      ledger: [],
+      actualBalanceMinor: 5_000_00,
+      today: "2026-07-18",
+      monthStart: "2026-07-01",
+      monthEnd: "2026-07-31",
+      currentMonth: "2026-07",
+      year: 2026,
+      expectedTryMinor: (_currency, amount) => amount,
+    });
+
+    expect(model.outgoingMinor).toBe(300_00);
+  });
+
+  it("keeps a workbook remainder to its own month, up to the month's last day", () => {
+    const remainder = (id: string, effectiveDate: string, amountTryMinor: number) =>
+      tx({ id, type: "expense", amountTryMinor, effectiveDate, categoryId: "kart", isWorkbookRemainder: true });
+    const model = buildDashboardModel({
+      transactions: [remainder("june", "2026-06-30", 70_00), remainder("july", "2026-07-31", 30_00)],
+      expected: [],
+      ledger: [],
+      actualBalanceMinor: 1_000_00,
+      today: "2026-07-31",
+      monthStart: "2026-07-01",
+      monthEnd: "2026-07-31",
+      currentMonth: "2026-07",
+      year: 2026,
+      expectedTryMinor: (_currency, amount) => amount,
+    });
+
+    expect(model.distribution.workbookRemainderMinor).toBe(-30_00);
+  });
 });
 
 /**

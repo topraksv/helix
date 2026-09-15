@@ -312,6 +312,18 @@ describe("backup validation", () => {
     expect(isValidImportRow("transactions", { ...transaction, amount_minor: 0 })).toBe(false);
     expect(isValidImportRow("payment_sources", cardSource)).toBe(false);
     expect(isValidImportRow("installment_plans", { ...plan, payment_source_id: null })).toBe(false);
+    // An early closure's remembered count has the plan count's own bounds.
+    expect(isValidImportRow("installment_plans", { ...plan, closed_on: "2026-08-10", original_installment_count: 3 })).toBe(true);
+    expect(isValidImportRow("installment_plans", { ...plan, original_installment_count: 0 })).toBe(false);
+    expect(isValidImportRow("installment_plans", { ...plan, original_installment_count: 601 })).toBe(false);
+    // A declared opening is an amount like any other.
+    const declaration = {
+      id: id(35), user_id: sourceUserId, created_at: timestamp, updated_at: timestamp, deleted_at: null,
+      date: "2026-07-31", amount_minor: 1_250_00, declared_minor: 5_000_00, note: null,
+    };
+    expect(isValidImportRow("balance_adjustments", declaration)).toBe(true);
+    expect(isValidImportRow("balance_adjustments", { ...declaration, declared_minor: null })).toBe(true);
+    expect(isValidImportRow("balance_adjustments", { ...declaration, declared_minor: 100_000_000_000_000 })).toBe(false);
     expect(isValidImportRow(
       "transactions",
       { ...transaction, note: "x".repeat(1_001) },

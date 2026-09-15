@@ -1,10 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { categoryRangeMatrix, distributionForRange, fixedVsVariable } from "../src/domain/analytics";
 import { buildLedger } from "../src/domain/balance";
+import { buildDashboardModel } from "../src/domain/dashboard";
+import { tr } from "../src/i18n/tr";
 import {
   categoryAcceptsTransaction,
   categoryTableEntryType,
   financialFlow,
+  isWorkbookRemainderRow,
   projectedTransactionFlow,
 } from "../src/domain/transactions";
 import { required, tx } from "./helpers";
@@ -84,5 +87,58 @@ describe("canonical transaction classification", () => {
     const distribution = distributionForRange(rows, "2026-07-01", "2026-07-31", TODAY);
     expect(split).toEqual({ fixedMinor: 90_00, variableMinor: 30_00 });
     expect(split.fixedMinor + split.variableMinor).toBe(distribution.expenseTotalMinor);
+  });
+});
+
+/**
+ * A workbook column's remainder keeps the imported column equal to its file
+ * (spec §3.1e). It is in the balance and the table cell, and in no chart or
+ * category split, where a negative one read as a refund nobody made.
+ */
+describe("workbook column remainders", () => {
+  const remainder = tx({
+    id: "remainder", type: "expense", amountTryMinor: -250_00, effectiveDate: "2026-07-01",
+    categoryId: "kk", categoryKind: "expense", isAggregate: true, isWorkbookRemainder: true,
+  });
+  const spending = tx({
+    id: "spending", type: "expense", amountTryMinor: 400_00, effectiveDate: "2026-07-10",
+    categoryId: "kk", categoryKind: "expense",
+  });
+  const transactions = [remainder, spending];
+
+  it("is recognised only by the importer's origin, month-level shape and exact note", () => {
+    const row = { origin: "spreadsheet", isAggregate: true, note: tr.importer.columnRemainder };
+    expect(isWorkbookRemainderRow(row)).toBe(true);
+    expect(isWorkbookRemainderRow({ ...row, origin: "manual" })).toBe(false);
+    expect(isWorkbookRemainderRow({ ...row, isAggregate: false })).toBe(false);
+    expect(isWorkbookRemainderRow({ ...row, note: `${tr.importer.columnRemainder} ` })).toBe(false);
+    expect(isWorkbookRemainderRow({ ...row, note: null })).toBe(false);
+  });
+
+  it("stays out of the distribution and is reported beside it", () => {
+    const distribution = distributionForRange(transactions, "2026-07-01", "2026-07-31", TODAY);
+    expect(distribution.expenseByCategory).toEqual(new Map([["kk", 400_00]]));
+    expect(distribution.expenseTotalMinor).toBe(400_00);
+    expect(distribution.workbookRemainderMinor).toBe(250_00);
+    expect(categoryRangeMatrix(transactions, "2026-07", "2026-07", TODAY).get("kk")?.ytdMinor).toBe(400_00);
+    expect(fixedVsVariable(transactions, "2026-07-01", "2026-07-31", TODAY)).toEqual({ fixedMinor: 0, variableMinor: 400_00 });
+  });
+
+  it("stays out of the dashboard's splits and agrees with Analysis about it", () => {
+    const model = buildDashboardModel({
+      transactions, expected: [], ledger: [], actualBalanceMinor: 0, today: TODAY,
+      monthStart: "2026-07-01", monthEnd: "2026-07-31", currentMonth: "2026-07", year: 2026,
+      expectedTryMinor: (_currency, amount) => amount,
+    });
+    expect(model.distribution).toEqual(distributionForRange(transactions, "2026-07-01", "2026-07-31", TODAY));
+    expect(model.variableMinor).toBe(400_00);
+  });
+
+  it("is still in the balance and in its column's cell, so the table equals the file", () => {
+    const [july] = buildLedger({
+      openingBalanceMinor: 0, startMonth: "2026-07", endMonth: "2026-07", transactions, adjustments: [], today: TODAY,
+    });
+    expect(july?.byCategory.get("kk")).toBe(150_00);
+    expect(july?.closingMinor).toBe(-150_00);
   });
 });

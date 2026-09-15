@@ -9,23 +9,21 @@
  * straight from a `GROUP BY` and needs no column table: a grid's columns are
  * the owner's own category names, not a schema.
  *
- * **Abonelikler** and **Yatırımlar** are records. The wizard parses neither —
- * a subscription is not a month grid — so they are written to be read by a
- * person and by Excel, and this file is their column table.
- *
- * That split is why there is no `read` here any more. There was one, and a
- * `readSheet` beside it, built for a flat transaction sheet that the importer
- * turned out to refuse; the round trip now goes through the wizard's grid
- * instead, and a two-way column table with nothing calling the second way was
- * a promise the tree could not keep.
+ * **Abonelikler** and **Yatırımlar** are records: one row per subscription or
+ * investment operation, written to be read by a person and by Excel, and read
+ * back so the owner can edit them there and import them again (owner decision,
+ * 2026-09-14). This file is their column table in both directions — one
+ * heading table, so a column the writer renames is a column the reader finds.
  *
  * `.claude/rules/export-import-contract.md` states the standing rule: a new
  * user-facing field on a subscription or an investment is not finished until it
  * has a column here.
  */
-import { neutralizeFormula } from "./workbook-format-guard";
+import { deneutralizeFormula, neutralizeFormula } from "./workbook-format-guard";
 import { normalizedMonthlyLoadMinor } from "./analytics";
-import { isSupportedMinorAmount } from "./money";
+import { isISODate, type ISODate } from "./dates";
+import type { InvestmentAssetType, InvestmentOperationKind } from "./investments";
+import { isSupportedMinorAmount, readTRAmount, type Minor } from "./money";
 import { tr } from "../i18n/tr";
 
 export { neutralizeFormula, deneutralizeFormula } from "./workbook-format-guard";
@@ -195,35 +193,51 @@ const OPERATION_KINDS = {
   contribution: "Katkı",
 } as const;
 
+/** Each record sheet's headings, named once for the writer and the reader. */
+export const SUBSCRIPTION_HEADERS = {
+  name: "Abonelik", amount: "Tutar", currency: "Para Birimi", amountMode: "Tutar Tipi", cycle: "Döngü",
+  interval: "Kaç Ayda Bir", billingDay: "Ödeme Günü", nextDue: "Sonraki Ödeme", trialEnd: "Deneme Bitişi",
+  category: "Kategori", source: "Ödeme Yöntemi", person: "Kişi", autoPay: "Otomatik Ödeme", active: "Aktif",
+  site: "Site", monthlyLoad: "Aylık Yük",
+} as const;
+
+export const INVESTMENT_HEADERS = {
+  product: "Ürün", assetType: "Varlık Türü", marketCode: "Fiyat Takip Kodu", date: "İşlem Tarihi", kind: "İşlem",
+  quantity: "Adet", unitPrice: "Birim Fiyat", total: "Toplam", note: "Not",
+} as const;
+
+const S = SUBSCRIPTION_HEADERS;
+const I = INVESTMENT_HEADERS;
+
 export const SUBSCRIPTION_COLUMNS: WorkbookColumn<SubscriptionRow>[] = [
-  text("Abonelik", "Servisin adı", (r) => r.name),
-  money("Tutar", "Bir dönemde ödenen", (r) => r.amountMinor),
-  text("Para Birimi", "TRY, USD, EUR…", (r) => r.currency),
-  enumeration("Tutar Tipi", "Sabit · Değişken (değişkende tutar tahmindir)", (r) => r.amountMode, AMOUNT_MODES),
-  enumeration("Döngü", "Aylık · Yıllık · Özel", (r) => r.cycle, SUBSCRIPTION_CYCLES),
-  whole("Kaç Ayda Bir", "Aylıkta 1, yıllıkta 12", (r) => r.intervalMonths),
-  whole("Ödeme Günü", "Ayın kaçında çekiliyor", (r) => r.billingDay),
-  date("Sonraki Ödeme", "Bir sonraki çekim tarihi", (r) => r.nextDueDate),
-  date("Deneme Bitişi", "Deneme sürümündeyse bitiş tarihi", (r) => r.trialEndDate),
-  text("Kategori", "Hangi kaleme yazılıyor", (r) => r.category),
-  text("Ödeme Yöntemi", "Hangi karttan ya da hesaptan çekiliyor", (r) => r.source),
-  text("Kişi", "Kimin aboneliği; boşsa senin", (r) => r.person),
-  flag("Otomatik Ödeme", "Kendiliğinden çekiliyorsa: evet", (r) => r.autoPay),
-  flag("Aktif", "İptal ettiysen boş kalır", (r) => r.isActive),
-  text("Site", "Logosunun bulunduğu adres", (r) => r.websiteDomain),
-  money("Aylık Yük", "Yıllık bir aboneliğin aya düşen payı", (r) => r.monthlyLoadMinor),
+  text(S.name, "Servisin adı", (r) => r.name),
+  money(S.amount, "Bir dönemde ödenen", (r) => r.amountMinor),
+  text(S.currency, "TRY, USD, EUR…", (r) => r.currency),
+  enumeration(S.amountMode, "Sabit · Değişken (değişkende tutar tahmindir)", (r) => r.amountMode, AMOUNT_MODES),
+  enumeration(S.cycle, "Aylık · Yıllık · Özel", (r) => r.cycle, SUBSCRIPTION_CYCLES),
+  whole(S.interval, "Aylıkta 1, yıllıkta 12", (r) => r.intervalMonths),
+  whole(S.billingDay, "Ayın kaçında çekiliyor", (r) => r.billingDay),
+  date(S.nextDue, "Bir sonraki çekim tarihi", (r) => r.nextDueDate),
+  date(S.trialEnd, "Deneme sürümündeyse bitiş tarihi", (r) => r.trialEndDate),
+  text(S.category, "Hangi kaleme yazılıyor", (r) => r.category),
+  text(S.source, "Hangi karttan ya da hesaptan çekiliyor", (r) => r.source),
+  text(S.person, "Kimin aboneliği; boşsa senin", (r) => r.person),
+  flag(S.autoPay, "Kendiliğinden çekiliyorsa: evet", (r) => r.autoPay),
+  flag(S.active, "İptal ettiysen boş kalır", (r) => r.isActive),
+  text(S.site, "Logosunun bulunduğu adres", (r) => r.websiteDomain),
+  money(S.monthlyLoad, "Yıllık bir aboneliğin aya düşen payı; geri okunmaz", (r) => r.monthlyLoadMinor),
 ];
 
 export const INVESTMENT_COLUMNS: WorkbookColumn<InvestmentRow>[] = [
-  text("Ürün", "Gram Altın, Dolar, THYAO gibi varlığın adı", (r) => r.product),
-  enumeration("Varlık Türü", "Metal · Döviz · Hisse · Fon · Kripto · Emeklilik", (r) => r.assetType, ASSET_TYPES),
-  text("Fiyat Takip Kodu", "Canlı fiyat takibi için uygulamanın verdiği kod", (r) => r.marketCode),
-  date("İşlem Tarihi", "İşlemin yapıldığı gün", (r) => r.operationDate),
-  enumeration("İşlem", "Mevcut · Alış · Satış · Katkı", (r) => r.kind, OPERATION_KINDS),
-  text("Adet", "Küsuratlı olabilir", (r) => r.quantity),
-  money("Birim Fiyat", "Bir adedin fiyatı", (r) => r.unitPriceMinor),
-  money("Toplam", "Adet çarpı birim fiyat", (r) => r.totalMinor),
-  text("Not", "Serbest metin", (r) => r.note),
+  text(I.product, "Gram Altın, Dolar, THYAO gibi varlığın adı", (r) => r.product),
+  enumeration(I.assetType, "Metal · Döviz · Hisse · Fon · Kripto · Emeklilik", (r) => r.assetType, ASSET_TYPES),
+  text(I.marketCode, "Canlı fiyat takibi için uygulamanın verdiği kod", (r) => r.marketCode),
+  date(I.date, "İşlemin yapıldığı gün", (r) => r.operationDate),
+  enumeration(I.kind, "Mevcut · Alış · Satış · Katkı", (r) => r.kind, OPERATION_KINDS),
+  text(I.quantity, "Küsuratlı olabilir", (r) => r.quantity),
+  money(I.unitPrice, "Bir adedin fiyatı", (r) => r.unitPriceMinor),
+  money(I.total, "Adet çarpı birim fiyat", (r) => r.totalMinor),
+  text(I.note, "Serbest metin", (r) => r.note),
 ];
 
 export const WORKBOOK_COLUMNS = {
@@ -305,7 +319,7 @@ export function buildLedgerGrids(totals: readonly LedgerTotal[]): [year: number,
  * So the file keeps the SQL and this keeps the decisions.
  */
 const str = (value: unknown): string => (value == null ? "" : String(value));
-const num = (value: unknown): number => (typeof value === "number" ? value : Number(value) || 0);
+const num = (value: unknown): number => Number(value) || 0;
 
 export function toLedgerTotal(row: Record<string, unknown>, uncategorized: string): LedgerTotal {
   return { item: str(row.item) || uncategorized, month: str(row.month), minor: num(row.total) };
@@ -353,4 +367,193 @@ export function toInvestmentRow(row: Record<string, unknown>): InvestmentRow {
     totalMinor: num(row.total_minor),
     note: str(row.note),
   };
+}
+
+/* ------------------------------------------------------- sheet → record */
+
+/** A subscription as its sheet row states it, before any name is matched to a record. */
+export interface SubscriptionRecord {
+  /** The row as a person counts it, the heading row being 1. */
+  row: number;
+  name: string;
+  amountMinor: Minor;
+  currency: string;
+  amountMode: "fixed" | "variable";
+  cycle: "monthly" | "yearly" | "custom";
+  intervalMonths: number;
+  billingDay: number;
+  nextDueDate: ISODate;
+  trialEndDate: ISODate | null;
+  category: string;
+  source: string;
+  person: string;
+  autoPay: boolean;
+  isActive: boolean;
+  websiteDomain: string;
+}
+
+/** An investment operation as its sheet row states it. */
+export interface InvestmentRecord {
+  row: number;
+  product: string;
+  assetType: InvestmentAssetType;
+  marketCode: string;
+  operationDate: ISODate;
+  kind: InvestmentOperationKind;
+  quantity: string | null;
+  unitPriceMinor: Minor | null;
+  totalMinor: Minor | null;
+  note: string;
+}
+
+export interface RecordProblem {
+  sheet: string;
+  row: number;
+  /** The heading whose cell did not read, or null when the row read and could not be saved. */
+  column: string | null;
+}
+
+export interface RecordSheet<T> {
+  records: T[];
+  problems: RecordProblem[];
+}
+
+/**
+ * How two cells are compared: case and surrounding space do not make a
+ * different record. Turkish lower-casing turns the Latin capital I of
+ * "NETFLIX" into a dotless ı, so the two i's are folded together as well.
+ */
+export const folded = (text: string): string => text.trim().toLocaleLowerCase("tr-TR").replace(/ı/g, "i");
+
+/** One key from several parts, compared the way `folded` compares a cell. */
+export const recordKey = (...parts: (string | number | null)[]): string =>
+  parts.map((part) => folded(String(part ?? ""))).join("\u0000");
+
+/** A quantity as a number reads it, so "12,50" written and "12.5" stored are one quantity. */
+export const quantityKey = (quantity: string | null): string =>
+  quantity == null || quantity.trim() === "" ? "" : String(Number(quantity.replace(",", ".")));
+
+/** A closed set read back from its label, or from the stored value itself. */
+function labelReader<Key extends string>(labels: Readonly<Record<Key, string>>): (text: string) => Key | undefined {
+  const byText = new Map<string, Key>();
+  for (const [key, label] of Object.entries(labels) as [Key, string][]) {
+    byText.set(folded(label), key);
+    byText.set(folded(key), key);
+  }
+  return (text) => byText.get(folded(text));
+}
+
+/** Money as the sheet writes it, or as a spreadsheet retyped it with a decimal dot. */
+export function readMoney(text: string): Minor | undefined {
+  const read = readTRAmount(/^-?\d+\.\d{1,2}$/.test(text) ? text.replace(".", ",") : text);
+  return read.ok ? read.minor : undefined;
+}
+
+/** `GG.AA.YYYY` as written, or the ISO day a spreadsheet converted it to. */
+export function readDate(text: string): ISODate | undefined {
+  const written = /^(\d{1,2})\.(\d{1,2})\.(\d{4})$/.exec(text);
+  const iso = written ? `${written[3]}-${written[2]!.padStart(2, "0")}-${written[1]!.padStart(2, "0")}` : text;
+  return isISODate(iso) ? iso : undefined;
+}
+
+const blankOr = <T>(read: (text: string) => T | undefined, blank: T) => (text: string): T | undefined =>
+  text === "" ? blank : read(text);
+const named = (text: string): string | undefined => deneutralizeFormula(text).trim() || undefined;
+const free = (text: string): string => deneutralizeFormula(text).trim();
+const wholeOf = (text: string): number | undefined => (/^\d+$/.test(text) ? Number(text) : undefined);
+const flagOf = (text: string): boolean | undefined => ({ "": false, evet: true, "hayır": false } as Record<string, boolean>)[folded(text)];
+const quantityOf = (text: string): string | undefined => (/^\d+([.,]\d+)?$/.test(text) ? text.replace(",", ".") : undefined);
+
+/**
+ * Each field's heading, how its cell reads — `undefined` meaning it did not —
+ * and, for a column a person may delete, what its absence means.
+ */
+type FieldReaders<T> = { [K in keyof T]: [header: string, read: (text: string) => T[K] | undefined, missing?: T[K]] };
+
+const SUBSCRIPTION_FIELDS: FieldReaders<Omit<SubscriptionRecord, "row">> = {
+  name: [S.name, named],
+  amountMinor: [S.amount, readMoney],
+  currency: [S.currency, (text) => text.toUpperCase() || "TRY"],
+  amountMode: [S.amountMode, blankOr(labelReader(AMOUNT_MODES), "fixed")],
+  cycle: [S.cycle, labelReader(SUBSCRIPTION_CYCLES)],
+  // Blank is filled from the cycle below; zero stands for "not written".
+  intervalMonths: [S.interval, blankOr(wholeOf, 0)],
+  billingDay: [S.billingDay, wholeOf],
+  nextDueDate: [S.nextDue, readDate],
+  trialEndDate: [S.trialEnd, blankOr<ISODate | null>(readDate, null)],
+  category: [S.category, free],
+  source: [S.source, free],
+  person: [S.person, free],
+  autoPay: [S.autoPay, flagOf],
+  // A blank cell is a cancelled subscription; a deleted column says nothing about it.
+  isActive: [S.active, flagOf, true],
+  websiteDomain: [S.site, free],
+};
+
+const INVESTMENT_FIELDS: FieldReaders<Omit<InvestmentRecord, "row">> = {
+  product: [I.product, named],
+  assetType: [I.assetType, labelReader(ASSET_TYPES as Readonly<Record<InvestmentAssetType, string>>)],
+  marketCode: [I.marketCode, free],
+  operationDate: [I.date, readDate],
+  kind: [I.kind, labelReader(OPERATION_KINDS)],
+  quantity: [I.quantity, blankOr<string | null>(quantityOf, null)],
+  unitPriceMinor: [I.unitPrice, blankOr<Minor | null>(readMoney, null)],
+  totalMinor: [I.total, blankOr<Minor | null>(readMoney, null)],
+  note: [I.note, free],
+};
+
+/** One row through its readers: the record, or the heading of the first cell that did not read. */
+function readFields<T>(fields: FieldReaders<T>, cell: (header: string) => string | null): T | string {
+  const out: Partial<T> = {};
+  for (const key of Object.keys(fields) as (keyof T)[]) {
+    const [header, read, missing] = fields[key];
+    const text = cell(header);
+    const value = text == null && missing !== undefined ? missing : read(text ?? "");
+    if (value === undefined) return header;
+    out[key] = value;
+  }
+  return out as T;
+}
+
+/**
+ * A record sheet's rows, each read or reported — or null when its headings are
+ * not the sheet's, which is how an owner's own "Yatırım" sheet is told apart.
+ *
+ * Read by heading rather than by position, because a person moves a column
+ * before they retype a value; a row that does not read is left out and named
+ * by its row and heading, because a guessed record is worse than a missing one.
+ * Each cell is trimmed once, here, so no reader above trims its own.
+ */
+function readRecordSheet<T extends { row: number }>(
+  sheet: string,
+  grid: readonly (readonly string[])[],
+  fields: FieldReaders<Omit<T, "row">>,
+  required: readonly string[],
+): RecordSheet<T> | null {
+  const headings = (grid[0] ?? []).map((cell) => cell.trim());
+  if (!required.every((header) => headings.includes(header))) return null;
+  const sheetRows: RecordSheet<T> = { records: [], problems: [] };
+  grid.slice(1).forEach((cells, index) => {
+    if (cells.every((cell) => cell.trim() === "")) return;
+    const read = readFields(fields, (header) => (headings.includes(header) ? cells[headings.indexOf(header)]?.trim() ?? "" : null));
+    if (typeof read === "string") sheetRows.problems.push({ sheet, row: index + 2, column: read });
+    else sheetRows.records.push({ ...read, row: index + 2 } as T);
+  });
+  return sheetRows;
+}
+
+export function readSubscriptionSheet(grid: readonly (readonly string[])[]): RecordSheet<SubscriptionRecord> | null {
+  const sheet = readRecordSheet<SubscriptionRecord>(WORKBOOK_SHEETS.subscriptions, grid, SUBSCRIPTION_FIELDS, [S.name, S.amount, S.cycle]);
+  if (!sheet) return null;
+  const intervalFor = (record: SubscriptionRecord) => record.intervalMonths || (record.cycle === "yearly" ? 12 : 1);
+  return { ...sheet, records: sheet.records.map((record) => ({ ...record, intervalMonths: intervalFor(record) })) };
+}
+
+export function readInvestmentSheet(grid: readonly (readonly string[])[]): RecordSheet<InvestmentRecord> | null {
+  const sheet = readRecordSheet<InvestmentRecord>(WORKBOOK_SHEETS.investments, grid, INVESTMENT_FIELDS, [I.product, I.assetType, I.kind]);
+  if (!sheet) return null;
+  // A contribution entered as an amount alone is written with a zero unit
+  // price, and a zero unit price with no quantity means exactly that again.
+  const amountOnly = (record: InvestmentRecord) => record.quantity == null && record.unitPriceMinor === 0;
+  return { ...sheet, records: sheet.records.map((record) => (amountOnly(record) ? { ...record, unitPriceMinor: null } : record)) };
 }

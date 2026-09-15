@@ -18,6 +18,20 @@ interface RootGuardDecision {
   redirect: RootGuardRedirect | null;
 }
 
+/**
+ * Whether a route may be drawn although this document could not open the
+ * database.
+ *
+ * Only the reset screen, and only while another tab holds the database. A
+ * reset e-mail opens its link in a new tab beside the one already running
+ * Helix, and that screen reads nothing local — it talks to Auth on a client of
+ * its own. Any other failure is a real one, and drawing the reset screen over
+ * it would hide it.
+ */
+export function drawsWithoutDatabase(failure: BootFailure | null, route: RootRouteArea): boolean {
+  return failure === "busy" && route === "recovery";
+}
+
 export function classifyRootRoute(segments: readonly string[]): RootRouteArea {
   const first = segments[0];
   const second = segments[1];

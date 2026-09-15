@@ -33,4 +33,17 @@ describe("device-local notification preferences", () => {
     expect(await notificationsEnabled()).toBe(true);
     expect(await loadDevicePreferences()).toMatchObject({ notifications: true, notificationDetails: true });
   });
+
+  it("does not settle the other choice at its default when one is changed before the first read", async () => {
+    vi.resetModules();
+    mocks.storage.clear();
+    mocks.storage.set("helix.notifications", "true");
+    mocks.get.mockImplementation(async (key) => mocks.storage.get(key) ?? null);
+    const preferences = await import("../src/services/device-preferences");
+
+    await preferences.setNotificationDetailsEnabled(false);
+
+    expect(await preferences.notificationsEnabled()).toBe(true);
+    expect(await preferences.loadDevicePreferences()).toMatchObject({ notifications: true, notificationDetails: false });
+  });
 });

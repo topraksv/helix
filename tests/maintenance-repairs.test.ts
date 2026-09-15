@@ -251,3 +251,71 @@ describe("obligations belonging to a person who is only watched", () => {
     expect(live("expected_payments", "exp-self")).toBe(true);
   });
 });
+
+/**
+ * A foreign-currency plan's instalments follow the currency (owner decision,
+ * 2026-09-13): a coming one is restated at the last known rate on every pass,
+ * and one whose day arrives is fixed at the rate stored for that day.
+ */
+describe("foreign-currency instalments", () => {
+  function instalmentRow(id: string, currency: string, effectiveDate: string, amountTryMinor: number, status = "pending"): Record<string, unknown> {
+    return {
+      ...stamps, id, type: "expense", amount_minor: 10_00, currency, fx_rate: currency === "TRY" ? null : "20",
+      amount_try_minor: amountTryMinor, entry_date: "2019-12-01", effective_date: effectiveDate, status,
+      person_id: "self", installment_plan_id: "plan-usd", installment_no: 1, is_aggregate: 0,
+    };
+  }
+  function transaction(id: string): Record<string, unknown> {
+    return harness.db!.prepare(`SELECT status, amount_try_minor, fx_rate FROM transactions WHERE id = ?`).get(id) as Record<string, unknown>;
+  }
+
+  beforeEach(() => {
+    insert("installment_plans", {
+      ...stamps, id: "plan-usd", title: "Kamera", kind: "loan", total_amount_minor: 30_00, installment_count: 3,
+      currency: "USD", start_month: "2020-01", person_id: "self",
+    });
+    for (const [date, rate] of [["2019-12-31", "30"], ["2020-01-05", "31"], ["2020-02-01", "35"]] as const) {
+      insert("fx_rates", { ...stamps, id: `usd-${date}`, currency: "USD", rate_date: date, rate_try: rate });
+    }
+  });
+
+  it("fixes an instalment whose day has come at the rate stored for that day", async () => {
+    insert("transactions", instalmentRow("due", "USD", "2020-01-05", 200_00));
+
+    await runMaintenance(USER);
+
+    expect(transaction("due")).toEqual({ status: "realized", amount_try_minor: 310_00, fx_rate: "31" });
+  });
+
+  it("restates a coming instalment at the last known rate, and leaves lira and rateless ones alone", async () => {
+    insert("transactions", instalmentRow("coming", "USD", "2099-01-05", 200_00));
+    insert("transactions", instalmentRow("lira", "TRY", "2099-01-05", 10_00));
+    insert("transactions", instalmentRow("no-rate", "GBP", "2099-01-05", 200_00));
+
+    await runMaintenance(USER);
+
+    expect(transaction("coming")).toEqual({ status: "pending", amount_try_minor: 350_00, fx_rate: "35" });
+    expect(transaction("lira")).toEqual({ status: "pending", amount_try_minor: 10_00, fx_rate: null });
+    expect(transaction("no-rate")).toEqual({ status: "pending", amount_try_minor: 200_00, fx_rate: "20" });
+  });
+});
+
+describe("statements the owner paid against", () => {
+  /**
+   * A statement with no live charge is an orphan and is swept. One the owner
+   * recorded a payment against is not: the money left the account whatever
+   * became of its charges, and sweeping it would take the payment with it.
+   */
+  it("keeps a chargeless statement that carries a payment, and sweeps one that does not", async () => {
+    insert("payment_sources", { ...stamps, id: "card", name: "Kart", type: "credit_card", person_id: "self", statement_day: 25, due_day: 5, logo_source: "initials", is_active: 1 });
+    for (const id of ["paid", "empty"]) {
+      insert("credit_card_statements", { ...stamps, id, payment_source_id: "card", period_month: id === "paid" ? "2026-07" : "2026-06", statement_date: "2026-07-25", due_date: "2026-08-05" });
+    }
+    insert("card_statement_payments", { ...stamps, id: "payment", statement_id: "paid", paid_on: "2026-08-01", amount_minor: 100_00, kind: "partial" });
+
+    await runMaintenance(USER);
+
+    expect(live("credit_card_statements", "paid")).toBe(true);
+    expect(live("credit_card_statements", "empty")).toBe(false);
+  });
+});

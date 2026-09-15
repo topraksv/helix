@@ -29,10 +29,11 @@
  * ## What this deliberately does NOT do
  *
  * It is a text extractor, not a PDF renderer. It reads uncompressed and
- * FlateDecoded content streams and the text-showing operators inside them. It
- * does not do encryption, object streams, CID font mapping, or images — which
- * is why a scanned statement produces NO text and is reported as unsupported
- * rather than guessed at. Every one of those limits is a deliberate refusal to
+ * FlateDecoded content streams, the text-showing operators inside them and the
+ * fonts those operators select — including fonts packed into object streams,
+ * each decoded through its own `ToUnicode` CMap. It does not do encryption or
+ * images, which is why a scanned statement produces NO text and is reported as
+ * unsupported rather than guessed at. Every one of those limits is a deliberate refusal to
  * pretend: a statement this cannot read must be said to be unreadable, because
  * a half-read financial document is worse than an unread one.
  *
@@ -61,6 +62,14 @@ export const MAX_PDF_BYTES = 12 * 1024 * 1024;
 /** Guard against a decompression bomb: a stream that expands beyond this is
  *  refused rather than allocated. */
 const MAX_STREAM_BYTES = 24 * 1024 * 1024;
+/**
+ * Inflated bytes a whole document may produce. The per-stream ceiling bounds
+ * one bomb and not a file of them: a refused stream counted towards nothing, so
+ * every one was inflated to the ceiling — measured, twenty took 450 ms, and a
+ * file at `MAX_PDF_BYTES` holds hundreds. Eight times the largest file accepted
+ * is far past what a statement's text, fonts and images inflate to.
+ */
+const MAX_INFLATED_BYTES = 8 * MAX_PDF_BYTES;
 /** Total text kept. A statement's text layer is far smaller than this. */
 const MAX_TEXT_LENGTH = 4_000_000;
 
@@ -159,20 +168,22 @@ const INFLATE_STEP = 4096;
  * each chunk as it is produced, so the limit is a decision rather than an
  * allocation.
  */
-function inflate(bytes: Uint8Array, Unzlib: UnzlibCtor): Uint8Array | null {
+function inflate(bytes: Uint8Array, Unzlib: UnzlibCtor, budget: { left: number }): Uint8Array | null {
   if (!hasZlibHeader(bytes)) return null;
+  const limit = Math.min(MAX_STREAM_BYTES, budget.left);
   const parts: Uint8Array[] = [];
   let written = 0;
   let overflowed = false;
   const stream = new Unzlib((chunk) => {
     if (overflowed) return;
     written += chunk.length;
-    if (written > MAX_STREAM_BYTES) {
+    if (written > limit) {
       overflowed = true;
       return;
     }
     parts.push(chunk);
   });
+  let corrupt = false;
   try {
     for (let at = 0; at < bytes.length && !overflowed; at += INFLATE_STEP) {
       const end = Math.min(at + INFLATE_STEP, bytes.length);
@@ -182,9 +193,14 @@ function inflate(bytes: Uint8Array, Unzlib: UnzlibCtor): Uint8Array | null {
     // Corrupt or not actually deflate. It THROWS rather than spinning, which
     // the previous inflate did not — `hasZlibHeader` below is kept anyway,
     // because refusing early is still cheaper than unwinding.
-    return null;
+    corrupt = true;
   }
-  if (overflowed) return null;
+  budget.left -= written;
+  // Thrown rather than skipped: past the document's budget the file is not one
+  // stream too many but a file of them, and `extractPdfText` names it
+  // unreadable instead of reading whatever the streams before it held.
+  if (budget.left < 0) throw new Error("PDF inflate budget exceeded");
+  if (corrupt || overflowed) return null;
   const out = new Uint8Array(written);
   let at = 0;
   for (const part of parts) {
@@ -211,11 +227,26 @@ function declaredLength(dictionary: string): number | null {
  * times over, and treating those byte ranges as streams is what fed garbage to
  * the inflater in the first place.
  */
-function contentStreams(bytes: Uint8Array, Unzlib: UnzlibCtor): { content: string[]; cmaps: string[] } {
+interface PdfStreams {
+  /** Page content, in file order. */
+  content: string[];
+  /** Every `ToUnicode` CMap, in file order. */
+  cmaps: string[];
+  /** The same CMaps by the object number a font names them with. */
+  cmapByObject: Map<number, string>;
+  /**
+   * Object streams. PDF 1.5 packs font and page dictionaries into them, where a
+   * search of the file's bytes cannot see them — and a Type0 font nobody can see
+   * is read as single bytes, which is garbage that looks like text.
+   */
+  packed: { dictionary: string; text: string }[];
+}
+
+function contentStreams(bytes: Uint8Array, Unzlib: UnzlibCtor): PdfStreams {
   const haystack = bytesToLatin1(bytes);
-  const streams: string[] = [];
-  const cmaps: string[] = [];
+  const found: PdfStreams = { content: [], cmaps: [], cmapByObject: new Map(), packed: [] };
   let total = 0;
+  const budget = { left: MAX_INFLATED_BYTES };
   const opener = />>\s*stream\r?\n?/g;
   let match: RegExpExecArray | null;
   while ((match = opener.exec(haystack)) !== null) {
@@ -224,12 +255,14 @@ function contentStreams(bytes: Uint8Array, Unzlib: UnzlibCtor): { content: strin
     if (close === -1) break;
     opener.lastIndex = close + "endstream".length;
 
-    // The dictionary is the text back to its own opening `<<`, bounded so a
-    // malformed file cannot make this scan the whole document.
-    const dictionaryStart = haystack.lastIndexOf("<<", match.index);
-    const dictionary = dictionaryStart === -1 || match.index - dictionaryStart > 2000
-      ? haystack.slice(Math.max(0, match.index - 2000), match.index)
-      : haystack.slice(dictionaryStart, match.index);
+    // The dictionary is the text back to its own opening `<<`, looked for only
+    // in the 2000 characters before the keyword. Searching the whole file
+    // walked back to its start from every stream of a file with no `<<`:
+    // measured, a megabyte of text before 4_000 streams took 2 s.
+    const before = haystack.slice(Math.max(0, match.index - 2000), match.index);
+    const opensAt = before.lastIndexOf("<<");
+    const dictionary = opensAt === -1 ? before : before.slice(opensAt);
+    const dictionaryStart = opensAt === -1 ? -1 : match.index - before.length + opensAt;
 
     // Only what this can decode. An image, an LZW stream or an unfiltered
     // binary blob is skipped rather than guessed at.
@@ -240,17 +273,159 @@ function contentStreams(bytes: Uint8Array, Unzlib: UnzlibCtor): { content: strin
     const declared = declaredLength(dictionary);
     const end = declared != null && start + declared <= close ? start + declared : close;
     const raw = bytes.subarray(start, end);
-    const decoded = isFlate ? inflate(raw, Unzlib) : raw;
+    const decoded = isFlate ? inflate(raw, Unzlib, budget) : raw;
     if (!decoded) continue;
     const text = bytesToLatin1(decoded);
     total += text.length;
     if (total > MAX_TEXT_LENGTH) break;
-    // A CMap is not page content and must never be scanned for text: its own
-    // body is full of hex that would otherwise be read as words.
-    if (text.includes("begincmap")) cmaps.push(text);
-    else streams.push(text);
+    if (/\/Type\s*\/ObjStm\b/.test(dictionary)) {
+      found.packed.push({ dictionary, text });
+    } else if (text.includes("begincmap")) {
+      // A CMap is not page content and must never be scanned for text: its own
+      // body is full of hex that would otherwise be read as words.
+      found.cmaps.push(text);
+      const owner = /(\d+)\s+\d+\s+obj\s*$/.exec(haystack.slice(Math.max(0, dictionaryStart - 32), Math.max(0, dictionaryStart)));
+      if (owner) found.cmapByObject.set(Number(owner[1]), text);
+    } else {
+      found.content.push(text);
+    }
   }
-  return { content: streams, cmaps };
+  return found;
+}
+
+/**
+ * Every object's own text by object number: the top-level ones up to their
+ * stream, their `endobj` or the next object, whichever comes first, then those
+ * packed into object streams.
+ *
+ * Each boundary is searched for once per stretch of the file and no two bodies
+ * overlap, so this and the font search that reads every body are linear in
+ * the file. Measured on what this replaced: a file of unclosed headers
+ * rescanned the rest of itself from each one (20_000 took 264 ms, four times
+ * that at twice as many), and 10_000 headers closed by a single `endobj` were
+ * 10_000 copies of the file's tail (108 ms, likewise quadratic).
+ */
+function objectBodies(document: string, packed: PdfStreams["packed"]): Map<number, string> {
+  const bodies = new Map<number, string>();
+  // `(?<!\d)` starts a number at its first digit only. Without it every digit
+  // of a long run began a match that backtracked over the rest of the run —
+  // measured, 60_000 digits took 1.3 s.
+  const header = /(?<!\d)(\d+)\s+\d+\s+obj\b/g;
+  const terminator = /\b(?:stream|endobj)\b/g;
+  let terminatorAt = 0;
+  let match = header.exec(document);
+  while (match !== null) {
+    const start = match.index + match[0].length;
+    if (terminatorAt < start) {
+      terminator.lastIndex = start;
+      terminatorAt = terminator.exec(document)?.index ?? Infinity;
+    }
+    const next = header.exec(document);
+    bodies.set(Number(match[1]), document.slice(start, Math.min(terminatorAt, next?.index ?? document.length)));
+    match = next;
+  }
+  for (const stream of packed) unpackObjects(stream, bodies);
+  return bodies;
+}
+
+/** How many objects one object stream may claim to hold. */
+const MAX_PACKED_OBJECTS = 100_000;
+
+/**
+ * The objects one object stream packs, from the `number offset` pairs before
+ * `/First`. Reading stops at an offset that goes back: past one, a body could
+ * be the rest of the stream once for every other object — measured, 2_000
+ * alternating offsets over a megabyte took 160 ms, and a stream may claim a
+ * hundred thousand.
+ */
+function unpackObjects({ dictionary, text }: PdfStreams["packed"][number], bodies: Map<number, string>): void {
+  const count = Number(/\/N\s+(\d+)/.exec(dictionary)?.[1]);
+  const first = Number(/\/First\s+(\d+)/.exec(dictionary)?.[1]);
+  if (!Number.isSafeInteger(count) || !Number.isSafeInteger(first) || count > MAX_PACKED_OBJECTS) return;
+  const header = text.slice(0, first).trim().split(/\s+/).map(Number);
+  for (let index = 0; index < count; index += 1) {
+    const number = header[index * 2]!;
+    const offset = header[index * 2 + 1]!;
+    const end = header[index * 2 + 3] ?? text.length - first;
+    if (!Number.isSafeInteger(number) || !Number.isSafeInteger(offset) || !(end >= offset)) return;
+    bodies.set(number, text.slice(first + offset, first + end));
+  }
+}
+
+/** What a `Tf` selects: how that font's shown strings become text. */
+interface FontDecoder {
+  /** Two-byte glyph ids (a Type0 font, or an Identity encoding) rather than one byte a character. */
+  cid: boolean;
+  toUnicode: ToUnicodeMap | null;
+}
+
+/**
+ * The font object each resource name selects, or null when one name means two
+ * different fonts — attributing a stream to its page is the part of the
+ * resource graph this extractor does not walk, so a name it cannot pin down is
+ * a name it cannot decode.
+ *
+ * A referenced dictionary is read once however many pages name it: reading it
+ * per reference made 2_000 references to a megabyte take 536 ms.
+ */
+function fontObjectsByName(bodies: Map<number, string>): Map<string, number> | null {
+  const dictionaries: string[] = [];
+  const referenced = new Set<number>();
+  for (const body of bodies.values()) {
+    for (const inline of body.matchAll(/\/Font\s*<<([^<>]*)>>/g)) dictionaries.push(inline[1]!);
+    for (const reference of body.matchAll(/\/Font\s+(\d+)\s+\d+\s+R/g)) referenced.add(Number(reference[1]));
+  }
+  for (const object of referenced) dictionaries.push(bodies.get(object) ?? "");
+  const fontByName = new Map<string, number>();
+  for (const dictionary of dictionaries) {
+    for (const entry of dictionary.matchAll(/\/([^\s/[\]()<>{}%]+)\s+(\d+)\s+\d+\s+R/g)) {
+      const known = fontByName.get(entry[1]!);
+      if (known != null && known !== Number(entry[2])) return null;
+      fontByName.set(entry[1]!, Number(entry[2]));
+    }
+  }
+  return fontByName;
+}
+
+/**
+ * The decoder each resource name selects, or null where `fontObjectsByName`
+ * refuses. A font is read once however many names select it, and a CMap once
+ * however many fonts share it: 4_000 names for one megabyte took 463 ms.
+ */
+function resolveFonts(bodies: Map<number, string>, cmapByObject: Map<number, string>): Map<string, FontDecoder> | null {
+  const fontByName = fontObjectsByName(bodies);
+  if (!fontByName) return null;
+  const parsed = new Map<number, ToUnicodeMap>();
+  const decoders = new Map<number, FontDecoder>();
+  const fonts = new Map<string, FontDecoder>();
+  for (const [name, object] of fontByName) {
+    let decoder = decoders.get(object);
+    if (!decoder) {
+      const body = bodies.get(object) ?? "";
+      const reference = /\/ToUnicode\s+(\d+)\s+\d+\s+R/.exec(body);
+      const cmapObject = reference ? Number(reference[1]) : -1;
+      const cmap = cmapByObject.get(cmapObject);
+      if (cmap != null && !parsed.has(cmapObject)) parsed.set(cmapObject, parseToUnicode(cmap));
+      decoder = {
+        cid: /\/Subtype\s*\/Type0\b/.test(body) || /\/Encoding\s*\/Identity-[HV]\b/.test(body),
+        toUnicode: parsed.get(cmapObject) ?? null,
+      };
+      decoders.set(object, decoder);
+    }
+    fonts.set(name, decoder);
+  }
+  return fonts;
+}
+
+/**
+ * The font a stream is read with before it selects one, or by a name the
+ * resource graph did not resolve: the whole document's single CMap when it uses
+ * glyph ids and ships exactly one, and nothing at all — a refusal — when it
+ * ships several.
+ */
+function documentFont(usesGlyphIds: boolean, cmaps: string[]): FontDecoder | null {
+  if (!usesGlyphIds) return { cid: false, toUnicode: null };
+  return cmaps.length === 1 ? { cid: true, toUnicode: parseToUnicode(cmaps[0]!) } : null;
 }
 
 /**
@@ -378,44 +553,66 @@ function unescapeLiteral(body: string): string {
 }
 
 /**
- * Pull the shown strings out of one content stream, in reading order.
+ * One shown string as text under the selected font, or null when that font's
+ * glyphs cannot be named.
+ *
+ * Under a glyph-id font a literal string is two-byte ids too, so it goes
+ * through the map rather than being taken at face value. A hex string under a
+ * plain font keeps only printable bytes: two digits a byte, and a control code
+ * is not a character anyone printed.
+ */
+function decodeShown(raw: string, font: FontDecoder | null, fromHex: boolean): string | null {
+  if (font == null) return null;
+  if (font.cid) return font.toUnicode != null && font.toUnicode.size > 0 ? decodeCids(raw, font.toUnicode) : null;
+  let out = "";
+  for (let index = 0; index < raw.length; index += 1) {
+    const code = raw.charCodeAt(index);
+    const mapped = font.toUnicode?.get(code);
+    if (mapped != null) out += mapped;
+    else if (!fromHex || code >= 32 || code === 10) out += raw[index];
+  }
+  return out;
+}
+
+/** `<48 65 6C>` → the bytes it spells; a trailing odd digit is followed by 0. */
+function hexBytes(hex: string): string {
+  const digits = hex.replace(/\s+/g, "");
+  let out = "";
+  for (let index = 0; index < digits.length; index += 2) {
+    out += String.fromCharCode(Number.parseInt(digits.slice(index, index + 2).padEnd(2, "0"), 16));
+  }
+  return out;
+}
+
+/**
+ * Pull the shown strings out of one content stream, in reading order, or null
+ * when a string is shown in a font whose glyphs cannot be named.
  *
  * Only `Tj`, `TJ`, `'` and `"` show text. `Td`/`TD`/`T*`/`ET` move the cursor,
  * and a vertical move is treated as a line break so a table's rows stay
  * separate lines — which is what makes a statement line parseable at all.
+ * `Tf` selects the font the following strings are decoded with.
  */
-function showText(stream: string, toUnicode: ToUnicodeMap | null): string {
+function showText(stream: string, fonts: Map<string, FontDecoder> | null, documentDefault: FontDecoder | null): string | null {
   let out = "";
-  const operator = /\((?:\\.|[^\\()])*\)|<[0-9A-Fa-f\s]*>|\[|\]|(-?\d*\.?\d+)|(T[JjdD*]|ET|'|")/g;
+  const operator = /\((?:\\.|[^\\()])*\)|<[0-9A-Fa-f\s]*>|\/[^\s/[\]()<>{}%]+|\[|\]|(-?\d*\.?\d+)|(T[JjdDf*]|ET|'|")/g;
   let pendingNumbers: number[] = [];
+  let pendingName = "";
+  let font = documentDefault;
   let match: RegExpExecArray | null;
   let buffer = "";
   while ((match = operator.exec(stream)) !== null) {
     const token = match[0];
-    if (token.startsWith("(")) {
-      const literal = unescapeLiteral(token.slice(1, -1));
-      // Under Identity-H a literal string is still two-byte glyph ids, so it
-      // goes through the same map rather than being taken at face value.
-      buffer += toUnicode ? decodeCids(literal, toUnicode) : literal;
+    const isLiteral = token.startsWith("(");
+    if (isLiteral || token.startsWith("<")) {
+      const raw = isLiteral ? unescapeLiteral(token.slice(1, -1)) : hexBytes(token.slice(1, -1));
+      const shown = decodeShown(raw, font, !isLiteral);
+      if (shown == null) return null;
+      buffer += shown;
       continue;
     }
-    if (token.startsWith("<") && token.endsWith(">")) {
-      // A hex string. Two digits per byte; anything else is a CID encoding
-      // this does not map, and mapping it wrongly would invent characters.
-      const hex = token.slice(1, -1).replace(/\s+/g, "");
-      if (toUnicode) {
-        // Two hex digits are half a glyph id: Identity-H is a two-byte
-        // encoding, and reading it a byte at a time is what produced garbage.
-        for (let index = 0; index + 3 < hex.length + 1; index += 4) {
-          const cid = Number.parseInt(hex.slice(index, index + 4), 16);
-          buffer += toUnicode.get(cid) ?? "";
-        }
-      } else if (hex.length % 2 === 0) {
-        for (let index = 0; index < hex.length; index += 2) {
-          const code = Number.parseInt(hex.slice(index, index + 2), 16);
-          if (code >= 32 || code === 10) buffer += String.fromCharCode(code);
-        }
-      }
+    if (token.startsWith("/")) {
+      pendingName = token.slice(1);
       continue;
     }
     if (match[1] !== undefined) {
@@ -423,6 +620,11 @@ function showText(stream: string, toUnicode: ToUnicodeMap | null): string {
       continue;
     }
     const op = match[2];
+    if (op === "Tf") {
+      font = fonts?.get(pendingName) ?? documentDefault;
+      pendingNumbers = [];
+      continue;
+    }
     if (op === "Tj" || op === "TJ" || op === "'" || op === '"') {
       out += buffer;
       buffer = "";
@@ -489,7 +691,7 @@ export async function extractPdfText(bytes: Uint8Array): Promise<PdfTextResult> 
   const header = bytesToLatin1(bytes, 0, Math.min(1024, bytes.byteLength));
   if (!header.startsWith("%PDF-")) return { ok: false, reason: "not_a_pdf" };
 
-  let streams: { content: string[]; cmaps: string[] };
+  let streams: PdfStreams;
   try {
     const { Unzlib } = await import("fflate");
     streams = contentStreams(bytes, Unzlib);
@@ -502,28 +704,28 @@ export async function extractPdfText(bytes: Uint8Array): Promise<PdfTextResult> 
   const tail = bytesToLatin1(bytes, Math.max(0, bytes.byteLength - 4096), bytes.byteLength);
   if (/\/Encrypt\b/.test(tail)) return { ok: false, reason: "encrypted" };
 
-  const document = bytesToLatin1(bytes);
+  const raw = bytesToLatin1(bytes);
+  const document = [raw, ...streams.packed.map((object) => object.text)].join("\n");
   const pageCount = (document.match(/\/Type\s*\/Page[^s]/g) ?? []).length;
 
   /**
-   * Which map decodes this document — or the refusal to guess.
+   * Which map decodes each string — or the refusal to guess.
    *
-   * With exactly one `ToUnicode` CMap, every glyph id in the file belongs to
-   * it and it can be applied globally. With SEVERAL, a glyph id means
-   * different characters in different fonts, and choosing one would silently
-   * mistranslate the others: attributing glyphs to fonts needs the resource
-   * graph this extractor deliberately does not parse. Refusing is the only
-   * honest answer, and it is reported as its own reason.
+   * A glyph id means different characters in different fonts, so each `Tf`
+   * picks its font's own `ToUnicode` CMap. Where a string's font cannot be
+   * named that way the document's single CMap still serves; with several, or
+   * with none for a glyph font, choosing one would silently mistranslate the
+   * text, and that is reported as its own reason.
    */
   const usesGlyphIds = /\/Encoding\s*\/Identity-[HV]/.test(document) || /\/Subtype\s*\/Type0/.test(document);
-  if (usesGlyphIds && streams.cmaps.length !== 1) return { ok: false, reason: "unmapped_font" };
-  const toUnicode = usesGlyphIds ? parseToUnicode(streams.cmaps[0]!) : null;
-  if (usesGlyphIds && (toUnicode == null || toUnicode.size === 0)) {
-    return { ok: false, reason: "unmapped_font" };
-  }
+  const fonts = resolveFonts(objectBodies(raw, streams.packed), streams.cmapByObject);
+  // Once rather than per stream: four hundred streams sharing one full CMap
+  // took 962 ms when each parsed it again.
+  const fallback = documentFont(usesGlyphIds, streams.cmaps);
+  const shown = streams.content.map((stream) => showText(stream, fonts, fallback));
+  if (shown.some((stream) => stream == null)) return { ok: false, reason: "unmapped_font" };
 
-  const text = streams.content
-    .map((stream) => showText(stream, toUnicode))
+  const text = shown
     .join("\n")
     .split("\n")
     // Per line, and BEFORE any whitespace collapse: the collapse is what

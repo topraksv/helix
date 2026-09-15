@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { buildLedger, buildLedgerChain, currentBalance, ledgerChainEndYear, projectedBalance, resolveLedgerAnchor, sliceLedgerYear } from "../src/domain/balance";
+import { buildLedger, buildLedgerChain, ledgerChainEndYear, projectedBalance, resolveLedgerAnchor, sliceLedgerYear } from "../src/domain/balance";
 import { projectInvestmentState } from "../src/domain/investment-projection";
 import { isValidItemParams } from "../src/domain/route-params";
 import {
@@ -65,14 +65,18 @@ describe("mutation-sensitive balance contract", () => {
       ],
       adjustments: [],
     });
-    expect(withPendingCells[0]?.byCategory).toEqual(new Map());
-    expect(currentBalance({
-      openingBalanceMinor: 1_000, transactions: [],
+    // The watched row never shows; the self row dated tomorrow shows as planned
+    // even though another device already marked it realized.
+    expect(withPendingCells[0]?.byCategory).toEqual(new Map([["food", 200]]));
+    expect(withPendingCells[0]?.plannedExpenseMinor).toBe(200);
+    expect(withPendingCells[0]?.closingMinor).toBe(1_000);
+    expect(buildLedger({
+      openingBalanceMinor: 1_000, startMonth: "2026-07", endMonth: "2026-07", transactions: [],
       adjustments: [{ date: "2026-07-18", amountMinor: 50 }], today: "2026-07-18",
-    })).toBe(1_050);
+    })[0]?.closingMinor).toBe(1_050);
   });
 
-  it("uses the direct current calculation when the ledger begins after today", () => {
+  it("opens at the anchor's own figure when the ledger begins after today", () => {
     const chain = required(buildLedgerChain({
       configuredStart: "2027-01", openingBalanceMinor: 1_000, includePendingInCells: false,
       transactions: [tx({ type: "income", amountTryMinor: 100, effectiveDate: "2027-01-01", categoryKind: "income" })],

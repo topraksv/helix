@@ -14,8 +14,21 @@
  */
 
 import { DatabaseSync } from "node:sqlite";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
+/** The device whose database the repository layer writes to, for the reset case. */
+const device = vi.hoisted(() => ({ db: null as DatabaseSync | null }));
+vi.mock("../src/db/client", async () => {
+  const { sqliteClientMock } = await import("./helpers");
+  return sqliteClientMock(() => device.db!);
+});
+vi.mock("react-native", () => ({ Platform: { OS: "ios" } }));
+vi.mock("../src/services/logger", () => ({ devWarning: () => undefined, devError: () => undefined }));
+vi.mock("../src/db/ids", () => ({ newId: () => "id", deterministicId: async (key: string) => key, naturalKeys: {} }));
+vi.mock("../src/data/repo/maintenance", () => ({ runMaintenance: async () => undefined }));
+vi.mock("../src/sync/engine", () => ({ scheduleSync: () => undefined }));
+
+import { performDataReset } from "../src/data/repo/reset";
 import { prepareOutboundBatch } from "../src/sync/outbound-validation";
 import { remoteSupersededLocal, remoteWinsLww, shouldApplyServerAck } from "../src/sync/merge-policy";
 import { migrationStatements, required } from "./helpers";
@@ -438,5 +451,40 @@ describe("two clients on one account", () => {
     // sign-out guard exists to prevent.
     expect(a.outboxCount()).toBe(1);
     expect(a.row(ROW)?.note).toBe("kuyrukta");
+  });
+});
+
+/**
+ * A reset reaches the account's other devices as ordinary deletes. The case
+ * nothing had measured is the device that was offline while it happened: its
+ * queued edit to a row the reset cleared, and a row it wrote that the reset
+ * never saw.
+ */
+describe("a reset made while the other device is offline", () => {
+  it("keeps the cleared row cleared, and leaves what the offline device wrote before it knew", async () => {
+    logicalClock = 0;
+    const server = new FakeServer();
+    const a = new Client(USER);
+    const b = new Client(USER);
+    a.write({ id: ROW, note: "ortak" });
+    a.sync(server);
+    b.sync(server);
+
+    b.online = false;
+    b.write({ ...(b.row(ROW) as Row), note: "B çevrimdışı düzenledi" });
+    b.write({ id: ROW_B, note: "B çevrimdışı yazdı" });
+
+    device.db = a.db;
+    expect(await performDataReset(USER, { scopes: ["ledger"], range: { from: null, to: null } })).toMatchObject({ deleted: 1 });
+    a.sync(server);
+    b.online = true;
+    b.sync(server);
+    a.sync(server);
+
+    for (const [name, client] of [["A", a], ["B", b]] as const) {
+      expect(client.row(ROW)?.deleted_at, `${name}: the queued edit does not bring the row back`).not.toBeNull();
+      expect(client.row(ROW_B), `${name}: a row the reset never saw is not its to clear`)
+        .toMatchObject({ deleted_at: null, note: "B çevrimdışı yazdı" });
+    }
   });
 });

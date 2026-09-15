@@ -301,6 +301,15 @@ function selectorsFor(selection: ResetSelection): ScopeSelector[] {
         args: dates.args,
       },
       {
+        // A payment against a statement moves the balance on its own day, so it
+        // goes with the other dated movements of the range. Left behind, it
+        // would keep taking money out of a ledger whose charges are gone.
+        scope: "ledger",
+        table: "card_statement_payments",
+        where: `t.user_id = ? AND t.deleted_at IS NULL${within("t.paid_on", range.from, range.to).sql}`,
+        args: within("t.paid_on", range.from, range.to).args,
+      },
+      {
         scope: "ledger",
         table: "cell_notes",
         where: `t.user_id = ? AND t.deleted_at IS NULL${noteMonths.sql}`,

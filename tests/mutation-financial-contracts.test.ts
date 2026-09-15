@@ -42,6 +42,7 @@ describe("mutation-sensitive analytics contracts", () => {
       expenseTotalMinor: 300,
       transferTotalMinor: 300,
       incomeTotalMinor: 400,
+      workbookRemainderMinor: 0,
     });
     expect(fixedVsVariable(rows, "2026-07-01", "2026-07-31", "2026-12-31"))
       .toEqual({ fixedMinor: 200, variableMinor: 100 });
@@ -179,7 +180,7 @@ describe("mutation-sensitive dashboard contract", () => {
       .toEqual({ incomingMinor: 1_200, outgoingMinor: 600, projectedMinor: 1_600 });
     expect(model.distribution).toEqual({
       expenseByCategory: new Map([["food", 100]]), uncategorizedExpenseMinor: 200,
-      expenseTotalMinor: 300, transferTotalMinor: 300, incomeTotalMinor: 400,
+      expenseTotalMinor: 300, transferTotalMinor: 300, incomeTotalMinor: 400, workbookRemainderMinor: 0,
     });
     expect({ fixedMinor: model.fixedMinor, variableMinor: model.variableMinor }).toEqual({ fixedMinor: 100, variableMinor: 200 });
     expect(model.trendMonths.map((month) => month.month)).toEqual([

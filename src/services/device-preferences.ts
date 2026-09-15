@@ -19,22 +19,26 @@ export const useDevicePreferences = create<DevicePreferences>(() => ({
 }));
 
 let loadPromise: Promise<DevicePreferences> | null = null;
-let preferenceVersion = 0;
+/**
+ * Choices made in this process. A storage read that was already on its way when
+ * one was made is older than it, so the read fills in only what nobody chose.
+ */
+const chosen: Partial<Omit<DevicePreferences, "loaded">> = {};
 
-function commitPreferences(patch: Partial<Omit<DevicePreferences, "loaded">>): DevicePreferences {
-  preferenceVersion += 1;
-  const next = { ...useDevicePreferences.getState(), ...patch, loaded: true };
+function commitPreferences(patch: Partial<Omit<DevicePreferences, "loaded">>): void {
+  Object.assign(chosen, patch);
+  const current = useDevicePreferences.getState();
+  const next = { ...current, ...patch };
   useDevicePreferences.setState(next);
-  // A preference changed after the initial read: future service calls must not
-  // receive the now-stale resolved load promise.
-  loadPromise = Promise.resolve(next);
-  return next;
+  // Before the first read the choice NOT made here is still unknown, so the
+  // store is not marked loaded: doing that stamped it with its default, and
+  // turning notification details off switched notifications off with them.
+  if (current.loaded) loadPromise = Promise.resolve(next);
 }
 
 /** Load once per app process; notification consent intentionally defaults off. */
 export function loadDevicePreferences(): Promise<DevicePreferences> {
   if (!loadPromise) {
-    const loadVersion = preferenceVersion;
     loadPromise = Promise.all([kv.get(NOTIFICATIONS_KEY), kv.get(NOTIFICATION_DETAILS_KEY)])
       .then(([notifications, notificationDetails]) => ({
         loaded: true,
@@ -42,10 +46,8 @@ export function loadDevicePreferences(): Promise<DevicePreferences> {
         notificationDetails: notificationDetails === "true",
       }))
       .catch(() => ({ loaded: true, notifications: false, notificationDetails: false }))
-      .then((next) => {
-        // A user action may complete while the first storage read is still in
-        // flight. That newer choice wins over the stale snapshot.
-        if (loadVersion !== preferenceVersion) return useDevicePreferences.getState();
+      .then((stored) => {
+        const next = { ...stored, ...chosen };
         useDevicePreferences.setState(next);
         return next;
       });

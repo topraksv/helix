@@ -56,6 +56,12 @@ export const naturalKeys = {
    *  deterministic so re-correcting the same day updates one row instead of
    *  stacking a new adjustment each time. */
   balanceAdjustment: (userId: string, date: string) => `baladj:${userId}:${date}`,
+  /** One declared opening balance per month — re-declaring a month updates it,
+   *  and it never shares an id with that day's reconciliation row. */
+  monthOpeningDeclaration: (userId: string, month: string) => `baldecl:${userId}:${month}`,
+  /** The one payoff row an early closure writes for a plan, so closing twice
+   *  (or on two devices) converges on one payment. */
+  planPayoff: (planId: string) => `planpayoff:${planId}`,
   /** Exactly one global investment wallet profile per account. */
   investmentProfile: (userId: string) => `investment-profile:${userId}`,
   /** A payment source (card) created from a spreadsheet import, keyed by name so

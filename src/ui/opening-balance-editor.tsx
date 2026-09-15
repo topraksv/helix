@@ -20,15 +20,15 @@ import History from "lucide-react-native/icons/rotate-ccw-clock";
 import Info from "lucide-react-native/icons/info";
 import Scale from "lucide-react-native/icons/scale";
 import Trash from "lucide-react-native/icons/trash";
-import { deleteBalanceAdjustment, restoreBalanceAdjustment, setBalanceDeclaration, setCurrentBalance, setOpeningBalance } from "../data/repo";
+import { declareMonthOpeningBalance, deleteBalanceAdjustment, restoreBalanceAdjustment, setBalanceDeclaration, setCurrentBalance, setOpeningBalance } from "../data/repo";
 import { settingValue, useAdjustmentsState, useLedgerState, useSettingsMapState, useTxLike, useUserId } from "../data/hooks";
 import { combineLiveStates } from "../data/live-state";
 import { scheduleSync } from "../sync/engine";
-import { addMonthsToKey, isCurrentOrFutureMonth, monthKeyOf, todayISO, yearOf } from "../domain/dates";
+import { addMonthsToKey, isCurrentOrFutureMonth, monthKeyOf, todayISO, yearOf, type MonthKey } from "../domain/dates";
 import { balanceDeclarationDrift, driftCandidates, parseBalanceDeclaration } from "../domain/balance-declaration";
 import { formatMinorCompact, formatMinorInput } from "../domain/money";
 import { dateLabel, monthLabel, tr } from "../i18n/tr";
-import { Amount, Badge, Body, Button, Card, CardList, DataStateNotice, EmptyState, FadeIn, IconButton, ListRow, MoneyField, PanelHeader, Row, Screen, SectionHeader, Spread } from "./components";
+import { Amount, Badge, Body, Button, Card, CardList, DataStateNotice, EmptyState, FadeIn, IconButton, ListRow, MoneyField, MonthStepper, PanelHeader, Row, Screen, SectionHeader, Spread } from "./components";
 import { appAlert } from "./dialog";
 import { errorNotice, successNotice } from "./haptics";
 import { userMessage } from "../domain/user-error";
@@ -173,8 +173,17 @@ export function OpeningBalanceEditor() {
   const openingMinor = draftRaw === null ? currentOpening : draftMinor;
   const openingDirty = openingMinor !== currentOpening || startMonth !== currentStart;
 
+  // A month's opening, stated (spec §2.7). Unlike the reconciliation above it
+  // holds: records entered later before that month leave it where it was.
+  const [declarationMonthChoice, setDeclarationMonthChoice] = useState<MonthKey | null>(null);
+  const [declarationRaw, setDeclarationRaw] = useState<string | null>(null);
+  const [declarationMinor, setDeclarationMinor] = useState<number | null>(null);
+  const [savingDeclaration, setSavingDeclaration] = useState(false);
+
   const close = () => navigateBack(router, "/(tabs)/cash-flow");
-  const { allowExit } = useDirtyExitGuard((balanceDirty || openingDirty) && !savingBalance && !savingOpening);
+  const { allowExit } = useDirtyExitGuard(
+    (balanceDirty || openingDirty || declarationRaw !== null) && !savingBalance && !savingOpening && !savingDeclaration,
+  );
 
   const saveOpening = async () => {
     if (openingMinor == null) return;
@@ -224,6 +233,44 @@ export function OpeningBalanceEditor() {
     );
   }
   const visibleAdjustments = [...adjustments].sort((a, b) => b.date.localeCompare(a.date));
+  const currentMonth = monthKeyOf(todayISO());
+  // The start month's opening IS the anchor; the historical section edits it.
+  const firstDeclarable = addMonthsToKey(bundle.startMonth, 1);
+  const canDeclare = firstDeclarable <= currentMonth;
+  const declarationMonth = declarationMonthChoice ?? currentMonth;
+  const declaredMonthOf = (date: string) => addMonthsToKey(monthKeyOf(date), 1);
+  const existingDeclaration = adjustments.find((row) => row.declaredMinor != null && declaredMonthOf(row.date) === declarationMonth);
+  const declarationOpening = bundle.ledger.find((month) => month.month === declarationMonth)?.openingMinor ?? null;
+  const declarationValue = declarationRaw ?? (declarationOpening == null ? "" : formatMinorInput(declarationOpening));
+  const declarationTarget = declarationRaw === null ? declarationOpening : declarationMinor;
+  const declarationDirty = declarationTarget != null && declarationOpening != null && declarationTarget !== declarationOpening;
+
+  const saveDeclaration = async () => {
+    if (!declarationDirty || declarationTarget == null || declarationOpening == null) return;
+    setSavingDeclaration(true);
+    try {
+      // What the month opened with before any declaration of its own, which is
+      // what the stored difference is measured from.
+      const undeclared = declarationOpening - (existingDeclaration ? bundle.declarationDeltaById.get(existingDeclaration.id) ?? 0 : 0);
+      const before = existingDeclaration
+        ? { declaredMinor: existingDeclaration.declaredMinor!, amountMinor: existingDeclaration.amountMinor }
+        : null;
+      const month = declarationMonth;
+      const id = await declareMonthOpeningBalance(userId, month, declarationTarget, declarationTarget - undeclared);
+      scheduleSync(userId);
+      setDeclarationRaw(null);
+      setDeclarationMinor(null);
+      undo.show(tr.settings.declarationSaved, () => (before
+        ? declareMonthOpeningBalance(userId, month, before.declaredMinor, before.amountMinor)
+        : deleteBalanceAdjustment(userId, id)
+      ).then(() => scheduleSync(userId)));
+    } catch (e) {
+      devError("balance.declaration", e);
+      void appAlert(userMessage(e, tr.errors.saveFailed), tr.errors.title);
+    } finally {
+      setSavingDeclaration(false);
+    }
+  };
   return (
     <Screen width="workspace">
       <DataStateNotice status={dataStatus} retry={retryData} />
@@ -320,6 +367,36 @@ export function OpeningBalanceEditor() {
         )}
         secondary={(
           <View>
+            <SectionHeader>{tr.settings.declarationTitle}</SectionHeader>
+            <Card>
+              <Body muted style={{ fontSize: type.small.fontSize, marginBottom: spacing.md }}>{tr.settings.declarationHint}</Body>
+              {canDeclare ? (
+                <>
+                  <MonthStepper
+                    value={declarationMonth}
+                    onChange={(month) => {
+                      setDeclarationMonthChoice(month);
+                      setDeclarationRaw(null);
+                      setDeclarationMinor(null);
+                    }}
+                    min={firstDeclarable}
+                    max={currentMonth}
+                  />
+                  <MoneyField
+                    label={tr.settings.declarationAmount(monthLabel(declarationMonth))}
+                    value={declarationValue}
+                    onChangeMinor={(raw, minor) => {
+                      setDeclarationRaw(raw);
+                      setDeclarationMinor(minor);
+                    }}
+                  />
+                  <Button label={tr.settings.declarationSave} onPress={() => void saveDeclaration()} disabled={!declarationDirty} loading={savingDeclaration} />
+                </>
+              ) : (
+                <Body muted>{tr.settings.declarationUnavailable}</Body>
+              )}
+            </Card>
+
             <SectionHeader>{tr.settings.balanceAdjustmentsTitle}</SectionHeader>
             <Body muted style={{ fontSize: type.small.fontSize, marginBottom: spacing.md }}>
               {tr.settings.balanceAdjustmentsHint}
@@ -330,11 +407,17 @@ export function OpeningBalanceEditor() {
               renderItem={(adjustment) => (
                 <Spread>
                   <View style={{ flex: 1, paddingRight: spacing.md }}>
-                    <Body>{dateLabel(adjustment.date)}</Body>
-                    <Body muted style={{ fontSize: type.small.fontSize }}>{adjustment.note ?? tr.settings.balanceAdjustmentFallback}</Body>
+                    <Body>{adjustment.declaredMinor != null ? tr.settings.declarationRow(monthLabel(declaredMonthOf(adjustment.date))) : dateLabel(adjustment.date)}</Body>
+                    <Body muted style={{ fontSize: type.small.fontSize }}>
+                      {adjustment.declaredMinor != null
+                        ? [tr.settings.declarationRowHint(formatMinorCompact(adjustment.declaredMinor)), adjustment.note].filter(Boolean).join(" · ")
+                        : adjustment.note ?? tr.settings.balanceAdjustmentFallback}
+                    </Body>
                   </View>
                   <Row gap={spacing.sm}>
-                    <Amount minor={adjustment.amountMinor} />
+                    {/* A declaration's stored amount is the difference on the
+                        day it was written; what it corrects now is recomputed. */}
+                    <Amount minor={adjustment.declaredMinor != null ? bundle.declarationDeltaById.get(adjustment.id) ?? adjustment.amountMinor : adjustment.amountMinor} />
                     <IconButton
                       icon={Trash}
                       tone="danger"

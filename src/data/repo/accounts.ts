@@ -30,6 +30,8 @@ export interface PaymentSourceReferenceUsage {
 export interface PaymentSourceDeleteSnapshot {
   source: Record<string, unknown>;
   statements: Record<string, unknown>[];
+  /** Absent on a snapshot taken before statement payments existed. */
+  payments?: Record<string, unknown>[];
 }
 
 function isPaymentSourceDeleteSnapshot(
@@ -84,11 +86,16 @@ export async function restorePaymentSource(
 ): Promise<void> {
   const source = isPaymentSourceDeleteSnapshot(snapshot) ? snapshot.source : snapshot;
   const statements = isPaymentSourceDeleteSnapshot(snapshot) ? snapshot.statements : [];
+  const payments = isPaymentSourceDeleteSnapshot(snapshot) ? snapshot.payments ?? [] : [];
   await restoreRows(userId, [
     { table: "payment_sources", row: { ...fromDbShape("payment_sources", source), deletedAt: null } },
     ...statements.map((statement) => ({
       table: "credit_card_statements" as const,
       row: { ...fromDbShape("credit_card_statements", statement), deletedAt: null },
+    })),
+    ...payments.map((payment) => ({
+      table: "card_statement_payments" as const,
+      row: { ...fromDbShape("card_statement_payments", payment), deletedAt: null },
     })),
   ]);
 }
@@ -250,6 +257,7 @@ export async function deleteUnreferencedPaymentSource(
      WHERE user_id = ? AND payment_source_id = ? AND deleted_at IS NULL`,
     [userId, sourceId],
   );
+  const payments = await statementPaymentsOf(userId, statements.map((statement) => String(statement.id)));
   const deletedAt = nowIso();
   await writeRows(userId, [
     { table: "payment_sources", row: { ...fromDbShape("payment_sources", source), deletedAt } },
@@ -257,8 +265,25 @@ export async function deleteUnreferencedPaymentSource(
       table: "credit_card_statements" as const,
       row: { ...fromDbShape("credit_card_statements", statement), deletedAt },
     })),
+    // A payment is a row of its statement's, so it goes with it and comes back
+    // with it on undo rather than pointing at a statement nobody can see.
+    ...payments.map((payment) => ({
+      table: "card_statement_payments" as const,
+      row: { ...fromDbShape("card_statement_payments", payment), deletedAt },
+    })),
   ]);
-  return { source, statements };
+  return { source, statements, payments };
+}
+
+/** The live payments recorded against any of `statementIds`. */
+async function statementPaymentsOf(userId: string, statementIds: readonly string[]): Promise<Record<string, unknown>[]> {
+  if (statementIds.length === 0) return [];
+  const sqlite = await getSqliteAsync();
+  return sqlite.getAllAsync<Record<string, unknown>>(
+    `SELECT * FROM card_statement_payments
+     WHERE user_id = ? AND deleted_at IS NULL AND statement_id IN (${statementIds.map(() => "?").join(", ")})`,
+    [userId, ...statementIds],
+  );
 }
 
 export async function reassignAndDeletePaymentSource(
@@ -308,9 +333,13 @@ export async function reassignAndDeletePaymentSource(
       transactionWrites.push({ table: "transactions", row: { ...next, purchaseDate: null, cardStatementId: null } });
       continue;
     }
+    const oldPeriod = oldPeriodById.get(String(transaction.card_statement_id));
+    // A month-only card charge moves with the statement month it was entered
+    // for; a legacy month total with no statement has no month to move by.
+    const monthOnlyCardCharge = Boolean(transaction.is_aggregate) && oldPeriod != null;
     if (
       transaction.type !== "expense" ||
-      Boolean(transaction.is_aggregate) ||
+      (Boolean(transaction.is_aggregate) && !monthOnlyCardCharge) ||
       transaction.status !== "pending" ||
       !isValidCardCycle(replacementCycle)
     ) {
@@ -319,14 +348,13 @@ export async function reassignAndDeletePaymentSource(
       transactionWrites.push({ table: "transactions", row: { ...next, purchaseDate: null, cardStatementId: null } });
       continue;
     }
-    const oldPeriod = typeof transaction.card_statement_id === "string"
-      ? oldPeriodById.get(transaction.card_statement_id)
-      : null;
-    const period = transaction.purchase_date
-      ? statementForPurchase(String(transaction.purchase_date), replacementCycle)
-      : oldPeriod
-        ? statementPeriod(oldPeriod, replacementCycle)
-        : statementForDueDate(String(transaction.effective_date), replacementCycle);
+    const period = monthOnlyCardCharge
+      ? statementPeriod(oldPeriod!, replacementCycle)
+      : transaction.purchase_date
+        ? statementForPurchase(String(transaction.purchase_date), replacementCycle)
+        : oldPeriod
+          ? statementPeriod(oldPeriod, replacementCycle)
+          : statementForDueDate(String(transaction.effective_date), replacementCycle);
     let statementWrite = statementWrites.get(period.periodMonth);
     if (!statementWrite) {
       statementWrite = await cardStatementWrite(userId, replacement.id, period);
@@ -336,11 +364,33 @@ export async function reassignAndDeletePaymentSource(
       table: "transactions",
       row: {
         ...next,
-        purchaseDate: transaction.purchase_date ?? null,
+        purchaseDate: monthOnlyCardCharge ? period.statementDate : transaction.purchase_date ?? null,
         effectiveDate: period.dueDate,
         status: period.dueDate <= todayISO() ? "realized" : "pending",
         cardStatementId: statementWrite.row.id,
       },
+    });
+  }
+  // A payment recorded against one of this card's statements follows that
+  // statement's month onto the replacement card. A replacement that cannot hold
+  // a statement cannot hold a payment against one either, so it goes with the
+  // card it was made for.
+  const paymentWrites: RowWrite[] = [];
+  for (const payment of await statementPaymentsOf(userId, oldStatements.map((statement) => statement.id))) {
+    const oldPeriod = oldPeriodById.get(String(payment.statement_id));
+    if (!replacement || replacement.type !== "credit_card" || !isValidCardCycle(replacementCycle) || oldPeriod == null) {
+      paymentWrites.push({ table: "card_statement_payments", row: { ...fromDbShape("card_statement_payments", payment), deletedAt: nowIso() } });
+      continue;
+    }
+    const period = statementPeriod(oldPeriod, replacementCycle);
+    let statementWrite = statementWrites.get(period.periodMonth);
+    if (!statementWrite) {
+      statementWrite = await cardStatementWrite(userId, replacement.id, period);
+      statementWrites.set(period.periodMonth, statementWrite);
+    }
+    paymentWrites.push({
+      table: "card_statement_payments",
+      row: { ...fromDbShape("card_statement_payments", payment), statementId: statementWrite.row.id },
     });
   }
   const otherWrites = (
@@ -362,6 +412,7 @@ export async function reassignAndDeletePaymentSource(
       },
     })),
     ...transactionWrites,
+    ...paymentWrites,
     ...otherWrites,
     ...oldStatements.map((statement) => ({
       table: "credit_card_statements" as const,

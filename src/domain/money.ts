@@ -47,24 +47,34 @@ export function roundHalfAwayFromZero(value: number): number {
 }
 
 /**
- * Split a total into `count` installments; the rounding remainder goes to
- * the LAST installment so early installments are uniform (matches how TR
- * banks bill and what the user expects to see monthly).
+ * Split a total into `count` installments the way a statement bills them: every
+ * instalment is the total divided and rounded to the nearest kuruş, and the
+ * FIRST one absorbs what that rounding left over.
+ *
+ * Measured on the owner's workbook, 2026-09-13: of 253 card plans, 35 carried a
+ * kuruş difference. The regular instalment was the nearest-kuruş share in all
+ * 35; the odd one out was the first in 22 and the last in 13. Truncating and
+ * sending the remainder to the last matched neither — 1.154,98 over six is
+ * billed 192,48 then five of 192,50, and truncation wrote five of 192,49.
+ *
+ * Nearest-kuruş rounding can leave nothing for the first share when the total
+ * is smaller than the count, so that one case falls back to truncation.
  */
 export function splitIntoInstallments(totalMinor: Minor, count: number): Minor[] {
   assertMinor(totalMinor);
   if (!Number.isInteger(count) || count < 1) throw new Error(`Invalid installment count: ${count}`);
+  const regular = roundHalfAwayFromZero(totalMinor / count);
+  const first = totalMinor - regular * (count - 1);
+  if (Math.sign(first) === Math.sign(totalMinor)) {
+    return [first, ...Array.from({ length: count - 1 }, () => regular)];
+  }
   const base = Math.trunc(totalMinor / count);
-  const remainder = totalMinor - base * count;
-  const shares = Array.from({ length: count }, () => base);
-  const lastIndex = count - 1;
-  shares[lastIndex] = (shares[lastIndex] ?? base) + remainder;
-  return shares;
+  return [totalMinor - base * (count - 1), ...Array.from({ length: count - 1 }, () => base)];
 }
 
 /**
- * The two figures a screen needs to describe a split truthfully: the uniform
- * early instalment, and the last one that carries the remainder.
+ * The two figures a screen needs to describe a split truthfully: the first
+ * instalment, which carries the rounding, and the one every later month bills.
  *
  * Two screens previewed a card plan by dividing the total themselves with
  * `Math.trunc`, which is a DIFFERENT answer from the schedule this module
@@ -75,10 +85,10 @@ export function splitIntoInstallments(totalMinor: Minor, count: number): Minor[]
  * `null` for a count no plan could have, so a screen previewing a half-typed
  * field cannot throw during render.
  */
-export function installmentShareRange(totalMinor: Minor, count: number): { first: Minor; last: Minor } | null {
+export function installmentShareRange(totalMinor: Minor, count: number): { first: Minor; rest: Minor } | null {
   if (!Number.isInteger(count) || count < 1 || !Number.isSafeInteger(totalMinor)) return null;
   const shares = splitIntoInstallments(totalMinor, count);
-  return { first: shares[0]!, last: shares[shares.length - 1]! };
+  return { first: shares[0]!, rest: shares[shares.length - 1]! };
 }
 
 const CURRENCY_FORMATTERS = new Map<string, Intl.NumberFormat>();

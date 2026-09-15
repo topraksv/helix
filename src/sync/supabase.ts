@@ -45,6 +45,29 @@ export function subscribeSupabaseAuthEvents(
   return () => authEventListeners.delete(listener);
 }
 
+/**
+ * A client for redeeming a reset link that shares nothing with the app's own.
+ *
+ * On web the app's session lives in localStorage, and supabase-js mirrors it
+ * to every tab over a BroadcastChannel named after its storage key. A reset
+ * link redeemed through that client handed the account it belongs to — the
+ * owner's partner's, opened on the owner's computer — to the tab already
+ * running Helix, and signed that tab out when the reset finished. An
+ * unpersisted session stays in this document's memory, and supabase-js opens
+ * the cross-tab channel only for a persisted one.
+ */
+export function createRecoveryClient(): SupabaseClient<Database> | null {
+  if (!isSupabaseConfigured) return null;
+  return createClient<Database>(url!, anonKey!, {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+      detectSessionInUrl: false,
+      storageKey: "helix-password-recovery",
+    },
+  });
+}
+
 export function getSupabase(): SupabaseClient<Database> | null {
   if (!isSupabaseConfigured) return null;
   if (!client) {

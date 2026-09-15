@@ -1,13 +1,14 @@
 import { getSqliteAsync } from "../../db/client";
 import { deterministicId, naturalKeys, newId } from "../../db/ids";
 import { assertLiveRow, fromDbShape, nowIso, writeRows, writeRowsValidated, type RowWrite } from "../../db/mutations";
-import { isMonthDay, isMonthKey, todayISO, type ISODate, type MonthKey } from "../../domain/dates";
+import { clampDayToMonth, isISODate, isMonthDay, isMonthKey, monthOf, todayISO, yearOf, type ISODate, type MonthKey } from "../../domain/dates";
 import { isSupportedCurrency } from "../../domain/fx-provider";
 import { generateSchedule, isValidInstallmentCount } from "../../domain/installments";
-import { assertSupportedMinorAmount, type Minor } from "../../domain/money";
+import { assertSupportedMinorAmount, splitIntoInstallments, type Minor } from "../../domain/money";
 import { assertInputWithinLimit } from "../../domain/input";
 import { isValidCardCycle, statementForDueDate, type CardCycle, type CardStatementPeriod } from "../../domain/card-statements";
-import { CreditCardCycleRequiredError, InstallmentHistoryConflictError } from "./errors";
+import { convertToTryMinor } from "../../domain/fx";
+import { CreditCardCycleRequiredError, FxRateUnavailableError, InstallmentHistoryConflictError, InstallmentRefundNothingLeftError, InstallmentRefundTooLargeError } from "./errors";
 import { assertLiveTransactionPerson, assertTransactionCategory, cardStatementWrite, livePaymentSource } from "./transactions";
 
 // Installment plans
@@ -150,11 +151,62 @@ export async function linkDueRowsToCardStatements(
   ];
 }
 
+/**
+ * Carry what a person or an import wrote on a stored instalment into the row
+ * that replaces it. Every edit regenerates the unpaid months, and a moved
+ * schedule regenerates all of them: date, status and amount are the schedule's
+ * to restate; the note, and where the row came from, are not. Before this, a
+ * note typed on a coming instalment vanished on any edit of its plan.
+ */
+function carryStoredDetails(writes: RowWrite[], stored: Record<string, unknown>[]): RowWrite[] {
+  const byId = new Map(stored.map((row) => [String(row.id), row]));
+  return writes.map((write) => {
+    const row = write.table === "transactions" ? byId.get(String(write.row.id)) : undefined;
+    if (!row) return write;
+    return { ...write, row: { ...write.row, note: row.note ?? null, origin: row.origin ?? null, importKey: row.import_key ?? null } };
+  });
+}
+
+/**
+ * The unpaid instalments of a whole-purchase plan whose paid ones are kept.
+ *
+ * Paid rows are history and keep the figures they were written with — under an
+ * older split rule, or before the total was corrected — so a fresh split of the
+ * total beside them leaves the schedule a few kuruş off the purchase. What is
+ * left of the total is divided over what is left to pay instead. A total
+ * corrected below what was already paid leaves nothing to divide, and the
+ * schedule's own figures stand.
+ */
+function divideWhatIsLeft(writes: RowWrite[], input: NewPlan, kept: Record<string, unknown>[]): RowWrite[] {
+  if (input.totalAmountMinor == null) return writes;
+  const keptIds = new Set(kept.map((row) => String(row.id)));
+  const unpaid = writes
+    .filter((write) => write.table === "transactions" && !keptIds.has(String(write.row.id)))
+    .sort((a, b) => Number(a.row.installmentNo) - Number(b.row.installmentNo));
+  const leftMinor = input.totalAmountMinor - kept.reduce((sum, row) => sum + Number(row.amount_minor), 0);
+  if (unpaid.length === 0 || leftMinor < unpaid.length) return writes;
+  const shares = splitIntoInstallments(leftMinor, unpaid.length);
+  const shareById = new Map(unpaid.map((write, index) => [String(write.row.id), shares[index]!]));
+  return writes.map((write) => {
+    const share = shareById.get(String(write.row.id));
+    if (share == null) return write;
+    return {
+      ...write,
+      row: {
+        ...write.row,
+        amountMinor: share,
+        amountTryMinor: assertSupportedMinorAmount(Math.round(share * input.tryFactor), false),
+      },
+    };
+  });
+}
+
 async function writePlanWithSchedule(
   userId: string,
   planId: string,
   input: NewPlan,
   preserveRealized = false,
+  reschedule = false,
 ): Promise<Set<number>> {
   await assertLiveTransactionPerson(userId, input.personId);
   await assertTransactionCategory(userId, "expense", input.categoryId, false);
@@ -166,7 +218,11 @@ async function writePlanWithSchedule(
         [userId, planId],
       )
     : [];
-  const realized = existingPlanTransactions.filter((transaction) => transaction.status === "realized");
+  // A moved schedule restates history on purpose: the owner is correcting how
+  // many instalments were paid, which is a statement about which months those
+  // were. Kept rows would hold their old dates beside regenerated ones, and a
+  // "paid" instalment the owner says was not would stay paid.
+  const realized = reschedule ? [] : existingPlanTransactions.filter((transaction) => transaction.status === "realized");
   if (realized.some((transaction) => Number(transaction.installment_no) > input.installmentCount)) {
     throw new InstallmentHistoryConflictError();
   }
@@ -203,13 +259,15 @@ async function writePlanWithSchedule(
     writes = writes.filter(
       (write) => write.table !== "credit_card_statements" || referencedStatementIds.has(String(write.row.id)),
     );
+    writes = divideWhatIsLeft(writes, resolvedInput, realized);
   }
+  writes = carryStoredDetails(writes, existingPlanTransactions);
   if (preserveRealized) {
     writes.push(
       ...existingPlanTransactions
         .filter(
           (transaction) =>
-            transaction.status === "pending" &&
+            (reschedule || transaction.status === "pending") &&
             transaction.installment_no != null &&
             !keepNos.has(Number(transaction.installment_no)),
         )
@@ -225,6 +283,25 @@ async function writePlanWithSchedule(
     await writeRows(userId, writes);
   }
   return keepNos;
+}
+
+/**
+ * The TRY rate stored for `currency` on `date` or the last day before it that
+ * has one (spec §2.5) — never a later day's. Null when nothing usable is
+ * stored, so a caller keeps the figure it already holds instead of inventing
+ * one. The bounds are the rate cache's own.
+ */
+export async function storedRateOnOrBefore(userId: string, currency: string, date: ISODate): Promise<number | null> {
+  if (currency === "TRY") return 1;
+  const sqlite = await getSqliteAsync();
+  const row = await sqlite.getFirstAsync<{ rate_try: string }>(
+    `SELECT rate_try FROM fx_rates
+     WHERE user_id = ? AND currency = ? AND rate_date <= ? AND deleted_at IS NULL
+     ORDER BY rate_date DESC LIMIT 1`,
+    [userId, currency, date],
+  );
+  const rate = Number(row?.rate_try);
+  return Number.isFinite(rate) && rate > 0 && rate <= 1_000_000 ? rate : null;
 }
 
 /** Live installment transactions belonging to a plan — for a warn-before-delete
@@ -250,9 +327,277 @@ export async function createInstallmentPlan(userId: string, input: NewPlan): Pro
  * schedule (deterministic ids un-delete/update matching months), and tombstone
  * any previously-generated installments that fall outside the new schedule
  * (e.g. when the installment count is reduced).
+ *
+ * Paid instalments are history and survive an ordinary edit untouched.
+ * `reschedule` is the one exception, for an edit that MOVES the schedule — the
+ * owner correcting how many were paid, or which month it started: then every
+ * instalment is placed again, paid or not, keeping only its note and origin.
  */
-export async function updateInstallmentPlan(userId: string, planId: string, input: NewPlan): Promise<void> {
-  await writePlanWithSchedule(userId, planId, input, true);
+export async function updateInstallmentPlan(
+  userId: string,
+  planId: string,
+  input: NewPlan,
+  options: { reschedule?: boolean } = {},
+): Promise<void> {
+  await writePlanWithSchedule(userId, planId, input, true, options.reschedule === true);
+}
+
+export interface InstallmentRefund {
+  /** What the statement credits in total, positive, in the plan's own currency. */
+  amountMinor: Minor;
+  /**
+   * How the bank reflects it: `remaining` spreads it over the instalments not
+   * yet paid, one credit on each of those statements; `once` puts it on one.
+   */
+  spread: "remaining" | "once";
+  /** The statement month a one-off credit lands on. Ignored for `remaining`. */
+  month: MonthKey;
+  note: string | null;
+}
+
+/**
+ * Record a refund against an instalment purchase.
+ *
+ * A refund is a negative expense linked to the plan, never a change to the
+ * plan: the bank still bills every instalment and credits the refund beside
+ * them, and the statement shows both. Its rows carry no instalment number, so
+ * the schedule, its progress and a later edit of the plan leave them alone,
+ * while everything that adds up the plan's rows nets them out.
+ *
+ * It may not exceed what is left of the purchase — the instalments minus the
+ * refunds already recorded — because a credit larger than the purchase is a
+ * typo, and it would read as income.
+ *
+ * A foreign-currency purchase is refunded in its own currency and each credit
+ * takes the rate of its own day, exactly like the instalments beside it: the
+ * stored rate on or before that day, or today's last known one for a coming
+ * statement, which maintenance restates as rates arrive.
+ */
+export async function addInstallmentRefund(userId: string, planId: string, input: InstallmentRefund): Promise<void> {
+  assertSupportedMinorAmount(input.amountMinor);
+  if (input.amountMinor <= 0) throw new Error("Refund amount must be positive");
+  if (input.spread === "once" && !isMonthKey(input.month)) throw new Error("Invalid refund month");
+  assertInputWithinLimit(input.note, "note");
+  const sqlite = await getSqliteAsync();
+  const plan = await sqlite.getFirstAsync<Record<string, unknown>>(
+    `SELECT * FROM installment_plans WHERE id = ? AND user_id = ? AND deleted_at IS NULL`,
+    [planId, userId],
+  );
+  if (!plan) throw new Error("Installment plan does not exist");
+  const rows = await sqlite.getAllAsync<Record<string, unknown>>(
+    `SELECT * FROM transactions WHERE user_id = ? AND installment_plan_id = ? AND deleted_at IS NULL`,
+    [userId, planId],
+  );
+  // A closed loan's payoff is billed beside its instalments but is no part of
+  // the purchase, so it cannot make room for a larger refund.
+  const leftMinor = rows
+    .filter((row) => row.installment_no != null || Number(row.amount_minor) < 0)
+    .reduce((sum, row) => sum + Number(row.amount_minor), 0);
+  if (input.amountMinor > leftMinor) throw new InstallmentRefundTooLargeError(Math.max(leftMinor, 0));
+  const today = todayISO();
+  const currency = typeof plan.currency === "string" ? plan.currency : "TRY";
+  const dates = refundDates(plan, rows, input);
+  if (dates.length === 0) throw new InstallmentRefundNothingLeftError();
+  const shares = splitIntoInstallments(input.amountMinor, dates.length);
+  const rates = await refundRates(userId, currency, dates, today);
+  let writes: RowWrite[] = dates.map((effectiveDate, index) => ({
+    table: "transactions" as const,
+    row: {
+      id: newId(),
+      type: "expense",
+      amountMinor: -shares[index]!,
+      currency,
+      fxRate: currency === "TRY" ? null : String(rates[index]),
+      amountTryMinor: assertSupportedMinorAmount(convertToTryMinor(-shares[index]!, rates[index]!), false),
+      entryDate: today,
+      purchaseDate: null,
+      effectiveDate,
+      status: effectiveDate <= today ? "realized" : "pending",
+      categoryId: plan.category_id ?? null,
+      paymentSourceId: plan.payment_source_id ?? null,
+      personId: plan.person_id,
+      installmentPlanId: planId,
+      installmentNo: null,
+      cardStatementId: null,
+      subscriptionId: null,
+      isAggregate: false,
+      note: input.note,
+      origin: "manual",
+      deletedAt: null,
+    },
+  }));
+  const source = plan.kind === "card_installment"
+    ? await livePaymentSource(userId, (plan.payment_source_id as string | null) ?? null)
+    : null;
+  const cycle = { statementDay: source?.statement_day, dueDay: source?.due_day };
+  if (source && isValidCardCycle(cycle)) writes = await linkDueRowsToCardStatements(userId, source.id, cycle, writes);
+  await writeRowsValidated(userId, writes, (db) => assertLiveRow(db, "installment_plans", userId, planId));
+}
+
+/**
+ * The days a refund of a plan is credited on: each instalment still to pay
+ * when the bank spreads it, or the plan's due day in the chosen month.
+ */
+function refundDates(plan: Record<string, unknown>, rows: Record<string, unknown>[], input: InstallmentRefund): string[] {
+  if (input.spread === "remaining") {
+    return rows
+      .filter((row) => row.installment_no != null && row.status === "pending")
+      .map((row) => String(row.effective_date))
+      .sort();
+  }
+  const dueDay = isMonthDay(Number(plan.due_day)) ? Number(plan.due_day) : 1;
+  return [clampDayToMonth(yearOf(input.month), monthOf(input.month), dueDay)];
+}
+
+/** The stored rate for each credit's own day, or today's for one still to come. */
+async function refundRates(userId: string, currency: string, dates: readonly string[], today: ISODate): Promise<number[]> {
+  const rates: number[] = [];
+  for (const effectiveDate of dates) {
+    const rate = await storedRateOnOrBefore(userId, currency, effectiveDate <= today ? (effectiveDate as ISODate) : today);
+    if (rate == null) throw new FxRateUnavailableError(currency);
+    rates.push(rate);
+  }
+  return rates;
+}
+
+export interface PlanClosure {
+  /** The day the loan was paid off. */
+  closedOn: ISODate;
+  /** What paying it off cost, in the plan's currency. */
+  payoffMinor: Minor;
+  note: string | null;
+}
+
+/**
+ * Pay a loan off early (owner decision, 2026-09-13).
+ *
+ * The plan keeps the instalments due on or before the payoff day, loses the
+ * ones after it, and — when closing it cost anything more — gains one payoff
+ * row on that day. The count it had is kept on the plan so the closure can be undone —
+ * a closure is one tap away from a loan, and a mistaken one must not be the
+ * end of its schedule.
+ *
+ * A loan with no instalment due yet has nothing to shorten to and is deleted
+ * instead, which is why it is refused here.
+ */
+export async function closeInstallmentPlan(userId: string, planId: string, input: PlanClosure): Promise<void> {
+  if (!isISODate(input.closedOn) || input.closedOn > todayISO()) throw new Error("Invalid plan closure date");
+  assertSupportedMinorAmount(input.payoffMinor);
+  if (input.payoffMinor < 0) throw new Error("Plan payoff must not be negative");
+  assertInputWithinLimit(input.note, "note");
+  const sqlite = await getSqliteAsync();
+  const plan = await sqlite.getFirstAsync<Record<string, unknown>>(
+    `SELECT * FROM installment_plans WHERE id = ? AND user_id = ? AND deleted_at IS NULL`,
+    [planId, userId],
+  );
+  if (!plan || plan.kind !== "loan") throw new Error("Only a running loan can be closed");
+  if (plan.closed_on != null) throw new Error("Loan is already closed");
+  const instalments = await sqlite.getAllAsync<Record<string, unknown>>(
+    `SELECT * FROM transactions
+     WHERE user_id = ? AND installment_plan_id = ? AND installment_no IS NOT NULL AND deleted_at IS NULL`,
+    [userId, planId],
+  );
+  // Kept by day, not by count. An imported loan's numbers can skip the months
+  // its workbook kept in another column, so "the first N" of them dropped
+  // instalments already paid; the plan's count becomes the last number kept.
+  const kept = instalments.filter((row) => String(row.effective_date) <= input.closedOn);
+  if (kept.length === 0) throw new Error("A loan closed before its first instalment is deleted, not closed");
+  // One moment for every row this closure removes, which is how undoing it
+  // finds exactly those.
+  const deletedAt = nowIso();
+  const writes: RowWrite[] = [
+    {
+      table: "installment_plans",
+      row: {
+        ...fromDbShape("installment_plans", plan),
+        installmentCount: Math.max(...kept.map((row) => Number(row.installment_no))),
+        originalInstallmentCount: plan.installment_count,
+        closedOn: input.closedOn,
+      },
+    },
+    ...instalments
+      .filter((row) => String(row.effective_date) > input.closedOn)
+      .map((row) => ({ table: "transactions" as const, row: { ...fromDbShape("transactions", row), deletedAt } })),
+  ];
+  // A loan its last regular instalment closed costs nothing more and writes no payoff.
+  if (input.payoffMinor > 0) {
+    const currency = typeof plan.currency === "string" ? plan.currency : "TRY";
+    const rate = await storedRateOnOrBefore(userId, currency, input.closedOn);
+    if (rate == null) throw new FxRateUnavailableError(currency);
+    writes.push({
+      table: "transactions",
+      row: {
+        id: await deterministicId(naturalKeys.planPayoff(planId)),
+        type: "expense",
+        amountMinor: input.payoffMinor,
+        currency,
+        fxRate: currency === "TRY" ? null : String(rate),
+        amountTryMinor: assertSupportedMinorAmount(convertToTryMinor(input.payoffMinor, rate), false),
+        entryDate: todayISO(),
+        purchaseDate: null,
+        effectiveDate: input.closedOn,
+        status: "realized",
+        categoryId: plan.category_id ?? null,
+        paymentSourceId: plan.payment_source_id ?? null,
+        personId: plan.person_id,
+        installmentPlanId: planId,
+        installmentNo: null,
+        cardStatementId: null,
+        subscriptionId: null,
+        isAggregate: false,
+        note: input.note,
+        origin: "manual",
+        deletedAt: null,
+      },
+    });
+  }
+  await writeRowsValidated(userId, writes, (db) => assertLiveRow(db, "installment_plans", userId, planId));
+}
+
+/**
+ * Undo an early closure: the count it had comes back, the payoff goes, and the
+ * instalments the closure removed return exactly as they were.
+ *
+ * Restored, not regenerated. A schedule rebuilt from the plan brought back the
+ * months an import deliberately left out — money already inside another
+ * column — and replaced each row's own figure with the plan's. The closure
+ * tombstoned its rows in one write, so they share its moment; an instalment
+ * deleted by hand before it carries an earlier one and stays deleted.
+ */
+export async function reopenInstallmentPlan(userId: string, planId: string): Promise<void> {
+  const sqlite = await getSqliteAsync();
+  const plan = await sqlite.getFirstAsync<Record<string, unknown>>(
+    `SELECT * FROM installment_plans WHERE id = ? AND user_id = ? AND deleted_at IS NULL`,
+    [planId, userId],
+  );
+  if (!plan || plan.closed_on == null || plan.original_installment_count == null) throw new Error("Loan is not closed");
+  const removed = await sqlite.getAllAsync<Record<string, unknown>>(
+    `SELECT * FROM transactions
+     WHERE user_id = ? AND installment_plan_id = ? AND installment_no IS NOT NULL
+       AND deleted_at IS NOT NULL AND effective_date > ?`,
+    [userId, planId, String(plan.closed_on)],
+  );
+  const closedAt = removed.reduce((latest, row) => (String(row.deleted_at) > latest ? String(row.deleted_at) : latest), "");
+  const payoff = await sqlite.getFirstAsync<Record<string, unknown>>(
+    `SELECT * FROM transactions WHERE id = ? AND user_id = ? AND deleted_at IS NULL`,
+    [await deterministicId(naturalKeys.planPayoff(planId)), userId],
+  );
+  const writes: RowWrite[] = [
+    {
+      table: "installment_plans",
+      row: {
+        ...fromDbShape("installment_plans", plan),
+        installmentCount: Number(plan.original_installment_count),
+        closedOn: null,
+        originalInstallmentCount: null,
+      },
+    },
+    ...removed
+      .filter((row) => String(row.deleted_at) === closedAt)
+      .map((row) => ({ table: "transactions" as const, row: { ...fromDbShape("transactions", row), deletedAt: null } })),
+    ...(payoff ? [{ table: "transactions" as const, row: { ...fromDbShape("transactions", payoff), deletedAt: nowIso() } }] : []),
+  ];
+  await writeRowsValidated(userId, writes, (db) => assertLiveRow(db, "installment_plans", userId, planId));
 }
 
 /** Tombstone a plan together with its generated transactions. */

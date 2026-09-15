@@ -4,6 +4,7 @@ import {
   shouldUseCompactChart,
   shouldUseNarrowAnalytics,
   shouldUseWideImportGuide,
+  shouldUseCompactInstallmentCard,
   shouldUseWideWorkspace,
   usesCoarsePointerTable,
 } from "../src/ui/responsive";
@@ -25,6 +26,8 @@ describe("phone action layouts", () => {
     expect(shouldUseWideImportGuide(820)).toBe(true);
     expect(shouldUseWideWorkspace(899)).toBe(false);
     expect(shouldUseWideWorkspace(900)).toBe(true);
+    expect(shouldUseCompactInstallmentCard(559)).toBe(true);
+    expect(shouldUseCompactInstallmentCard(560)).toBe(false);
   });
 });
 

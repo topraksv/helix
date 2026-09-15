@@ -10,9 +10,9 @@
  * negative (Temmuz 2026: −18.773,03).
  */
 
-import { makeMonthKey, monthKeyOf, monthRange, yearOf, type ISODate, type MonthKey } from "./dates";
+import { addMonthsToKey, lastDayOf, makeMonthKey, monthKeyOf, monthRange, yearOf, type ISODate, type MonthKey } from "./dates";
 import type { Minor } from "./money";
-import type { AdjustmentLike, TxLike } from "./types";
+import type { AdjustmentLike, SettlementFlow, TxLike } from "./types";
 import { financialFlow, signedBalanceEffect } from "./transactions";
 
 export function countsTowardBalance(tx: TxLike, today: ISODate): boolean {
@@ -54,6 +54,26 @@ export interface MonthLedger {
   plannedIncomeMinor: Minor;
   plannedExpenseMinor: Minor;
   plannedTransferMinor: Minor;
+  /**
+   * What each stored balance declaration dated in this month moved the
+   * balance by, recomputed from the rows as they stand. Already inside
+   * `adjustmentMinor`; listed so the screen that keeps declarations can say
+   * what each one is correcting.
+   */
+  declarationDeltas: { id: string; deltaMinor: Minor }[];
+  /**
+   * Recorded statement payments, as the balance sees them (spec §3.1f). The
+   * charges stay in the category cells; these say when their money actually
+   * left. `cardSettlementMinor` is the realized part inside `closingMinor`,
+   * `plannedCardSettlementMinor` the rest of it inside the projected close.
+   * `cardOwedMinor` (still unpaid, given back on the due date) and
+   * `cardPaymentsMinor` (payments, and payments given back where they were made
+   * on another day) split the same total for the month's breakdown.
+   */
+  cardSettlementMinor: Minor;
+  plannedCardSettlementMinor: Minor;
+  cardOwedMinor: Minor;
+  cardPaymentsMinor: Minor;
   /** The same chain as `openingMinor`/`closingMinor`, carrying the planned
    *  flows too. Identical to them for a month with nothing planned. */
   projectedOpeningMinor: Minor;
@@ -76,6 +96,8 @@ export function monthFlowTotals(month: MonthLedger): {
   expenseMinor: Minor;
   transferMinor: Minor;
   adjustmentMinor: Minor;
+  cardOwedMinor: Minor;
+  cardPaymentsMinor: Minor;
   closingMinor: Minor;
 } {
   return {
@@ -84,6 +106,8 @@ export function monthFlowTotals(month: MonthLedger): {
     expenseMinor: month.expenseMinor + month.plannedExpenseMinor,
     transferMinor: month.transferMinor + month.plannedTransferMinor,
     adjustmentMinor: month.adjustmentMinor,
+    cardOwedMinor: month.cardOwedMinor,
+    cardPaymentsMinor: month.cardPaymentsMinor,
     closingMinor: month.projectedClosingMinor,
   };
 }
@@ -115,6 +139,8 @@ interface LedgerInput {
   /** Also show future/pending self rows inside category cells (display only —
    *  balances, income/expense sums and the chain stay realized-only). */
   includePendingInCells?: boolean;
+  /** What recorded statement payments move, from `settleCardStatements`. */
+  settlements?: SettlementFlow[];
 }
 
 /**
@@ -163,10 +189,65 @@ export function firstRecordedMonth(
 }
 
 /**
+ * The configured anchor read as what it is: a statement that the balance at
+ * the end of the day before its month opens was this figure.
+ */
+function anchorDeclaration(configuredStart: MonthKey, configuredOpeningMinor: Minor): AdjustmentLike {
+  return { date: lastDayOf(addMonthsToKey(configuredStart, -1)), amountMinor: 0, declaredMinor: configuredOpeningMinor };
+}
+
+/**
+ * The earliest statement of what the balance was on a day: the configured
+ * anchor or a stored declaration dated today or earlier.
+ *
+ * On one day the anchor, which has no id, comes first, so the declaration the
+ * owner wrote down separately is the one the chain then holds.
+ */
+function earliestStatement(
+  configuredStart: MonthKey | null,
+  configuredOpeningMinor: Minor,
+  adjustments: AdjustmentLike[],
+  today: ISODate,
+): AdjustmentLike | undefined {
+  let earliest = configuredStart == null ? undefined : anchorDeclaration(configuredStart, configuredOpeningMinor);
+  for (const adjustment of adjustments) {
+    if (adjustment.declaredMinor == null || adjustment.date > today) continue;
+    if (!earliest || precedes(adjustment, earliest)) earliest = adjustment;
+  }
+  return earliest;
+}
+
+function precedes(a: AdjustmentLike, b: AdjustmentLike): boolean {
+  return a.date < b.date || (a.date === b.date && (a.id ?? "").localeCompare(b.id ?? "") < 0);
+}
+
+/**
+ * The balance the chain must open with so that `statement` holds: its figure
+ * less everything counted on or before its day. Nothing is dated before the
+ * chain's first month, so a statement dated before that month opens it as is.
+ */
+function openingFor(statement: AdjustmentLike, transactions: TxLike[], adjustments: AdjustmentLike[], today: ISODate): Minor {
+  let before = 0;
+  for (const tx of transactions) {
+    if (tx.effectiveDate <= statement.date && countsTowardBalance(tx, today)) before += signedBalanceEffect(tx);
+  }
+  for (const adjustment of adjustments) {
+    if (adjustment.declaredMinor == null && adjustment.date <= statement.date && adjustment.date <= today) {
+      before += adjustment.amountMinor;
+    }
+  }
+  return statement.declaredMinor! - before;
+}
+
+/**
  * Resolve the effective ledger anchor so history entered before the
  * configured opening month still appears. Extends the start back to the
  * earliest recorded data and back-computes the opening balance there, so the
  * balance AT the configured start (and the current balance) is unchanged.
+ *
+ * The back-computation starts from the EARLIEST statement of a balance, which
+ * is the anchor unless a declaration is dated before it; the chain then holds
+ * every later statement, the anchor included, as it reaches it.
  */
 export function resolveLedgerAnchor(
   configuredStart: MonthKey,
@@ -176,19 +257,8 @@ export function resolveLedgerAnchor(
   today: ISODate,
 ): { startMonth: MonthKey; openingBalanceMinor: Minor } {
   const startMonth = earliestRecordedMonth(configuredStart, transactions, adjustments);
-  if (startMonth === configuredStart) {
-    return { startMonth, openingBalanceMinor: configuredOpeningMinor };
-  }
-  // Sum balance-affecting flows strictly before the configured anchor month.
-  const anchorDay = `${configuredStart}-01`;
-  let beforeAnchor = 0;
-  for (const tx of transactions) {
-    if (tx.effectiveDate < anchorDay && countsTowardBalance(tx, today)) beforeAnchor += signedBalanceEffect(tx);
-  }
-  for (const a of adjustments) {
-    if (a.date < anchorDay && a.date <= today) beforeAnchor += a.amountMinor;
-  }
-  return { startMonth, openingBalanceMinor: configuredOpeningMinor - beforeAnchor };
+  const first = earliestStatement(configuredStart, configuredOpeningMinor, adjustments, today);
+  return { startMonth, openingBalanceMinor: openingFor(first!, transactions, adjustments, today) };
 }
 
 /** Build the chained month-by-month ledger over [startMonth, endMonth]. */
@@ -203,24 +273,50 @@ export function buildLedger(input: LedgerInput): MonthLedger[] {
       const bucket = byMonth.get(key);
       if (bucket) bucket.push(tx);
       else byMonth.set(key, [tx]);
-    } else if (includePendingInCells && tx.personIsSelf && tx.status === "pending") {
+    } else if (includePendingInCells && tx.personIsSelf) {
+      // An own row the balance does not count yet is planned: pending, or marked
+      // realized but dated after today by a device whose day had already turned.
+      // Left out of both, that second kind vanished from its own cell on the
+      // device still behind.
       const key = monthKeyOf(tx.effectiveDate);
       const bucket = pendingByMonth.get(key);
       if (bucket) bucket.push(tx);
       else pendingByMonth.set(key, [tx]);
     }
   }
-  const adjustmentByMonth = new Map<MonthKey, Minor>();
+  const staticByMonth = new Map<MonthKey, AdjustmentLike[]>();
+  const declarationsByMonth = new Map<MonthKey, AdjustmentLike[]>();
   for (const adj of adjustments) {
     if (adj.date > today) continue;
+    const target = adj.declaredMinor == null ? staticByMonth : declarationsByMonth;
     const key = monthKeyOf(adj.date);
-    adjustmentByMonth.set(key, (adjustmentByMonth.get(key) ?? 0) + adj.amountMinor);
+    const bucket = target.get(key);
+    if (bucket) bucket.push(adj);
+    else target.set(key, [adj]);
+  }
+
+  const settlementsByMonth = new Map<MonthKey, SettlementFlow[]>();
+  for (const flow of input.settlements ?? []) {
+    const key = monthKeyOf(flow.date);
+    const bucket = settlementsByMonth.get(key);
+    if (bucket) bucket.push(flow);
+    else settlementsByMonth.set(key, [flow]);
   }
 
   const ledger: MonthLedger[] = [];
   let opening = openingBalanceMinor;
   let projectedOpening = openingBalanceMinor;
   for (const month of months) {
+    const settled = settlementsByMonth.get(month) ?? [];
+    const counted = byMonth.get(month) ?? [];
+    let cardSettlement = 0;
+    let plannedCardSettlement = 0;
+    let cardOwed = 0;
+    for (const flow of settled) {
+      if (flow.planned) plannedCardSettlement += flow.amountMinor;
+      else cardSettlement += flow.amountMinor;
+      if (flow.kind === "owed") cardOwed += flow.amountMinor;
+    }
     let income = 0;
     let expense = 0;
     let transfer = 0;
@@ -229,7 +325,7 @@ export function buildLedger(input: LedgerInput): MonthLedger[] {
     let plannedTransfer = 0;
     let uncategorized = 0;
     const byCategory = new Map<string, Minor>();
-    for (const tx of byMonth.get(month) ?? []) {
+    for (const tx of counted) {
       const flow = financialFlow(tx);
       if (flow.type === "income") income += flow.amountTryMinor;
       else if (flow.type === "expense") expense += flow.amountTryMinor;
@@ -250,14 +346,37 @@ export function buildLedger(input: LedgerInput): MonthLedger[] {
         byCategory.set(tx.categoryId, (byCategory.get(tx.categoryId) ?? 0) + flow.amountTryMinor);
       } else uncategorized += flow.amountTryMinor;
     }
-    const adjustment = adjustmentByMonth.get(month) ?? 0;
-    const closing = opening + income - expense - transfer + adjustment;
+    const statics = staticByMonth.get(month) ?? [];
+    let adjustment = statics.reduce((sum, adj) => sum + adj.amountMinor, 0);
+    const declarationDeltas: { id: string; deltaMinor: Minor }[] = [];
+    // A declaration holds the balance at the end of its day to its figure, so
+    // what it adds is recomputed from the rows as they stand: a row entered
+    // later on or before its day is absorbed, one after it is not. Applied to
+    // the planned chain unchanged, because a declaration is about the balance,
+    // and an unconfirmed row before it is still something the owner may confirm.
+    // An anchor has no id, so it holds first on its day.
+    const declarations = [...(declarationsByMonth.get(month) ?? [])]
+      .sort((a, b) => a.date.localeCompare(b.date) || (a.id ?? "").localeCompare(b.id ?? ""));
+    let declared = 0;
+    for (const declaration of declarations) {
+      let running = opening + declared;
+      for (const tx of counted) if (tx.effectiveDate <= declaration.date) running += signedBalanceEffect(tx);
+      for (const adj of statics) if (adj.date <= declaration.date) running += adj.amountMinor;
+      for (const flow of settled) if (!flow.planned && flow.date <= declaration.date) running += flow.amountMinor;
+      const delta = declaration.declaredMinor! - running;
+      declared += delta;
+      if (declaration.id != null) declarationDeltas.push({ id: declaration.id, deltaMinor: delta });
+    }
+    adjustment += declared;
+    const closing = opening + income - expense - transfer + adjustment + cardSettlement;
     const projectedClosing =
       projectedOpening +
       (income + plannedIncome) -
       (expense + plannedExpense) -
       (transfer + plannedTransfer) +
-      adjustment;
+      adjustment +
+      cardSettlement +
+      plannedCardSettlement;
     ledger.push({
       month,
       openingMinor: opening,
@@ -271,6 +390,11 @@ export function buildLedger(input: LedgerInput): MonthLedger[] {
       plannedIncomeMinor: plannedIncome,
       plannedExpenseMinor: plannedExpense,
       plannedTransferMinor: plannedTransfer,
+      declarationDeltas,
+      cardSettlementMinor: cardSettlement,
+      plannedCardSettlementMinor: plannedCardSettlement,
+      cardOwedMinor: cardOwed,
+      cardPaymentsMinor: cardSettlement + plannedCardSettlement - cardOwed,
       projectedOpeningMinor: projectedOpening,
       projectedClosingMinor: projectedClosing,
     });
@@ -298,6 +422,8 @@ export interface LedgerBundle {
   firstRecordedMonth: MonthKey | null;
   actualBalanceMinor: Minor;
   txLike: TxLike[];
+  /** See `LedgerChain.declarationDeltaById`. */
+  declarationDeltaById: ReadonlyMap<string, Minor>;
 }
 
 /**
@@ -326,6 +452,8 @@ export interface LedgerChain {
   firstRecordedMonth: MonthKey | null;
   actualBalanceMinor: Minor;
   txLike: TxLike[];
+  /** What each stored balance declaration adds, by row id, as the rows stand now. */
+  declarationDeltaById: ReadonlyMap<string, Minor>;
 }
 
 /**
@@ -355,50 +483,53 @@ export function buildLedgerChain(input: {
   includePendingInCells: boolean;
   transactions: TxLike[];
   adjustments: AdjustmentLike[];
+  /** What recorded statement payments move, from `settleCardStatements`. */
+  settlements?: SettlementFlow[];
   endYear: number;
   today: ISODate;
 }): LedgerChain {
   const { configuredStart, transactions, adjustments, endYear, today } = input;
+  const settlements = input.settlements ?? [];
+  // A payment already made moves the balance like any movement does, so it
+  // also decides where the chain has to reach back to and what it opens with.
+  const movements = [
+    ...adjustments,
+    ...settlements.filter((flow) => !flow.planned).map((flow) => ({ date: flow.date, amountMinor: flow.amountMinor })),
+  ];
 
-  const { startMonth, openingBalanceMinor } = configuredStart == null
-    ? {
-        startMonth: earliestRecordedMonth(monthKeyOf(today), transactions, adjustments),
-        openingBalanceMinor: 0,
-      }
-    : resolveLedgerAnchor(
-        configuredStart,
-        input.openingBalanceMinor,
-        transactions,
-        adjustments,
-        today,
-      );
+  const startMonth = earliestRecordedMonth(configuredStart ?? monthKeyOf(today), transactions, movements);
+  // Unanchored and undeclared, the table opens at zero; otherwise at whatever
+  // makes the earliest statement of a balance hold.
+  const first = earliestStatement(configuredStart, input.openingBalanceMinor, adjustments, today);
+  const openingBalanceMinor = first ? openingFor(first, transactions, movements, today) : 0;
   const ledger = buildLedger({
     openingBalanceMinor,
     startMonth,
     endMonth: makeMonthKey(endYear, 12),
     transactions,
-    adjustments,
+    // The anchor rides along as a declaration so a declaration dated before it
+    // cannot move the balance the owner set for its month. When it is the
+    // earliest statement the opening above already satisfies it and it adds 0.
+    adjustments: configuredStart == null
+      ? adjustments
+      : [...adjustments, anchorDeclaration(configuredStart, input.openingBalanceMinor)],
     today,
     includePendingInCells: input.includePendingInCells,
+    settlements,
   });
-  // buildLedger already scanned every transaction and applies the same
-  // realized/today rules. Its current-month close is the actual balance, so a
-  // normal render does not need a second O(N) currentBalance pass. Keep the
-  // direct calculation only for the unusual case where the configured anchor
-  // starts after the current month.
+  // The current month's close is the actual balance. A chain that starts after
+  // this month holds nothing dated on or before today — an earlier row or
+  // adjustment would have pulled the start back to it — so today's balance is
+  // the figure it opens with.
   const currentLedgerMonth = ledger.find((entry) => entry.month === monthKeyOf(today));
-  const actualBalanceMinor = currentLedgerMonth?.closingMinor ?? currentBalance({
-    openingBalanceMinor,
-    transactions,
-    adjustments,
-    today,
-  });
+  const actualBalanceMinor = currentLedgerMonth?.closingMinor ?? openingBalanceMinor;
   return {
     ledger,
     startMonth,
     firstRecordedMonth: firstRecordedMonth(transactions, adjustments),
     actualBalanceMinor,
     txLike: transactions,
+    declarationDeltaById: new Map(ledger.flatMap((month) => month.declarationDeltas.map((entry) => [entry.id, entry.deltaMinor] as const))),
   };
 }
 
@@ -411,36 +542,8 @@ export function sliceLedgerYear(chain: LedgerChain, year: number): LedgerBundle 
     firstRecordedMonth: chain.firstRecordedMonth,
     actualBalanceMinor: chain.actualBalanceMinor,
     txLike: chain.txLike,
+    declarationDeltaById: chain.declarationDeltaById,
   };
-}
-
-/**
- * Actual balance as of `today` (partial current month included).
- *
- * It sums EVERY row that counts, with no month window at all — so
- * `openingBalanceMinor` has to be the balance at the anchor
- * `resolveLedgerAnchor` returned, not the one the user configured. The
- * signature used to accept a `startMonth` and quietly ignore it, which reads
- * as a window that is applied and is not; a property test walked straight into
- * it and reported the chain and this disagreeing.
- */
-export function currentBalance(
-  input: {
-    openingBalanceMinor: Minor;
-    transactions: TxLike[];
-    adjustments: AdjustmentLike[];
-    today: ISODate;
-  },
-): Minor {
-  const { openingBalanceMinor, transactions, adjustments, today } = input;
-  let balance = openingBalanceMinor;
-  for (const tx of transactions) {
-    if (countsTowardBalance(tx, today)) balance += signedBalanceEffect(tx);
-  }
-  for (const adj of adjustments) {
-    if (adj.date <= today) balance += adj.amountMinor;
-  }
-  return balance;
 }
 
 export interface UpcomingFlow {

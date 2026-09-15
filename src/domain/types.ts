@@ -61,6 +61,45 @@ export interface TxLike {
   cardStatementId?: string | null;
   subscriptionId: string | null;
   isAggregate: boolean;
+  /**
+   * The row a workbook import writes for what is left of a column once its
+   * instalments are listed. It keeps the column's total equal to the file, and
+   * it is not spending: a negative one reads as a refund. Absent reads as false.
+   */
+  isWorkbookRemainder?: boolean;
+}
+
+/** How the owner described a recorded statement payment. */
+export type StatementPaymentKind = "full" | "minimum" | "partial";
+
+export interface StatementPaymentLike {
+  id: string;
+  statementId: string;
+  paidOn: ISODate;
+  /** Positive TRY minor units. */
+  amountMinor: Minor;
+  kind: StatementPaymentKind;
+}
+
+/**
+ * A movement the balance makes because a statement was paid by hand rather
+ * than on its due date. Never spending: charges stay the categorised rows, and
+ * these lines only move WHEN their money leaves the account.
+ *
+ * - `owed`: what is still unpaid, given back on the due date, where the charges
+ *   would otherwise have taken all of it.
+ * - `payment`: a payment, on the day it was made.
+ * - `paidElsewhere`: a payment made on another day, given back on the day its
+ *   charges are counted, so it is not taken twice.
+ */
+export interface SettlementFlow {
+  statementId: string;
+  date: ISODate;
+  /** Signed balance effect. */
+  amountMinor: Minor;
+  kind: "owed" | "payment" | "paidElsewhere";
+  /** Not yet in the balance: dated after today, or beside charges still pending. */
+  planned: boolean;
 }
 
 export interface CardStatementLike {
@@ -72,8 +111,17 @@ export interface CardStatementLike {
 }
 
 export interface AdjustmentLike {
+  /** Present on stored rows; the configured anchor, read as a declaration, has none. */
+  id?: string;
   date: ISODate;
   amountMinor: Minor; // signed: positive raises the balance
+  /**
+   * A declared balance rather than a movement: at the END of `date` the balance
+   * was this figure (spec §2.7). `amountMinor` then holds the difference it made
+   * when it was written, for a client that predates declarations; the ledger
+   * recomputes that difference from the rows as they stand now.
+   */
+  declaredMinor?: Minor | null;
 }
 
 export interface SubscriptionLike {

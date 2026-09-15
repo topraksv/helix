@@ -31,13 +31,22 @@ describe("splitIntoInstallments", () => {
     expect(splitIntoInstallments(600_00, 6)).toEqual([100_00, 100_00, 100_00, 100_00, 100_00, 100_00]);
   });
 
-  it("sends the kuruş remainder to the LAST installment", () => {
-    // 1000,00 / 3 = 333,33 + 333,33 + 333,34
-    expect(splitIntoInstallments(1000_00, 3)).toEqual([33333, 33333, 33334]);
+  it("rounds every instalment to the nearest kuruş and lets the FIRST absorb the rest", () => {
+    // 1000,00 / 3 = 333,33 → 333,34 + 333,33 + 333,33
+    expect(splitIntoInstallments(1000_00, 3)).toEqual([33334, 33333, 33333]);
+    // Shapes read off real statements: the regular share rounds UP here, so
+    // the first instalment is the smaller one.
+    expect(splitIntoInstallments(1154_98, 6)).toEqual([19248, 19250, 19250, 19250, 19250, 19250]);
+    expect(splitIntoInstallments(875_75, 6)).toEqual([14595, 14596, 14596, 14596, 14596, 14596]);
+  });
+
+  it("falls back to truncation when rounding would leave the first instalment nothing", () => {
+    expect(splitIntoInstallments(5, 6)).toEqual([5, 0, 0, 0, 0, 0]);
+    expect(splitIntoInstallments(1, 3)).toEqual([1, 0, 0]);
   });
 
   it("preserves the exact total", () => {
-    for (const [total, count] of [[999_99, 7], [123_45, 12], [1, 3]] as const) {
+    for (const [total, count] of [[999_99, 7], [123_45, 12], [1, 3], [5, 6], [1154_98, 6], [-875_75, 6]] as const) {
       const shares = splitIntoInstallments(total, count);
       expect(shares.reduce((a, b) => a + b, 0)).toBe(total);
     }
@@ -63,22 +72,22 @@ describe("installmentShareRange", () => {
       const shares = splitIntoInstallments(total, count);
       expect(installmentShareRange(total, count), `${total}/${count}`).toEqual({
         first: shares[0],
-        last: shares[shares.length - 1],
+        rest: shares[shares.length - 1],
       });
     }
   });
 
-  it("names a different last instalment exactly when the total does not divide evenly", () => {
-    expect(installmentShareRange(1000_00, 3)).toEqual({ first: 33333, last: 33334 });
-    // Divisible: both ends agree, and the screen says one figure rather than two.
-    expect(installmentShareRange(600_00, 6)).toEqual({ first: 100_00, last: 100_00 });
+  it("names a different first instalment exactly when the total does not divide evenly", () => {
+    expect(installmentShareRange(1000_00, 3)).toEqual({ first: 33334, rest: 33333 });
+    // Divisible: both agree, and the screen says one figure rather than two.
+    expect(installmentShareRange(600_00, 6)).toEqual({ first: 100_00, rest: 100_00 });
   });
 
   it("never rounds the purchase away", () => {
-    // The whole point: first x (count - 1) + last must be the amount typed.
+    // The whole point: first + rest x (count - 1) must be the amount typed.
     for (const [total, count] of [[1000_00, 3], [999_99, 7], [55_55, 4]] as const) {
-      const { first, last } = installmentShareRange(total, count)!;
-      expect(first * (count - 1) + last, `${total}/${count}`).toBe(total);
+      const { first, rest } = installmentShareRange(total, count)!;
+      expect(first + rest * (count - 1), `${total}/${count}`).toBe(total);
     }
   });
 
@@ -89,7 +98,7 @@ describe("installmentShareRange", () => {
     }
     expect(installmentShareRange(100.5, 3)).toBeNull();
     // One instalment is a real plan, not an invalid one.
-    expect(installmentShareRange(1000_00, 1)).toEqual({ first: 1000_00, last: 1000_00 });
+    expect(installmentShareRange(1000_00, 1)).toEqual({ first: 1000_00, rest: 1000_00 });
   });
 });
 

@@ -16,7 +16,13 @@ import { isValidNewPassword } from "../../domain/input";
 
 type RecoveryState = "checking" | "ready" | "expired" | "invalid" | "success";
 
-export default function ResetPasswordScreen() {
+/**
+ * `standalone` is this screen drawn in a tab that does NOT hold Helix: a reset
+ * e-mail opens its link in a new tab, and the tab already running Helix keeps
+ * the database. There is no app behind this screen then, so it points back to
+ * that tab instead of offering a way into one.
+ */
+export default function ResetPasswordScreen({ standalone = false }: { standalone?: boolean }) {
   const incomingUrl = Linking.useURL();
   const router = useRouter();
   const { preparePasswordRecovery, completePasswordRecovery } = useSession();
@@ -33,7 +39,7 @@ export default function ResetPasswordScreen() {
     void (async () => {
       try {
         const initialUrl = incomingUrl ?? await Linking.getInitialURL();
-        const result = await preparePasswordRecovery(initialUrl);
+        const result = await preparePasswordRecovery(initialUrl, { standalone });
         if (active) setState(result);
       } catch {
         if (active) setState("invalid");
@@ -42,7 +48,7 @@ export default function ResetPasswordScreen() {
     return () => {
       active = false;
     };
-  }, [incomingUrl, preparePasswordRecovery]);
+  }, [incomingUrl, preparePasswordRecovery, standalone]);
 
   const valid = isValidNewPassword(password) && confirmation === password && !busy;
   const save = async () => {
@@ -101,7 +107,11 @@ export default function ResetPasswordScreen() {
           <Body muted style={{ textAlign: "center", marginBottom: spacing.sm }}>
             {success ? tr.auth.resetSuccessBody : state === "expired" ? tr.auth.resetExpiredBody : tr.auth.resetInvalidBody}
           </Body>
-          <Button label={success ? tr.auth.signInAction : tr.auth.requestNewLink} onPress={returnToSignIn} />
+          {standalone ? (
+            <Body muted style={{ textAlign: "center" }}>{tr.auth.resetOtherTabNote}</Body>
+          ) : (
+            <Button label={success ? tr.auth.signInAction : tr.auth.requestNewLink} onPress={returnToSignIn} />
+          )}
         </View>
       </Screen>
     );

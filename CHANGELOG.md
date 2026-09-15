@@ -6,6 +6,46 @@ defterinde yazılıdır ve bu depoya dahil değildir.
 
 Notlar kısa tutulur: ne değişti, tek cümle. Sebebi ve ölçümü commit'te.
 
+## 1.8.0
+
+### Minor Changes
+
+- Kart ekstresi ekranı: Durum'daki kart satırı ekstreyi açıyor; harcamaları, ödemeleri ve kalan borcu gösteriyor.
+- Ekstreye tam, asgari ya da kısmi ödeme kaydedilebiliyor. Tam ödemede harcamalar ödediğin güne taşınıyor; kısmi ödemede bakiyenden yalnız ödediğin tutar düşüyor, kalanı "Karta kalan borç" olarak görünüyor.
+- Hesaptan kart borcu gideri girerken aynı paranın iki kez düşeceği söyleniyor ve ekstre ödemesine yönlendiriyor.
+- Kredi erken kapatılabiliyor ve kapatma her zaman geri alınabiliyor; kredi yeniden yapılandırılabiliyor ve kendi ödeme günü verilebiliyor.
+- Harcamaya bağlı iade: harcamanın ekranında "İade Ekle" var; bağlı iadeler ve kalan tutar orada görünüyor.
+- Bir ayın başlangıç bakiyesi belirtilebiliyor; o ay, öncesine sonradan eklenen kayıtlardan etkilenmeden bu bakiyeyle açılıyor.
+- Kart harcaması yalnız ay seçilerek girilebiliyor; o ayın ekstresine ekleniyor.
+- Taksite iade girilebiliyor: iade kalan taksitlere bölünerek ya da tek seferde düşüyor.
+- Taksitler'de o ayın taksitleri kategorilere göre grafikle görünüyor.
+- Taksit planı toplam tutarla da aylık taksitle de girilebiliyor; düzenlerken ödenen taksit sayısı değiştirilebiliyor.
+- Excel'e aktarılan Abonelikler ve Yatırımlar sayfaları düzenlenip geri içe aktarılabiliyor: eşleşen kayıt güncelleniyor, yenisi ekleniyor, hiçbir şey silinmiyor.
+
+### Patch Changes
+
+- Face ID kilidi açılınca uygulama kaldığı ekrana dönüyor; önceden Taksitler'den Mali Tablo'ya geri gelinemiyor, uygulamayı kapatıp açmak gerekiyordu.
+- Yeni kart taksidi ilk ekstresinden başlıyor; önceden bazı taksitler bu ayın geçmiş son ödeme gününe düşüp bakiyeyi hemen eksiye çekiyordu.
+- Taksit kuruş farkı, bankaların çoğu gibi ilk taksitte; ödenmiş taksidi olan planı düzenlemek toplamı bozmuyor.
+- Dövizli taksitlerin gelecek ayları güncel kurla hesaplanıyor; dövizli alışverişin iadesi kendi para biriminde giriliyor.
+- Excel'in kolon kalanı satırları grafiklerde ve bütçelerde sayılmıyor, Analiz'de ayrı kartta görünüyor.
+- Geçmişe uzanan içe aktarma, kurulumda yazdığın ay başı bakiyesini koruyor.
+- Toplu girişteki ay toplamları Excel'deki gibi ayın 1'ine yazılıyor.
+- İleri tarihli ama ödendi işaretli satırlar tabloda planlanan olarak görünüyor; önceden hiçbir yerde sayılmıyordu.
+- Ödeme yöntemi değişince tarihsiz kart harcamaları yeni kartın ekstresine taşınıyor.
+- Durum'daki kart satırından açılan ekrandan geri dönünce Mali Tablo sekmesi bozulmuyor.
+- Şifre sıfırlama bağlantısı, Helix başka bir sekmede açıkken de açılıyor ve o sekmenin oturumuna dokunmuyor.
+- Excel'den ya da ekstreden gelen bir planı düzenlerken tutar alanı artık boş gelmiyor.
+- Excel'i yeniden aktarmak, içe aktarılmış bir alışverişe elle girdiğin iadeyi silmiyor.
+- Geri bildirim maili yeni, okunaklı bir tasarımla geliyor.
+- Excel'deki ay başı formülü ay ay değişse de Mali Tablo her geçmiş ayı dosyadaki ay başıyla açıyor.
+- Uygulamada kapatılan kredi, Excel yeniden içe aktarılınca kapalı kalıyor ve kapatma yine geri alınabiliyor.
+- Kurulumda içe aktarmadan sonra değiştirilen ay başı bakiyesi artık kaybolmuyor.
+- Yazı tipi sıkıştırılmış ya da birden çok gömülü yazı tipi kullanan PDF ekstreler okunabiliyor.
+- Bozuk ya da kasıtlı hazırlanmış bir PDF, ekstre okunurken uygulamayı artık dondurmuyor; okunamayan dosya adıyla bildiriliyor.
+- Bildirim detaylarını kapatmak artık bildirimleri de kapatmıyor.
+- iPhone'da sekme değiştirince Mali Tablo'nun bazen boş açılması düzeltildi; telefonda sekmeler şimdilik geçiş efekti olmadan değişiyor.
+
 ## 1.7.4
 
 ### Patch Changes
@@ -29,7 +69,7 @@ Notlar kısa tutulur: ne değişti, tek cümle. Sebebi ve ölçümü commit'te.
 ### Patch Changes
 
 - İçe aktarma, bu ayın taksitlerini artık sıfırlamıyor. Tablonun henüz doldurmadığı bir hücre "sıfır" sayılıyordu; Eylül'ün taksitleri iptal oluyor, Ekim ve Kasım'ınkiler görünüyordu.
-- İlk kurulumdan sonra yapılan içe aktarma bakiyeyi doğru kuruyor. Kurulumda yazdığın "bugün elimde şu kadar var", dosyanın ilk ayına ait sanılıyor ve aradaki her satır üstüne ekleniyordu.
+- İlk kurulumdan sonra yapılan içe aktarma, bakiyeyi dosyanın ilk ayından kuruyor; önceden kurulumda yazdığın bakiye korunuyor ve dosyanın geçmişiyle uyuşmuyordu.
 - Aynı dosyayı ikinci kez aktarmak bakiye düzeltmelerini koruyor; önceden ikinci aktarım onları siliyordu.
 - Taksit kartında üstteki satır her zaman bulunduğun ayı gösteriyor; yanındaki sayaç ise barla birlikte, baktığın aya göre değişiyor.
 - Bakiye kolonları diğer kolonlar gibi kalemle düzenleniyor. "Mali Tablo'da göster" yalnızca Ay Başı satırının altında.

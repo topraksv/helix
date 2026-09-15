@@ -30,14 +30,15 @@ vi.mock("../src/db/ids", () => ({
 }));
 vi.mock("../src/sync/engine", () => ({ scheduleSync: vi.fn() }));
 
-import { importSheets, openingBalanceFromSheets } from "../src/data/repo/imports";
-import { setOpeningBalance } from "../src/data/repo/onboarding";
+import { importSheets, importWorkbookRecords, openingBalanceFromSheets, planWorkbookRecords } from "../src/data/repo/imports";
+import type { InvestmentRecord, SubscriptionRecord } from "../src/domain/workbook-format";
+import { closeInstallmentPlan, reopenInstallmentPlan } from "../src/data/repo/installments";
+import { seedWorkspace, setOpeningBalance } from "../src/data/repo/onboarding";
 import type { CellData, ParsedSheet } from "../src/services/spreadsheet-import";
-import { currentBalance } from "../src/domain/balance";
 import type { TxLike } from "../src/domain/types";
 import type { ISODate, MonthKey } from "../src/domain/dates";
 import { tr } from "../src/i18n/tr";
-import { migrationStatements, required } from "./helpers";
+import { migrationStatements, required, directBalance } from "./helpers";
 
 const USER = "import-user";
 const NOW = "2026-08-18T09:00:00.000Z";
@@ -99,7 +100,12 @@ const monthTotal = (month: string): number =>
     .filter((row) => row.effective_date.startsWith(month))
     .reduce((sum, row) => sum + (row.type === "income" ? row.amount_try_minor : -row.amount_try_minor), 0);
 
-/** The balance the dashboard would show, derived exactly as production does. */
+/**
+ * `directBalance`: the opening plus every counted row. The screens compute the
+ * balance through the ledger chain instead, which back-anchors rows dated before
+ * the configured month — the two agree whenever no counted row predates the
+ * anchor, which every fixture asserting a balance here is built to hold.
+ */
 function balanceNow(): number {
   const transactions: TxLike[] = liveRows().map((row) => ({
     id: row.id,
@@ -118,7 +124,7 @@ function balanceNow(): number {
   const adjustments = harness.db!
     .prepare(`SELECT date, amount_minor FROM balance_adjustments WHERE user_id = ? AND deleted_at IS NULL`)
     .all(USER) as { date: string; amount_minor: number }[];
-  return currentBalance({
+  return directBalance({
     openingBalanceMinor: Number(setting("opening_balance_minor") ?? 0),
     transactions,
     adjustments: adjustments.map((row) => ({ date: row.date as ISODate, amountMinor: row.amount_minor })),
@@ -490,6 +496,27 @@ describe("importing the same workbook twice", () => {
     });
 
     /**
+     * A refund typed against an imported purchase is linked to that plan, but a
+     * person entered it. Replacing the batch rebuilds the plan's own instalments
+     * and must leave the refund where it was — "elle girilenler kalır".
+     */
+    it("keeps a hand-entered refund on an imported plan through a replace", async () => {
+      const req = planRequest({ [CARD]: { statementDay: 25, dueDay: 10 } });
+      await importSheets(USER, req);
+      const plan = harness.db!.prepare(`SELECT id FROM installment_plans WHERE user_id = ? AND deleted_at IS NULL`).get(USER) as { id: string };
+      harness.db!.prepare(
+        `INSERT INTO transactions (id, user_id, created_at, updated_at, deleted_at, tombstone_version, type, amount_minor, currency,
+           amount_try_minor, entry_date, effective_date, status, person_id, is_aggregate, installment_plan_id, installment_no, origin)
+         VALUES ('refund-1', ?, ?, ?, NULL, 0, 'expense', -50000, 'TRY', -50000, '2026-02-01', '2026-02-10', 'realized', 'person-self', 0, ?, NULL, 'manual')`,
+      ).run(USER, NOW, NOW, plan.id);
+
+      await importSheets(USER, req);
+
+      const refund = harness.db!.prepare(`SELECT deleted_at FROM transactions WHERE id = 'refund-1'`).get() as { deleted_at: string | null };
+      expect(refund.deleted_at).toBeNull();
+    });
+
+    /**
      * The plan is structure, so a repeated replace must not leave two of it.
      * The batch record carries plan ids for exactly this reason.
      */
@@ -502,6 +529,37 @@ describe("importing the same workbook twice", () => {
         .prepare(`SELECT COUNT(*) AS n FROM installment_plans WHERE user_id = ? AND deleted_at IS NULL`)
         .get(USER) as { n: number };
       expect(plans.n).toBe(1);
+    });
+
+    /**
+     * A loan closed in the app is the owner's later word on it, so a workbook
+     * that still lists its instalments does not bring them back — and undoing
+     * the closure afterwards still restores exactly what the closure took
+     * (owner decision, 2026-09-14).
+     */
+    it("keeps a plan closed in the app closed through a re-import, and still undoable", async () => {
+      const req = planRequest({ [CARD]: { statementDay: 25, dueDay: 10 } });
+      await importSheets(USER, req);
+      const plan = harness.db!.prepare(`SELECT id FROM installment_plans WHERE user_id = ? AND deleted_at IS NULL`).get(USER) as { id: string };
+      const instalments = () => harness.db!
+        .prepare(`SELECT installment_no FROM transactions WHERE installment_plan_id = ? AND installment_no IS NOT NULL AND deleted_at IS NULL ORDER BY installment_no`)
+        .all(plan.id)
+        .map((row) => (row as { installment_no: number }).installment_no);
+      // The owner turned the imported purchase into a loan on its edit screen, and
+      // deleted one instalment by hand before paying it off; that one is not the closure's to restore.
+      harness.db!.prepare(`UPDATE installment_plans SET kind = 'loan' WHERE id = ?`).run(plan.id);
+      harness.db!.prepare(`UPDATE transactions SET deleted_at = ?, tombstone_version = 1 WHERE installment_plan_id = ? AND installment_no = 6`).run(NOW, plan.id);
+      await closeInstallmentPlan(USER, plan.id, { closedOn: "2026-02-15", payoffMinor: 0, note: null });
+      const closed = instalments();
+
+      await importSheets(USER, req);
+
+      expect(instalments()).toEqual(closed);
+      expect(harness.db!.prepare(`SELECT kind, installment_count, original_installment_count, closed_on FROM installment_plans WHERE id = ?`).get(plan.id))
+        .toEqual({ kind: "loan", installment_count: closed.at(-1), original_installment_count: 9, closed_on: "2026-02-15" });
+
+      await reopenInstallmentPlan(USER, plan.id);
+      expect(instalments()).toEqual([1, 2, 3, 4, 5, 7, 8, 9]);
     });
   });
 
@@ -531,6 +589,34 @@ describe("importing the same workbook twice", () => {
     expect(adjustments).toEqual([{ date: "2026-02-28", amount_minor: -5_500_00 }]);
     // Nothing to restate when the sheets chain: the balance is the balance.
     expect(balanceNow()).toBe(500_00 - 1_000_00);
+  });
+
+  /**
+   * A sheet's running balance can count different columns in different months,
+   * so every past month it states holds its own figure. A month still ahead
+   * states a forecast, which holds nothing.
+   */
+  it("holds every past month the workbook states, not only a sheet's first", async () => {
+    const stated: ParsedSheet = {
+      ...sheet(),
+      months: ["2026-01", "2026-02", "2026-03"],
+      cells: [
+        [money(1_500_00), money(OPENING_MINOR)],
+        // The sheet opens February on 8.000,00 where the chain reaches 8.500,00.
+        [money(2_500_00), money(8_000_00)],
+        [money(100_00), money(1_00)],
+      ],
+    };
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-02-20T09:00:00.000Z"));
+    try {
+      await importSheets(USER, { ...request("replace"), sheets: [stated] });
+    } finally {
+      vi.useRealTimers();
+    }
+
+    expect(harness.db!.prepare(`SELECT date, amount_minor, declared_minor FROM balance_adjustments WHERE user_id = ? AND deleted_at IS NULL`).all(USER))
+      .toEqual([{ date: "2026-01-31", amount_minor: -500_00, declared_minor: 8_000_00 }]);
   });
 
   /**
@@ -578,33 +664,76 @@ describe("importing the same workbook twice", () => {
 
   /**
    * History reaching back before the anchor brings the anchor with it, whether
-   * or not the workbook names an opening figure.
+   * or not the workbook names an opening figure — and the balance the owner
+   * typed for the later month is kept as that month's declared opening.
    *
-   * The balance is the opening plus every row, with no regard for whether a row
-   * predates the anchor — so leaving the anchor where it was adds the whole
-   * imported history on top of a figure that described a later moment. Measured
-   * on the owner's file: a first run that opened at 50.000,00 for Eylül 2026 and
-   * then imported from Ağustos 2021 read 70.953,72 where the same workbook into
-   * an empty workspace read −16.462,53.
+   * The workbook's first month opens at its own figure or at zero, so the
+   * history reads as the file says. Until 1.8.0 the typed balance was then
+   * simply gone (measured on the owner's file: 30.657,28 became −18.053,53);
+   * it is a statement of what was in hand, later than the file's, and it holds
+   * its month (owner decision, 2026-09-13).
    */
-  it("moves the anchor back even when the workbook states no opening figure", async () => {
-    await setOpeningBalance(USER, "2026-06", 50_000_00);
-    const noOpeningColumn = (): ParsedSheet => {
-      const base = sheet();
-      return {
-        ...base,
-        columns: base.columns.slice(0, 1),
-        cells: base.cells.map((row) => row.slice(0, 1)),
-        skippedColumns: [],
-        openingColumn: null,
-        openingCandidates: [],
-      };
+  const noOpeningColumn = (): ParsedSheet => {
+    const base = sheet();
+    return {
+      ...base,
+      columns: base.columns.slice(0, 1),
+      cells: base.cells.map((row) => row.slice(0, 1)),
+      skippedColumns: [],
+      openingColumn: null,
+      openingCandidates: [],
     };
+  };
+
+  it("moves the anchor back and keeps the typed balance as a declaration that outlives the import", async () => {
+    await setOpeningBalance(USER, "2026-06", 50_000_00);
     await importSheets(USER, { ...request("replace"), sheets: [noOpeningColumn()], excludedLabels: [] });
 
     expect(setting("start_month")).toBe("2026-01");
     expect(setting("opening_balance_minor")).toBe(0);
-    expect(balanceNow()).toBe(-(1_500_00 + 2_500_00));
+    const kept = () => harness.db!
+      .prepare(`SELECT date, amount_minor, declared_minor, deleted_at FROM balance_adjustments WHERE user_id = ? AND declared_minor IS NOT NULL`)
+      .all(USER);
+    expect(kept()).toEqual([{ date: "2026-05-31", amount_minor: 50_000_00 + 1_500_00 + 2_500_00, declared_minor: 50_000_00, deleted_at: null }]);
+    expect(balanceNow()).toBe(50_000_00);
+
+    // Replacing the import takes the rows it wrote and leaves the owner's figure.
+    await importSheets(USER, { ...request("replace"), sheets: [noOpeningColumn()], excludedLabels: [] });
+    expect(kept()).toEqual([{ date: "2026-05-31", amount_minor: 50_000_00 + 1_500_00 + 2_500_00, declared_minor: 50_000_00, deleted_at: null }]);
+  });
+
+  it("keeps no typed balance where there was none: a zero, or an anchor an earlier import wrote", async () => {
+    await setOpeningBalance(USER, "2026-06", 0);
+    const earlier: ParsedSheet = { ...sheet(), sheetName: "2025", year: 2025, months: ["2025-12"], cells: [[money(100_00), money(null)]], openingColumn: null, openingCandidates: [] };
+    await importSheets(USER, { ...request("replace"), sheets: [earlier] });
+    expect(harness.db!.prepare(`SELECT COUNT(*) AS n FROM balance_adjustments WHERE declared_minor IS NOT NULL`).get()).toEqual({ n: 0 });
+  });
+
+  /**
+   * Back on the setup screen after the import, a changed figure restates the
+   * month it was typed for. The anchor has already moved earlier, so it used
+   * to be dropped without a word.
+   */
+  it("restates the kept balance when setup is saved again with a new figure", async () => {
+    await setOpeningBalance(USER, "2026-06", 50_000_00);
+    await importSheets(USER, { ...request("replace"), sheets: [noOpeningColumn()], excludedLabels: [] });
+    const setup = (openingBalanceMinor: number) => seedWorkspace(USER, {
+      templateCategories: [], startMonth: "2026-06", openingBalanceMinor, persons: [{ name: "Ben", isSelf: true }], sources: [],
+    });
+    const declarations = () => harness.db!
+      .prepare(`SELECT date, amount_minor, declared_minor, note FROM balance_adjustments WHERE user_id = ? AND declared_minor IS NOT NULL AND deleted_at IS NULL`)
+      .all(USER);
+    const restated = [{ date: "2026-05-31", amount_minor: 60_000_00 + 1_500_00 + 2_500_00, declared_minor: 60_000_00, note: tr.importer.openingKept }];
+
+    await setup(60_000_00);
+
+    expect(setting("start_month")).toBe("2026-01");
+    expect(declarations()).toEqual(restated);
+    // A client older than declarations lands on the same figure from the difference alone.
+    expect(balanceNow()).toBe(60_000_00);
+    // An empty field states nothing, so the figure stays.
+    await setup(0);
+    expect(declarations()).toEqual(restated);
   });
 });
 
@@ -702,5 +831,94 @@ describe("adopting a workbook's opening balance", () => {
       expect(openingBalanceFromSheets([sheet(2026)], () => true, null))
         .toEqual({ month: "2026-01", minor: 100_00 });
     });
+  });
+});
+
+/**
+ * The record sheets of a Helix workbook, brought back (owner decision,
+ * 2026-09-14): matched rows update, new rows add, nothing is deleted, and a row
+ * the workspace cannot place is named rather than guessed at.
+ */
+describe("bringing the record sheets back", () => {
+  beforeEach(() => {
+    harness.db = new DatabaseSync(":memory:");
+    for (const statement of migrationStatements) harness.db.exec(statement);
+    harness.nextId = 0;
+    seed();
+    harness.db.prepare(
+      `INSERT INTO payment_sources (id, user_id, created_at, updated_at, name, type, person_id, statement_day, due_day, logo_source, is_active)
+       VALUES ('card', ?, ?, ?, 'Worldcard', 'credit_card', 'person-self', 25, 5, 'initials', 1),
+              ('bare-card', ?, ?, ?, 'Eski Kart', 'credit_card', 'person-self', NULL, NULL, 'initials', 1)`,
+    ).run(USER, NOW, NOW, USER, NOW, NOW);
+  });
+
+  const subscription = (overrides: Partial<SubscriptionRecord> = {}): SubscriptionRecord => ({
+    row: 2, name: "Netflix", amountMinor: 22999, currency: "TRY", amountMode: "fixed", cycle: "monthly", intervalMonths: 1,
+    billingDay: 12, nextDueDate: "2026-10-12", trialEndDate: null, category: "", source: "Worldcard", person: "",
+    autoPay: false, isActive: true, websiteDomain: "netflix.com", ...overrides,
+  });
+  const operation = (overrides: Partial<InvestmentRecord> = {}): InvestmentRecord => ({
+    row: 2, product: "Gram Altın", assetType: "metal", marketCode: "", operationDate: "2026-02-01", kind: "buy",
+    quantity: "2", unitPriceMinor: 480000, totalMinor: 960000, note: "", ...overrides,
+  });
+  const records = (subscriptions: SubscriptionRecord[], investments: InvestmentRecord[] = []) => ({ subscriptions, investments, problems: [] });
+  const counts = (added: number, updated: number, unchanged: number) => ({ added, updated, unchanged });
+  const liveSubscriptions = () => harness.db!
+    .prepare(`SELECT name, cycle, amount_minor, note, payment_source_id FROM subscriptions WHERE user_id = ? AND deleted_at IS NULL ORDER BY name, cycle`)
+    .all(USER);
+
+  it("adds a subscription, leaves it alone when nothing changed, and updates it by name and cycle keeping its note", async () => {
+    expect(await planWorkbookRecords(USER, records([subscription()])))
+      .toEqual({ subscriptions: counts(1, 0, 0), investments: counts(0, 0, 0), problems: [], walletMissing: false });
+    expect((await importWorkbookRecords(USER, records([subscription()]))).subscriptions).toEqual(counts(1, 0, 0));
+    harness.db!.prepare(`UPDATE subscriptions SET note = 'aile paketi'`).run();
+
+    expect((await importWorkbookRecords(USER, records([subscription()]))).subscriptions).toEqual(counts(0, 0, 1));
+    // Written in capitals with a new price: still the same subscription.
+    const again = await importWorkbookRecords(USER, records([subscription({ name: "NETFLIX", amountMinor: 24999 }), subscription({ name: "Netflix", cycle: "yearly", intervalMonths: 12, row: 3 })]));
+
+    expect(again.subscriptions).toEqual(counts(1, 1, 0));
+    expect(liveSubscriptions()).toEqual([
+      { name: "NETFLIX", cycle: "monthly", amount_minor: 24999, note: "aile paketi", payment_source_id: "card" },
+      { name: "Netflix", cycle: "yearly", amount_minor: 22999, note: null, payment_source_id: "card" },
+    ]);
+  });
+
+  it("names a row whose person or card this workspace does not have, and one the app refuses to save", async () => {
+    const sheet = records([
+      subscription({ row: 2, person: "Ayşe" }),
+      subscription({ row: 3, name: "Spotify", source: "Kayıp Kart" }),
+      subscription({ row: 4, name: "Disney", source: "Eski Kart" }),
+      subscription({ row: 5, name: "YouTube" }),
+    ]);
+
+    const plan = await planWorkbookRecords(USER, sheet);
+    expect(plan.problems).toEqual([
+      { sheet: "Abonelikler", row: 2, column: "Kişi" },
+      { sheet: "Abonelikler", row: 3, column: "Ödeme Yöntemi" },
+    ]);
+    const outcome = await importWorkbookRecords(USER, sheet);
+
+    // A card with no cycle cannot carry a subscription; the others still land.
+    expect(outcome.problems).toEqual([...plan.problems, { sheet: "Abonelikler", row: 4, column: null }]);
+    expect(outcome.subscriptions).toEqual(counts(1, 0, 0));
+    expect(liveSubscriptions()).toEqual([{ name: "YouTube", cycle: "monthly", amount_minor: 22999, note: null, payment_source_id: "card" }]);
+  });
+
+  it("waits for the investment wallet, then adds, keeps and updates operations, refusing a sale beyond what is held", async () => {
+    const waiting = await importWorkbookRecords(USER, records([], [operation()]));
+    expect(waiting).toMatchObject({ investments: counts(0, 0, 0), walletMissing: true, problems: [] });
+
+    harness.db!.prepare(
+      `INSERT INTO investment_profiles (id, user_id, created_at, updated_at, started_on, opening_cash_minor) VALUES ('wallet', ?, ?, ?, '2026-01-01', 5000000)`,
+    ).run(USER, NOW, NOW);
+    const sale = operation({ row: 3, kind: "sell", operationDate: "2026-03-01", quantity: "5", unitPriceMinor: 500000, totalMinor: 2500000 });
+    const first = await importWorkbookRecords(USER, records([], [sale, operation()]));
+    expect(first).toMatchObject({ investments: counts(1, 0, 0), problems: [{ sheet: "Yatırımlar", row: 3, column: null }], walletMissing: false });
+
+    expect((await planWorkbookRecords(USER, records([], [operation()]))).investments).toEqual(counts(0, 0, 1));
+    expect((await importWorkbookRecords(USER, records([], [operation({ note: "düğün hediyesi" })]))).investments).toEqual(counts(0, 1, 0));
+    expect(harness.db!.prepare(`SELECT p.name, o.kind, o.quantity, o.note FROM investment_operations o JOIN investment_products p ON p.id = o.product_id WHERE o.deleted_at IS NULL`).all())
+      .toEqual([{ name: "Gram Altın", kind: "buy", quantity: "2", note: "düğün hediyesi" }]);
   });
 });

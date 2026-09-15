@@ -13,6 +13,10 @@ export {
   InstallmentHistoryConflictError,
   ReferencedRecordError,
   ImportBatchUnreadableError,
+  InstallmentRefundNothingLeftError,
+  InstallmentRefundTooLargeError,
+  RefundExceedsExpenseError,
+  StatementPaymentTooLargeError,
   SubscriptionCategoryRequiredError,
 } from "./repo/errors";
 
@@ -53,6 +57,10 @@ export {
   restoreBalanceAdjustment,
   restoreTransaction,
   setCurrentBalance,
+  addStatementPayment,
+  deleteStatementPayment,
+  restoreStatementPayment,
+  declareMonthOpeningBalance,
   updateTransaction,
 } from "./repo/transactions";
 export type { NewTransaction, TransactionPatch } from "./repo/transactions";
@@ -73,12 +81,15 @@ export type {
 } from "./repo/investments";
 
 export {
+  addInstallmentRefund,
+  closeInstallmentPlan,
+  reopenInstallmentPlan,
   countInstallmentsForPlan,
   createInstallmentPlan,
   deletePlan,
   updateInstallmentPlan,
 } from "./repo/installments";
-export type { NewPlan } from "./repo/installments";
+export type { InstallmentRefund, NewPlan } from "./repo/installments";
 
 export {
   deleteRecurringIncomeWithExpected,
@@ -106,9 +117,11 @@ export {
   hasImportedData,
   importSheets,
   importedYears,
+  importWorkbookRecords,
   openingBalanceFromSheets,
+  planWorkbookRecords,
 } from "./repo/imports";
-export type { ImportRequest } from "./repo/imports";
+export type { ImportRequest, RecordImportPlan } from "./repo/imports";
 
 export { runMaintenance } from "./repo/maintenance";
 

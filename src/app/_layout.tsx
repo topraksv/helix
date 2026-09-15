@@ -22,7 +22,8 @@ import {
 import { useSession } from "../auth/session";
 import { useSyncStatus } from "../sync/status";
 import { useAccountFrozenState, useOnboardedState } from "../data/hooks";
-import { classifyBootFailure, classifyRootRoute, resolveRootGuard, type BootFailure } from "../domain/app-guard";
+import { classifyBootFailure, classifyRootRoute, drawsWithoutDatabase, resolveRootGuard, type BootFailure } from "../domain/app-guard";
+import ResetPasswordScreen from "./(auth)/reset-password";
 import { kv } from "../services/kv";
 import {
   controlSize,
@@ -66,6 +67,7 @@ import {
   useForegroundSync,
   useMarketLifecycle,
   useDatabaseHandoff,
+  useNavigationAcrossLock,
   useNotificationTapRouting,
   useWorkspaceMaintenance,
 } from "../ui/root-lifecycle";
@@ -190,6 +192,10 @@ export default function RootLayout() {
   // holding the database goes away.
   const { heldElsewhere } = useDatabaseHandoff(dbReady, bootFailure === "busy");
   const bootEnding = bootEndingFor(bootFailure, heldElsewhere);
+  // The reset screen is drawn instead of the second-tab wait; see
+  // `drawsWithoutDatabase` for why it is the only route that may be.
+  const segments = useSegments();
+  const standaloneRecovery = drawsWithoutDatabase(bootFailure, classifyRootRoute(segments as string[]));
   // Fonts are cosmetic: never let a slow/flaky web font fetch hold the whole
   // app on a blank screen — after a short grace we render with the system
   // fallback (this was the mobile-web "white screen" culprit).
@@ -300,6 +306,12 @@ export default function RootLayout() {
         ) : (
           <RootLayoutInner />
         )
+      ) : standaloneRecovery ? (
+        <ThemeContext.Provider value={bootTheme}>
+          <View style={{ flex: 1, backgroundColor: background }}>
+            <ResetPasswordScreen standalone />
+          </View>
+        </ThemeContext.Provider>
       ) : (
         <ThemeContext.Provider value={bootTheme}>
         <View style={{ flex: 1, backgroundColor: background, alignItems: "center", justifyContent: "center" }}>
@@ -501,15 +513,6 @@ function RootLayoutInner() {
     if (remoteChangeAt) useUndo.getState().show(tr.sync.remoteChangeNotice);
   }, [remoteChangeAt]);
 
-  useWorkspaceMaintenance(ready, userId, locked === false);
-  useForegroundSync(ready, userId, locked === false);
-  useMarketLifecycle(ready, userId, locked === false);
-  // A tapped reminder opens the record it named. Pushed, not replaced: the
-  // screen underneath stays the app the user was already in, so Back and the
-  // edge swipe return there rather than closing the app.
-  useNotificationTapRouting(ready, userId, locked === false, (route) =>
-    router.push(route as Parameters<typeof router.push>[0]));
-
   const guard = resolveRootGuard({
     ready,
     locked,
@@ -519,6 +522,26 @@ function RootLayoutInner() {
     awaitingFirstPull,
     route: routeArea,
   });
+  // Frozen account: block everything behind the reactivation gate. Only applies
+  // to a signed-in, onboarded user (frozen is null when signed out); suppressed
+  // on the device that is mid-freeze (it's about to sign out to the login page).
+  const frozenGate = Boolean(userId && onboarded === true && frozen === true && !isFreezing && !inRecovery);
+  const guardQueryFailed = Boolean(
+    userId &&
+    ((onboardedState.status === "error" && !onboardedState.updatedAt) ||
+      (frozenState.status === "error" && !frozenState.updatedAt)),
+  );
+
+  useWorkspaceMaintenance(ready, userId, locked === false);
+  useForegroundSync(ready, userId, locked === false);
+  useMarketLifecycle(ready, userId, locked === false);
+  useNavigationAcrossLock(locked, guard.view === "stack" && !frozenGate && !guardQueryFailed, userId);
+  // A tapped reminder opens the record it named. Pushed, not replaced: the
+  // screen underneath stays the app the user was already in, so Back and the
+  // edge swipe return there rather than closing the app.
+  useNotificationTapRouting(ready, userId, locked === false, (route) =>
+    router.push(route as Parameters<typeof router.push>[0]));
+
   useEffect(() => {
     if (guard.redirect) router.replace(guard.redirect);
   }, [guard.redirect, router]);
@@ -547,10 +570,7 @@ function RootLayoutInner() {
     );
   }
 
-  // Frozen account: block everything behind the reactivation gate. Only applies
-  // to a signed-in, onboarded user (frozen is null when signed out); suppressed
-  // on the device that is mid-freeze (it's about to sign out to the login page).
-  if (userId && onboarded === true && frozen === true && !isFreezing && !inRecovery) {
+  if (frozenGate) {
     return (
       <ThemeContext.Provider value={theme}>
         <FrozenGate />
@@ -559,11 +579,6 @@ function RootLayoutInner() {
     );
   }
 
-  const guardQueryFailed = Boolean(
-    userId &&
-    ((onboardedState.status === "error" && !onboardedState.updatedAt) ||
-      (frozenState.status === "error" && !frozenState.updatedAt)),
-  );
   // Signing out, freezing and deleting all land here, because all three end the
   // session. Saying "Hesabın eşitleniyor" through a deletion is the app telling
   // the user the opposite of what it is doing, so the waiting view names the
@@ -637,6 +652,7 @@ function RootLayoutInner() {
           <Stack.Screen name="(onboarding)/setup" options={{ headerShown: false }} />
           <Stack.Screen name="transaction" options={{ ...cardScreenOptions(theme.palette), title: tr.tx.new, headerLeft: () => <TransactionBackButton /> }} />
           <Stack.Screen name="installment-new" options={{ ...cardScreenOptions(theme.palette), title: tr.installments.newPlan, headerLeft: () => <HeaderBackButton fallback="/(tabs)/cash-flow/installments" /> }} />
+          <Stack.Screen name="installment-refund" options={{ ...cardScreenOptions(theme.palette), title: tr.installments.refundTitle, headerLeft: () => <HeaderBackButton fallback="/(tabs)/cash-flow/installments" /> }} />
           <Stack.Screen name="subscription-form" options={{ ...cardScreenOptions(theme.palette), title: tr.subs.add, headerLeft: () => <HeaderBackButton fallback="/(tabs)/subscriptions" /> }} />
           <Stack.Screen name="bulk-entry" options={{ ...cardScreenOptions(theme.palette), title: tr.bulk.title, headerLeft: () => <HeaderBackButton fallback="/(tabs)/cash-flow" /> }} />
           <Stack.Screen name="cell-editor" options={{ ...cardScreenOptions(theme.palette), title: tr.cell.title, headerLeft: () => <HeaderBackButton fallback="/(tabs)/cash-flow" /> }} />
@@ -661,6 +677,8 @@ function RootLayoutInner() {
           <Stack.Screen name="reconciliation" options={{ title: tr.catchup.title, headerLeft: () => <HeaderBackButton fallback="/(tabs)" /> }} />
           <Stack.Screen name="upcoming" options={{ title: tr.upcoming.title, headerLeft: () => <HeaderBackButton fallback="/(tabs)" /> }} />
           <Stack.Screen name="analytics" options={{ title: tr.analysis.title, headerLeft: () => <HeaderBackButton fallback="/(tabs)" /> }} />
+          <Stack.Screen name="installments" options={{ title: tr.installments.title, headerLeft: () => <HeaderBackButton fallback="/(tabs)" /> }} />
+          <Stack.Screen name="card-statement" options={{ title: tr.cardStatement.title, headerLeft: () => <HeaderBackButton fallback="/(tabs)" /> }} />
           <Stack.Screen name="market-detail" options={{ ...cardScreenOptions(theme.palette), title: tr.markets.title, headerLeft: () => <HeaderBackButton fallback="/(tabs)" /> }} />
           <Stack.Screen name="payment-sources" options={{ title: tr.settings.sources, headerLeft: () => <HeaderBackButton fallback="/(tabs)/settings" /> }} />
           <Stack.Screen name="incomes" options={{ title: tr.settings.incomeRules, headerLeft: () => <HeaderBackButton fallback="/(tabs)/settings" /> }} />

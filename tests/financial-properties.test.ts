@@ -17,12 +17,13 @@
 
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
-import { buildLedger, currentBalance, resolveLedgerAnchor } from "../src/domain/balance";
+import { buildLedger, resolveLedgerAnchor } from "../src/domain/balance";
 import { MAX_ABS_AMOUNT_MINOR, formatMinorInput, parseAmountExpression } from "../src/domain/money";
 import { sortTransactions, type TransactionSortMode } from "../src/domain/transaction-search";
 import { addMonthsToKey, monthKeyOf, monthRange, type ISODate, type MonthKey } from "../src/domain/dates";
 import { resolveTombstoneVersion } from "../src/sync/tombstone-policy";
 import type { TxLike } from "../src/domain/types";
+import { directBalance } from "./helpers";
 
 const PROPERTY_SEED = 20_260_812;
 
@@ -155,16 +156,14 @@ describe("balance chain", () => {
   });
 
   it("agrees with the direct balance calculation over the anchored inputs", () => {
-    // Two independent paths to today's balance: the chained ledger and a
-    // single pass. `buildLedgerChain` serves the first and falls back to the
-    // second, so they must never disagree.
+    // Two independent paths to today's balance: the chained ledger every
+    // screen reads, and a single naive pass kept in the test helpers.
     //
-    // The anchor is not optional here. `currentBalance` has no month window at
+    // The anchor is not optional here. `directBalance` has no month window at
     // all — it sums every counting row — so the two agree only once
     // `resolveLedgerAnchor` has moved the start back to cover the earliest
     // data. Written without it, this property fails on a single row dated
-    // before the configured start, which is how the ignored `startMonth`
-    // argument on `currentBalance` was found and removed.
+    // before the configured start.
     fc.assert(
       fc.property(fc.array(transaction, { maxLength: 40 }), (transactions) => {
         const today = "2026-07-15" as ISODate;
@@ -178,7 +177,7 @@ describe("balance chain", () => {
           today,
         });
         const july = ledger.find((month) => month.month === monthKeyOf(today));
-        expect(july?.closingMinor).toBe(currentBalance({
+        expect(july?.closingMinor).toBe(directBalance({
           openingBalanceMinor: anchor.openingBalanceMinor,
           transactions,
           adjustments: [],

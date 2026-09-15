@@ -1,3 +1,4 @@
+import { Platform } from "react-native";
 import { Tabs } from "expo-router";
 import ChartPie from "lucide-react-native/icons/chart-pie";
 import Landmark from "lucide-react-native/icons/landmark";
@@ -32,7 +33,15 @@ export default function TabsLayout() {
         // `shift`: the five tabs are peers, not a sequence, so nothing should
         // imply a direction between them. The navigator honours Reduce Motion
         // through the platform's own accessibility settings.
-        animation: "fade" as const,
+        //
+        // Native only cuts, for now. Expo Router 57's vendored tab view decides
+        // when to detach a scene from the native-driven animation value, and a
+        // switch that interrupts it leaves the new tab detached at opacity 0:
+        // measured 2026-09-15 on an iOS Release build, Mali Tablo opened blank
+        // in five runs of six. Fixed upstream in `@react-navigation/bottom-tabs`
+        // 7.18.8 and for the vendored copy in expo/expo#49778; restore `fade`
+        // once that ships.
+        animation: Platform.OS === "web" ? ("fade" as const) : ("none" as const),
         // A keyboard is an editing state, not navigation. Hiding the floating
         // bar gives the active field room and avoids a second opaque strip
         // competing with the keyboard on compact devices.

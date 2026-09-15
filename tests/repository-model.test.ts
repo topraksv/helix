@@ -782,6 +782,34 @@ describe("repository model oracle", () => {
       .rejects.toMatchObject({ name: "InvestmentDomainError", code: "invalid_operation" });
   });
 
+  it("refuses a wallet or product the rules forbid, and saves a product in place", async () => {
+    harness.db?.close();
+    harness.nextId = 0;
+    harness.db = new DatabaseSync(":memory:");
+    for (const statement of migrationStatements) harness.db.exec(statement);
+    await createPerson(USER, "Ben");
+
+    await expect(setupInvestments(USER, { startedOn: "2999-01-01", openingCashMinor: 0 })).rejects.toMatchObject({ code: "invalid_date" });
+    await expect(setupInvestments(USER, { startedOn: "2026-02-30", openingCashMinor: 0 })).rejects.toMatchObject({ code: "invalid_date" });
+    await expect(setupInvestments(USER, { startedOn: "2026-01-01", openingCashMinor: -1 })).rejects.toMatchObject({ code: "invalid_money" });
+    await setupInvestments(USER, { startedOn: "2026-01-01", openingCashMinor: 10_000_000 });
+
+    await expect(saveInvestmentProduct(USER, { assetType: "equity", name: "   " })).rejects.toMatchObject({ code: "unknown_product" });
+    await expect(saveInvestmentProduct(USER, { assetType: "equity", name: "x".repeat(121) })).rejects.toMatchObject({ code: "unknown_product" });
+    await expect(saveInvestmentProduct(USER, { id: "no-such-product", assetType: "equity", name: "Hisse" }))
+      .rejects.toMatchObject({ code: "unknown_product" });
+
+    const id = await saveInvestmentProduct(USER, { assetType: "equity", name: " Hisse ", marketCode: " THYAO ", note: " uzun vade " });
+    // A value the removed allocation feature left behind is carried, never cleared.
+    harness.db.prepare("UPDATE investment_products SET target_weight_bp = 2500 WHERE id = ?").run(id);
+    expect(harness.db.prepare("SELECT name, market_code, note FROM investment_products WHERE id = ?").get(id))
+      .toEqual({ name: "Hisse", market_code: "THYAO", note: "uzun vade" });
+
+    expect(await saveInvestmentProduct(USER, { id, assetType: "fund", name: "Fon", marketCode: "", note: "" })).toBe(id);
+    expect(harness.db.prepare("SELECT asset_type, name, market_code, note, target_weight_bp, deleted_at FROM investment_products").all())
+      .toEqual([{ asset_type: "fund", name: "Fon", market_code: null, note: null, target_weight_bp: 2500, deleted_at: null }]);
+  });
+
   it("refuses to rewrite an operation that is not live in this account", async () => {
     await expect(updateInvestmentOperation(USER, "no-such-operation", {
       productId: "no-such-product",

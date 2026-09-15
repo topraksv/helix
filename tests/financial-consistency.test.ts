@@ -19,7 +19,6 @@
 import { describe, expect, it } from "vitest";
 import {
   buildLedger,
-  currentBalance,
   reconciliationDelta,
   resolveLedgerAnchor,
 } from "../src/domain/balance";
@@ -27,7 +26,7 @@ import { categoryRangeMatrix, distributionForRange, fixedVsVariable } from "../s
 import { buildCashFlowMatrixModel } from "../src/domain/cash-flow-matrix";
 import { buildDashboardModel } from "../src/domain/dashboard";
 import { firstDayOf, lastDayOf, monthKeyOf } from "../src/domain/dates";
-import { required, tl, tx } from "./helpers";
+import { required, tl, tx, directBalance } from "./helpers";
 
 const TODAY = "2026-07-25";
 const CONFIGURED_START = "2026-03";
@@ -98,7 +97,7 @@ describe("every money screen reports the same dataset the same way", () => {
     // reconciles against a number no other screen agrees with.
     const { anchor, ledger } = anchoredLedger();
     const fromChain = required(ledger.find((month) => month.month === monthKeyOf(TODAY))).closingMinor;
-    const direct = currentBalance({
+    const direct = directBalance({
       openingBalanceMinor: anchor.openingBalanceMinor,
       transactions,
       adjustments,

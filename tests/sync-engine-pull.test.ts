@@ -114,7 +114,7 @@ describe("when the change probe is consulted at all", () => {
 
     // Nothing to skip means the probe could only add a round trip.
     expect(rpcCalls).not.toContain("sync_cursors");
-    expect(pulled).toHaveLength(21);
+    expect(pulled).toHaveLength(22);
   });
 
   it("asks once, not once per table, as soon as any cursor has moved", async () => {
@@ -209,14 +209,14 @@ describe("when the probe cannot be trusted", () => {
     startSyncSession(USER);
 
     await syncNow(USER, false);
-    expect(pulled).toHaveLength(21);
+    expect(pulled).toHaveLength(22);
 
     // A migration that is not applied does not become a round trip per sync.
     pulled = [];
     rpcCalls = [];
     await syncNow(USER, false);
     expect(rpcCalls).not.toContain("sync_cursors");
-    expect(pulled).toHaveLength(21);
+    expect(pulled).toHaveLength(22);
   });
 
   it("fails the sync on any other error instead of skipping tables", async () => {
