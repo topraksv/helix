@@ -102,4 +102,10 @@ describe("install-time code execution", () => {
     // package on its way back in.
     expect(gone, "allowlisted but no longer installed — remove it").toEqual([]);
   });
+
+  /** The root postinstall; a tree installed without it ships the blank-tab bug on native. */
+  it("installs dependencies with their upstream fixes applied", () => {
+    expect(readFileSync("node_modules/expo-router/build/react-navigation/bottom-tabs/views/BottomTabView.js", "utf8"))
+      .toContain("lastUpdate.animating");
+  });
 });

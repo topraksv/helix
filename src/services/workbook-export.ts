@@ -19,6 +19,7 @@ import {
   WORKBOOK_COLUMNS,
   WORKBOOK_SHEETS,
   type InvestmentRow,
+  type LedgerNote,
   type SubscriptionRow,
   type WorkbookColumn,
 } from "../domain/workbook-format";
@@ -94,8 +95,10 @@ function widthsOf(grid: readonly (readonly string[])[]): { wch: number }[] {
  * — it was a full extra pass over the grid for a guarantee the type system and
  * the test already give.
  */
-function toSheet(xlsx: typeof import("xlsx"), grid: string[][]): import("xlsx").WorkSheet {
+function toSheet(xlsx: typeof import("xlsx"), grid: string[][], notes: readonly LedgerNote[]): import("xlsx").WorkSheet {
   const sheet = xlsx.utils.aoa_to_sheet(grid);
+  // Hidden, the way Excel keeps a note: a marker on the cell, the text on hover.
+  for (const [r, c, text] of notes) sheet[xlsx.utils.encode_cell({ r, c })].c = Object.assign([{ a: "Helix", t: text }], { hidden: true });
   sheet["!cols"] = widthsOf(grid);
   const columns = grid[0]?.length ?? 0;
   if (columns > 0 && grid.length > 1) {
@@ -104,13 +107,13 @@ function toSheet(xlsx: typeof import("xlsx"), grid: string[][]): import("xlsx").
   return sheet;
 }
 
-async function writeWorkbook(sheets: [name: string, grid: string[][]][]): Promise<Uint8Array<ArrayBuffer>> {
+async function writeWorkbook(sheets: [name: string, grid: string[][], notes?: LedgerNote[]][]): Promise<Uint8Array<ArrayBuffer>> {
   const xlsx = await import("xlsx");
   const book = xlsx.utils.book_new();
   // A named workbook rather than an anonymous one: the owner sees this in
   // Excel's properties and in a file manager's preview.
   book.Props = { Title: "Helix", Application: "Helix" };
-  for (const [name, grid] of sheets) xlsx.utils.book_append_sheet(book, toSheet(xlsx, grid), name);
+  for (const [name, grid, notes = []] of sheets) xlsx.utils.book_append_sheet(book, toSheet(xlsx, grid, notes), name);
   return new Uint8Array(xlsx.write(book, { bookType: "xlsx", type: "array" }) as ArrayBuffer);
 }
 
@@ -124,7 +127,7 @@ async function writeWorkbook(sheets: [name: string, grid: string[][]][]): Promis
  * would be assigned to whichever had more months.
  */
 export async function composeWorkbook(rows: {
-  years: readonly [year: number, grid: string[][]][];
+  years: readonly [year: number, grid: string[][], notes?: LedgerNote[]][];
   subscriptions: readonly SubscriptionRow[];
   investments: readonly InvestmentRow[];
 }): Promise<Uint8Array<ArrayBuffer>> {
@@ -132,7 +135,7 @@ export async function composeWorkbook(rows: {
   const total = ledgerRows + rows.subscriptions.length + rows.investments.length;
   if (total > MAX_WORKBOOK_ROWS) throw new UserFacingError(tr.errors.workbookTooLarge);
   return writeWorkbook([
-    ...rows.years.map(([year, grid]) => [`${WORKBOOK_SHEETS.ledger} ${year}`, grid] as [string, string[][]]),
+    ...rows.years.map(([year, grid, notes]) => [`${WORKBOOK_SHEETS.ledger} ${year}`, grid, notes] as [string, string[][], LedgerNote[]?]),
     [WORKBOOK_SHEETS.subscriptions, sheetOf(WORKBOOK_COLUMNS.subscriptions, rows.subscriptions)],
     [WORKBOOK_SHEETS.investments, sheetOf(WORKBOOK_COLUMNS.investments, rows.investments)],
   ]);

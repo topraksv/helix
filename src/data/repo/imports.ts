@@ -3,10 +3,11 @@ import { tr } from "../../i18n/tr";
 import { deterministicId, naturalKeys, newId } from "../../db/ids";
 import { fromDbShape, nowIso, readSetting, writeRowsValidated, type RowWrite } from "../../db/mutations";
 import type { ImportBatchKey } from "../../domain/settings";
-import { addMonthsToKey, lastDayOf, monthKeyOf, todayISO, yearOf, type MonthKey } from "../../domain/dates";
+import { addMonthsToKey, lastDayOf, monthKeyOf, todayISO, yearOf, type ISODate, type MonthKey } from "../../domain/dates";
 import type { PaymentSourceType } from "../../domain/types";
 import type { Minor } from "../../domain/money";
 import { isValidCardCycle, type CardCycle } from "../../domain/card-statements";
+import { planForSighting } from "../../domain/installments";
 import { collectInstallmentPlans, type ParsedSheet, type WorkbookRecords } from "../../services/spreadsheet-import";
 import {
   folded,
@@ -20,7 +21,7 @@ import {
 } from "../../domain/workbook-format";
 import { suggestCategoryIcon } from "../../domain/category-icons";
 import { nameMentions } from "../../domain/logo-domain";
-import { CreditCardCycleRequiredError, ImportBatchUnreadableError } from "./errors";
+import { ImportBatchUnreadableError } from "./errors";
 import { buildPlanRows, linkDueRowsToCardStatements } from "./installments";
 import { buildSpreadsheetImportPlan, importCategoryKey } from "./import-plan";
 import { assertInvestmentWrites } from "./investment-validation";
@@ -266,559 +267,475 @@ export async function hasImportedData(userId: string): Promise<boolean> {
  * adds on top. Everything is additive elsewhere — existing manual rows are
  * never touched.
  */
-export async function importSheets(userId: string, req: ImportRequest): Promise<{ imported: number; plans: number }> {
+type CategoryRow = { id: string; name: string; kind: "expense" | "income"; sort_order: number; is_transfer: number; [key: string]: unknown };
+type SourceRow = { id: string; name: string; type: PaymentSourceType; statement_day: number | null; due_day: number | null; [key: string]: unknown };
+type PlanSpec = ReturnType<typeof collectInstallmentPlans>[number];
+type BatchFor = (year: number) => ImportBatch;
+
+const normalizedName = (name: string) => name.trim().toLocaleLowerCase("tr-TR");
+const emptyBatch = (): ImportBatch => ({ version: 2, transactions: [], cellNotes: [], installmentPlans: [], adjustments: [] });
+const cycleOf = (source: SourceRow | undefined): CardCycle | null => {
+  const cycle = { statementDay: source?.statement_day, dueDay: source?.due_day };
+  return isValidCardCycle(cycle) ? { statementDay: cycle.statementDay!, dueDay: cycle.dueDay! } : null;
+};
+
+/**
+ * Everything the import reads, read before it writes: the whole import flushes
+ * in one write, and a read issued after a multi-thousand-row write starved the
+ * SQLite worker and hung.
+ */
+async function importWorkspace(userId: string, selfId: string) {
   const sqlite = await getSqliteAsync();
-  // `selfId` crosses the UI/file boundary and becomes the owner of every
-  // imported transaction/source/plan. Never trust the preview's cached person
-  // object: an account switch or crafted caller could otherwise persist a
-  // foreign/stale reference locally and leave the whole import queued for an
-  // RLS failure. Validate it at the repository boundary before planning any
-  // writes.
+  // `selfId` crosses the UI boundary and owns every imported row: a stale or
+  // crafted one would queue the whole import for an RLS failure.
   const self = await sqlite.getFirstAsync<{ id: string }>(
-    `SELECT id FROM persons
-     WHERE id = ? AND user_id = ? AND is_self = 1 AND deleted_at IS NULL`,
-    [req.selfId, userId],
+    `SELECT id FROM persons WHERE id = ? AND user_id = ? AND is_self = 1 AND deleted_at IS NULL`,
+    [selfId, userId],
   );
   if (!self) throw new Error("Import owner must be the live self person");
-  // Read with the rest of the up-front queries: a card section named after
-  // someone the owner already tracks belongs to that person, and which rows
-  // reach the balance turns on it.
-  const otherPersons = await sqlite.getAllAsync<{ id: string; name: string }>(
-    `SELECT id, name FROM persons WHERE user_id = ? AND is_self = 0 AND deleted_at IS NULL`,
-    [userId],
-  );
-  const existing = await sqlite.getAllAsync<{
-    id: string;
-    name: string;
-    kind: "expense" | "income";
-    sort_order: number;
-    is_transfer: number;
-    [key: string]: unknown;
-  }>(
-    `SELECT * FROM categories WHERE user_id = ? AND deleted_at IS NULL`,
-    [userId],
-  );
-  const normalizedName = (name: string) => name.trim().toLocaleLowerCase("tr-TR");
-  const idByNameAndKind = new Map(existing.map((c) => [importCategoryKey(c.name, c.kind), c.id]));
-  let sortSeed = existing.reduce((m, c) => Math.max(m, c.sort_order), -1) + 1;
-  // Query payment sources up front too, so the whole import — categories, rows,
-  // reconstructed installment cards + plans — flushes in ONE writeRows. A read
-  // issued AFTER a multi-thousand-row write starved the sqlite worker and hung.
-  const existingSources = await sqlite.getAllAsync<{
-    id: string;
-    name: string;
-    type: PaymentSourceType;
-    statement_day: number | null;
-    due_day: number | null;
-    [key: string]: unknown;
-  }>(
-    `SELECT * FROM payment_sources WHERE user_id = ? AND deleted_at IS NULL`,
-    [userId],
-  );
-  const sourceByName = new Map(existingSources.map((s) => [normalizedName(s.name), s]));
-  const sourceIdByName = new Map(
-    existingSources.filter((source) => source.type === "credit_card").map((source) => [normalizedName(source.name), source.id]),
-  );
-  const requestedCycles = new Map(
-    Object.entries(req.cardCycles ?? {}).map(([name, cycle]) => [normalizedName(name), cycle]),
-  );
-  // A loan closed in the app stays closed through a re-import: the closure is
-  // the owner's later word on it (owner decision, 2026-09-14).
-  const closures = new Map(
-    (await sqlite.getAllAsync<ImportedPlanClosure & { id: string }>(
+  const [otherPersons, categories, sources, closed] = await Promise.all([
+    sqlite.getAllAsync<{ id: string; name: string }>(`SELECT id, name FROM persons WHERE user_id = ? AND is_self = 0 AND deleted_at IS NULL`, [userId]),
+    sqlite.getAllAsync<CategoryRow>(`SELECT * FROM categories WHERE user_id = ? AND deleted_at IS NULL`, [userId]),
+    sqlite.getAllAsync<SourceRow>(`SELECT * FROM payment_sources WHERE user_id = ? AND deleted_at IS NULL`, [userId]),
+    // A loan closed in the app stays closed through a re-import (owner decision, 2026-09-14).
+    sqlite.getAllAsync<ImportedPlanClosure & { id: string }>(
       `SELECT id, closed_on, installment_count, kind FROM installment_plans WHERE user_id = ? AND closed_on IS NOT NULL`,
       [userId],
-    )).map((plan) => [plan.id, plan]),
-  );
+    ),
+  ]);
+  return { otherPersons, categories, sources, closures: new Map(closed.map((plan) => [plan.id, plan])) };
+}
 
-  const catWrites: RowWrite[] = [];
-  const categoryById = new Map(existing.map((category) => [category.id, category]));
-  const ensureCategory = (label: string, kind: "expense" | "income", isTransfer = false): string => {
-    const cleanLabel = label.trim();
-    const key = importCategoryKey(cleanLabel, kind);
-    let id = idByNameAndKind.get(key);
+/** The table each kind of row a batch records lives in. */
+const BATCH_TABLES = { transactions: "transactions", cellNotes: "cell_notes", installmentPlans: "installment_plans", adjustments: "balance_adjustments" } as const;
+const BATCH_KINDS = Object.keys(BATCH_TABLES) as (keyof typeof BATCH_TABLES)[];
+
+/** What a replace takes back: the rows of every year it re-imports that no untouched year's batch still owns. */
+async function replacedBatchRows(userId: string, affectedYears: number[], priorBatches: Map<number, ImportBatch>) {
+  const affected = new Set(affectedYears);
+  const writes: RowWrite[] = [];
+  const replaced = new Set<string>();
+  for (const kind of BATCH_KINDS) {
+    const kept = new Set([...priorBatches].filter(([year]) => !affected.has(year)).flatMap(([, batch]) => batch[kind] ?? []));
+    const taken = affectedYears.flatMap((year) => priorBatches.get(year)?.[kind] ?? []).filter((id) => !kept.has(id));
+    writes.push(...(await tombstoneImportRows(userId, BATCH_TABLES[kind], taken)));
+    if (kind === "transactions") taken.forEach((id) => replaced.add(id));
+  }
+  return { writes, replaced };
+}
+
+/** Column categories: found by name and kind, created once otherwise; an investment column is a transfer. */
+function columnCategories(existing: CategoryRow[]) {
+  const idByNameAndKind = new Map(existing.map((category) => [importCategoryKey(category.name, category.kind), category.id]));
+  const byId = new Map(existing.map((category) => [category.id, category]));
+  const writes: RowWrite[] = [];
+  let sortOrder = existing.reduce((highest, category) => Math.max(highest, category.sort_order), -1) + 1;
+  const ensure = (label: string, kind: "expense" | "income", isTransfer: boolean) => {
+    const name = label.trim();
+    const key = importCategoryKey(name, kind);
+    const id = idByNameAndKind.get(key);
+    const known = id ? byId.get(id) : undefined;
     if (!id) {
-      id = newId();
-      idByNameAndKind.set(key, id);
-      catWrites.push({
+      const created = newId();
+      idByNameAndKind.set(key, created);
+      writes.push({
         table: "categories",
-        row: {
-          id,
-          name: cleanLabel,
-          kind,
-          icon: suggestCategoryIcon(cleanLabel, kind),
-          color: null,
-          sortOrder: sortSeed++,
-          isColumn: true,
-          isTransfer: kind === "expense" && isTransfer,
-          deletedAt: null,
-        },
+        row: { id: created, name, kind, icon: suggestCategoryIcon(name, kind), color: null, sortOrder: sortOrder++, isColumn: true, isTransfer: kind === "expense" && isTransfer, deletedAt: null },
       });
-    } else {
-      const existingCategory = categoryById.get(id);
-      if (existingCategory && kind === "expense" && isTransfer && existingCategory.is_transfer !== 1) {
-        existingCategory.is_transfer = 1;
-        catWrites.push({
-          table: "categories",
-          row: { ...fromDbShape("categories", existingCategory), isTransfer: true },
-        });
-      }
+    } else if (known && kind === "expense" && isTransfer && known.is_transfer !== 1) {
+      known.is_transfer = 1;
+      writes.push({ table: "categories", row: { ...fromDbShape("categories", known), isTransfer: true } });
     }
-    return id;
   };
+  return { ensure, idByNameAndKind, writes };
+}
 
-  const selectedYears = req.selectedYears ? new Set(req.selectedYears) : null;
-  const yearAllowed = (y: number) => !selectedYears || selectedYears.has(y);
-
-  const affectedYears = [...new Set(req.sheets.flatMap((s) => s.months.map(yearOf)))].filter(yearAllowed);
-  const { batches: priorBatches, unreadableYears } = await importBatchMap(userId);
-  // Both modes replace the batch ownership record for an affected year. If its
-  // previous value is unreadable, add mode would preserve neither the old row
-  // ids nor a way to clean them later, so it must fail closed too.
-  const blocked = affectedYears.filter((year) => unreadableYears.has(year));
-  if (blocked.length > 0) throw new ImportBatchUnreadableError(blocked.sort((a, b) => a - b));
-  const cleanupWrites: RowWrite[] = [];
-  // Build the replacement cleanup first, but don't mutate anything yet. Rows
-  // still owned by an unaffected year's batch are protected. Cleanup + new
-  // import + batch/settings metadata are committed by one writeRows below.
-  if (req.mode === "replace") {
-    const affected = new Set(affectedYears);
-    const protectedTransactions = new Set<string>();
-    const protectedNotes = new Set<string>();
-    const protectedPlans = new Set<string>();
-    const protectedAdjustments = new Set<string>();
-    for (const [year, batch] of priorBatches) {
-      if (affected.has(year)) continue;
-      batch.transactions.forEach((id) => protectedTransactions.add(id));
-      batch.cellNotes.forEach((id) => protectedNotes.add(id));
-      batch.installmentPlans?.forEach((id) => protectedPlans.add(id));
-      batch.adjustments?.forEach((id) => protectedAdjustments.add(id));
-    }
-    const oldTransactions = affectedYears.flatMap((year) => priorBatches.get(year)?.transactions ?? []).filter((id) => !protectedTransactions.has(id));
-    const oldNotes = affectedYears.flatMap((year) => priorBatches.get(year)?.cellNotes ?? []).filter((id) => !protectedNotes.has(id));
-    const oldPlans = affectedYears.flatMap((year) => priorBatches.get(year)?.installmentPlans ?? []).filter((id) => !protectedPlans.has(id));
-    const oldAdjustments = affectedYears.flatMap((year) => priorBatches.get(year)?.adjustments ?? []).filter((id) => !protectedAdjustments.has(id));
-    cleanupWrites.push(
-      ...(await tombstoneImportRows(userId, "transactions", oldTransactions)),
-      ...(await tombstoneImportRows(userId, "cell_notes", oldNotes)),
-      ...(await tombstoneImportRows(userId, "installment_plans", oldPlans)),
-      ...(await tombstoneImportRows(userId, "balance_adjustments", oldAdjustments)),
-    );
-  }
-
-  const txWrites: RowWrite[] = [];
-  const noteWrites: RowWrite[] = [];
-  const batchByYear = new Map<number, ImportBatch>();
-  const columnYearsUpdates = new Map<number, string[]>();
-  const today = todayISO();
-  let imported = 0;
-  const batchFor = (y: number): ImportBatch => {
-    let b = batchByYear.get(y);
-    if (!b) batchByYear.set(y, (b = { version: 2, transactions: [], cellNotes: [], installmentPlans: [], adjustments: [] }));
-    return b;
-  };
-
-  // Resolve categories before invoking the pure planner. No SQL/write happens
-  // while cells are mapped, and invalid plans cannot partially commit.
-  for (const sheet of req.sheets) {
-    if (!sheet.months.some((month) => yearAllowed(yearOf(month)))) continue;
-    for (const column of sheet.columns) {
-      if (!req.excludedLabels.includes(column.label)) {
-        ensureCategory(column.label, column.kindGuess, column.isInvestment);
-      }
-    }
-  }
-  /**
-   * What the workbook states for one column in one month, keyed
-   * `${month}|${label}`: a figure, `null` for a column that is there and left
-   * empty, and absent for a month whose sheet does not carry that column at
-   * all. The three are different facts and the instalment rules below turn on
-   * which one it is.
-   */
-  const statedCells = new Map<string, Minor | null>();
-  const statedMonths = new Set<MonthKey>();
+/**
+ * What the workbook states for a column in a month, by `${month}|${label}`: a
+ * figure, null for a column left empty, and absent where the sheet lacks the
+ * column. The plan rules below turn on which of the three it is.
+ */
+function statedCellsOf(req: ImportRequest, yearAllowed: (year: number) => boolean) {
+  const cells = new Map<string, Minor | null>();
+  const months = new Set<MonthKey>();
   for (const sheet of req.sheets) {
     sheet.columns.forEach((column, index) => {
       if (req.excludedLabels.includes(column.label)) return;
       sheet.months.forEach((month, row) => {
         if (!yearAllowed(yearOf(month))) return;
         const value = sheet.cells[row]?.[index]?.valueMinor ?? null;
-        statedCells.set(`${month}|${column.label}`, value);
-        if (value != null) statedMonths.add(month);
+        cells.set(`${month}|${column.label}`, value);
+        if (value != null) months.add(month);
       });
     });
   }
+  return { cells, months };
+}
 
-  /**
-   * Whose card a reconstructed section is.
-   *
-   * A workbook tracks more cards than it pays. The owner's file keeps two of
-   * their partner's under her own name — "Betül Business", "Betül Axess" —
-   * watched but deliberately outside the table, which is what a non-self
-   * person IS in this app: rows that are recorded and never counted. Matching
-   * the card against the people the owner already created is what makes that
-   * distinction survive an import instead of landing on the balance.
-   *
-   * Whole-word and at least three letters, the same bar the logo matcher uses:
-   * a two-letter name would claim "Ev Kredisi" for a person called Ev.
-   */
-  const cardOwner = (card: string): { id: string; isSelf: boolean } => {
-    const person = otherPersons.find((entry) => entry.name.trim().length >= 3 && nameMentions(card, entry.name));
-    return person ? { id: person.id, isSelf: false } : { id: req.selfId, isSelf: true };
-  };
-
-  // Plans are collected before the cells are planned, because a cell whose
-  // instalments add up to it is written AS those instalments.
-  const collectedPlans = collectInstallmentPlans(req.sheets, {
-    excludedLabels: req.excludedLabels,
-    informationalCards: req.informationalCards,
-    yearAllowed,
-  });
-  const planTotals = new Map<string, Minor>();
-  for (const spec of collectedPlans) {
-    // Another person's card is not inside the owner's column total, so it can
-    // neither add up to a cell nor be double-counted by one.
-    if (!cardOwner(spec.card).isSelf) continue;
-    for (let index = 0; index < spec.total; index += 1) {
-      const key = `${addMonthsToKey(spec.startMonth, index)}|${spec.columnLabel}`;
-      planTotals.set(key, (planTotals.get(key) ?? 0) + spec.monthlyMinor);
-    }
-  }
-  /**
-   * What the plans already put into a cell, so it writes only the rest.
-   *
-   * Every instalment a comment names becomes a real row with its card, its
-   * title and its payment number, and the cell keeps the difference — which
-   * makes the column total exactly what the workbook says while the Taksitler
-   * screen shows the whole schedule. The difference is not always positive:
-   * the owner's "Kredi Kartı Taksitler" column is the card statements MINUS
-   * the single-charge column beside it, so it reads 18.822,92 where the
-   * instalments on their own cards come to 16.799,84 in one month and
-   * 16.504,85 in the next.
-   */
-  const coveredByPlans = (month: MonthKey, label: string): Minor => {
-    // Only a cell that CARRIES A FIGURE has anything to reduce. Empty and zero
-    // are not a statement of zero — they are the workbook not having reached
-    // that cell yet, which is where the schedule earns its keep. Measured on
-    // the owner's file: the current month's card column was still blank, and
-    // treating blank as zero cancelled its instalments against a −25.162,14
-    // correction row while the two months AFTER it, blank in every column,
-    // showed theirs. Same fact, opposite answers, one month apart.
-    return statedCells.get(`${month}|${label}`) ? planTotals.get(`${month}|${label}`) ?? 0 : 0;
-  };
-  const sheetPlan = buildSpreadsheetImportPlan({
-    sheets: req.sheets,
-    excludedLabels: new Set(req.excludedLabels),
-    selectedYears,
-    categoryIds: idByNameAndKind,
-    today,
-    instalmentTotal: coveredByPlans,
-    remainderNote: tr.importer.columnRemainder,
-  });
-  for (const [year, ids] of sheetPlan.columnYears) columnYearsUpdates.set(year, ids);
-  // What each imported month does to the balance. Only the re-anchor
-  // arithmetic below needs it, and only the loops that write the rows can
-  // produce it without walking them a second time.
-  const netByMonth = new Map<MonthKey, Minor>();
-  const addNet = (month: MonthKey, minor: Minor) => netByMonth.set(month, (netByMonth.get(month) ?? 0) + minor);
-  for (const cell of sheetPlan.cells) {
+/** A row per cell item, a note per annotated cell, and what each month does to the balance. */
+async function cellWrites(userId: string, plan: ReturnType<typeof buildSpreadsheetImportPlan>, selfId: string, today: ISODate, batchFor: BatchFor) {
+  const writes: RowWrite[] = [];
+  const net = new Map<MonthKey, Minor>();
+  let count = 0;
+  for (const cell of plan.cells) {
     const batch = batchFor(cell.year);
     for (const item of cell.items) {
       const id = newId();
-      // Keep reversals signed in their original category. A refund reduces
-      // expense distribution instead of masquerading as income under an
-      // expense category.
-      const amount = item.amountMinor;
-      txWrites.push({
+      writes.push({
         table: "transactions",
         row: {
-          id,
-          type: cell.type,
-          amountMinor: amount,
-          currency: "TRY",
-          fxRate: null,
-          amountTryMinor: amount,
-          entryDate: today,
-          purchaseDate: null,
-          effectiveDate: cell.effectiveDate,
-          status: cell.status,
-          categoryId: cell.categoryId,
-          paymentSourceId: null,
-          personId: req.selfId,
-          installmentPlanId: null,
-          installmentNo: null,
-          cardStatementId: null,
-          subscriptionId: null,
-          // Every imported row is dateless (month-level): shown by month and
-          // never surfaced as an upcoming payment, whatever the cell shape.
+          // Reversals stay signed in their own category rather than becoming income.
+          id, type: cell.type, amountMinor: item.amountMinor, currency: "TRY", fxRate: null, amountTryMinor: item.amountMinor,
+          entryDate: today, purchaseDate: null, effectiveDate: cell.effectiveDate, status: cell.status, categoryId: cell.categoryId,
+          paymentSourceId: null, personId: selfId, installmentPlanId: null, installmentNo: null, cardStatementId: null, subscriptionId: null,
+          // Month-level, never an upcoming payment.
           isAggregate: true,
           note: item.note,
           origin: "spreadsheet",
-          // The batch index (`import_batch:<year>`) already records which rows
-          // a workbook year produced, and replacing a year tombstones exactly
-          // those. A per-cell key would be a second, competing identity for
-          // the same fact — and a workbook cell has no stable line id to build
-          // one from, so it would be invented rather than observed.
+          // The batch record is the identity; a cell has no stable line to key on.
           importKey: null,
           deletedAt: null,
         },
       });
-      addNet(cell.month, cell.type === "income" ? amount : -amount);
+      net.set(cell.month, (net.get(cell.month) ?? 0) + (cell.type === "income" ? item.amountMinor : -item.amountMinor));
       batch.transactions.push(id);
-      imported++;
+      count += 1;
     }
     if (cell.cellNote) {
       const noteId = await deterministicId(naturalKeys.cellNote(userId, cell.month, cell.categoryId));
-      noteWrites.push({
-        table: "cell_notes",
-        row: { id: noteId, month: cell.month, categoryId: cell.categoryId, body: cell.cellNote, deletedAt: null },
-      });
+      writes.push({ table: "cell_notes", row: { id: noteId, month: cell.month, categoryId: cell.categoryId, body: cell.cellNote, deletedAt: null } });
       batch.cellNotes.push(noteId);
     }
   }
+  return { writes, net, count };
+}
 
-  // Reconstruct installment plans from the "…Taksitli…" comments (deduped across
-  // the months they appear in), create/match a payment source per card, then
-  // build each plan's rows. Everything is flushed with the ledger rows in ONE
-  // write below (deterministic ids → re-import converges, no dups).
-  /**
-   * The months a reconstructed plan may write a ledger row for.
-   *
-   * A month the workbook states belongs to the workbook: its column cells
-   * already carry that month's instalment inside a total, and a plan row on
-   * top of it is the same money twice — measured on the owner's file as an
-   * "Ev Kredisi" of 23.672,13 showing 46.000 — so wherever the plan's own
-   * column is there to be reduced, `coveredByPlans` takes the instalment back
-   * out of it and the month totals what it always did. What a plan may NOT
-   * reach is a month whose sheet does not carry its column at all: that money
-   * is inside some other column, with nothing to reduce, and writing the row
-   * would count it twice. The owner's home loan moved between two columns
-   * across years and is exactly that case. A month no sheet states is free,
-   * and a year the owner did not select stays empty rather than receiving rows
-   * it never asked for.
-   */
-  const openMonths = (spec: { startMonth: MonthKey; total: number; columnLabel: string; card: string }): MonthKey[] => {
-    // A card that is somebody else's keeps its whole schedule unconditionally:
-    // those rows never reach the balance, so no column can be counting them.
-    const watched = !cardOwner(spec.card).isSelf;
-    return Array.from({ length: spec.total }, (_, index) => addMonthsToKey(spec.startMonth, index))
-      .filter((month) => yearAllowed(yearOf(month))
-        && (watched || !statedMonths.has(month) || statedCells.has(`${month}|${spec.columnLabel}`)));
-  };
-
-  const planSpecs = collectedPlans.filter((spec) => openMonths(spec).length > 0);
-  const sourceWrites: RowWrite[] = [];
+/**
+ * A payment source for every card a plan names: matched by name, created
+ * otherwise. The cycle is optional — a workbook names partners' and shop cards
+ * too, and without one an instalment falls on its own month like every other row.
+ */
+async function cardSources(
+  userId: string,
+  specs: PlanSpec[],
+  sources: SourceRow[],
+  requested: ImportRequest["cardCycles"],
+  ownerOf: (card: string) => { id: string; isSelf: boolean },
+) {
+  const byName = new Map(sources.map((source) => [normalizedName(source.name), source]));
+  const cardIdByName = new Map(sources.filter((source) => source.type === "credit_card").map((source) => [normalizedName(source.name), source.id]));
+  const requestedByName = new Map(Object.entries(requested ?? {}).map(([name, cycle]) => [normalizedName(name), cycle]));
   const cycleByName = new Map<string, CardCycle>();
-  for (const spec of planSpecs) {
+  const writes: RowWrite[] = [];
+  for (const spec of specs) {
     const key = normalizedName(spec.card);
-    const existingSource = sourceByName.get(key);
-    const existingCycle = existingSource
-      ? { statementDay: existingSource.statement_day, dueDay: existingSource.due_day }
-      : null;
-    // The cycle is optional. A workbook names every card a comment mentions —
-    // a partner's, a shop card, one that turns out to be a debit card — and
-    // demanding a statement and a due day for each of them before anything can
-    // be imported asks the owner to invent dates for cards they do not hold.
-    // Without one the instalment simply falls on its own month, which is where
-    // every other imported row falls anyway.
-    const requested = requestedCycles.get(key);
-    const cycle = existingCycle && isValidCardCycle(existingCycle)
-      ? existingCycle
-      : requested && isValidCardCycle(requested) ? requested : null;
+    const existing = byName.get(key);
+    const asked = requestedByName.get(key);
+    const cycle = cycleOf(existing) ?? (asked && isValidCardCycle(asked) ? asked : null);
     if (cycle) cycleByName.set(key, cycle);
-    if (sourceIdByName.has(key)) {
-      if (cycle && existingSource && !isValidCardCycle(existingCycle!)) {
-        sourceWrites.push({
-          table: "payment_sources",
-          row: {
-            ...fromDbShape("payment_sources", existingSource),
-            statementDay: cycle.statementDay,
-            dueDay: cycle.dueDay,
-          },
-        });
-      }
+    if (cardIdByName.has(key)) {
+      if (cycle && existing && !cycleOf(existing)) writes.push({ table: "payment_sources", row: { ...fromDbShape("payment_sources", existing), statementDay: cycle.statementDay, dueDay: cycle.dueDay } });
       continue;
     }
     const id = await deterministicId(naturalKeys.importSource(userId, spec.card));
-    sourceIdByName.set(key, id);
-    sourceWrites.push({
+    cardIdByName.set(key, id);
+    writes.push({
       table: "payment_sources",
       row: {
-        id, name: spec.card, type: "credit_card", personId: cardOwner(spec.card).id,
-        dueDay: cycle?.dueDay ?? null, statementDay: cycle?.statementDay ?? null,
+        id, name: spec.card, type: "credit_card", personId: ownerOf(spec.card).id, dueDay: cycle?.dueDay ?? null, statementDay: cycle?.statementDay ?? null,
         color: null, logoSource: "initials", logoRef: null, isActive: true, deletedAt: null,
       },
     });
   }
-  const planRowBatches = await Promise.all(
-    planSpecs.map(async (spec) => {
-      const sourceId = sourceIdByName.get(normalizedName(spec.card));
-      const cycle = cycleByName.get(normalizedName(spec.card)) ?? null;
-      if (!sourceId) throw new CreditCardCycleRequiredError();
-      const owner = cardOwner(spec.card);
-      const planId = await deterministicId(naturalKeys.importInstallmentPlan(userId, spec.name, spec.monthlyMinor, spec.total, spec.startMonth));
-      const built = await buildPlanRows(planId, {
-        title: spec.name,
-        kind: "card_installment",
-        totalAmountMinor: null,
-        monthlyAmountMinor: spec.monthlyMinor,
-        installmentCount: spec.total,
-        currency: "TRY",
-        fxRate: null,
-        startMonth: spec.startMonth,
-        dueDay: cycle?.dueDay ?? null,
-        paymentSourceId: sourceId,
-        personId: owner.id,
-        personIsSelf: owner.isSelf,
-        categoryId:
-          idByNameAndKind.get(importCategoryKey(spec.columnLabel, "expense")) ??
-          idByNameAndKind.get(importCategoryKey(spec.columnLabel, "income")) ??
-          null,
-        note: null,
-        tryFactor: 1,
-      }, today);
-      const open = new Set(openMonths(spec));
-      const rows = built.rows.filter(
-        (row) => row.table !== "transactions" || open.has(String(row.row.effectiveDate).slice(0, 7)),
-      );
-      // No cycle, no statement to link to: the rows stand on their own months.
-      const linked = cycle ? await linkDueRowsToCardStatements(userId, sourceId, cycle, rows) : rows;
-      return { ...built, rows: withinClosure(linked, closures.get(planId)), planId, spec };
-    }),
-  );
-  for (const built of planRowBatches) {
-    // A watched card's rows are recorded and never counted, so they must not
-    // move the re-anchor arithmetic either.
-    if (cardOwner(built.spec.card).isSelf) {
-      for (const row of built.rows) {
-        if (row.table === "transactions") addNet(String(row.row.effectiveDate).slice(0, 7) as MonthKey, -Number(row.row.amountTryMinor));
-      }
-    }
-    const startYear = yearOf(built.spec.startMonth);
-    const endYear = yearOf(addMonthsToKey(built.spec.startMonth, built.spec.total - 1));
-    for (const year of affectedYears) {
-      if (year < startYear || year > endYear) continue;
-      const batch = batchFor(year);
-      batch.installmentPlans!.push(built.planId);
-      batch.transactions.push(
-        ...built.rows.filter((row) => row.table === "transactions").map((row) => String(row.row.id)),
-      );
-    }
-  }
-  imported += planSpecs.length;
+  return { writes, cardIdByName, cycleByName };
+}
 
-  const { writes: anchorWrites, anchorMonth, anchorMinor, preservedOpening } = await anchorFromImport(
-    userId,
-    req.sheets,
-    yearAllowed,
-    req.adoptOpeningBalance === true,
-    req.openingColumnLabel ?? null,
-    priorBatches.size > 0,
+/** The openings a workbook states for its months, and the typed balance an import moved the anchor away from. */
+function openingTargets(req: ImportRequest, yearAllowed: (year: number) => boolean, today: ISODate, kept: { month: MonthKey; minor: Minor } | null) {
+  const columnLabel = req.openingColumnLabel ?? null;
+  const targets = new Map(
+    [...statedOpenings(req.sheets, yearAllowed, columnLabel), ...statedMonthOpenings(req.sheets, yearAllowed, columnLabel, monthKeyOf(today))]
+      .filter((entry) => entry.minor != null)
+      .map((entry) => [entry.month, entry.minor!]),
   );
-  /**
-   * Where the workbook restarts its own running balance, the ledger restarts
-   * with it.
-   *
-   * A sheet's first month states what was really in hand — reconciled against
-   * a bank, typed by hand — and the months before it do not add up to that
-   * figure: the file this was measured against is 24.592,14 out at Ağustos
-   * 2022 and 7.500,00 out at Ocak 2024. Carrying our own sum across those
-   * points reproduces the drift the owner had already corrected, in a ledger
-   * that then disagrees with every balance in the file from there on.
-   *
-   * The row lands on the last day of the month BEFORE, so the stated month
-   * opens on the stated figure rather than closing on it.
-   */
-  const adjustmentWrites: RowWrite[] = [];
-  // Only an import the ledger's anchor BELONGS TO may restate the balance along
-  // the way: the arithmetic starts from that anchor, and a ledger this workbook
-  // is merely being added to has a history no cell here can account for. Owning
-  // it is not the same as having just written it — re-importing a workbook the
-  // ledger is already anchored to writes no anchor and still owns the chain,
-  // and testing for the write dropped both corrections on every second import.
-  if (anchorMonth != null) {
-    const columnLabel = req.openingColumnLabel ?? null;
-    const targetByMonth = new Map(
-      [...statedOpenings(req.sheets, yearAllowed, columnLabel), ...statedMonthOpenings(req.sheets, yearAllowed, columnLabel, monthKeyOf(today))]
-        .filter((entry) => entry.minor != null)
-        .map((entry) => [entry.month, entry.minor!]),
-    );
-    // The balance the owner typed for the anchor this import moved away from
-    // is a statement too, and a later one than the file's: it holds its month.
-    if (preservedOpening) targetByMonth.set(preservedOpening.month, preservedOpening.minor);
-    let running = anchorMinor;
-    for (const month of [...new Set([...netByMonth.keys(), ...targetByMonth.keys()])].sort()) {
-      const target = targetByMonth.get(month);
-      if (target != null && month !== anchorMonth && target !== running) {
-        const date = lastDayOf(addMonthsToKey(month, -1));
-        const id = await deterministicId(naturalKeys.monthOpeningDeclaration(userId, month));
-        // A declaration, not a movement: the ledger holds the month to the
-        // stated figure whatever else is later entered before it. The amount is
-        // the difference as this import sees it, for a client that predates
-        // declarations.
-        adjustmentWrites.push({
-          table: "balance_adjustments",
-          row: {
-            id,
-            date,
-            amountMinor: target - running,
-            declaredMinor: target,
-            note: month === preservedOpening?.month ? tr.importer.openingKept : tr.importer.openingRestated,
-            deletedAt: null,
-          },
-        });
-        // The typed balance is the owner's and outlives this file: replacing
-        // the import must not take it with the rows the import wrote.
-        if (month !== preservedOpening?.month) batchFor(yearOf(month)).adjustments!.push(id);
-        running = target;
-      }
-      running += netByMonth.get(month) ?? 0;
-    }
-  }
+  if (kept) targets.set(kept.month, kept.minor);
+  return targets;
+}
 
-  // Settings and data are part of the SAME transaction as replacement
-  // tombstones. The persisted batch can therefore never claim a half-import.
-  const metadataWrites: RowWrite[] = [];
+/** Where the workbook restates its running balance, or the owner declared one, the ledger holds the month to it. */
+async function openingDeclarations(input: {
+  userId: string;
+  req: ImportRequest;
+  yearAllowed: (year: number) => boolean;
+  today: ISODate;
+  anchor: Awaited<ReturnType<typeof anchorFromImport>>;
+  net: Map<MonthKey, Minor>;
+  priorBatches: Map<number, ImportBatch>;
+  batchFor: BatchFor;
+}): Promise<RowWrite[]> {
+  const { userId, anchor, net, batchFor } = input;
+  // Only an import the anchor belongs to may restate along the way; owning it is
+  // not the same as having just written it, or every second import dropped them.
+  if (anchor.anchorMonth == null) return [];
+  const kept = anchor.preservedOpening;
+  const targets = openingTargets(input.req, input.yearAllowed, input.today, kept);
+  // An opening the owner already declared holds its month; without it a second
+  // import restated nothing after a kept balance and dropped what the first did.
+  const held = await ownerDeclarations(userId, input.priorBatches);
+  const writes: RowWrite[] = [];
+  let running = anchor.anchorMinor;
+  for (const month of [...new Set([...net.keys(), ...targets.keys(), ...held.keys()])].sort()) {
+    const target = held.get(month) ?? targets.get(month);
+    if (target != null && !held.has(month) && month !== anchor.anchorMonth && target !== running) {
+      const id = await deterministicId(naturalKeys.monthOpeningDeclaration(userId, month));
+      const note = month === kept?.month ? tr.importer.openingKept : tr.importer.openingRestated;
+      // Dated the last day before, so the month opens on the figure; `amountMinor` is for clients older than declarations.
+      writes.push({ table: "balance_adjustments", row: { id, date: lastDayOf(addMonthsToKey(month, -1)), amountMinor: target - running, declaredMinor: target, note, deletedAt: null } });
+      // The typed balance is the owner's and outlives this file.
+      if (month !== kept?.month) batchFor(yearOf(month)).adjustments!.push(id);
+    }
+    running = (target ?? running) + (net.get(month) ?? 0);
+  }
+  return writes;
+}
+
+/** Column membership and the batch records for the imported years; add mode keeps what earlier imports owned. */
+async function importMetadata(userId: string, req: ImportRequest, affectedYears: number[], priorBatches: Map<number, ImportBatch>, batches: Map<number, ImportBatch>, columnYearsUpdates: Map<number, string[]>) {
   const columnYears = (await readSetting<Record<string, string[]>>(userId, COLUMN_YEARS_KEY)) ?? {};
   for (const [year, ids] of columnYearsUpdates) {
-    columnYears[String(year)] = req.mode === "add"
-      ? [...new Set([...(columnYears[String(year)] ?? []), ...ids])]
-      : ids;
+    columnYears[String(year)] = req.mode === "add" ? [...new Set([...(columnYears[String(year)] ?? []), ...ids])] : ids;
   }
-  metadataWrites.push(await settingWrite(userId, COLUMN_YEARS_KEY, columnYears));
-
-  // Record batches (add mode keeps prior ids so a later replace still cleans up).
+  const writes = [await settingWrite(userId, COLUMN_YEARS_KEY, columnYears)];
   for (const year of affectedYears) {
-    const batch = batchByYear.get(year) ?? { version: 2 as const, transactions: [], cellNotes: [], installmentPlans: [], adjustments: [] };
-    if (req.mode === "add") {
-      const prev = priorBatches.get(year);
-      batch.transactions = [...new Set([...(prev?.transactions ?? []), ...batch.transactions])];
-      batch.cellNotes = [...new Set([...(prev?.cellNotes ?? []), ...batch.cellNotes])];
-      batch.installmentPlans = [...new Set([...(prev?.installmentPlans ?? []), ...(batch.installmentPlans ?? [])])];
-      batch.adjustments = [...new Set([...(prev?.adjustments ?? []), ...(batch.adjustments ?? [])])];
-    }
-    metadataWrites.push(await settingWrite(userId, importBatchKey(year), batch));
+    const batch = batches.get(year) ?? emptyBatch();
+    const prior = req.mode === "add" ? priorBatches.get(year) : undefined;
+    const merged = { version: 2, ...Object.fromEntries(BATCH_KINDS.map((kind) => [kind, [...new Set([...(prior?.[kind] ?? []), ...(batch[kind] ?? [])])]])) };
+    writes.push(await settingWrite(userId, importBatchKey(year), merged));
   }
+  return writes;
+}
 
-  metadataWrites.push(...anchorWrites);
-  const writes = [
-    ...cleanupWrites,
-    ...catWrites,
-    ...sourceWrites,
-    ...txWrites,
-    ...noteWrites,
-    ...planRowBatches.flatMap((b) => b.rows),
-    ...adjustmentWrites,
-    ...metadataWrites,
-  ];
-  if (writes.length > 0) {
-    await writeRowsValidated(
-      userId,
-      writes,
-      (db) => assertInvestmentWrites(db, userId, writes).then(() => undefined),
-    );
+/** What the owner's own plans put into each `${month}|${column}` cell. */
+function planTotalsByCell(specs: PlanSpec[]): Map<string, Minor> {
+  const totals = new Map<string, Minor>();
+  for (const spec of specs) {
+    for (let index = 0; index < spec.total; index += 1) {
+      const key = `${addMonthsToKey(spec.startMonth, index)}|${spec.columnLabel}`;
+      totals.set(key, (totals.get(key) ?? 0) + spec.monthlyMinor);
+    }
   }
-  return { imported, plans: planSpecs.length };
+  return totals;
+}
+
+/** Plan rows into the batches of the years they span, and the owner's into each month's net. */
+function recordPlanRows(planned: Awaited<ReturnType<typeof planRows>>, affectedYears: number[], batchFor: BatchFor, net: Map<MonthKey, Minor>): void {
+  for (const built of planned) {
+    const rows = built.rows.filter((write) => write.table === "transactions");
+    // A watched card's rows are never counted, so they do not move the re-anchor arithmetic.
+    for (const row of built.isSelf ? rows : []) {
+      const month = String(row.row.effectiveDate).slice(0, 7) as MonthKey;
+      net.set(month, (net.get(month) ?? 0) - Number(row.row.amountTryMinor));
+    }
+    const [startYear, endYear] = [yearOf(built.spec.startMonth), yearOf(addMonthsToKey(built.spec.startMonth, built.spec.total - 1))];
+    for (const year of affectedYears.filter((candidate) => candidate >= startYear && candidate <= endYear)) {
+      if (!built.adopted) batchFor(year).installmentPlans!.push(built.planId);
+      batchFor(year).transactions.push(...rows.map((row) => String(row.row.id)));
+    }
+  }
+}
+
+export async function importSheets(userId: string, req: ImportRequest): Promise<{ imported: number; plans: number }> {
+  const workspace = await importWorkspace(userId, req.selfId);
+  const today = todayISO();
+  const selectedYears = req.selectedYears ? new Set(req.selectedYears) : null;
+  const yearAllowed = (year: number) => !selectedYears || selectedYears.has(year);
+  const affectedYears = [...new Set(req.sheets.flatMap((sheet) => sheet.months.map(yearOf)))].filter(yearAllowed);
+  const { batches: priorBatches, unreadableYears } = await importBatchMap(userId);
+  // Both modes rewrite an affected year's batch; one that cannot be read can be neither replaced nor extended.
+  const blocked = affectedYears.filter((year) => unreadableYears.has(year));
+  if (blocked.length > 0) throw new ImportBatchUnreadableError(blocked.sort((a, b) => a - b));
+  const cleanup = req.mode === "replace" ? await replacedBatchRows(userId, affectedYears, priorBatches) : { writes: [], replaced: new Set<string>() };
+
+  const categories = columnCategories(workspace.categories);
+  for (const sheet of req.sheets.filter((candidate) => candidate.months.some((month) => yearAllowed(yearOf(month))))) {
+    for (const column of sheet.columns.filter((candidate) => !req.excludedLabels.includes(candidate.label))) {
+      categories.ensure(column.label, column.kindGuess, column.isInvestment);
+    }
+  }
+  const batches = new Map<number, ImportBatch>();
+  const batchFor: BatchFor = (year) => batches.get(year) ?? batches.set(year, emptyBatch()).get(year)!;
+  const stated = statedCellsOf(req, yearAllowed);
+
+  /**
+   * Whose card a reconstructed section is: the person it names (whole word, three
+   * letters or more), whose rows are recorded and never counted — the owner's file
+   * keeps a partner's cards under her name — and otherwise the owner's.
+   */
+  const cardOwner = (card: string) => {
+    const person = workspace.otherPersons.find((entry) => entry.name.trim().length >= 3 && nameMentions(card, entry.name));
+    return person ? { id: person.id, isSelf: false } : { id: req.selfId, isSelf: true };
+  };
+  // Collected before the cells: a cell its instalments add up to is written AS them.
+  const plans = collectInstallmentPlans(req.sheets, { excludedLabels: req.excludedLabels, informationalCards: req.informationalCards, yearAllowed });
+  const planTotals = planTotalsByCell(plans.filter((spec) => cardOwner(spec.card).isSelf));
+  const sheetPlan = buildSpreadsheetImportPlan({
+    sheets: req.sheets,
+    excludedLabels: new Set(req.excludedLabels),
+    selectedYears,
+    categoryIds: categories.idByNameAndKind,
+    today,
+    // The cell writes what its instalments leave, possibly negative (a column kept
+    // net of the one beside it). Only a cell carrying a figure is reduced: blank is
+    // the workbook not having got there, not zero.
+    instalmentTotal: (month, label) => (stated.cells.get(`${month}|${label}`) ? planTotals.get(`${month}|${label}`) ?? 0 : 0),
+    remainderNote: tr.importer.columnRemainder,
+  });
+  const cells = await cellWrites(userId, sheetPlan, req.selfId, today, batchFor);
+
+  /**
+   * The months a plan may write: not one whose sheet lacks the plan's column
+   * (that money sits in another column with nothing to take it back out of),
+   * not an unselected year; a watched card's plan keeps its whole schedule.
+   */
+  const openMonths = (spec: PlanSpec) => {
+    const watched = !cardOwner(spec.card).isSelf;
+    return Array.from({ length: spec.total }, (_, index) => addMonthsToKey(spec.startMonth, index))
+      .filter((month) => yearAllowed(yearOf(month)) && (watched || !stated.months.has(month) || stated.cells.has(`${month}|${spec.columnLabel}`)));
+  };
+  const planSpecs = plans.filter((spec) => openMonths(spec).length > 0);
+  const sources = await cardSources(userId, planSpecs, workspace.sources, req.cardCycles, cardOwner);
+  const planned = await planRows({ userId, req, today, specs: planSpecs, workspace, sources, categoryIds: categories.idByNameAndKind, replaced: cleanup.replaced, cardOwner, openMonths });
+  recordPlanRows(planned, affectedYears, batchFor, cells.net);
+
+  const anchor = await anchorFromImport(userId, req.sheets, yearAllowed, req.adoptOpeningBalance === true, req.openingColumnLabel ?? null, priorBatches.size > 0);
+  const declarations = await openingDeclarations({ userId, req, yearAllowed, today, anchor, net: cells.net, priorBatches, batchFor });
+  // Settings share the write with the tombstones, so a batch record never claims a half-import.
+  const metadata = await importMetadata(userId, req, affectedYears, priorBatches, batches, sheetPlan.columnYears);
+  const writes = [
+    ...cleanup.writes,
+    ...categories.writes,
+    ...sources.writes,
+    ...cells.writes,
+    ...planned.flatMap((built) => built.rows),
+    ...declarations,
+    ...metadata,
+    ...anchor.writes,
+  ];
+  // Never empty: the metadata always restates the column years.
+  await writeRowsValidated(userId, writes, (db) => assertInvestmentWrites(db, userId, writes).then(() => undefined));
+  return { imported: cells.count + planSpecs.length, plans: planSpecs.length };
+}
+
+type PlanTarget = { owner: { id: string; isSelf: boolean }; sourceId: string; cycle: CardCycle | null };
+
+/** Where a plan the owner already holds writes: its own person, and its own card when it has one. */
+function heldPlanTarget(plan: { person_id: string; payment_source_id: string | null }, selfId: string, sources: SourceRow[], workbook: PlanTarget): PlanTarget {
+  const owner = { id: plan.person_id, isSelf: plan.person_id === selfId };
+  const sourceId = plan.payment_source_id;
+  return sourceId ? { owner, sourceId, cycle: cycleOf(sources.find((source) => source.id === sourceId)) } : { ...workbook, owner };
+}
+
+/** Where a workbook's own plan writes: the card its section names, and whoever that card belongs to. */
+function workbookPlanTarget(spec: PlanSpec, sources: Awaited<ReturnType<typeof cardSources>>, cardOwner: (card: string) => { id: string; isSelf: boolean }): PlanTarget {
+  // `cardSources` named a card for every plan it was given.
+  const sourceId = sources.cardIdByName.get(normalizedName(spec.card))!;
+  return { owner: cardOwner(spec.card), sourceId, cycle: sources.cycleByName.get(normalizedName(spec.card)) ?? null };
+}
+
+/**
+ * Each plan's rows, written into the plan the owner already holds when there is
+ * one (`plansAlreadyHeld`), limited to its open months and to what a closure left.
+ */
+async function planRows(input: {
+  userId: string;
+  req: ImportRequest;
+  today: ISODate;
+  specs: PlanSpec[];
+  workspace: Awaited<ReturnType<typeof importWorkspace>>;
+  sources: Awaited<ReturnType<typeof cardSources>>;
+  categoryIds: Map<string, string>;
+  replaced: ReadonlySet<string>;
+  cardOwner: (card: string) => { id: string; isSelf: boolean };
+  openMonths: (spec: PlanSpec) => MonthKey[];
+}) {
+  const { userId, req, today, specs, workspace, sources, categoryIds, replaced, cardOwner, openMonths } = input;
+  const specIds = await Promise.all(specs.map((spec) =>
+    deterministicId(naturalKeys.importInstallmentPlan(userId, spec.name, spec.monthlyMinor, spec.total, spec.startMonth))));
+  const adoptions = await plansAlreadyHeld(userId, specs, new Set(specIds), replaced);
+  return Promise.all(specs.map(async (spec, index) => {
+    const adopted = adoptions[index];
+    const planId = adopted?.plan.id ?? specIds[index]!;
+    const workbook = workbookPlanTarget(spec, sources, cardOwner);
+    const { owner, sourceId, cycle } = adopted ? heldPlanTarget(adopted.plan, req.selfId, workspace.sources, workbook) : workbook;
+    const built = await buildPlanRows(planId, {
+      title: spec.name, kind: "card_installment", totalAmountMinor: null, monthlyAmountMinor: spec.monthlyMinor, installmentCount: spec.total,
+      currency: "TRY", fxRate: null, startMonth: spec.startMonth, dueDay: cycle?.dueDay ?? null, paymentSourceId: sourceId,
+      personId: owner.id, personIsSelf: owner.isSelf,
+      categoryId: adopted?.plan.category_id ?? categoryIds.get(importCategoryKey(spec.columnLabel, "expense")) ?? categoryIds.get(importCategoryKey(spec.columnLabel, "income")) ?? null,
+      note: null, tryFactor: 1,
+    }, today);
+    const open = new Set(openMonths(spec));
+    // A plan the owner holds keeps its own row and instalments; the workbook adds the months it lacks.
+    const rows = built.rows.filter((row) => row.table === "transactions"
+      ? open.has(String(row.row.effectiveDate).slice(0, 7)) && !adopted?.written.has(Number(row.row.installmentNo))
+      : !adopted);
+    const linked = cycle ? await linkDueRowsToCardStatements(userId, sourceId, cycle, rows) : rows;
+    return { rows: withinClosure(linked, workspace.closures.get(planId)), planId, spec, adopted: adopted != null, isSelf: owner.isSelf };
+  }));
+}
+
+/** Openings the owner declared, by the month each holds, that no import batch owns. */
+async function ownerDeclarations(userId: string, batches: ReadonlyMap<number, ImportBatch>): Promise<Map<MonthKey, Minor>> {
+  const owned = new Set([...batches.values()].flatMap((batch) => batch.adjustments ?? []));
+  const declared = await (await getSqliteAsync()).getAllAsync<{ id: string; date: ISODate; declared_minor: Minor }>(
+    `SELECT id, date, declared_minor FROM balance_adjustments WHERE user_id = ? AND declared_minor IS NOT NULL AND deleted_at IS NULL`,
+    [userId],
+  );
+  return new Map(declared.filter((row) => !owned.has(row.id)).map((row) => [addMonthsToKey(monthKeyOf(row.date), 1), row.declared_minor]));
+}
+
+/**
+ * The live plan each workbook plan already is — entered by hand or opened by a
+ * statement under another name — found by schedule (§3.2), card-blind because a
+ * workbook renames cards as it renames purchases, with the instalments it holds
+ * beyond the rows this import replaces.
+ */
+async function plansAlreadyHeld(
+  userId: string,
+  specs: ReturnType<typeof collectInstallmentPlans>,
+  workbookIds: ReadonlySet<string>,
+  replaced: ReadonlySet<string>,
+) {
+  const sqlite = await getSqliteAsync();
+  const plans = (await sqlite.getAllAsync<{
+    id: string; start_month: MonthKey; installment_count: number; total_amount_minor: number | null; monthly_amount_minor: number | null;
+    currency: string; payment_source_id: string | null; person_id: string; category_id: string | null;
+  }>(`SELECT * FROM installment_plans WHERE user_id = ? AND deleted_at IS NULL`, [userId]))
+    .filter((plan) => !workbookIds.has(plan.id))
+    .map((plan) => ({
+      ...plan,
+      startMonth: plan.start_month,
+      installmentCount: plan.installment_count,
+      totalAmountMinor: plan.total_amount_minor,
+      monthlyAmountMinor: plan.monthly_amount_minor,
+      paymentSourceId: plan.payment_source_id,
+    }));
+  const instalments = await sqlite.getAllAsync<{ id: string; installment_plan_id: string; installment_no: number }>(
+    `SELECT id, installment_plan_id, installment_no FROM transactions
+     WHERE user_id = ? AND installment_plan_id IS NOT NULL AND installment_no IS NOT NULL AND deleted_at IS NULL`,
+    [userId],
+  );
+  const claimed = new Set<string>();
+  return specs.map((spec) => {
+    const endMonth = addMonthsToKey(spec.startMonth, spec.total - 1);
+    const match = planForSighting({ month: spec.startMonth, amountMinor: spec.monthlyMinor, endMonth, startMonth: spec.startMonth, paymentSourceId: null }, plans, claimed);
+    if (!match) return null;
+    claimed.add(match.plan.id);
+    const written = new Set(instalments
+      .filter((row) => row.installment_plan_id === match.plan.id && !replaced.has(row.id))
+      .map((row) => row.installment_no));
+    return { plan: match.plan, written };
+  });
 }
 
 /**
@@ -834,7 +751,7 @@ export async function importSheets(userId: string, req: ImportRequest): Promise<
  */
 function statedOpenings(
   sheets: ParsedSheet[],
-  yearAllowed: (year: number) => boolean = () => true,
+  yearAllowed: (year: number) => boolean,
   columnLabel?: string | null,
 ): { month: MonthKey; minor: Minor | null }[] {
   return sheets
@@ -979,7 +896,7 @@ async function anchorFromImport(
 // Record sheets read back from a Helix workbook (Abonelikler, Yatırımlar)
 // ---------------------------------------------------------------------------
 
-export interface RecordCounts {
+interface RecordCounts {
   added: number;
   updated: number;
   unchanged: number;

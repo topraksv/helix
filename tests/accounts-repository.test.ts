@@ -1136,6 +1136,76 @@ describe("accounts repository persistence", () => {
     expect(harness.cardStatementLookups).toBe(3);
   });
 
+  /**
+   * A bank moving a card's statement and due days moves what is still to be
+   * billed, the same way moving the charges to another card does: settled
+   * charges are history and keep their dates.
+   */
+  it("moves a card's pending charges and card plans onto its changed cycle, and leaves settled ones", async () => {
+    seedSource("card", "credit_card", { statementDay: 25, dueDay: 5 });
+    seedPlan("card-plan", { sourceId: "card", kind: "card_installment", dueDay: 5 });
+    seedStatement("july", "card", "2026-07", { statementDate: "2026-07-25", dueDate: "2026-08-05" });
+    seedStatement("august", "card", "2026-08", { statementDate: "2026-08-25", dueDate: "2026-09-05" });
+    seedTransaction("bought-after-new-close", { sourceId: "card", purchaseDate: "2026-08-20", effectiveDate: "2026-09-05", cardStatementId: "august" });
+    seedTransaction("august-instalment", { sourceId: "card", purchaseDate: null, effectiveDate: "2026-09-05", cardStatementId: "august" });
+    seedTransaction("settled", { sourceId: "card", purchaseDate: "2026-07-10", effectiveDate: "2026-08-05", status: "realized", cardStatementId: "july" });
+
+    await upsertPaymentSource(USER, paymentInput({ id: "card", name: "card", type: "credit_card", statementDay: 15, dueDay: 10 }));
+
+    expect(row("transactions", "bought-after-new-close")).toMatchObject({
+      effective_date: "2026-10-10",
+      status: "pending",
+      card_statement_id: `det:cardStatement|${USER}|card|2026-09`,
+    });
+    expect(row("transactions", "august-instalment")).toMatchObject({
+      effective_date: "2026-09-10",
+      card_statement_id: `det:cardStatement|${USER}|card|2026-08`,
+    });
+    expect(row("transactions", "settled")).toMatchObject({ effective_date: "2026-08-05", card_statement_id: "july" });
+    expect(row("installment_plans", "card-plan").due_day).toBe(10);
+  });
+
+  it("moves nothing when a card keeps its days, and follows either day that changes alone", async () => {
+    seedSource("card", "credit_card", { statementDay: 25, dueDay: 5 });
+    seedStatement("august", "card", "2026-08", { statementDate: "2026-08-25", dueDate: "2026-09-05" });
+    // Stored off its cycle, so any move shows.
+    seedTransaction("charge", { sourceId: "card", purchaseDate: "2026-08-20", effectiveDate: "2026-09-20", cardStatementId: "august" });
+    const save = (statementDay: number, dueDay: number) =>
+      upsertPaymentSource(USER, paymentInput({ id: "card", name: "Kart", type: "credit_card", statementDay, dueDay }));
+
+    await save(25, 5);
+    expect(row("transactions", "charge").effective_date).toBe("2026-09-20");
+    await save(25, 10);
+    expect(row("transactions", "charge").effective_date, "the due day alone").toBe("2026-09-10");
+    await save(15, 10);
+    expect(row("transactions", "charge").effective_date, "the statement day alone").toBe("2026-10-10");
+  });
+
+  it("places a charge with no day of its own by the statement month it was entered for", async () => {
+    seedSource("card", "credit_card", { statementDay: 25, dueDay: 5 });
+    seedStatement("august", "card", "2026-08", { statementDate: "2026-08-25", dueDate: "2026-09-05" });
+    seedTransaction("instalment", { sourceId: "card", effectiveDate: "2026-09-05", cardStatementId: "august" });
+    seedTransaction("month-total", { sourceId: "card", effectiveDate: "2026-09-05", cardStatementId: "august", isAggregate: true });
+    seedTransaction("legacy-total", { sourceId: "card", effectiveDate: "2026-09-05", isAggregate: true });
+
+    await upsertPaymentSource(USER, paymentInput({ id: "card", name: "Kart", type: "credit_card", statementDay: 5, dueDay: 25 }));
+
+    // August's statement now closes on the 5th and is due on the 25th — not September's, which the due date alone would pick.
+    expect(row("transactions", "instalment")).toMatchObject({ effective_date: "2026-08-25", status: "pending" });
+    expect(row("transactions", "month-total")).toMatchObject({ purchase_date: "2026-08-05", effective_date: "2026-08-25" });
+    expect(row("transactions", "legacy-total").effective_date, "a month total with no statement stays").toBe("2026-09-05");
+  });
+
+  it("leaves a card's charges where they are when it becomes another kind of source", async () => {
+    seedSource("card", "credit_card", { statementDay: 25, dueDay: 5 });
+    seedTransaction("charge", { sourceId: "card", purchaseDate: "2026-08-20", effectiveDate: "2026-09-20" });
+
+    // The form still carries the days it held; they do not make a bank account a card.
+    await upsertPaymentSource(USER, paymentInput({ id: "card", name: "Hesap", type: "bank_transfer", statementDay: 21, dueDay: 7 }));
+
+    expect(row("transactions", "charge").effective_date).toBe("2026-09-20");
+  });
+
   it("realizes a reassigned card expense whose newly derived due date is today", async () => {
     seedSource("old-card", "credit_card", { statementDay: 25, dueDay: 5 });
     seedSource("new-card", "credit_card", { statementDay: 20, dueDay: 13 });

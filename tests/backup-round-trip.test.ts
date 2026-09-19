@@ -46,17 +46,21 @@ vi.mock("../src/sync/engine", () => ({ scheduleSync: vi.fn() }));
 import {
   addTransaction,
   createCategory,
+  createInstallmentPlan,
   createPerson,
+  importSheets,
   saveComputedColumn,
   seedWorkspace,
   upsertCategoryBudget,
+  upsertPaymentSource,
   upsertSubscription,
 } from "../src/data/repo";
 import { saveCellNote } from "../src/data/repo/cell-notes";
 import { deterministicId, naturalKeys } from "../src/db/ids";
 import { resetLocalWorkspace, writeSetting } from "../src/db/mutations";
 import { buildIdRemap, isDeterministicId } from "../src/services/backup-remap";
-import { buildExportText, importBundle, parseExportBundleText } from "../src/services/export-import";
+import { buildExportText, buildWorkbookBytes, importBundle, parseExportBundleText } from "../src/services/export-import";
+import { parseWorkbookBytes } from "../src/services/spreadsheet-import";
 import { migrationStatements } from "./helpers";
 
 // Accounts are uuids in the product; the validator enforces that too.
@@ -335,5 +339,56 @@ describe("backup round trip", () => {
 
     await expect(importBundle(SOURCE_USER, bundle)).rejects.toThrow(/Yatırım hareketleri/);
     await expect(importBundle(SOURCE_USER, bundle)).rejects.toThrow(/tutarsız/);
+  });
+
+  describe("workbook export", () => {
+    const spend = (userId: string, personId: string, categoryId: string, amountMinor: number, effectiveDate: string) => addTransaction(userId, {
+      type: "expense", amountMinor, currency: "TRY", fxRate: null, amountTryMinor: amountMinor,
+      categoryId, personId, paymentSourceId: null, effectiveDate: effectiveDate as never, note: null,
+    });
+    /** The owner's movement per month, the figure Mali Tablo's cells add up to. */
+    const ownMonths = (userId: string) => harness.db!.prepare(
+      `SELECT substr(t.effective_date, 1, 7) AS month, SUM(t.amount_try_minor) AS total
+       FROM transactions t JOIN persons p ON p.id = t.person_id
+       WHERE t.user_id = ? AND t.deleted_at IS NULL AND p.is_self = 1 GROUP BY month ORDER BY month`,
+    ).all(userId);
+
+    it("writes a cell as Mali Tablo totals it: a refund takes off, a watched person's spending stays out", async () => {
+      const self = await createPerson(SOURCE_USER, "Ben");
+      const watched = await createPerson(SOURCE_USER, "Ayşe");
+      const market = await createCategory(SOURCE_USER, { name: "Market", kind: "expense", isTransfer: false, sortOrder: 0 });
+      await spend(SOURCE_USER, self, market, 1_000_00, "2026-07-10");
+      await spend(SOURCE_USER, self, market, -100_00, "2026-07-12");
+      await spend(SOURCE_USER, watched, market, 400_00, "2026-07-14");
+
+      const [sheet] = (await parseWorkbookBytes(await buildWorkbookBytes(SOURCE_USER))).sheets;
+      const column = sheet!.columns.findIndex((entry) => entry.label === "Market");
+      expect(sheet!.cells[0]![column]!.valueMinor).toBe(900_00);
+    });
+
+    it("brings a card plan back as the same plan", async () => {
+      const self = await createPerson(SOURCE_USER, "Ben");
+      const phone = await createCategory(SOURCE_USER, { name: "Elektronik", kind: "expense", isTransfer: false, sortOrder: 0 });
+      const market = await createCategory(SOURCE_USER, { name: "Market", kind: "expense", isTransfer: false, sortOrder: 1 });
+      const card = await upsertPaymentSource(SOURCE_USER, { name: "Bonus", type: "credit_card", personId: self, statementDay: 20, dueDay: 5 });
+      await createInstallmentPlan(SOURCE_USER, {
+        title: "Telefon", kind: "card_installment", totalAmountMinor: 1_000_00, monthlyAmountMinor: null, installmentCount: 3,
+        currency: "TRY", fxRate: null, startMonth: "2026-07" as never, dueDay: 5, paymentSourceId: card, personId: self,
+        personIsSelf: true, categoryId: phone, note: null, tryFactor: 1,
+      });
+      await spend(SOURCE_USER, self, market, 250_00, "2026-08-10");
+
+      const parsed = await parseWorkbookBytes(await buildWorkbookBytes(SOURCE_USER));
+      const target = await createPerson(TARGET_USER, "Ben");
+      await importSheets(TARGET_USER, {
+        sheets: parsed.sheets, excludedLabels: [], selfId: target, mode: "replace", cardCycles: { Bonus: { statementDay: 20, dueDay: 5 } },
+      });
+
+      expect(harness.db!.prepare(
+        `SELECT title, installment_count, start_month, monthly_amount_minor FROM installment_plans WHERE user_id = ? AND deleted_at IS NULL`,
+      ).all(TARGET_USER)).toEqual([{ title: "Telefon", installment_count: 3, start_month: "2026-07", monthly_amount_minor: 333_33 }]);
+      // The first instalment's rounding kuruş stays in its cell, so every month still totals what it did.
+      expect(ownMonths(TARGET_USER)).toEqual(ownMonths(SOURCE_USER));
+    });
   });
 });

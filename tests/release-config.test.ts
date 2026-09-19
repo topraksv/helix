@@ -385,6 +385,10 @@ describe("release contract", () => {
     // …and the nightly asks both surfaces again, of whatever is live.
     expect(nightly).toContain("node scripts/check-published.mjs web https://topraksv.github.io/helix");
     expect(nightly).toContain("node scripts/check-published.mjs expo-go");
+    // …and fails while main is ahead of the newest run that published.
+    const drift = nightly.slice(nightly.indexOf("  main-published:"));
+    expect(drift).toContain("runs?branch=main&event=push&status=success&per_page=1");
+    expect(drift).toMatch(/if \[ "\$green" != "\$head" \] && \[ "\$open" = "0" \]; then\n[^\n]*\n\s+exit 1/);
   });
 
   it("turns a tag into a release only when the tagged commit shipped", () => {

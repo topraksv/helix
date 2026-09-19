@@ -119,6 +119,17 @@ function objectStream(objects: [number, string][]): [string, string] {
   return [`/Type /ObjStm /N ${objects.length} /First ${head.length}`, head + objects.map(([, body]) => body).join("\n") + "\n"];
 }
 
+/** A Type3 glyph drawing: a 1-bit image from rows of `#` and `.`, top row first. */
+function glyph(rows: string[]): [string, string] {
+  const width = rows[0]!.length;
+  const bits = rows.map((row) => {
+    let bytes = "";
+    for (let at = 0; at < width; at += 8) bytes += String.fromCharCode(Number.parseInt(row.slice(at, at + 8).padEnd(8, ".").replace(/#/g, "1").replace(/\./g, "0"), 2));
+    return bytes;
+  }).join("");
+  return ["", `${width} 0 0 0 ${width} ${rows.length} d1 q ${width} 0 0 ${rows.length} 0 0 cm BI /W ${width} /H ${rows.length} /BPC 1 /IM true /D [1 0] ID ${bits} EI Q`];
+}
+
 const glyphFont = (map: number) => `<< /Type /Font /Subtype /Type0 /BaseFont /Sub /Encoding /Identity-H /ToUnicode ${map} 0 R >>`;
 const CATALOG = "<< /Type /Catalog /Pages 2 0 R >>";
 const page = (contents: number, fonts: string) => `<< /Type /Page /Parent 2 0 R /Contents ${contents} 0 R /Resources << /Font << ${fonts} >> >> >>`;
@@ -176,6 +187,75 @@ describe("reading the fonts a statement's text is set in", () => {
       7: "<< /Type /Font /Subtype /Type0 /BaseFont /Bare /Encoding /Identity-H >>",
     }));
     expect(result).toEqual({ ok: false, reason: "unmapped_font" });
+  });
+
+  it("refuses a Type3 font whose glyph names are not its codes", async () => {
+    const result = await extractPdfText(pdfOf({
+      1: CATALOG,
+      2: "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+      3: page(4, "/C1 5 0 R"),
+      4: ["", "BT /C1 10 Tf 40 800 Td (\\301\\302) Tj ET"],
+      5: "<< /Type /Font /Subtype /Type3 /CharProcs << /g1 6 0 R /g2 6 0 R >> /Encoding << /Type /Encoding /Differences [ 193 /g1 /g2 ] >> >>",
+      6: glyph(["#"]),
+    }));
+    expect(result).toEqual({ ok: false, reason: "unmapped_font" });
+  });
+
+  /**
+   * A statement printed through a mainframe's page format (AFP): Type3 fonts
+   * named `C` + code, text in EBCDIC, each glyph group placed on its own, and
+   * the Turkish letters the code page lacks drawn from a supplement font.
+   */
+  describe("a page-format statement", () => {
+    const I = ["#.", "..", "#.", "#.", "#."];
+    const S = ["###", "#..", "###", "..#", "###"];
+    const A = [".#.", "#.#", "###", "#.#"];
+    const afpFont = (codes: Record<number, number>) => {
+      const names = Object.entries(codes).map(([code, object]) => `/C${Number(code).toString(16)} ${object} 0 R`).join(" ");
+      const differences = Object.keys(codes).map((code) => `${code} /C${Number(code).toString(16)}`).join(" ");
+      return `<< /Type /Font /Subtype /Type3 /FontMatrix [1 0 0 1 0 0] /FirstChar 0 /Widths [${Array(256).fill(1).join(" ")}] /CharProcs << ${names} >> /Encoding << /Differences [ ${differences} ] >> >>`;
+    };
+    const read = (content: string) => extractPdfText(pdfOf({
+      1: CATALOG,
+      2: "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+      3: page(4, "/F1 5 0 R /F2 6 0 R"),
+      4: ["", content],
+      5: afpFont({ 0x89: 10, 0xa2: 11, 0xc1: 12, 0xf1: 13, 0x4b: 13 }),
+      6: afpFont({ 0xa6: 14, 0xa7: 15 }),
+      10: glyph(I),
+      11: glyph(S),
+      12: glyph(A),
+      13: glyph(["#"]),
+      14: glyph([...S, "...", ".#."]),
+      15: glyph(I.slice(2)),
+    }));
+    const run = (font: string, x: number, y: number, codes: string) => `/${font} 2 Tf 100 Tz 1 0 0 1 0 0 Tm ${x} ${y} Td [(${codes})] TJ`;
+
+    it("reads rows top to bottom and left to right, whatever order the page drew them in", async () => {
+      // "is" is two units wide at size 2, so the run at 14 follows it with no gap; 60 is a column away.
+      const result = await read(`BT ${run("F1", 10, 700, "\\301")} ${run("F1", 10, 720, "\\211\\242")} ${run("F1", 14, 720, "\\301")} ${run("F1", 60, 720, "\\361\\113")} ET`);
+      expect(result).toEqual({ ok: true, text: "isA 1.\nA", pageCount: 1 });
+    });
+
+    it("recognises the Turkish letters a supplement font draws as a base letter with marks", async () => {
+      const result = await read(`BT ${run("F1", 10, 720, "\\211")} ${run("F2", 11, 720, "\\246\\247")} ${run("F1", 13, 720, "\\242")} ET`);
+      expect(result).toEqual({ ok: true, text: "işıs", pageCount: 1 });
+    });
+  });
+
+  /** An image and a Type3 glyph's drawing are compressed exactly as page content is, and neither is text. */
+  it("does not read an image's pixels or a glyph's drawing as page text", async () => {
+    const result = await extractPdfText(pdfOf({
+      1: CATALOG,
+      2: "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+      3: page(4, "/F1 5 0 R"),
+      4: ["", "BT /F1 10 Tf 40 800 Td (MARKET) Tj ET"],
+      5: "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+      6: ["/Type /XObject /Subtype /Image /Width 8 /Height 1", "(PIXELS) Tj"],
+      7: ["", "30 0 -2 -7 28 31 d1 (GLYPH) Tj"],
+      8: ["", "600 0 d0 (WIDTH) Tj"],
+    }));
+    expect(result).toEqual({ ok: true, text: "MARKET", pageCount: 1 });
   });
 
   it("refuses a font name that means two different fonts on two pages", async () => {

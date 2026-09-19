@@ -7,6 +7,10 @@ interface AssignablePerson {
   name: string;
 }
 
+/** The owner's pick, else the self person, else the first; persons load live, so this is derived, never frozen in state. */
+export const assignedPersonId = (choice: string | null, people: readonly { id: string; isSelf: boolean }[]) =>
+  choice ?? people.find((person) => person.isSelf)?.id ?? people[0]?.id ?? null;
+
 /**
  * Person ownership is only a choice after the user starts tracking somebody
  * else. Until then a one-line route hint preserves discoverability without

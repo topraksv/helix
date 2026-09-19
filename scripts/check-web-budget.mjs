@@ -292,13 +292,33 @@ const root = process.argv[2] ?? "dist";
 // 3_970_488, total export 7_651_879 — all three past their ceilings. The
 // JavaScript ceilings move to measured plus the usual ~1%, the export to
 // measured plus ~1.5%, the rule the realtime line set for it.
+//
+// 2026-09-17, still 1.8.1: two movements that pull opposite ways, attributed
+// against a source-mapped export of HEAD.
+//
+// Down: `services/pdf-text.ts` and `services/backup-remap.ts` load on demand —
+// the first with the first statement picked, the second with a restore — which
+// took 20_477 bytes out of the entry chunk. The statement reader had grown by
+// the AFP font decoding a real bank's statement needed.
+//
+// Up: eleven screens whose one component ran past a complexity of 45 were split
+// into a form hook and cards. None of the old components was compiled by the
+// React Compiler — measured, not one carried a `c(n)` cache — and every split
+// one is: 236 compiled functions became 316. That memoisation is the bytes
+// (dashboard +11_860, transaction +9_846, investment operation +7_323, down to
+// incomes +3_269) and it is what stops a keystroke re-rendering a whole screen.
+//
+// Measured entry 3_401_637 / total 4_086_391 / export 7_767_782. Entry moves to
+// 3_415_000, deliberately under the 1% step: putting either on-demand reader
+// back measures 3_422_000 and must trip it. Total moves to measured plus ~1%,
+// the export to measured plus ~1.5%.
 const limits = {
-  entryJavaScript: 3_340_000,
-  totalJavaScript: 4_010_000,
+  entryJavaScript: 3_415_000,
+  totalJavaScript: 4_127_000,
   // Fonts are 1_534_728 of this and the rest is one HTML file per route, so it
   // grows in coarser steps than the JavaScript above it — measured 8_037_112
   // with ~3% of slack rather than the ~1% the JS ceilings carry.
-  totalExport: 7_767_000,
+  totalExport: 7_884_000,
   fontFiles: 6,
   fontBytes: 800_000,
   // Pages is public. Symbolication maps belong only in a private crash service,

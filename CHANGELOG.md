@@ -6,6 +6,20 @@ defterinde yazılıdır ve bu depoya dahil değildir.
 
 Notlar kısa tutulur: ne değişti, tek cümle. Sebebi ve ölçümü commit'te.
 
+## 1.8.2
+
+### Patch Changes
+
+- Akbank ekstresi artık okunuyor; harfleri PDF'in içinde olmayan bankaların dosyaları da satır satır çıkıyor.
+- Ekstredeki taksit satırı sistemdeki kartla eşleşiyor ve "9/9" gibi son taksitler tanınıyor, tek çekim sayılmıyor.
+- Ekstrede bir abonelik ödemesi görülünce bekleyen ödeme kapanıyor; aynı ödeme iki kez sayılmıyor.
+- Aynı planı elle ikinci kez eklerken, aynı ayları aynı taksitle ödeyen bir plan varsa uyarı çıkıyor.
+- Kartın kesim ya da vade günü değişince bekleyen harcamalar ve kart taksitleri yeni döngüye taşınıyor.
+- Excel'e aktarımda hücreler ekrandaki gibi: iade tutarı düşüyor, yalnız takip ettiğin birinin harcaması sayılmıyor.
+- Excel'e aktarılan kart taksit planları, dosyayı geri yüklediğinde yeniden plan olarak geliyor.
+- Excel'i ikinci kez aktarmak, kendi yazdığın açılış bakiyesi beyanını artık silmiyor.
+- Native uygulamada sekmeler arası geçiş yarıda kesilmiyor.
+
 ## 1.8.1
 
 ### Patch Changes

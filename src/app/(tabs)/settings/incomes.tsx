@@ -26,7 +26,7 @@ import { formatMinorInput } from "../../../domain/money";
 import { DateField } from "../../../ui/calendar";
 import { MonthDayField } from "../../../ui/month-day-field";
 import { appAlert } from "../../../ui/dialog";
-import { PersonAssignment } from "../../../ui/person-assignment";
+import { assignedPersonId, PersonAssignment } from "../../../ui/person-assignment";
 
 type IncomeKind = "salary" | "rent" | "allowance" | "other";
 type IncomeRecurrence = "monthly" | "weekly" | "biweekly";
@@ -105,232 +105,198 @@ function IncomeCadence({
   );
 }
 
+type Income = ReturnType<typeof useRecurringIncomesState>["data"][number];
+
+interface IncomeDraft {
+  kind: IncomeKind;
+  name: string;
+  /** The kind provides the default title until a title is typed. */
+  nameTouched: boolean;
+  amountRaw: string;
+  amountMinor: number | null;
+  payDayStr: string;
+  recurrence: IncomeRecurrence;
+  anchorDate: ISODate;
+  personChoice: string | null;
+  categoryChoice: string | null;
+}
+
+const newIncomeDraft = (): IncomeDraft => ({
+  kind: "salary", name: "", nameTouched: false, amountRaw: "", amountMinor: null, payDayStr: "15", recurrence: "monthly",
+  anchorDate: todayISO(), personChoice: null, categoryChoice: null,
+});
+
+const incomeDraftOf = (income: Income): IncomeDraft => ({
+  kind: income.kind as IncomeKind,
+  name: income.name,
+  nameTouched: true,
+  amountRaw: formatMinorInput(income.defaultAmountMinor),
+  amountMinor: income.defaultAmountMinor,
+  payDayStr: String(income.payDay),
+  recurrence: income.recurrence,
+  anchorDate: income.anchorDate ?? todayISO(),
+  personChoice: income.personId,
+  categoryChoice: income.categoryId ?? null,
+});
+
+/**
+ * Whether the form says anything its starting point does not. The owner's own
+ * category choice is compared, not the derived fallback: a legacy income with
+ * no category resolves to a default nobody picked, which is not an edit.
+ */
+function incomeDraftDirty(draft: IncomeDraft, start: IncomeDraft): boolean {
+  const said = (d: IncomeDraft) => [d.kind, d.nameTouched ? d.name.trim() : "", d.amountRaw.trim(), d.payDayStr, d.recurrence, d.anchorDate, d.personChoice, d.categoryChoice];
+  return JSON.stringify(said(draft)) !== JSON.stringify(said(start));
+}
+
+/** The income column a rule files under until the owner picks one: the salary column, else the first. */
+function defaultIncomeCategory(categories: { id: string; name: string }[]) {
+  const salary = tr.template.categoryNames.salary.toLocaleLowerCase("tr-TR");
+  return (categories.find((c) => c.name.toLocaleLowerCase("tr-TR").includes(salary)) ?? categories[0])?.id ?? null;
+}
+
+function useIncomeForm(incomes: Income[]) {
+  const userId = useUserId();
+  const operationGuard = useOperationGuard();
+  // Persons and categories load live, so their defaults are derived.
+  const persons = usePersonsState().data;
+  const incomeCategories = useCategoriesState().data.filter((c) => c.kind === "income");
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [draft, setDraft] = useState(newIncomeDraft);
+  const [busy, setBusy] = useState(false);
+  const patch = (next: Partial<IncomeDraft>) => setDraft((current) => ({ ...current, ...next }));
+  const editing = editingId ? incomes.find((income) => income.id === editingId) : undefined;
+  const { confirmDiscard } = useDirtyExitGuard(incomeDraftDirty(draft, editing ? incomeDraftOf(editing) : newIncomeDraft()) && !busy);
+  const personId = assignedPersonId(draft.personChoice, persons);
+  const categoryId = draft.categoryChoice ?? defaultIncomeCategory(incomeCategories);
+  // The kind provides the default title; a hand-typed title always wins.
+  const name = draft.nameTouched && draft.name.trim() !== "" ? draft.name : tr.incomeKinds[draft.kind];
+  const dayValid = isMonthDay(draft.payDayStr);
+  const scheduleValid = draft.recurrence === "monthly" ? dayValid : Boolean(draft.anchorDate);
+  const valid = name.trim() !== "" && draft.amountMinor != null && draft.amountMinor > 0 && scheduleValid && personId != null && categoryId != null;
+
+  const reset = () => {
+    setEditingId(null);
+    setDraft(newIncomeDraft());
+  };
+
+  const save = () => operationGuard.run(async () => {
+    if (!valid) return;
+    setBusy(true);
+    try {
+      const monthly = draft.recurrence === "monthly";
+      await upsertRecurringIncome(userId, {
+        id: editingId ?? undefined,
+        name: name.trim(),
+        kind: draft.kind,
+        defaultAmountMinor: draft.amountMinor!,
+        currency: "TRY",
+        payDay: monthly ? Number(draft.payDayStr) : Number(draft.anchorDate.slice(8, 10)),
+        recurrence: draft.recurrence,
+        anchorDate: monthly ? null : draft.anchorDate,
+        personId: personId!,
+        categoryId: categoryId!,
+        isActive: editing ? editing.isActive : true,
+        note: editing?.note ?? null,
+      });
+      scheduleSync(userId);
+      reset();
+    } catch {
+      void appAlert(tr.errors.saveFailed, tr.errors.title);
+    } finally {
+      setBusy(false);
+    }
+  });
+
+  return {
+    editingId, draft, patch, busy, valid, save, reset, persons, personId, incomeCategories, categoryId, dayValid,
+    startEdit: (income: Income) => confirmDiscard(() => {
+      setEditingId(income.id);
+      setDraft(incomeDraftOf(income));
+    }),
+  };
+}
+
+function IncomeFormCard({ form }: { form: ReturnType<typeof useIncomeForm> }) {
+  const { draft, patch } = form;
+  const submit = <Button label={form.editingId ? tr.common.save : tr.settings.addIncomeRule} onPress={() => void form.save()} disabled={!form.valid || form.busy} loading={form.busy} />;
+  return (
+    <Card>
+      <PanelHeader icon={Banknote} title={form.editingId ? tr.incomes.editTitle : tr.incomes.formTitle} description={tr.incomes.formHint} />
+      <IncomeCadence recurrence={draft.recurrence} payDay={form.dayValid ? Number(draft.payDayStr) : 15} anchorDate={draft.anchorDate} />
+      <Label>{tr.incomes.kindLabel}</Label>
+      <ChipPicker options={KINDS.map((k) => ({ value: k, label: tr.incomeKinds[k] }))} value={draft.kind} onChange={(kind) => patch({ kind })} />
+      <Field
+        label={tr.incomes.nameLabel}
+        value={draft.nameTouched ? draft.name : ""}
+        onChangeText={(name) => patch({ name, nameTouched: true })}
+        placeholder={tr.incomeKinds[draft.kind]}
+      />
+      <MoneyField label={tr.settings.defaultAmount} value={draft.amountRaw} onChangeMinor={(amountRaw, amountMinor) => patch({ amountRaw, amountMinor })} />
+      <Label>{tr.incomes.recurrenceLabel}</Label>
+      <ChipPicker
+        options={[{ value: "monthly", label: tr.incomes.monthly }, { value: "weekly", label: tr.incomes.weekly }, { value: "biweekly", label: tr.incomes.biweekly }]}
+        value={draft.recurrence}
+        onChange={(recurrence) => patch({ recurrence })}
+      />
+      {draft.recurrence === "monthly" ? (
+        <MonthDayField
+          label={tr.settings.payDay}
+          value={draft.payDayStr}
+          onChange={(payDayStr) => patch({ payDayStr })}
+          quickDays={QUICK_DAYS}
+          error={draft.payDayStr !== "" && !form.dayValid ? tr.incomes.dayError : null}
+        />
+      ) : (
+        <DateField label={tr.incomes.firstPaymentDate} value={draft.anchorDate} onChange={(anchorDate) => patch({ anchorDate: anchorDate as ISODate })} />
+      )}
+      <PersonAssignment people={form.persons} value={form.personId} onChange={(personChoice) => patch({ personChoice })} />
+      {form.incomeCategories.length > 1 ? (
+        <Select
+          label={tr.incomes.categoryLabel}
+          options={form.incomeCategories.map((c) => ({ value: c.id, label: c.name, icon: categoryIconComponent(c) }))}
+          value={form.categoryId}
+          onChange={(categoryChoice) => patch({ categoryChoice })}
+        />
+      ) : null}
+      {form.editingId ? (
+        <Row>
+          <View style={{ flex: 1 }}>{submit}</View>
+          <Button label={tr.common.cancel} variant="ghost" onPress={form.reset} />
+        </Row>
+      ) : submit}
+    </Card>
+  );
+}
+
 export default function IncomeRulesScreen() {
   const userId = useUserId();
   const incomesState = useRecurringIncomesState();
   const personsState = usePersonsState();
   const categoriesState = useCategoriesState();
   const incomes = incomesState.data;
-  const persons = personsState.data;
-  const categories = categoriesState.data;
   const undo = useUndo();
-  const operationGuard = useOperationGuard();
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [kind, setKind] = useState<IncomeKind>("salary");
-  const [name, setName] = useState("");
-  const [nameTouched, setNameTouched] = useState(false);
-  const [amountRaw, setAmountRaw] = useState("");
-  const [amountMinor, setAmountMinor] = useState<number | null>(null);
-  const [payDayStr, setPayDayStr] = useState("15");
-  const [recurrence, setRecurrence] = useState<IncomeRecurrence>("monthly");
-  const [anchorDate, setAnchorDate] = useState(todayISO());
-  const [busy, setBusy] = useState(false);
-  // persons/categories load async (live queries) — derive the defaults.
-  const [personChoice, setPersonChoice] = useState<string | null>(null);
-  const personId = personChoice ?? persons.find((p) => p.isSelf)?.id ?? persons[0]?.id ?? null;
-  const [categoryChoice, setCategoryChoice] = useState<string | null>(null);
-  const incomeCategories = categories.filter((c) => c.kind === "income");
-  const categoryId =
-    categoryChoice ??
-    incomeCategories.find((c) =>
-      c.name
-        .toLocaleLowerCase("tr-TR")
-        .includes(tr.template.categoryNames.salary.toLocaleLowerCase("tr-TR")),
-    )?.id ??
-    incomeCategories[0]?.id ??
-    null;
+  const form = useIncomeForm(incomes);
+  const { status, ready, retry } = combineLiveStates([incomesState, personsState, categoriesState]);
 
-  // The kind provides the default title; a hand-typed title always wins.
-  const effectiveName = nameTouched && name.trim() !== "" ? name : tr.incomeKinds[kind];
-  const editingIncome = editingId ? incomes.find((income) => income.id === editingId) : null;
-  const editingAmountRaw = editingIncome
-    ? formatMinorInput(editingIncome.defaultAmountMinor)
-    : "";
-  const incomeDraftDirty = editingIncome
-    ? kind !== editingIncome.kind ||
-      effectiveName.trim() !== editingIncome.name ||
-      amountRaw !== editingAmountRaw ||
-      payDayStr !== String(editingIncome.payDay) ||
-      recurrence !== editingIncome.recurrence ||
-      anchorDate !== (editingIncome.anchorDate ?? todayISO()) ||
-      personId !== editingIncome.personId ||
-      // The user's own choice, not the derived fallback: a legacy income with
-      // no category resolves to a default the user never picked, and comparing
-      // that would report an edit nobody made.
-      categoryChoice !== editingIncome.categoryId
-    : Boolean(
-      (nameTouched && name.trim()) ||
-      amountRaw.trim() ||
-      kind !== "salary" ||
-      payDayStr !== "15" ||
-      recurrence !== "monthly" ||
-      anchorDate !== todayISO() ||
-      personChoice ||
-      categoryChoice
-    );
-  const { confirmDiscard } = useDirtyExitGuard(incomeDraftDirty && !busy);
-  const { status: dataStatus, ready: dataReady, retry: retryData } = combineLiveStates([incomesState, personsState, categoriesState]);
-
-  const payDay = Number(payDayStr);
-  const dayValid = isMonthDay(payDayStr);
-  const scheduleValid = recurrence === "monthly" ? dayValid : Boolean(anchorDate);
-  const valid = effectiveName.trim() !== "" && amountMinor != null && amountMinor > 0 && scheduleValid && personId != null && categoryId != null;
-
-  const resetForm = () => {
-    setEditingId(null);
-    setKind("salary");
-    setName("");
-    setNameTouched(false);
-    setAmountRaw("");
-    setAmountMinor(null);
-    setPayDayStr("15");
-    setRecurrence("monthly");
-    setAnchorDate(todayISO());
-    setPersonChoice(null);
-    setCategoryChoice(null);
-  };
-
-  const startEdit = (r: (typeof incomes)[number]) => {
-    confirmDiscard(() => {
-      setEditingId(r.id);
-      setKind(r.kind as IncomeKind);
-      setName(r.name);
-      setNameTouched(true);
-      setAmountRaw(formatMinorInput(r.defaultAmountMinor));
-      setAmountMinor(r.defaultAmountMinor);
-      setPayDayStr(String(r.payDay));
-      setRecurrence(r.recurrence);
-      setAnchorDate(r.anchorDate ?? todayISO());
-      setPersonChoice(r.personId);
-      setCategoryChoice(r.categoryId ?? null);
-    });
-  };
-
-  const save = async () => {
-    if (!valid || !personId || !categoryId) return;
-    await operationGuard.run(async () => {
-      setBusy(true);
-      try {
-        const existing = editingId ? incomes.find((r) => r.id === editingId) : null;
-        await upsertRecurringIncome(userId, {
-          id: editingId ?? undefined,
-          name: effectiveName.trim(),
-          kind,
-          defaultAmountMinor: amountMinor!,
-          currency: "TRY",
-          payDay: recurrence === "monthly" ? payDay : Number(anchorDate.slice(8, 10)),
-          recurrence,
-          anchorDate: recurrence === "monthly" ? null : anchorDate,
-          personId,
-          categoryId,
-          isActive: existing ? existing.isActive : true,
-          note: existing?.note ?? null,
-        });
-        scheduleSync(userId);
-        resetForm();
-      } catch {
-        void appAlert(tr.errors.saveFailed, tr.errors.title);
-      } finally {
-        setBusy(false);
-      }
-    });
-  };
-
-  const remove = async (r: (typeof incomes)[number]) => {
+  const remove = async (income: Income) => {
     try {
-      const snapshot = await deleteRecurringIncomeWithExpected(userId, r.id);
+      const snapshot = await deleteRecurringIncomeWithExpected(userId, income.id);
       scheduleSync(userId);
-      if (snapshot) {
-        undo.show(`${r.name} · ${tr.common.deleted}`, () => {
-          return restoreDeletedRule(userId, snapshot).then(() => scheduleSync(userId));
-        }, "warning");
-      }
+      if (snapshot) undo.show(`${income.name} · ${tr.common.deleted}`, () => restoreDeletedRule(userId, snapshot).then(() => scheduleSync(userId)), "warning");
     } catch {
       void appAlert(tr.errors.saveFailed, tr.errors.title);
     }
   };
 
-  if (!dataReady) return <DataGateScreen status={dataStatus} retry={retryData} />;
-
+  if (!ready) return <DataGateScreen status={status} retry={retry} />;
   return (
     <Screen width="workspace">
-      <DataStateNotice status={dataStatus} retry={retryData} />
+      <DataStateNotice status={status} retry={retry} />
       <WorkspaceSplit
         testID="incomes-workspace"
         wideLayout={incomes.length === 0 ? "stack" : "split"}
-        primary={(
-          <Card>
-        <PanelHeader
-          icon={Banknote}
-          title={editingId ? tr.incomes.editTitle : tr.incomes.formTitle}
-          description={tr.incomes.formHint}
-        />
-        <IncomeCadence
-          recurrence={recurrence}
-          payDay={dayValid ? payDay : 15}
-          anchorDate={anchorDate}
-        />
-        <Label>{tr.incomes.kindLabel}</Label>
-        <ChipPicker options={KINDS.map((k) => ({ value: k, label: tr.incomeKinds[k] }))} value={kind} onChange={setKind} />
-        <Field
-          label={tr.incomes.nameLabel}
-          value={nameTouched ? name : ""}
-          onChangeText={(v) => {
-            setName(v);
-            setNameTouched(true);
-          }}
-          placeholder={tr.incomeKinds[kind]}
-        />
-        <MoneyField
-          label={tr.settings.defaultAmount}
-          value={amountRaw}
-          onChangeMinor={(raw, minor) => {
-            setAmountRaw(raw);
-            setAmountMinor(minor);
-          }}
-        />
-        <Label>{tr.incomes.recurrenceLabel}</Label>
-        <ChipPicker
-          options={[
-            { value: "monthly", label: tr.incomes.monthly },
-            { value: "weekly", label: tr.incomes.weekly },
-            { value: "biweekly", label: tr.incomes.biweekly },
-          ]}
-          value={recurrence}
-          onChange={setRecurrence}
-        />
-        {recurrence === "monthly" ? (
-          <MonthDayField
-            label={tr.settings.payDay}
-            value={payDayStr}
-            onChange={setPayDayStr}
-            quickDays={QUICK_DAYS}
-            error={payDayStr !== "" && !dayValid ? tr.incomes.dayError : null}
-          />
-        ) : (
-          <DateField label={tr.incomes.firstPaymentDate} value={anchorDate} onChange={setAnchorDate} />
-        )}
-        <PersonAssignment people={persons} value={personId} onChange={setPersonChoice} />
-        {incomeCategories.length > 1 ? (
-          <Select
-            label={tr.incomes.categoryLabel}
-            options={incomeCategories.map((c) => ({ value: c.id, label: c.name, icon: categoryIconComponent(c) }))}
-            value={categoryId}
-            onChange={setCategoryChoice}
-          />
-        ) : null}
-        {editingId ? (
-          <Row>
-            <View style={{ flex: 1 }}>
-              <Button label={tr.common.save} onPress={() => void save()} disabled={!valid || busy} loading={busy} />
-            </View>
-            <Button label={tr.common.cancel} variant="ghost" onPress={resetForm} />
-          </Row>
-        ) : (
-          <Button label={tr.settings.addIncomeRule} onPress={() => void save()} disabled={!valid || busy} loading={busy} />
-        )}
-          </Card>
-        )}
+        primary={<IncomeFormCard form={form} />}
         secondary={(
           <View>
             <SectionHeader description={tr.incomes.listHint}>{tr.incomes.listTitle}</SectionHeader>
@@ -338,22 +304,20 @@ export default function IncomeRulesScreen() {
               <EmptyState icon={Banknote} title={tr.incomes.emptyTitle} hint={tr.incomes.emptyHint} />
             ) : (
               <CardList
-              items={incomes}
-              keyExtractor={(r) => r.id}
-              renderItem={(r) => (
-                <RuleRow
-                  title={r.name}
-                  meta={tr.incomeKinds[r.kind]}
-                  badges={[
-                    { text: r.recurrence === "monthly" ? tr.incomes.everyMonth(r.payDay) : tr.incomes.everyInterval(r.recurrence) },
-                  ]}
-                  amountMinor={r.defaultAmountMinor}
-                  currency={r.currency}
-                  onPress={() => startEdit(r)}
-                  onEdit={() => startEdit(r)}
-                  onDelete={() => void remove(r)}
-                />
-              )}
+                items={incomes}
+                keyExtractor={(r) => r.id}
+                renderItem={(r) => (
+                  <RuleRow
+                    title={r.name}
+                    meta={tr.incomeKinds[r.kind]}
+                    badges={[{ text: r.recurrence === "monthly" ? tr.incomes.everyMonth(r.payDay) : tr.incomes.everyInterval(r.recurrence) }]}
+                    amountMinor={r.defaultAmountMinor}
+                    currency={r.currency}
+                    onPress={() => form.startEdit(r)}
+                    onEdit={() => form.startEdit(r)}
+                    onDelete={() => void remove(r)}
+                  />
+                )}
               />
             )}
           </View>

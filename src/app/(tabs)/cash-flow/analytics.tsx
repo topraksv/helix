@@ -53,14 +53,15 @@ const RESULT_PREVIEW_COUNT = 5;
 const ANALYSIS_ROW_HEIGHT = 52;
 const ANALYSIS_TABLE_CHROME = 60;
 
-export default function AnalysisScreen() {
-  const today = todayISO();
+type TxRow = ReturnType<typeof useAllTransactionsState>["data"][number];
+type Category = ReturnType<typeof useCategoriesState>["data"][number];
+type Source = ReturnType<typeof useSourcesState>["data"][number];
+type CategoryRow = { category: Category; data: NonNullable<ReturnType<ReturnType<typeof categoryRangeMatrix>["get"]>> };
+
+/** The months under analysis: a rolling window ending now, a calendar year, or a range the owner names. */
+function useAnalysisWindow(narrow: boolean, today: string) {
   const currentYear = yearOf(today);
   const currentMonth = monthKeyOf(today);
-  const contentWidth = useContentWidth();
-  const compact = !shouldUseWideWorkspace(contentWidth);
-  const stackedFilters = !shouldPairFilterCards(contentWidth);
-  const narrow = shouldUseNarrowAnalytics(contentWidth);
   // Phone starts with a useful comparison that fits the table in fewer
   // horizontal gestures; year and custom windows remain explicit choices.
   const [period, setPeriod] = useState<Period>(narrow ? "3m" : "year");
@@ -69,9 +70,26 @@ export default function AnalysisScreen() {
   // six so switching to it shows a real range instead of an empty one.
   const [customStart, setCustomStart] = useState<MonthKey>(addMonthsToKey(currentMonth, -5));
   const [customEnd, setCustomEnd] = useState<MonthKey>(currentMonth);
-  const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
-  const [selected, setSelected] = useState<string | null>(null);
-  const [chartType, setChartType] = useState<"pie" | "bars" | "trend">("pie");
+  // Ordered here rather than guarded at each stepper: whichever end the user
+  // moves past the other, the window stays a window.
+  const [startMonth, endMonth] = period === "year"
+    ? [makeMonthKey(year, 1), year === currentYear ? currentMonth : makeMonthKey(year, 12)]
+    : period === "custom"
+      ? [customStart, customEnd].sort() as [MonthKey, MonthKey]
+      : [addMonthsToKey(currentMonth, -(Number(period.replace("m", "")) - 1)), currentMonth];
+  const monthKeys = useMemo(() => monthRange(startMonth, endMonth), [startMonth, endMonth]);
+  return { currentYear, currentMonth, period, setPeriod, year, setYear, customStart, setCustomStart, customEnd, setCustomEnd, startMonth, endMonth, monthKeys };
+}
+
+/** Finding transactions: a query and filters over the window or all time, sorted, five at a time. */
+function useTransactionSearch({ transactions, categoryById, sources, categoryFilter, startMonth, endMonth }: {
+  transactions: TxRow[];
+  categoryById: Map<string, Category>;
+  sources: Source[];
+  categoryFilter: string | null;
+  startMonth: MonthKey;
+  endMonth: MonthKey;
+}) {
   const [query, setQuery] = useState("");
   const [transactionType, setTransactionType] = useState<"expense" | "income" | "transfer" | null>(null);
   const [sourceFilter, setSourceFilter] = useState<string | null>(null);
@@ -79,88 +97,19 @@ export default function AnalysisScreen() {
   const [sortMode, setSortMode] = useState<TransactionSortMode>("recent");
   const [showAllResults, setShowAllResults] = useState(false);
   const [showSearchDetails, setShowSearchDetails] = useState(false);
-  const categoriesState = useCategoriesState();
-  const personsState = usePersonsState();
-  const sourcesState = useSourcesState();
-  const budgetsState = useCategoryBudgetsState();
-  const transactionsState = useAllTransactionsState();
-  const categories = categoriesState.data;
-  const sources = sourcesState.data;
-  const budgets = budgetsState.data;
-  const allTx = transactionsState.data;
-  const router = useRouter();
-  const { palette } = useTheme();
-  // Budgets lives in the Settings tab, so opening it from here is a cross-tab
-  // push and belongs at the root: what sits under it is this screen, which is
-  // where both the back button and the edge swipe then return. It used to be
-  // an anchored push that relayed this screen's own origin so Budgets could
-  // rebuild the URL it came from — a whole mechanism that existed only because
-  // the anchor put the wrong screen underneath in the first place.
-  const openBudgets = () => router.push("/budgets");
-  const colors = useSeriesColors();
-  const { status: dataStatus, ready: dataReady, retry: retryData } = combineLiveStates([categoriesState, personsState, sourcesState, budgetsState, transactionsState]);
-
-  // Window: rolling N months ending now, or a calendar year (navigable).
-  const [startMonth, endMonth] =
-    period === "year"
-      ? [makeMonthKey(year, 1), year === currentYear ? currentMonth : makeMonthKey(year, 12)]
-      : period === "custom"
-        // Ordered here rather than guarded at each stepper: whichever end the
-        // user moves past the other, the window stays a window.
-        ? [customStart <= customEnd ? customStart : customEnd, customStart <= customEnd ? customEnd : customStart]
-        : [addMonthsToKey(currentMonth, -(Number(period.replace("m", "")) - 1)), currentMonth];
-  const monthKeys = useMemo(() => monthRange(startMonth, endMonth), [startMonth, endMonth]);
-  const searchPeriodLabel = `${monthLabel(startMonth)} – ${monthLabel(endMonth)}`;
-
-  // Both of these walk the whole transaction list, and both used to do it on
-  // every render — including every keystroke in the search box, every filter
-  // chip and every layout measurement. Derived from the data, not the render.
-  const txLike = useTxLike();
-  const categoryById = useMemo(() => new Map(categories.map((category) => [category.id, category])), [categories]);
-  // Legacy type/category mismatches are normalized by the shared domain flow,
-  // so category details and aggregate charts use one financial rule.
-  // The analysis matrix is an all-flow view: transfer/investment categories
-  // stay visibly separate from expense totals, but must not disappear from the
-  // user's category-by-month history.
-  const matrix = useMemo(
-    () => categoryRangeMatrix(txLike, startMonth, endMonth, today, { includeTransfers: true }),
-    [txLike, startMonth, endMonth, today],
-  );
-
-  // Year navigation is bounded to where data exists (mirrors Mali Tablo) so the
-  // back arrow can't wander into empty years forever.
-  const minYear = allTx[0] ? yearOf(allTx[0].effectiveDate) : currentYear;
-  // Newest first: a custom range is nearly always anchored near today.
-  const monthOptions = monthRange(makeMonthKey(minYear, 1), currentMonth)
-    .reverse()
-    .map((month) => ({ value: month, label: monthLabel(month) }));
-
-  const rows = useMemo(
-    () => categories
-      .flatMap((category) => {
-        const data = matrix.get(category.id);
-        return data && data.ytdMinor !== 0 ? [{ category, data }] : [];
-      })
-      .filter((r) => categoryFilter == null || r.category.id === categoryFilter),
-    [categories, matrix, categoryFilter],
-  );
-
-  const catName = (cid: string | null) => (cid ? categoryById.get(cid)?.name ?? "" : "");
   const deferredQuery = useDeferredValue(query);
-  const q = deferredQuery.trim().toLocaleLowerCase("tr-TR");
   const sourceNameById = useMemo(() => new Map(sources.map((source) => [source.id, source.name])), [sources]);
   // Asking for all time is itself a request to see records, so it counts as a
   // filter. Without it, clearing the payment method back to "Tümü" emptied
   // the list even though the owner had just told the screen what to search.
-  const searchActive =
-    q.length > 0 || transactionType != null || categoryFilter != null || sourceFilter != null || searchScope === "all";
+  const active = deferredQuery.trim() !== "" || transactionType != null || categoryFilter != null || sourceFilter != null || searchScope === "all";
   // The token line calls the money formatter — an `Intl.NumberFormat` — once
   // per transaction the account has: measured 65 ms at 100k rows. Built from
   // the render it was rebuilt on every keystroke in the box above it, every
   // filter chip and every layout measurement. It follows the data now, and
   // still only exists while a search is actually open.
-  const searchIndex = useMemo(
-    () => (!searchActive ? [] : allTx.map((transaction) => ({
+  const index = useMemo(
+    () => (!active ? [] : transactions.map((transaction) => ({
       ...transaction,
       searchText: [
         transaction.categoryId ? categoryById.get(transaction.categoryId)?.name ?? "" : "",
@@ -174,11 +123,11 @@ export default function AnalysisScreen() {
         formatMinorCompact(transaction.amountTryMinor),
       ].join(" "),
     }))),
-    [searchActive, allTx, categoryById, sourceNameById],
+    [active, transactions, categoryById, sourceNameById],
   );
-  const searchResults = useMemo(
-    () => (searchActive
-      ? filterTransactions(searchIndex, {
+  const results = useMemo(
+    () => (active
+      ? filterTransactions(index, {
           query: deferredQuery,
           type: transactionType,
           categoryId: categoryFilter,
@@ -187,92 +136,41 @@ export default function AnalysisScreen() {
           to: searchScope === "period" ? lastDayOf(endMonth) : null,
         })
       : []),
-    [searchActive, searchIndex, deferredQuery, transactionType, categoryFilter, sourceFilter, searchScope, startMonth, endMonth],
+    [active, index, deferredQuery, transactionType, categoryFilter, sourceFilter, searchScope, startMonth, endMonth],
   );
-  // "Tüm zamanlar" takes the window out of the question, so the controls that
-  // set it stop accepting input rather than sitting there implying otherwise.
-  const allTimeSearch = searchScope === "all";
-  const sortedResults = useMemo(() => sortTransactions(searchResults, sortMode), [searchResults, sortMode]);
-  // A period can match hundreds of rows, and a wall of them answers no question.
-  // Five is what fits under the filters without scrolling; the rest are one tap
-  // away and the sort decides which five those are.
-  const visibleResults = showAllResults ? sortedResults : sortedResults.slice(0, RESULT_PREVIEW_COUNT);
+  const sorted = useMemo(() => sortTransactions(results, sortMode), [results, sortMode]);
+  return {
+    query, setQuery, transactionType, setTransactionType, sourceFilter, setSourceFilter, searchScope, setSearchScope, sortMode, setSortMode,
+    showAllResults, setShowAllResults, showSearchDetails, setShowSearchDetails, active, sorted, sourceNameById,
+    // A period can match hundreds of rows, and a wall of them answers no question.
+    // Five is what fits under the filters without scrolling; the sort decides which five.
+    visible: showAllResults ? sorted : sorted.slice(0, RESULT_PREVIEW_COUNT),
+  };
+}
 
-  const trendRow = (selected ? rows.find((r) => r.category.id === selected) : null) ?? (categoryFilter ? rows[0] : null);
-  const trendStartMonth = monthKeys[0];
-  const trendEndMonth = monthKeys.at(-1);
+type AnalysisWindow = ReturnType<typeof useAnalysisWindow>;
+type Search = ReturnType<typeof useTransactionSearch>;
 
-  const periodDistribution = useMemo(
-    () => distributionForRange(txLike, firstDayOf(startMonth), lastDayOf(endMonth), today),
-    [txLike, startMonth, endMonth, today],
-  );
-  const supportsTrend = shouldOfferTrendChart(contentWidth) && monthKeys.length >= 2 && !categoryFilter;
-  useEffect(() => {
-    if (!supportsTrend && chartType === "trend") setChartType("bars");
-  }, [supportsTrend, chartType]);
-  const {
-    slices: pieSlices,
-    supplementalSlices: pieSupplemental,
-    totalMinor: pieTotalMinor,
-  } = distributionDonutData(periodDistribution, colors, (id) => categoryById.get(id)?.name ?? tr.common.none);
-  // One full scan of the ledger per month in the window — up to thirteen of
-  // them, and every one of them ran again for a keystroke the chart cannot see.
-  const barGroups = useMemo(
-    () => monthKeys.map((m) => {
-      const label = shortMonthLabel(m);
-      if (categoryFilter) return { label, values: [matrix.get(categoryFilter)?.monthly.get(m) ?? 0] };
-      const distribution = distributionForRange(txLike, firstDayOf(m), lastDayOf(m), today);
-      return { label, values: [distribution.incomeTotalMinor, distribution.expenseTotalMinor, distribution.transferTotalMinor] };
-    }),
-    [monthKeys, categoryFilter, matrix, txLike, today],
-  );
-  const barSeries = categoryFilter
-    ? [{ label: catName(categoryFilter) || tr.tx.category, color: colors[0] }]
-    : [
-        { label: tr.cashflow.income, color: palette.positive },
-        { label: tr.cashflow.expense, color: palette.negative },
-        { label: tr.cashflow.transfer, color: palette.secondary },
-      ];
-  const netTrendPoints = barGroups.map((group) =>
-    (group.values[0] ?? 0) - (group.values[1] ?? 0) - (group.values[2] ?? 0),
-  );
-  const maxAmountChars = useMemo(
-    () => rows.reduce((longest, { data }) => {
-      const values = [...monthKeys.map((month) => data.monthly.get(month) ?? 0), data.ytdMinor];
-      return Math.max(longest, ...values.filter((value) => value !== 0).map((value) => formatMinorCompact(value).length));
-    }, 0),
-    [rows, monthKeys],
-  );
-  // The table already scrolls horizontally; size each numeric column for the
-  // longest actual value so amounts remain on one line instead of wrapping.
-  const analysisCellWidth = Math.min(240, Math.max(compact ? 120 : 128, Math.ceil(maxAmountChars * 7.5) + spacing.lg * 2));
-  const activeBudgetRows = useMemo(
-    () => budgetProgress(budgets, txLike, endMonth, today).filter((budget) => categoryById.has(budget.categoryId)),
-    [budgets, txLike, endMonth, today, categoryById],
-  );
-
-  // Everything above the virtualized result list (period/filters/search box).
-  // One list for the control and for the width it needs: a third option
-  // appearing only when a trend is available must not leave the control sized
-  // for two.
-  const chartModes = [
-    { value: "pie" as const, label: tr.analysis.chartPie },
-    { value: "bars" as const, label: tr.analysis.chartBars },
-    ...(supportsTrend ? [{ value: "trend" as const, label: tr.analysis.chartTrend }] : []),
-  ];
-
-  const searchHeader = (
-    <View>
-      <DataStateNotice status={dataStatus} retry={retryData} />
-      <View style={{ flexDirection: stackedFilters ? "column" : "row", alignItems: "stretch", gap: stackedFilters ? 0 : spacing.lg }}>
-      <Card style={stackedFilters ? undefined : { flex: 1 }}>
+function WindowCard({ range, minYear, categories, categoryFilter, onCategoryFilter, allTime, style }: {
+  range: AnalysisWindow;
+  minYear: number;
+  categories: Category[];
+  categoryFilter: string | null;
+  onCategoryFilter: (categoryId: string | null) => void;
+  allTime: boolean;
+  style?: { flex: number };
+}) {
+  const { palette } = useTheme();
+  const { period, year } = range;
+  // Newest first: a custom range is nearly always anchored near today.
+  const monthOptions = monthRange(makeMonthKey(minYear, 1), range.currentMonth).reverse().map((month) => ({ value: month, label: monthLabel(month) }));
+  return (
+    <Card style={style}>
       <SectionHeader>{tr.analysis.viewWindow}</SectionHeader>
-      {/* The slicer owns its own row. It used to share one with the year
-          switcher, which was affordable at four segments and is not at six —
-          the switcher took a third of the width and left "12 Ay" wrapping.
-          Whatever the chosen period needs sits under it instead. */}
+      {/* The slicer owns its own row: sharing one with the year switcher left
+          "12 Ay" wrapping at six segments. What the period needs sits under it. */}
       <Segmented
-        disabled={allTimeSearch}
+        disabled={allTime}
         options={[
           { value: "1m", label: tr.analysis.period1m },
           { value: "3m", label: tr.analysis.period3m },
@@ -282,57 +180,50 @@ export default function AnalysisScreen() {
           { value: "custom", label: tr.analysis.periodCustom },
         ]}
         value={period}
-        onChange={setPeriod}
+        onChange={range.setPeriod}
       />
       {period === "year" ? (
         <Spread style={{ marginBottom: spacing.md }}>
-          <IconButton icon={ChevronLeft} label={String(year - 1)} onPress={() => setYear(year - 1)} disabled={allTimeSearch || year <= minYear} />
+          <IconButton icon={ChevronLeft} label={String(year - 1)} onPress={() => range.setYear(year - 1)} disabled={allTime || year <= minYear} />
           <Text style={[type.heading, { color: palette.text, minWidth: 48, textAlign: "center" }]}>{year}</Text>
-          <IconButton icon={ChevronRight} label={String(year + 1)} onPress={() => setYear(year + 1)} disabled={allTimeSearch || year >= currentYear} />
+          <IconButton icon={ChevronRight} label={String(year + 1)} onPress={() => range.setYear(year + 1)} disabled={allTime || year >= range.currentYear} />
         </Spread>
       ) : null}
       {period === "custom" ? (
-        /* Two month lists side by side, not two steppers stacked. A stepper
-           asks for one tap per month, so reaching last March from July is six
-           of them twice over, and stacked they cost two thirds of the screen
-           before any data shows. The lists start at the newest month because
-           that is where a range usually begins. */
+        /* Two month lists side by side, not two steppers stacked: a stepper asks
+           one tap per month, and stacked they cost two thirds of the screen. */
         <Row style={{ alignItems: "flex-start" }}>
           <View style={{ flex: 1 }}>
-            <Select
-              label={tr.analysis.customStart}
-              options={monthOptions}
-              value={customStart}
-              onChange={setCustomStart}
-              disabled={allTimeSearch}
-            />
+            <Select label={tr.analysis.customStart} options={monthOptions} value={range.customStart} onChange={range.setCustomStart} disabled={allTime} />
           </View>
           <View style={{ flex: 1 }}>
-            <Select
-              label={tr.analysis.customEnd}
-              options={monthOptions}
-              value={customEnd}
-              onChange={setCustomEnd}
-              disabled={allTimeSearch}
-            />
+            <Select label={tr.analysis.customEnd} options={monthOptions} value={range.customEnd} onChange={range.setCustomEnd} disabled={allTime} />
           </View>
         </Row>
       ) : null}
-
       <Select
         label={tr.tx.category}
         options={[{ value: "", label: tr.analysis.allCategories }, ...categories.map((c) => ({ value: c.id, label: c.name, icon: categoryIconComponent(c) }))]}
         value={categoryFilter ?? ""}
-        onChange={(v) => {
-          setCategoryFilter(v === "" ? null : v);
-          setSelected(null);
-        }}
+        onChange={(v) => onCategoryFilter(v === "" ? null : v)}
       />
-      </Card>
+    </Card>
+  );
+}
 
-      <Card style={stackedFilters ? undefined : { flex: 1 }}>
+function SearchCard({ search, sources, compact, periodLabel, onClear, style }: {
+  search: Search;
+  sources: Source[];
+  compact: boolean;
+  periodLabel: string;
+  onClear: () => void;
+  style?: { flex: number };
+}) {
+  const { searchScope, showSearchDetails } = search;
+  return (
+    <Card style={style}>
       <SectionHeader>{tr.analysis.findTransaction}</SectionHeader>
-      <Field accessibilityLabel={tr.common.search} placeholder={tr.analysis.searchPlaceholder} value={query} onChangeText={setQuery} autoCapitalize="none" />
+      <Field accessibilityLabel={tr.common.search} placeholder={tr.analysis.searchPlaceholder} value={search.query} onChangeText={search.setQuery} autoCapitalize="none" />
       <Segmented
         options={[
           { value: "all", label: tr.common.all },
@@ -340,8 +231,8 @@ export default function AnalysisScreen() {
           { value: "income", label: tr.cashflow.income },
           { value: "transfer", label: tr.cashflow.transfer },
         ]}
-        value={transactionType ?? "all"}
-        onChange={(value) => setTransactionType(value === "all" ? null : value)}
+        value={search.transactionType ?? "all"}
+        onChange={(value) => search.setTransactionType(value === "all" ? null : value)}
       />
       {compact ? (
         <View style={{ alignItems: "flex-start", marginBottom: showSearchDetails ? spacing.md : 0 }}>
@@ -351,41 +242,35 @@ export default function AnalysisScreen() {
             variant="ghost"
             label={showSearchDetails ? tr.analysis.hideSearchFilters : tr.analysis.showSearchFilters}
             expanded={showSearchDetails}
-            onPress={() => setShowSearchDetails(!showSearchDetails)}
+            onPress={() => search.setShowSearchDetails(!showSearchDetails)}
           />
         </View>
       ) : null}
-      {/* Both fields keep one line: the selected range used to be spelled out
-          inside this control's own trigger, which wrapped to three lines in a
-          half-width column and left it taller than the field beside it. The
-          range is the same for the whole search, so it belongs in the hint
-          below rather than inside a collapsed dropdown. */}
+      {/* Both fields keep one line: the range belongs in the hint below, not
+          inside a collapsed dropdown where it wrapped to three lines. */}
       <Collapse open={!compact || showSearchDetails}>
-      <FieldNote note={searchScope === "period" ? tr.analysis.selectedPeriodRange(searchPeriodLabel) : tr.analysis.allTimeHint}>
-        <Row style={{ alignItems: "flex-start" }}>
-          <View style={{ flex: 1 }}>
-            <Select
-              label={tr.analysis.searchSource}
-              options={[{ value: "", label: tr.common.all }, ...sources.map((source) => ({ value: source.id, label: source.name, icon: <PaymentSourceLogo name={source.name} type={source.type} logoRef={source.logoRef} size={SOURCE_MARK} /> }))]}
-              value={sourceFilter ?? ""}
-              onChange={(value) => setSourceFilter(value || null)}
-            />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Select
-              label={tr.analysis.searchPeriod}
-              options={[
-                { value: "period", label: tr.analysis.selectedPeriod },
-                { value: "all", label: tr.analysis.allTime },
-              ]}
-              value={searchScope}
-              onChange={setSearchScope}
-            />
-          </View>
-        </Row>
-      </FieldNote>
+        <FieldNote note={searchScope === "period" ? tr.analysis.selectedPeriodRange(periodLabel) : tr.analysis.allTimeHint}>
+          <Row style={{ alignItems: "flex-start" }}>
+            <View style={{ flex: 1 }}>
+              <Select
+                label={tr.analysis.searchSource}
+                options={[{ value: "", label: tr.common.all }, ...sources.map((source) => ({ value: source.id, label: source.name, icon: <PaymentSourceLogo name={source.name} type={source.type} logoRef={source.logoRef} size={SOURCE_MARK} /> }))]}
+                value={search.sourceFilter ?? ""}
+                onChange={(value) => search.setSourceFilter(value || null)}
+              />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Select
+                label={tr.analysis.searchPeriod}
+                options={[{ value: "period", label: tr.analysis.selectedPeriod }, { value: "all", label: tr.analysis.allTime }]}
+                value={searchScope}
+                onChange={search.setSearchScope}
+              />
+            </View>
+          </Row>
+        </FieldNote>
       </Collapse>
-      {searchActive && sortedResults.length > 1 ? (
+      {search.active && search.sorted.length > 1 ? (
         <Select
           label={tr.analysis.sortLabel}
           options={[
@@ -394,70 +279,46 @@ export default function AnalysisScreen() {
             { value: "highest", label: tr.analysis.sortHighest },
             { value: "lowest", label: tr.analysis.sortLowest },
           ]}
-          value={sortMode}
-          onChange={setSortMode}
+          value={search.sortMode}
+          onChange={search.setSortMode}
         />
       ) : null}
-      {searchActive && searchResults.length === 0 ? (
-          <View style={{ gap: spacing.sm, paddingTop: spacing.sm }}>
-            <Body muted>{tr.analysis.noResults}</Body>
-            {searchScope === "period" ? (
-              <Button
-                label={tr.analysis.searchAllTime}
-                variant="ghost"
-                size="sm"
-                onPress={() => {
-                  setSearchScope("all");
-                  setShowSearchDetails(true);
-                }}
-              />
-            ) : null}
+      {search.active && search.sorted.length === 0 ? (
+        <View style={{ gap: spacing.sm, paddingTop: spacing.sm }}>
+          <Body muted>{tr.analysis.noResults}</Body>
+          {searchScope === "period" ? (
             <Button
-              label={tr.analysis.clearSearch}
+              label={tr.analysis.searchAllTime}
               variant="ghost"
               size="sm"
               onPress={() => {
-                setQuery("");
-                setTransactionType(null);
-                setCategoryFilter(null);
-                setSelected(null);
-                setSourceFilter(null);
-                setSearchScope("period");
+                search.setSearchScope("all");
+                search.setShowSearchDetails(true);
               }}
             />
-          </View>
+          ) : null}
+          <Button label={tr.analysis.clearSearch} variant="ghost" size="sm" onPress={onClear} />
+        </View>
       ) : null}
-      </Card>
-      </View>
-      <MetricStrip
-        style={{ marginBottom: spacing.lg }}
-        // A year of a real ledger can reach the compact scale, and three of
-        // those figures across one row must still share the same display rule.
-        // The Amount primitive owns the fit ladder, so each total keeps its own
-        // line without a screen-specific unit decision.
-        items={[
-          { label: tr.cashflow.income, minor: periodDistribution.incomeTotalMinor, color: palette.positiveText },
-          { label: tr.cashflow.expense, minor: -periodDistribution.expenseTotalMinor, color: palette.negativeText },
-          { label: tr.cashflow.transfer, minor: -periodDistribution.transferTotalMinor, color: palette.secondaryText },
-        ]}
-      />
-    </View>
+    </Card>
   );
+}
 
-  // A broad filter can match every transaction, so results render inside the
-  // screen's FlatList (real virtualization) with the card look split across
-  // the first/last rows instead of a wrapping Card that mounts everything.
-  const renderResult = ({ item: t, index }: { item: (typeof visibleResults)[number]; index: number }) => (
+/**
+ * One found transaction. A broad filter can match every transaction, so results
+ * render inside the screen's FlatList (real virtualization) with the card look
+ * split across the first and last rows instead of a wrapping Card.
+ */
+function ResultRow({ transaction: t, first, last, categoryById, sourceName }: { transaction: TxRow; first: boolean; last: boolean; categoryById: Map<string, Category>; sourceName: string | undefined }) {
+  const router = useRouter();
+  const { palette } = useTheme();
+  const category = t.categoryId ? categoryById.get(t.categoryId) : undefined;
+  return (
     <View
       style={[
         { backgroundColor: palette.surface, paddingHorizontal: spacing.lg },
-        index === 0 && { borderTopLeftRadius: radius.lg, borderTopRightRadius: radius.lg, paddingTop: spacing.sm },
-        index === visibleResults.length - 1 && {
-          borderBottomLeftRadius: radius.lg,
-          borderBottomRightRadius: radius.lg,
-          paddingBottom: spacing.sm,
-          marginBottom: spacing.md,
-        },
+        first && { borderTopLeftRadius: radius.lg, borderTopRightRadius: radius.lg, paddingTop: spacing.sm },
+        last && { borderBottomLeftRadius: radius.lg, borderBottomRightRadius: radius.lg, paddingBottom: spacing.sm, marginBottom: spacing.md },
       ]}
     >
       <Pressable
@@ -466,9 +327,8 @@ export default function AnalysisScreen() {
         onPress={() => router.push({ pathname: "/transaction", params: { id: t.id } })}
         style={(state) => ({
           ...interactionBleed(),
-          // The vertical padding belongs to the PRESSABLE, not to the row
-          // inside it: on the child the fill stopped short of its own control
-          // top and bottom, which is the same miss as a too-small bleed.
+          // The vertical padding belongs to the PRESSABLE: on the child the fill
+          // stopped short of its own control top and bottom.
           paddingVertical: spacing.xs,
           borderRadius: radius.sm,
           ...interactionSurface(palette, state),
@@ -476,10 +336,10 @@ export default function AnalysisScreen() {
       >
         <Spread>
           <View style={{ flex: 1, paddingRight: spacing.sm }}>
-            <Body>{catName(t.categoryId) || tr.common.none}</Body>
+            <Body>{category?.name || tr.common.none}</Body>
             <Body muted style={{ fontSize: type.small.fontSize }}>
               {transactionDateText(t)}
-              {t.paymentSourceId && sourceNameById.get(t.paymentSourceId) ? ` · ${sourceNameById.get(t.paymentSourceId)}` : ""}
+              {sourceName ? ` · ${sourceName}` : ""}
               {t.note ? ` · ${t.note}` : ""}
             </Body>
             {isWorkbookRemainderRow(t) ? (
@@ -492,282 +352,377 @@ export default function AnalysisScreen() {
               </View>
             ) : null}
           </View>
-          <Amount
-            minor={signedBalanceEffectOf(
-              t.type,
-              t.amountTryMinor,
-              t.categoryId ? categoryById.get(t.categoryId)?.kind ?? null : null,
-            )}
-          />
+          <Amount minor={signedBalanceEffectOf(t.type, t.amountTryMinor, category?.kind ?? null)} />
         </Spread>
       </Pressable>
-      {index < visibleResults.length - 1 ? <Divider flush /> : null}
+      {last ? null : <Divider flush />}
+    </View>
+  );
+}
+
+function DistributionCard({ narrow, supportsTrend, monthKeys, categoryFilter, categoryName, distribution, bars }: {
+  narrow: boolean;
+  supportsTrend: boolean;
+  monthKeys: MonthKey[];
+  categoryFilter: string | null;
+  categoryName: string;
+  distribution: ReturnType<typeof distributionDonutData>;
+  bars: { groups: { label: string; values: number[] }[]; series: { label: string; color: string }[] };
+}) {
+  const colors = useSeriesColors();
+  const [chartType, setChartType] = useState<"pie" | "bars" | "trend">("pie");
+  useEffect(() => {
+    if (!supportsTrend && chartType === "trend") setChartType("bars");
+  }, [supportsTrend, chartType]);
+  // One list for the control and for the width it needs: a third option
+  // appearing only when a trend is available must not leave it sized for two.
+  const chartModes = [
+    { value: "pie" as const, label: tr.analysis.chartPie },
+    { value: "bars" as const, label: tr.analysis.chartBars },
+    ...(supportsTrend ? [{ value: "trend" as const, label: tr.analysis.chartTrend }] : []),
+  ];
+  const title = chartType === "pie" ? tr.analysis.chartExpenseDist : chartType === "trend" ? tr.analysis.chartNetTrendTitle : categoryFilter ? categoryName : tr.analysis.monthlyFlows;
+  const hasSlices = distribution.slices.length > 0 || distribution.supplementalSlices.length > 0;
+  return (
+    <Card>
+      {/* Wraps on its own box, not on the screen's width: beside the limits card
+          a heading and a three-option control overflowed by 21px. */}
+      <View
+        style={{
+          flexDirection: narrow ? "column" : "row",
+          alignItems: narrow ? "stretch" : "center",
+          justifyContent: "space-between",
+          flexWrap: "wrap",
+          gap: spacing.md,
+          marginBottom: spacing.md,
+        }}
+      >
+        <Heading style={{ marginTop: 0, marginBottom: 0, flex: narrow ? undefined : 1 }}>{title}</Heading>
+        {/* The control asks for what its labels need; the heading beside it yields the difference. */}
+        <View style={narrow ? { width: "100%" } : { flexGrow: 1, flexBasis: segmentedMaxWidth(chartModes.length), minWidth: 240, maxWidth: segmentedMaxWidth(chartModes.length) }}>
+          <Segmented noMargin options={chartModes} value={chartType} onChange={setChartType} />
+        </View>
+      </View>
+      {chartType === "pie" ? (
+        hasSlices
+          ? <Donut slices={distribution.slices} supplementalSlices={distribution.supplementalSlices} totalMinor={distribution.totalMinor} size={narrow ? 168 : 220} />
+          : <Body muted>{tr.analysis.noResults}</Body>
+      ) : (
+        <ChartFrame>
+          {(chartWidth) => chartType === "bars"
+            ? <Bars width={chartWidth} groups={bars.groups} series={bars.series} />
+            : (
+              <Lines
+                width={chartWidth}
+                height={220}
+                xLabels={monthKeys.map(shortMonthLabel)}
+                series={[{
+                  label: tr.dashboard.netChange,
+                  color: colors[0],
+                  points: bars.groups.map((group) => (group.values[0] ?? 0) - (group.values[1] ?? 0) - (group.values[2] ?? 0)),
+                }]}
+              />
+            )}
+        </ChartFrame>
+      )}
+    </Card>
+  );
+}
+
+function BudgetsCard({ budgets, endMonth, categoryById }: { budgets: ReturnType<typeof budgetProgress>; endMonth: MonthKey; categoryById: Map<string, Category> }) {
+  const router = useRouter();
+  // Budgets lives in the Settings tab, so opening it is a cross-tab push that
+  // belongs at the root: what sits under it is this screen, where back returns.
+  const openBudgets = () => router.push("/budgets");
+  if (budgets.length === 0) {
+    return (
+      <Card rows>
+        <ListRow icon={Target} title={tr.budgets.emptyAnalysisTitle} subtitle={tr.budgets.emptyAnalysisHint} chevron onPress={openBudgets} />
+      </Card>
+    );
+  }
+  return (
+    /* `CardList` rather than bare rows in a `Card`: these are a list, and every
+       other list in the app carries the rule between its rows. */
+    <CardList
+      items={budgets}
+      keyExtractor={(budget) => budget.id}
+      header={
+        <Spread style={{ marginBottom: spacing.sm }}>
+          <Heading style={{ marginTop: 0, marginBottom: 0, flexShrink: 1 }}>{tr.budgets.analysisTitle(monthName(endMonth))}</Heading>
+          <Button label={tr.common.edit} size="sm" variant="ghost" onPress={openBudgets} />
+        </Spread>
+      }
+      renderItem={(budget) => (
+        <ListRow
+          title={categoryById.get(budget.categoryId)?.name ?? tr.common.none}
+          /* The badge reads the same figures as the line above it, so it belongs
+             under them rather than diagonally away in the action corner. */
+          subtitle={
+            <View style={{ alignItems: "flex-start", gap: spacing.xs }}>
+              <Body muted style={{ fontSize: type.small.fontSize }}>
+                {tr.budgets.progress(formatMinorCompact(budget.spentMinor), formatMinorCompact(budget.amountMinor))}
+              </Body>
+              <Badge
+                text={budget.remainingMinor < 0 ? tr.budgets.over(formatMinorCompact(-budget.remainingMinor)) : tr.budgets.remaining(formatMinorCompact(budget.remainingMinor))}
+                tone={budget.remainingMinor < 0 ? "negative" : budget.ratio >= 0.8 ? "warning" : "positive"}
+              />
+            </View>
+          }
+        />
+      )}
+    />
+  );
+}
+
+function CategoryTable({ rows, monthKeys, currentMonth, compact, selected, onSelect }: {
+  rows: CategoryRow[];
+  monthKeys: MonthKey[];
+  currentMonth: MonthKey;
+  compact: boolean;
+  selected: string | null;
+  onSelect: (categoryId: string | null) => void;
+}) {
+  const { palette } = useTheme();
+  const maxAmountChars = useMemo(
+    () => rows.reduce((longest, { data }) => {
+      const values = [...monthKeys.map((month) => data.monthly.get(month) ?? 0), data.ytdMinor];
+      return Math.max(longest, ...values.filter((value) => value !== 0).map((value) => formatMinorCompact(value).length));
+    }, 0),
+    [rows, monthKeys],
+  );
+  // The table already scrolls horizontally; size each numeric column for the
+  // longest actual value so amounts remain on one line instead of wrapping.
+  const cellWidth = Math.min(240, Math.max(compact ? 120 : 128, Math.ceil(maxAmountChars * 7.5) + spacing.lg * 2));
+  const amountStyle = [type.amountSm, { textAlign: "right" as const, paddingHorizontal: spacing.md, fontSize: compact ? 12 : 13 }];
+  if (rows.length === 0) return <EmptyState icon={Inbox} title={tr.cashflow.emptyMonth} />;
+  return (
+    // `maxHeight`, not `height`: this app never shortens a label, so a long
+    // category name wraps and a computed height clipped it. A ceiling lets the
+    // table be as tall as its content up to the same limit.
+    <Card padded={false} style={{ maxHeight: Math.min(rows.length, 8) * ANALYSIS_ROW_HEIGHT + ANALYSIS_TABLE_CHROME }}>
+      <StickyTable
+        cornerLabel={tr.tx.category}
+        headWidth={compact ? 112 : 148}
+        cellWidth={cellWidth}
+        currentColumnKey={currentMonth}
+        // This month when the window holds it, otherwise the window's last: a
+        // past year or custom range opened on January and had to be dragged.
+        focusColumnKey={monthKeys.includes(currentMonth) ? currentMonth : monthKeys.at(-1)}
+        columns={[...monthKeys.map((m) => ({ key: m, label: shortMonthLabel(m) })), { key: "__total", label: tr.common.total }]}
+        rows={rows.map(({ category, data }) => ({
+          key: category.id,
+          label: category.name,
+          onLabelPress: () => onSelect(selected === category.id ? null : category.id),
+          rowHighlight: selected === category.id,
+          cells: [
+            ...monthKeys.map((m) => {
+              const v = data.monthly.get(m) ?? 0;
+              return <Amount key={m} minor={v} colorized={false} color={v === 0 ? palette.textSecondary : palette.text} style={[...amountStyle, { fontVariant: ["tabular-nums"] }]} />;
+            }),
+            <Amount key="__total" minor={data.ytdMinor} colorized={false} color={palette.text} style={amountStyle} />,
+          ],
+        }))}
+      />
+    </Card>
+  );
+}
+
+/** One month is one point: there is no shape to read, so a trend needs two. */
+function CategoryTrend({ row, monthKeys }: { row: CategoryRow | null | undefined; monthKeys: MonthKey[] }) {
+  const colors = useSeriesColors();
+  const [first, last] = [monthKeys[0], monthKeys.at(-1)];
+  if (!row || !first || !last || monthKeys.length < 2) return null;
+  return (
+    <Card>
+      <Heading style={{ marginTop: 0 }}>{tr.analysis.trendOf(row.category.name, monthKeys.length)}</Heading>
+      <ChartFrame>
+        {(chartWidth) => (
+          <Lines
+            width={chartWidth}
+            xLabels={monthKeys.map(shortMonthLabel)}
+            series={[{ label: row.category.name, color: colors[0], points: monthlySeries(row.data, first, last).map((p) => p.amountMinor) }]}
+          />
+        )}
+      </ChartFrame>
+    </Card>
+  );
+}
+
+export default function AnalysisScreen() {
+  const today = todayISO();
+  const contentWidth = useContentWidth();
+  const compact = !shouldUseWideWorkspace(contentWidth);
+  const stackedFilters = !shouldPairFilterCards(contentWidth);
+  const narrow = shouldUseNarrowAnalytics(contentWidth);
+  const range = useAnalysisWindow(narrow, today);
+  const { startMonth, endMonth, monthKeys } = range;
+  const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
+  const [selected, setSelected] = useState<string | null>(null);
+  const categoriesState = useCategoriesState();
+  const personsState = usePersonsState();
+  const sourcesState = useSourcesState();
+  const budgetsState = useCategoryBudgetsState();
+  const transactionsState = useAllTransactionsState();
+  const categories = categoriesState.data;
+  const allTx = transactionsState.data;
+  const { palette } = useTheme();
+  const colors = useSeriesColors();
+  const { status: dataStatus, ready: dataReady, retry: retryData } = combineLiveStates([categoriesState, personsState, sourcesState, budgetsState, transactionsState]);
+
+  // These walk the whole transaction list, and used to do it on every render —
+  // every keystroke in the search box, every filter chip and every layout
+  // measurement. Derived from the data, not the render.
+  const txLike = useTxLike();
+  const categoryById = useMemo(() => new Map(categories.map((category) => [category.id, category])), [categories]);
+  // The analysis matrix is an all-flow view: transfer/investment categories
+  // stay visibly separate from expense totals, but must not disappear from the
+  // user's category-by-month history.
+  const matrix = useMemo(() => categoryRangeMatrix(txLike, startMonth, endMonth, today, { includeTransfers: true }), [txLike, startMonth, endMonth, today]);
+  const rows = useMemo(
+    () => categories
+      .flatMap((category) => {
+        const data = matrix.get(category.id);
+        return data && data.ytdMinor !== 0 ? [{ category, data }] : [];
+      })
+      .filter((r) => categoryFilter == null || r.category.id === categoryFilter),
+    [categories, matrix, categoryFilter],
+  );
+  const search = useTransactionSearch({ transactions: allTx, categoryById, sources: sourcesState.data, categoryFilter, startMonth, endMonth });
+  // "Tüm zamanlar" takes the window out of the question, so the controls that
+  // set it stop accepting input rather than sitting there implying otherwise.
+  const allTime = search.searchScope === "all";
+  const categoryName = (categoryId: string | null) => (categoryId ? categoryById.get(categoryId)?.name ?? "" : "");
+
+  const periodDistribution = useMemo(() => distributionForRange(txLike, firstDayOf(startMonth), lastDayOf(endMonth), today), [txLike, startMonth, endMonth, today]);
+  const donut = distributionDonutData(periodDistribution, colors, (id) => categoryById.get(id)?.name ?? tr.common.none);
+  // One full scan of the ledger per month in the window — up to thirteen of
+  // them, and every one of them ran again for a keystroke the chart cannot see.
+  const barGroups = useMemo(
+    () => monthKeys.map((m) => {
+      const label = shortMonthLabel(m);
+      if (categoryFilter) return { label, values: [matrix.get(categoryFilter)?.monthly.get(m) ?? 0] };
+      const distribution = distributionForRange(txLike, firstDayOf(m), lastDayOf(m), today);
+      return { label, values: [distribution.incomeTotalMinor, distribution.expenseTotalMinor, distribution.transferTotalMinor] };
+    }),
+    [monthKeys, categoryFilter, matrix, txLike, today],
+  );
+  const barSeries = categoryFilter
+    ? [{ label: categoryName(categoryFilter) || tr.tx.category, color: colors[0] }]
+    : [
+        { label: tr.cashflow.income, color: palette.positive },
+        { label: tr.cashflow.expense, color: palette.negative },
+        { label: tr.cashflow.transfer, color: palette.secondary },
+      ];
+  const activeBudgetRows = useMemo(
+    () => budgetProgress(budgetsState.data, txLike, endMonth, today).filter((budget) => categoryById.has(budget.categoryId)),
+    [budgetsState.data, txLike, endMonth, today, categoryById],
+  );
+
+  const chooseCategory = (categoryId: string | null) => {
+    setCategoryFilter(categoryId);
+    setSelected(null);
+  };
+  const clearSearch = () => {
+    search.setQuery("");
+    search.setTransactionType(null);
+    chooseCategory(null);
+    search.setSourceFilter(null);
+    search.setSearchScope("period");
+  };
+
+  if (!dataReady) {
+    // Same `Screen`, same width, same scroll mode as the ready state: differing
+    // in all three, the page re-mounted with its heading when data landed.
+    return <DataGateScreen status={dataStatus} retry={retryData} scroll={false} width="workspace" />;
+  }
+
+  const paired = stackedFilters ? undefined : { flex: 1 };
+  const header = (
+    <View>
+      <DataStateNotice status={dataStatus} retry={retryData} />
+      <View style={{ flexDirection: stackedFilters ? "column" : "row", alignItems: "stretch", gap: stackedFilters ? 0 : spacing.lg }}>
+        <WindowCard
+          range={range}
+          // Year navigation is bounded to where data exists (mirrors Mali Tablo).
+          minYear={allTx[0] ? yearOf(allTx[0].effectiveDate) : range.currentYear}
+          categories={categories}
+          categoryFilter={categoryFilter}
+          onCategoryFilter={chooseCategory}
+          allTime={allTime}
+          style={paired}
+        />
+        <SearchCard search={search} sources={sourcesState.data} compact={compact} periodLabel={`${monthLabel(startMonth)} – ${monthLabel(endMonth)}`} onClear={clearSearch} style={paired} />
+      </View>
+      <MetricStrip
+        style={{ marginBottom: spacing.lg }}
+        // A year of a real ledger can reach the compact scale; the Amount
+        // primitive owns the fit ladder, so each total keeps its own line.
+        items={[
+          { label: tr.cashflow.income, minor: periodDistribution.incomeTotalMinor, color: palette.positiveText },
+          { label: tr.cashflow.expense, minor: -periodDistribution.expenseTotalMinor, color: palette.negativeText },
+          { label: tr.cashflow.transfer, minor: -periodDistribution.transferTotalMinor, color: palette.secondaryText },
+        ]}
+      />
     </View>
   );
 
-  const analysisFooter = (
+  const footer = (
     <View>
-      {/* Sits between the results and everything below them, so "show all"
-          reads as belonging to the list it grows rather than to the cards
-          after it. */}
-      {searchActive && sortedResults.length > RESULT_PREVIEW_COUNT ? (
+      {/* Between the results and everything below, so "show all" reads as
+          belonging to the list it grows. */}
+      {search.active && search.sorted.length > RESULT_PREVIEW_COUNT ? (
         <View style={{ alignItems: "center", marginTop: spacing.sm, marginBottom: spacing.md }}>
           <Button
             size="sm"
             variant="ghost"
-            label={showAllResults ? tr.analysis.showFewerResults : tr.analysis.showAllResults(sortedResults.length)}
-            onPress={() => setShowAllResults(!showAllResults)}
+            label={search.showAllResults ? tr.analysis.showFewerResults : tr.analysis.showAllResults(search.sorted.length)}
+            onPress={() => search.setShowAllResults(!search.showAllResults)}
           />
         </View>
       ) : null}
-      {/* The distribution gets the full width, and the limits sit under it.
-          They were peers in a row, which cost the chart a third of the screen:
-          a ring, a legend and a trend line are read by comparing shapes, and
-          shapes want width. The limits are a short list of numbers and lose
-          nothing by being a scroll lower. */}
-      <View>
-      <View>
-      {rows.length > 0 || pieSlices.length > 0 || pieSupplemental.length > 0 ? (
-        <Card>
-          {/* Wraps on its own box, not on the screen's width. Paired with the
-              limits card this header has about 464px, and a heading beside a
-              three-option control asks for 485 — measured as a 21px overflow of
-              the card at 901 and 1121. `flexWrap` lets the control take its own
-              line exactly when the container cannot hold both. */}
-          <View
-            style={{
-              flexDirection: narrow ? "column" : "row",
-              alignItems: narrow ? "stretch" : "center",
-              justifyContent: "space-between",
-              flexWrap: "wrap",
-              gap: spacing.md,
-              marginBottom: spacing.md,
-            }}
-          >
-            <Heading style={{ marginTop: 0, marginBottom: 0, flex: narrow ? undefined : 1 }}>
-              {chartType === "pie"
-                ? tr.analysis.chartExpenseDist
-                : chartType === "trend"
-                  ? tr.analysis.chartNetTrendTitle
-                  : categoryFilter ? catName(categoryFilter) : tr.analysis.monthlyFlows}
-            </Heading>
-            {/* 168px was chosen when this control had two options. A third
-                one named "Net Trend" wrapped inside its own segment, so the
-                control asks for what its labels need and the heading beside it
-                yields the difference. */}
-            <View
-              style={narrow
-                ? { width: "100%" }
-                : { flexGrow: 1, flexBasis: segmentedMaxWidth(chartModes.length), minWidth: 240, maxWidth: segmentedMaxWidth(chartModes.length) }}
-            >
-              <Segmented
-                noMargin
-                options={chartModes}
-                value={chartType}
-                onChange={setChartType}
-              />
-            </View>
-          </View>
-          {chartType === "pie" ? (
-            pieSlices.length > 0 || pieSupplemental.length > 0 ? (
-              <Donut
-                slices={pieSlices}
-                supplementalSlices={pieSupplemental}
-                totalMinor={pieTotalMinor}
-                size={narrow ? 168 : 220}
-              />
-            ) : (
-              <Body muted>{tr.analysis.noResults}</Body>
-            )
-          ) : chartType === "bars" ? (
-            <ChartFrame>
-              {(chartWidth) => <Bars width={chartWidth} groups={barGroups} series={barSeries} />}
-            </ChartFrame>
-          ) : (
-            <ChartFrame>
-              {(chartWidth) => (
-            <Lines
-              width={chartWidth}
-              height={220}
-              xLabels={monthKeys.map(shortMonthLabel)}
-              series={[{
-                label: tr.dashboard.netChange,
-                color: colors[0],
-                points: netTrendPoints,
-              }]}
-            />
-              )}
-            </ChartFrame>
-          )}
-        </Card>
+      {/* The distribution gets the full width and the limits sit under it: a
+          ring, a legend and a trend line are read by comparing shapes. */}
+      {rows.length > 0 || donut.slices.length > 0 || donut.supplementalSlices.length > 0 ? (
+        <DistributionCard
+          narrow={narrow}
+          supportsTrend={shouldOfferTrendChart(contentWidth) && monthKeys.length >= 2 && !categoryFilter}
+          monthKeys={monthKeys}
+          categoryFilter={categoryFilter}
+          categoryName={categoryName(categoryFilter)}
+          distribution={donut}
+          bars={{ groups: barGroups, series: barSeries }}
+        />
       ) : null}
-      </View>
-
-      {/* Kept beside the chart rather than inside it: these rows hold an
-          imported column equal to its file and are not spending, so the ring,
-          the bars and the category table leave them out and say so here. */}
+      {/* Beside the chart rather than inside it: these rows hold an imported
+          column equal to its file and are not spending, so the charts leave them out and say so here. */}
       {periodDistribution.workbookRemainderMinor !== 0 ? (
         <Card testID="analysis-workbook-remainder">
-          <PanelHeader
-            icon={FileSpreadsheet}
-            title={tr.analysis.remainderTitle}
-            description={tr.analysis.remainderHint}
-            right={<Amount minor={periodDistribution.workbookRemainderMinor} />}
-          />
+          <PanelHeader icon={FileSpreadsheet} title={tr.analysis.remainderTitle} description={tr.analysis.remainderHint} right={<Amount minor={periodDistribution.workbookRemainderMinor} />} />
         </Card>
       ) : null}
-
-      <View>
-      {activeBudgetRows.length === 0 ? (
-        <Card rows>
-          <ListRow
-            icon={Target}
-            title={tr.budgets.emptyAnalysisTitle}
-            subtitle={tr.budgets.emptyAnalysisHint}
-            chevron
-            onPress={openBudgets}
-          />
-        </Card>
-      ) : (
-        /* `CardList` rather than bare rows in a `Card`: these are a list, and
-           every other list in the app carries the rule between its rows. The
-           heading is the list's own header, so its spacing comes from the same
-           place as the rows' instead of a margin picked here. */
-        <CardList
-          items={activeBudgetRows}
-          keyExtractor={(budget) => budget.id}
-          header={
-            <Spread style={{ marginBottom: spacing.sm }}>
-              <Heading style={{ marginTop: 0, marginBottom: 0, flexShrink: 1 }}>
-                {tr.budgets.analysisTitle(monthName(endMonth))}
-              </Heading>
-              <Button label={tr.common.edit} size="sm" variant="ghost" onPress={openBudgets} />
-            </Spread>
-          }
-          renderItem={(budget) => (
-            <ListRow
-              title={categoryById.get(budget.categoryId)?.name ?? tr.common.none}
-              /* The badge reads the same figures as the line above it, so it
-                 belongs under them rather than in the row's action corner —
-                 stacked on the right it sat diagonally away from the numbers
-                 it qualifies. */
-              subtitle={
-                <View style={{ alignItems: "flex-start", gap: spacing.xs }}>
-                  <Body muted style={{ fontSize: type.small.fontSize }}>
-                    {tr.budgets.progress(formatMinorCompact(budget.spentMinor), formatMinorCompact(budget.amountMinor))}
-                  </Body>
-                  <Badge
-                    text={budget.remainingMinor < 0 ? tr.budgets.over(formatMinorCompact(-budget.remainingMinor)) : tr.budgets.remaining(formatMinorCompact(budget.remainingMinor))}
-                    tone={budget.remainingMinor < 0 ? "negative" : budget.ratio >= 0.8 ? "warning" : "positive"}
-                  />
-                </View>
-              }
-            />
-          )}
-        />
-      )}
-      </View>
-      </View>
-
-      {rows.length === 0 ? (
-        <EmptyState icon={Inbox} title={tr.cashflow.emptyMonth} />
-      ) : (
-        // `maxHeight`, not `height`. The old form multiplied the row count by a
-        // constant 52 and added 60 for the chrome, which is only true while
-        // every label fits one line — and this app never shortens a label, so a
-        // category called "Araç, Yakıt ve Otopark" wraps and the real row is
-        // taller than the box computed for it. A ceiling lets the table be as
-        // tall as its content needs up to the same limit, and short tables no
-        // longer reserve height they do not use.
-        <Card padded={false} style={{ maxHeight: Math.min(rows.length, 8) * ANALYSIS_ROW_HEIGHT + ANALYSIS_TABLE_CHROME }}>
-          <StickyTable
-            cornerLabel={tr.tx.category}
-            headWidth={compact ? 112 : 148}
-            cellWidth={analysisCellWidth}
-            currentColumnKey={currentMonth}
-            // This month when the window holds it, otherwise the window's last
-            // month. A window that does not contain today — a past year, a
-            // custom range — has no column to focus, and the table then opened
-            // on January and had to be dragged to the end every time.
-            focusColumnKey={monthKeys.includes(currentMonth) ? currentMonth : monthKeys.at(-1)}
-            columns={[...monthKeys.map((m) => ({ key: m, label: shortMonthLabel(m) })), { key: "__total", label: tr.common.total }]}
-            rows={rows.map(({ category, data }) => ({
-              key: category.id,
-              // A dense grid row is labelled by its name. The glyph in the string also
-              // spent part of `softWrapLabel`'s character budget on a picture.
-              label: category.name,
-              onLabelPress: () => setSelected(selected === category.id ? null : category.id),
-              rowHighlight: selected === category.id,
-              cells: [
-                ...monthKeys.map((m) => {
-                  const v = data.monthly.get(m) ?? 0;
-                  return (
-                    <Amount
-                      key={m}
-                      minor={v}
-                      colorized={false}
-                      color={v === 0 ? palette.textSecondary : palette.text}
-                      style={[type.amountSm, { textAlign: "right", paddingHorizontal: spacing.md, fontSize: compact ? 12 : 13, fontVariant: ["tabular-nums"] }]}
-                    />
-                  );
-                }),
-                <Amount
-                  key="__total"
-                  minor={data.ytdMinor}
-                  colorized={false}
-                  color={palette.text}
-                  style={[type.amountSm, { textAlign: "right", paddingHorizontal: spacing.md, fontSize: compact ? 12 : 13 }]}
-                />,
-              ],
-            }))}
-          />
-        </Card>
-      )}
-
-      {/* One month is one point: there is no shape to read and nothing to
-          compare it against, so the chart earns no space. */}
-      {trendRow && trendStartMonth && trendEndMonth && monthKeys.length > 1 ? (
-        <Card>
-          <Heading style={{ marginTop: 0 }}>{tr.analysis.trendOf(trendRow.category.name, monthKeys.length)}</Heading>
-          <ChartFrame>
-            {(chartWidth) => (
-              <Lines
-                width={chartWidth}
-                xLabels={monthKeys.map(shortMonthLabel)}
-                series={[
-                  {
-                    label: trendRow.category.name,
-                    color: colors[0],
-                    points: monthlySeries(trendRow.data, trendStartMonth, trendEndMonth).map(
-                      (p) => p.amountMinor,
-                    ),
-                  },
-                ]}
-              />
-            )}
-          </ChartFrame>
-        </Card>
-      ) : null}
+      <BudgetsCard budgets={activeBudgetRows} endMonth={endMonth} categoryById={categoryById} />
+      <CategoryTable rows={rows} monthKeys={monthKeys} currentMonth={range.currentMonth} compact={compact} selected={selected} onSelect={setSelected} />
+      <CategoryTrend row={(selected ? rows.find((r) => r.category.id === selected) : null) ?? (categoryFilter ? rows[0] : null)} monthKeys={monthKeys} />
     </View>
   );
-
-  if (!dataReady) {
-    // Same `Screen`, same width, same scroll mode as the ready state. It used
-    // to differ in all three, so the page arrived without its heading, then
-    // re-mounted WITH one the moment data landed and pushed everything below
-    // it down the screen. `DataGateScreen` forwards these props for that
-    // reason — it is a frame this screen chooses, not one it inherits.
-    return <DataGateScreen status={dataStatus} retry={retryData} scroll={false} width="workspace" />;
-  }
 
   return (
     <Screen scroll={false} width="workspace">
       <FlatList
-        data={searchActive ? visibleResults : []}
-        keyExtractor={(t: (typeof visibleResults)[number]) => t.id}
-        renderItem={renderResult}
-        ListHeaderComponent={searchHeader}
-        ListFooterComponent={analysisFooter}
+        data={search.active ? search.visible : []}
+        keyExtractor={(t: TxRow) => t.id}
+        renderItem={({ item, index }) => (
+          <ResultRow
+            transaction={item}
+            first={index === 0}
+            last={index === search.visible.length - 1}
+            categoryById={categoryById}
+            sourceName={item.paymentSourceId ? search.sourceNameById.get(item.paymentSourceId) : undefined}
+          />
+        )}
+        ListHeaderComponent={header}
+        ListFooterComponent={footer}
         renderScrollComponent={renderKeyboardSafeListScroll}
         keyboardShouldPersistTaps="handled"
         automaticallyAdjustContentInsets={false}

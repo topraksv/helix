@@ -14,10 +14,13 @@ import {
   planImportCell,
   type CellData,
   type ParsedSheet,
+  MAX_WORKBOOK_BYTES,
   type RawCell,
   validateWorkbookContainer,
 } from "../src/services/spreadsheet-import";
 import * as XLSX from "xlsx";
+import { SUBSCRIPTION_HEADERS, WORKBOOK_COLUMNS, WORKBOOK_SHEETS, type SubscriptionRow } from "../src/domain/workbook-format";
+import { tr } from "../src/i18n/tr";
 import { required } from "./helpers";
 
 // --- helpers ---------------------------------------------------------------
@@ -56,6 +59,35 @@ function fakeZipSizes(compressed: number, uncompressed: number): Uint8Array {
 describe("workbook container preflight", () => {
   it("rejects a high-ratio ZIP before SheetJS can inflate it", () => {
     expect(() => validateWorkbookContainer(fakeZipSizes(1, 10_000))).toThrow();
+    expect(() => validateWorkbookContainer(fakeZipSizes(0, 5)), "stored as nothing, claiming bytes").toThrow(tr.importer.workbookTooComplex);
+    expect(() => validateWorkbookContainer(fakeZipSizes(0, 0)), "an empty entry").not.toThrow();
+  });
+
+  /** Each ZIP the reader would walk off the end of, or be told lies about, is refused before SheetJS sees it. */
+  it("refuses a directory that does not describe the file it is in", () => {
+    const edited = (edit: (view: DataView, bytes: Uint8Array) => Uint8Array | void) => {
+      const bytes = fakeZipSizes(1_000, 10_000);
+      return edit(new DataView(bytes.buffer), bytes) ?? bytes;
+    };
+    const refused = [
+      edited((view) => view.setUint32(76, 0, true)), // no end-of-directory record
+      edited((view) => view.setUint16(86, 3_000, true)), // more entries than any workbook
+      edited((view) => view.setUint32(92, 60, true)), // a directory reaching past its own end record
+      edited((view) => view.setUint32(30, 0, true)), // an entry that is not a directory header
+      edited((view) => view.setUint16(30 + 28, 1, true)), // an entry longer than the directory says
+      edited((view) => view.setUint32(30 + 24, 40 * 1024 * 1024, true)), // one entry past the per-entry cap
+    ];
+    for (const [index, bytes] of refused.entries()) {
+      expect(() => validateWorkbookContainer(bytes), `case ${index}`).toThrow(tr.importer.workbookTooComplex);
+    }
+    const commented = new Uint8Array(fakeZipSizes(1_000, 10_000).length + 5);
+    commented.set(fakeZipSizes(1_000, 10_000));
+    expect(() => validateWorkbookContainer(commented), "an archive comment after the end record").not.toThrow();
+  });
+
+  it("refuses a file past the size limit and waves through one too short to be a ZIP", () => {
+    expect(() => validateWorkbookContainer(new Uint8Array(MAX_WORKBOOK_BYTES + 1))).toThrow(tr.importer.fileTooLarge);
+    expect(() => validateWorkbookContainer(new Uint8Array([0x50, 0x4b]))).not.toThrow();
   });
 
   it("accepts bounded ZIP metadata and non-ZIP CSV bytes", () => {
@@ -99,6 +131,7 @@ describe("parseMonthLabel", () => {
     expect(parseMonthLabel("00.2025")).toBeNull();
     expect(parseMonthLabel(new Date(2025, 4, 15))).toBe("2025-05");
     expect(parseMonthLabel("Güncel Bakiye")).toBeNull();
+    expect(parseMonthLabel("Kira 2025"), "a word beside a year that names no month").toBeNull();
     expect(parseMonthLabel("")).toBeNull();
   });
 });
@@ -120,6 +153,7 @@ describe("parseSheetAmount", () => {
 
 describe("parseFormulaLiterals", () => {
   it("splits pure literal sums, rejects references and functions", () => {
+    expect(parseFormulaLiterals("=")).toBeNull();
     expect(parseFormulaLiterals("500+300+700")).toEqual([50000, 30000, 70000]);
     expect(parseFormulaLiterals("=1200+8480")).toEqual([120000, 848000]);
     expect(parseFormulaLiterals("1000-250")).toEqual([100000, -25000]);
@@ -321,6 +355,18 @@ describe("parseSheet — failures", () => {
     const r = parseSheet([row("A", "B"), row("x", 1)], "Yatırım");
     expect("reason" in r).toBe(true);
   });
+
+  it("names why a sheet with no body or no headings is refused", () => {
+    expect(parseSheet([row("Ocak 2026", 1)], "Tek")).toEqual({ sheetName: "Tek", reason: tr.importer.reasonTooSmall });
+    expect(parseSheet([row("", ""), row("Ocak 2026", 1)], "Başlıksız")).toEqual({ sheetName: "Başlıksız", reason: tr.importer.reasonNoColumns });
+  });
+
+  it("reads a ragged horizontal sheet, and a comment holding only spaces as none", () => {
+    const sheet = asSheet(parseSheet([row("", "Ocak 2026", "Şubat 2026"), row("Kira", c(100, { note: "   " })), row("Market", 5, 6)], "Yatay"));
+    expect(sheet.months).toEqual(["2026-01", "2026-02"]);
+    expect(sheetCell(sheet, 0, 0)).toMatchObject({ valueMinor: 10000, comment: null });
+    expect(sheetCell(sheet, 1, 0).valueMinor, "the short row's missing cell").toBeNull();
+  });
 });
 
 describe("planImportCell", () => {
@@ -394,6 +440,50 @@ describe("planImportCell", () => {
       items: [{ amountMinor: 221676, note: null, isAggregate: true }],
       cellNote: "beklenmedik masraf",
     });
+  });
+});
+
+describe("parseWorkbook — what a file may not make the reader do", () => {
+  const book = (sheets: Record<string, XLSX.WorkSheet>): XLSX.WorkBook => ({ SheetNames: Object.keys(sheets), Sheets: sheets });
+  const tooComplex = tr.importer.workbookTooComplex;
+
+  it("refuses too many sheets, a named sheet that is not there, and a grid past its limits", () => {
+    expect(() => parseWorkbook(book(Object.fromEntries(Array.from({ length: 101 }, (_, i) => [`S${i}`, {}]))), XLSX)).toThrow(tooComplex);
+    expect(() => parseWorkbook({ SheetNames: ["Kayıp"], Sheets: {} }, XLSX)).toThrow(tooComplex);
+    expect(() => parseWorkbook(book({ Uzun: { "!ref": "A1:A20001" } }), XLSX), "rows").toThrow(tooComplex);
+    expect(() => parseWorkbook(book({ Geniş: { "!ref": "A1:SH1" } }), XLSX), "columns").toThrow(tooComplex);
+    expect(() => parseWorkbook(book({ A: { "!ref": "A1:KN2000" }, B: { "!ref": "A1:KN2000" } }), XLSX), "cells across sheets").toThrow(tooComplex);
+  });
+
+  it("refuses a cell whose text, formula or comment is too long to read safely", () => {
+    const long = "x".repeat(20_001);
+    for (const cell of [{ v: long, t: "s" }, { v: 1, t: "n", f: long }, { v: 1, t: "n", c: [{ t: long }] }]) {
+      expect(() => parseWorkbook(book({ S: { "!ref": "A1", A1: cell } as XLSX.WorkSheet }), XLSX)).toThrow(tooComplex);
+    }
+  });
+
+  it("reports an empty sheet, reads a sparse one, and collects the cards marked informational", () => {
+    const sparse: XLSX.WorkSheet = { "!ref": "A1:C3", B1: { t: "s", v: "Kira" }, C1: { t: "s", v: "ℹ️" }, A2: { t: "s", v: "Ocak 2026" }, B2: { t: "n", v: 100 }, A3: { t: "s", v: "ℹ️ Axess" } };
+    const parsed = parseWorkbook(book({ Boş: {}, Seyrek: sparse }), XLSX);
+    expect(parsed.unparsed).toEqual([{ sheetName: "Boş", reason: tr.importer.reasonTooSmall }]);
+    expect(parsed.sheets.map((sheet) => sheet.months)).toEqual([["2026-01"]]);
+    expect(parsed.informationalCards, "a bare marker names no card").toEqual(["Axess"]);
+  });
+
+  it("reads a record sheet's own dates as days, and a record-named sheet it does not recognise as a ledger", () => {
+    const columns = WORKBOOK_COLUMNS.subscriptions;
+    const netflix: SubscriptionRow = {
+      name: "Netflix", amountMinor: 22999, currency: "TRY", amountMode: "fixed", cycle: "monthly", intervalMonths: 1, billingDay: 12,
+      nextDueDate: "", trialEndDate: "", category: "", source: "", person: "", autoPay: false, isActive: true, websiteDomain: "", monthlyLoadMinor: 22999,
+    };
+    const cells: unknown[] = columns.map((column) => column.write(netflix));
+    cells[columns.findIndex((column) => column.header === SUBSCRIPTION_HEADERS.nextDue)] = new Date(2026, 3, 12);
+    const subscriptions = XLSX.utils.aoa_to_sheet([columns.map((column) => column.header), cells], { cellDates: true });
+    const parsed = parseWorkbook(book({ [WORKBOOK_SHEETS.subscriptions]: subscriptions }), XLSX);
+    expect(parsed.records.subscriptions.map((record) => [record.name, record.nextDueDate])).toEqual([["Netflix", "2026-04-12"]]);
+    const stranger = parseWorkbook(book({ [WORKBOOK_SHEETS.subscriptions]: XLSX.utils.aoa_to_sheet([["Ad"], ["x"]]) }), XLSX);
+    expect(stranger.records.subscriptions).toEqual([]);
+    expect(stranger.unparsed.map((sheet) => sheet.sheetName)).toEqual([WORKBOOK_SHEETS.subscriptions]);
   });
 });
 
@@ -632,6 +722,10 @@ describe("collectInstallmentPlans", () => {
     ]);
     expect(plans).toHaveLength(1);
     expect(required(plans[0])).toMatchObject({ name: "Ev Kredisi", total: 24, startMonth: "2024-10" });
+    expect(collectInstallmentPlans([
+      taksitSheet("2025", [["2025-01", "══ Garanti ══\nKredi  23672,13  4/24"]]),
+      taksitSheet("2026", [["2026-01", "══ Garanti ══\nEv Kredisi  23.672,13  16/24"]]),
+    ]).map((plan) => plan.name), "whichever sheet comes first").toEqual(["Ev Kredisi"]);
   });
 
   it("still ignores a comment that is not an instalment list", () => {

@@ -6,7 +6,10 @@ import {
   isValidInstallmentCount,
   MAX_INSTALLMENT_COUNT,
   planAmounts,
+  planDraft,
+  planForSighting,
   planProgress,
+  type PlanSighting,
 } from "../src/domain/installments";
 import { installmentShareRange, splitIntoInstallments } from "../src/domain/money";
 import type { InstallmentPlanLike } from "../src/domain/types";
@@ -194,5 +197,148 @@ describe("planProgress", () => {
     expect(progress).toMatchObject({ paid: 5, total: 6, remaining: 1, endMonth: "2026-08" });
     expect(progress.remainingMinor).toBe(100_00);
     expect(progress.monthlyMinor).toBe(100_00);
+  });
+});
+
+/**
+ * One purchase reaches the ledger from a form, a workbook and a statement, and
+ * each names it differently. What they agree on is the schedule.
+ */
+describe("planForSighting", () => {
+  // 1.000,00 over 3 bills 333,34 first and 333,33 after.
+  const whole = { ...plan({ startMonth: "2026-06", installmentCount: 3, totalAmountMinor: 1_000_00 }), paymentSourceId: "card" };
+  const sighting = (over: Partial<PlanSighting> = {}): PlanSighting => ({
+    month: "2026-07",
+    amountMinor: 333_33,
+    endMonth: "2026-08",
+    startMonth: "2026-06",
+    paymentSourceId: "card",
+    ...over,
+  });
+
+  it("finds a plan by its schedule and says what it bills that month", () => {
+    expect(planForSighting(sighting(), [whole])).toEqual({ plan: whole, shareMinor: 333_33 });
+    expect(planForSighting(sighting({ month: "2026-06", amountMinor: 333_34 }), [whole])?.shareMinor).toBe(333_34);
+  });
+
+  it("finds it from the end month alone when the source prints only what remains", () => {
+    expect(planForSighting(sighting({ startMonth: null }), [whole])?.plan).toBe(whole);
+    expect(planForSighting(sighting({ startMonth: "2026-05" }), [whole])).toBeNull();
+    expect(planForSighting(sighting({ startMonth: null, endMonth: "2026-09" }), [whole])).toBeNull();
+  });
+
+  it("is not a month the plan does not bill", () => {
+    expect(planForSighting(sighting({ startMonth: null, month: "2026-05" }), [whole])).toBeNull();
+    expect(planForSighting(sighting({ startMonth: null, month: "2026-09", endMonth: "2026-08" }), [whole])).toBeNull();
+  });
+
+  it("allows fewer kuruş than the count, the most a split moves one instalment", () => {
+    expect(planForSighting(sighting({ amountMinor: 333_33 + 2 }), [whole])?.plan).toBe(whole);
+    expect(planForSighting(sighting({ amountMinor: 333_33 - 2 }), [whole])?.plan).toBe(whole);
+    expect(planForSighting(sighting({ amountMinor: 333_33 + 3 }), [whole])).toBeNull();
+    expect(planForSighting(sighting({ amountMinor: 333_33 - 3 }), [whole])).toBeNull();
+  });
+
+  it("reads a monthly plan's own figure", () => {
+    const loan = { ...whole, totalAmountMinor: null, monthlyAmountMinor: 500_00 };
+    expect(planForSighting(sighting({ amountMinor: 500_00 }), [loan])).toEqual({ plan: loan, shareMinor: 500_00 });
+  });
+
+  it("keeps plans on two different cards apart, and matches either side left without one", () => {
+    expect(planForSighting(sighting({ paymentSourceId: "other" }), [whole])).toBeNull();
+    expect(planForSighting(sighting({ paymentSourceId: null }), [whole])?.plan).toBe(whole);
+    expect(planForSighting(sighting(), [{ ...whole, paymentSourceId: null }])).not.toBeNull();
+  });
+
+  /**
+   * A bank fixes a foreign purchase's lira at posting; a plan restates it with
+   * the rate. So a foreign plan is met by its card and schedule, and by what
+   * its instalment for the month bills in lira within a quarter.
+   */
+  it("meets a foreign-currency plan on its own card by the lira its instalment bills", () => {
+    const dollars = { ...whole, currency: "USD", totalAmountMinor: 300_00, billedTryMinor: 300_00 };
+    expect(planForSighting(sighting({ amountMinor: 375_00 }), [dollars])).toEqual({ plan: dollars, shareMinor: 300_00 });
+    expect(planForSighting(sighting({ amountMinor: 375_01 }), [dollars])).toBeNull();
+    expect(planForSighting(sighting({ amountMinor: 225_00 }), [dollars])?.plan).toBe(dollars);
+    expect(planForSighting(sighting({ amountMinor: 224_99 }), [dollars])).toBeNull();
+    expect(planForSighting(sighting({ paymentSourceId: null }), [dollars])).toBeNull();
+    expect(planForSighting(sighting(), [{ ...dollars, paymentSourceId: null }])).toBeNull();
+    expect(planForSighting(sighting(), [{ ...dollars, billedTryMinor: null }])).toBeNull();
+    expect(planForSighting(sighting({ paymentSourceId: null }), [{ ...dollars, paymentSourceId: null }]), "neither side names a card").toBeNull();
+    // Only the months the plan bills: a source that prints what remains says nothing of where it began.
+    expect(planForSighting(sighting({ startMonth: null, month: "2026-05", amountMinor: 300_00 }), [dollars])).toBeNull();
+    expect(planForSighting(sighting({ startMonth: null, month: "2026-09", amountMinor: 300_00 }), [dollars])).toBeNull();
+    expect(planForSighting(sighting({ startMonth: null, month: "2026-06", amountMinor: 300_00 }), [dollars])?.plan).toBe(dollars);
+    expect(planForSighting(sighting({ startMonth: null, month: "2026-08", amountMinor: 300_00 }), [dollars])?.plan).toBe(dollars);
+  });
+
+  it("leaves a plan an earlier line already took, so two identical purchases stay two", () => {
+    const twin = { ...whole, id: "plan-2" };
+    expect(planForSighting(sighting(), [whole, twin], new Set(["plan-1"]))?.plan).toBe(twin);
+    expect(planForSighting(sighting(), [whole], new Set(["plan-1"]))).toBeNull();
+  });
+
+  it("passes over a stored plan it could not expand instead of throwing", () => {
+    const corrupt = [
+      { ...whole, id: "no-amount", totalAmountMinor: null, monthlyAmountMinor: null },
+      // Ends in the sighted month, so only the count check stands between it and a throw.
+      { ...whole, id: "too-long", startMonth: "1976-08", installmentCount: MAX_INSTALLMENT_COUNT + 1 },
+    ];
+    expect(planForSighting(sighting({ startMonth: null }), [...corrupt, whole])?.plan).toBe(whole);
+  });
+});
+
+/** What the plan form can save, and where the plan it saves starts. */
+describe("planDraft", () => {
+  const TODAY = "2026-08-13";
+  const card = { type: "credit_card", statementDay: 25, dueDay: 5 };
+  const draft = (over: Partial<Parameters<typeof planDraft>[0]> = {}) => planDraft({
+    kind: "card_installment", title: "Telefon", amountMinor: 600_00, countText: "6", paidText: null, storedPaid: 0,
+    startChoice: null, existingStartMonth: null, card, dueDayText: "", today: TODAY, ...over,
+  });
+
+  it("starts a new card plan on the statement a purchase made today joins", () => {
+    expect(draft()).toMatchObject({ valid: true, count: 6, paid: 0, startMonth: "2026-09", resolvedStart: "2026-09", paidChanged: false, reschedule: false, dueDay: 5 });
+    expect(draft({ card: { ...card, statementDay: null } })).toMatchObject({ valid: false, cardSourceValid: false, startMonth: "2026-08" });
+    expect(draft({ kind: "loan", card: null })).toMatchObject({ valid: true, startMonth: "2026-08", dueDay: null });
+  });
+
+  it("follows the month the owner picked", () => {
+    expect(draft({ startChoice: "2026-05" })).toMatchObject({ startMonth: "2026-05", resolvedStart: "2026-05" });
+    expect(draft({ startChoice: "2026-05", paidText: "0" }), "nothing paid moves nothing").toMatchObject({ paidChanged: false, resolvedStart: "2026-05" });
+  });
+
+  /** "Already paid N" places the start; on an edit only once it is corrected. */
+  it("moves the start by what was already paid", () => {
+    expect(draft({ paidText: "2" })).toMatchObject({ paidChanged: true, resolvedStart: "2026-07" });
+    const edit = { existingStartMonth: "2026-03" as const, startChoice: "2026-03" as const, storedPaid: 5 };
+    expect(draft({ ...edit })).toMatchObject({ paid: 5, paidChanged: false, resolvedStart: "2026-03", reschedule: false });
+    expect(draft({ ...edit, paidText: "5" })).toMatchObject({ paidChanged: false, reschedule: false });
+    expect(draft({ ...edit, paidText: "2" })).toMatchObject({ paidChanged: true, resolvedStart: "2026-07", reschedule: true });
+  });
+
+  it("takes a loan's own day, else its account's", () => {
+    expect(draft({ kind: "loan", dueDayText: " 17 " })).toMatchObject({ dueDay: 17, dueDayValid: true, valid: true });
+    expect(draft({ kind: "loan", dueDayText: "" })).toMatchObject({ dueDay: 5 });
+    expect(draft({ kind: "loan", dueDayText: "   " }), "spaces are no day").toMatchObject({ dueDay: 5, dueDayValid: true, valid: true });
+    for (const text of ["0", "32", "7.5", "x"]) expect(draft({ kind: "loan", dueDayText: text }), text).toMatchObject({ dueDayValid: false, valid: false });
+    expect(draft({ dueDayText: "40" })).toMatchObject({ dueDayValid: true, dueDay: 5 });
+  });
+
+  it("refuses what cannot be saved", () => {
+    for (const over of [
+      { title: "  " },
+      { amountMinor: null },
+      { amountMinor: 0 },
+      { countText: "0" },
+      { countText: "601" },
+      { paidText: "-1" },
+      { paidText: "7" },
+      { paidText: "1.5" },
+      { card: { ...card, type: "bank" } },
+      { card: { ...card, dueDay: 32 } },
+      { card: null },
+    ]) expect(draft(over), JSON.stringify(over)).toMatchObject({ valid: false });
+    expect(draft({ paidText: "6" })).toMatchObject({ valid: true });
   });
 });

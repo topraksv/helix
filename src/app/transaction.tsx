@@ -30,9 +30,10 @@ import {
 import { combineLiveStates } from "../data/live-state";
 import { classifyRecordId } from "../domain/route-params";
 import { previewTryMinor, resolveTransactionSave } from "../domain/transaction-draft";
-import { assertISODate, isISODate, lastDayOf, monthKeyOf, todayISO, type MonthKey } from "../domain/dates";
+import { assertISODate, isISODate, lastDayOf, monthKeyOf, todayISO, type ISODate, type MonthKey } from "../domain/dates";
 import { isValidCardCycle, statementForPurchase, statementPeriod } from "../domain/card-statements";
-import { formatMinorCompact, formatMinorInput, installmentShareRange } from "../domain/money";
+import { formatMinorCompact, formatMinorInput } from "../domain/money";
+import { installmentSplitText } from "../ui/installment-text";
 import { currencyLabel } from "../domain/fx-provider";
 import { deriveStartMonth, isValidInstallmentCount } from "../domain/installments";
 import { lookupRate, useFxRates } from "../services/fx-fetch";
@@ -58,22 +59,18 @@ import { useOperationGuard } from "../ui/operation-guard";
 import { useUndo } from "../ui/undo";
 import { useDirtyExitGuard, useDraftDirty } from "../ui/dirty-exit";
 import { WorkspaceSplit } from "../ui/workspace-layout";
-import { PersonAssignment } from "../ui/person-assignment";
+import { assignedPersonId, PersonAssignment } from "../ui/person-assignment";
 
 /** The Select's own icon column, so a source mark fits it exactly. */
 const SOURCE_MARK = 22;
 
-/**
- * What an expense paid from an account says when it is a card bill. The card's
- * own charges already leave the balance on its due date, so such a row takes
- * the same money twice; the form points at the statement payment instead of
- * refusing, because an owner who never enters card charges is right to use it.
- */
+/** What an expense paid from an account says when it is a card bill. */
 const CARD_BILL = /kredi\s*kart|kart\s*(borc|borç|ekstre|ödeme|odeme)|ekstre/i;
 
 type EntryType = "expense" | "income" | "transfer";
 
 type ExistingTx = ReturnType<typeof useAllTransactionsState>["data"][number];
+type ExistingSource = ReturnType<typeof useSourcesState>["data"][number];
 
 function EntryTypeChoice({
   label,
@@ -383,107 +380,81 @@ function ExpenseRefunds({ expense }: { expense: ExistingTx }) {
   );
 }
 
-function TransactionForm({ existing, refundOf, investmentRefund = false }: { existing?: ExistingTx; refundOf?: ExistingTx; investmentRefund?: boolean }) {
-  const userId = useUserId();
-  const categoriesState = useCategoriesState();
-  const attachmentsState = useAttachmentsState();
-  const sourcesState = useSourcesState();
-  const personsState = usePersonsState();
-  const transactionsState = useAllTransactionsState();
-  const categories = categoriesState.data;
-  const sources = sourcesState.data;
-  const persons = personsState.data;
-  const router = useRouter();
-  const { palette } = useTheme();
-  const operationGuard = useOperationGuard();
-  const undo = useUndo();
-  const { status: dataStatus, ready: dataReady, retry: retryData } = combineLiveStates([categoriesState, sourcesState, personsState]);
-  const isEdit = existing != null;
-  // Opened as a router modal normally, but a web deep-link to /transaction has
-  // no back stack — fall back to a real screen so "save" always closes it.
-  const close = () => navigateBack(router, investmentRefund ? "/(tabs)/investments" : "/(tabs)/cash-flow");
-
-  const [entryType, setEntryType] = useState<EntryType>((existing?.type as EntryType) ?? (investmentRefund ? "transfer" : "expense"));
-  const [amountRaw, setAmountRaw] = useState(existing ? formatMinorInput(Math.abs(existing.amountMinor)) : "");
-  const [amountMinor, setAmountMinor] = useState<number | null>(existing ? Math.abs(existing.amountMinor) : null);
-  const [isReversal, setIsReversal] = useState((existing?.amountMinor ?? 0) < 0 || investmentRefund || refundOf != null);
+/** What an entry opens as: the row being edited, the expense a refund is for, or a fresh expense. */
+function initialEntry(existing: ExistingTx | undefined, refundOf: ExistingTx | undefined, investmentRefund: boolean) {
   // A refund takes its expense's currency, category, source and person: the
   // repository refuses a link across currencies, and the rest is what the
-  // statement that credits it will say.
-  const initialCurrency = existing?.currency ?? refundOf?.currency ?? "TRY";
-  const [currency, setCurrency] = useState<string>(initialCurrency);
-  const [showCurrency, setShowCurrency] = useState(initialCurrency !== "TRY");
-  const [showAmountOptions, setShowAmountOptions] = useState(
-    (existing?.amountMinor ?? 0) < 0 || initialCurrency !== "TRY" || refundOf != null,
-  );
-  const [categoryId, setCategoryId] = useState<string | null>(existing?.categoryId ?? refundOf?.categoryId ?? null);
-  const [sourceId, setSourceId] = useState<string | null>(existing?.paymentSourceId ?? refundOf?.paymentSourceId ?? null);
-  // persons load async (live query) — deriving keeps "self" as the default
-  // even when the modal mounts before the first query resolves.
-  const [personChoice, setPersonChoice] = useState<string | null>(existing?.personId ?? refundOf?.personId ?? null);
-  const personId = personChoice ?? persons.find((p) => p.isSelf)?.id ?? persons[0]?.id ?? null;
-  // The person ROW, not just the id. The installment path needs `isSelf` and
-  // used to assert the lookup could not miss — but a person deleted on another
-  // device while this form is open arrives by sync, and the assertion then
-  // threw inside the save instead of refusing it.
-  const selectedPerson = persons.find((person) => person.id === personId) ?? null;
-  // When did it happen? New entries default to TODAY (specific day) so the
-  // amount hits the current balance right away; "month only" (dateless) and
-  // future days stay one explicit tap away. An existing dateless row
-  // (isAggregate) reopens in month mode; a dated row in day mode.
-  const [dateMode, setDateMode] = useState<"month" | "day">(existing ? (existing.isAggregate ? "month" : "day") : "day");
-  const initialOccurrenceDate = existing?.purchaseDate ?? existing?.effectiveDate ?? todayISO();
-  const [monthKey, setMonthKey] = useState<MonthKey>(monthKeyOf(initialOccurrenceDate));
-  const [dateStr, setDateStr] = useState(initialOccurrenceDate);
-  const [note, setNote] = useState(existing?.note ?? "");
-  const [installment, setInstallment] = useState(false);
-  const [countStr, setCountStr] = useState("2");
-  const [paidStr, setPaidStr] = useState("0");
-  const [busy, setBusy] = useState(false);
-  // Only what a save would write. `showCurrency` is disclosure — revealing the
-  // currency row changes nothing that could be lost, so asking "discard your
-  // changes?" for it prompts about a change the user never made.
-  const draftSnapshot = JSON.stringify({
-    entryType,
-    amountRaw,
-    isReversal,
+  // statement that credits it will say. An edit is never a new refund.
+  const basis = existing ?? refundOf;
+  const currency = basis?.currency ?? "TRY";
+  const reversed = existing != null && existing.amountMinor < 0;
+  const occurrence = existing?.purchaseDate ?? existing?.effectiveDate ?? todayISO();
+  return {
+    entryType: (existing?.type ?? (investmentRefund ? "transfer" : "expense")) as EntryType,
+    amountRaw: existing ? formatMinorInput(Math.abs(existing.amountMinor)) : "",
+    amountMinor: existing ? Math.abs(existing.amountMinor) : null as number | null,
+    isReversal: reversed || investmentRefund || refundOf != null,
     currency,
-    ...(isEdit ? { categoryId, sourceId, personChoice } : {}),
-    dateMode,
-    monthKey,
-    dateStr,
-    note,
-    installment,
-    countStr,
-    paidStr,
-  });
-  const { allowExit } = useDirtyExitGuard(useDraftDirty(draftSnapshot, dataReady) && !busy);
+    showCurrency: currency !== "TRY",
+    showAmountOptions: reversed || currency !== "TRY" || refundOf != null,
+    categoryId: basis?.categoryId ?? null,
+    sourceId: basis?.paymentSourceId ?? null,
+    personChoice: basis?.personId ?? null,
+    // New entries default to today so the amount reaches the balance at once;
+    // a dateless row (isAggregate) reopens by its month.
+    dateMode: (existing?.isAggregate ? "month" : "day") as "month" | "day",
+    monthKey: monthKeyOf(occurrence),
+    dateStr: occurrence,
+    note: existing?.note ?? "",
+    installment: false,
+    countStr: "2",
+    paidStr: "0",
+  };
+}
 
-  // Smart defaults (new entries only): remember last used category/source.
+type Entry = ReturnType<typeof initialEntry>;
+
+/** A category an entry of `type` may be filed under. */
+const acceptsEntry = (category: { kind: string; isTransfer: boolean }, type: EntryType) =>
+  category.kind === (type === "income" ? "income" : "expense") && (type !== "transfer" || category.isTransfer);
+
+/** The day whose rate prices the entry: its own day, or its month's last — today while that month is still running. */
+function rateDateOf(entry: Entry, today: ISODate): ISODate {
+  if (entry.dateMode === "day") return isISODate(entry.dateStr) ? entry.dateStr : today;
+  return entry.monthKey === monthKeyOf(today) ? today : lastDayOf(entry.monthKey);
+}
+
+/** Why a refund cannot be written against `link`, as the repository will judge it, or null. */
+function refundProblemOf(entry: Entry, link: ExistingTx | undefined, leftMinor: number, opened: boolean): string | null {
+  if (!link || !(opened || entry.isReversal)) return null;
+  if (!entry.isReversal || entry.entryType !== "expense" || entry.currency !== link.currency) return tr.tx.refundMismatch;
+  return entry.amountMinor != null && entry.amountMinor > leftMinor ? tr.tx.refundTooLarge(formatMinorCompact(leftMinor, link.currency)) : null;
+}
+
+/** A new entry's category and source: the last ones used for its kind, or the one investment category there is. */
+function useEntryDefaults({ fresh, ready, entry, patch, categories, sources }: {
+  fresh: boolean;
+  ready: boolean;
+  entry: Entry;
+  patch: (next: Partial<Entry>) => void;
+  categories: { id: string; kind: string; isTransfer: boolean }[];
+  sources: { id: string }[];
+}) {
   React.useEffect(() => {
-    if (isEdit || refundOf || !dataReady) return;
+    if (!fresh || !ready) return;
     // Switching the entry type starts a second read while the first is still
     // in flight, and storage does not promise to answer in order. The stale
     // answer checks the kind it was STARTED with, so landing last is how an
     // income category ends up preselected on an expense — a pairing the
     // repository then refuses, after the user has filled the rest of the form.
     let current = true;
-    void kv.get(`helix.last.${entryType}`).then((v) => {
+    const type = entry.entryType;
+    void kv.get(`helix.last.${type}`).then((v) => {
       if (!current || !v) return;
       try {
         const parsed = JSON.parse(v) as { categoryId?: string; sourceId?: string };
-        const expectedKind = entryType === "income" ? "income" : "expense";
-        if (
-          parsed.categoryId
-          && categories.some((c) =>
-            c.id === parsed.categoryId
-            && c.kind === expectedKind
-            && (entryType !== "transfer" || c.isTransfer),
-          )
-        ) {
-          setCategoryId(parsed.categoryId);
-        }
-        if (parsed.sourceId && sources.some((s) => s.id === parsed.sourceId)) setSourceId(parsed.sourceId);
+        if (parsed.categoryId && categories.some((c) => c.id === parsed.categoryId && acceptsEntry(c, type))) patch({ categoryId: parsed.categoryId });
+        if (parsed.sourceId && sources.some((s) => s.id === parsed.sourceId)) patch({ sourceId: parsed.sourceId });
       } catch {
         // A corrupt device-local preference is not worth reporting; the form
         // simply keeps its own defaults.
@@ -493,99 +464,109 @@ function TransactionForm({ existing, refundOf, investmentRefund = false }: { exi
       current = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [entryType, dataReady]);
+  }, [entry.entryType, ready]);
 
   React.useEffect(() => {
-    if (isEdit || entryType !== "transfer" || !dataReady || categoryId) return;
+    if (!fresh || entry.entryType !== "transfer" || !ready || entry.categoryId) return;
     const investmentCategories = categories.filter((category) => category.kind === "expense" && category.isTransfer);
-    if (investmentCategories.length === 1) setCategoryId(investmentCategories[0]!.id);
-  }, [categories, categoryId, dataReady, entryType, isEdit]);
+    if (investmentCategories.length === 1) patch({ categoryId: investmentCategories[0]!.id });
+  }, [categories, entry.categoryId, ready, entry.entryType, fresh, patch]);
+}
+
+/**
+ * What the chosen source makes of an expense: a card charge needs the card's
+ * cycle, and a card bill paid from an account takes the card's charges twice.
+ * The form points at the statement payment instead of refusing, because an
+ * owner who never enters card charges is right to record it that way.
+ */
+function cardContext(entry: Entry, sources: ExistingSource[], persons: { id: string; isSelf: boolean }[], categories: { id: string; name: string }[]) {
+  const source = sources.find((candidate) => candidate.id === entry.sourceId);
+  const expense = entry.entryType === "expense";
+  const isCreditCardExpense = expense && source?.type === "credit_card";
+  const cycle = { statementDay: source?.statementDay ?? null, dueDay: source?.dueDay ?? null };
+  const ownsCard = sources.some((candidate) => candidate.type === "credit_card" && persons.some((person) => person.isSelf && person.id === candidate.personId));
+  return {
+    source,
+    cycle,
+    isCreditCardExpense,
+    cardCycleValid: !isCreditCardExpense || isValidCardCycle(cycle),
+    looksLikeCardBill: expense && source?.type !== "credit_card" && ownsCard
+      && CARD_BILL.test(`${categories.find((category) => category.id === entry.categoryId)?.name ?? ""} ${entry.note}`),
+  };
+}
+
+function useTransactionForm({ existing, refundOf, investmentRefund }: { existing?: ExistingTx; refundOf?: ExistingTx; investmentRefund: boolean }) {
+  const userId = useUserId();
+  const categoriesState = useCategoriesState();
+  const sourcesState = useSourcesState();
+  const personsState = usePersonsState();
+  const transactionsState = useAllTransactionsState();
+  const categories = categoriesState.data;
+  const sources = sourcesState.data;
+  const persons = personsState.data;
+  const router = useRouter();
+  const operationGuard = useOperationGuard();
+  const undo = useUndo();
+  const data = combineLiveStates([categoriesState, sourcesState, personsState]);
+  const isEdit = existing != null;
+  // Opened as a router modal normally, but a web deep-link to /transaction has
+  // no back stack — fall back to a real screen so "save" always closes it.
+  const close = () => navigateBack(router, investmentRefund ? "/(tabs)/investments" : "/(tabs)/cash-flow");
+
+  const [entry, setEntry] = useState(() => initialEntry(existing, refundOf, investmentRefund));
+  const patch = React.useCallback((next: Partial<Entry>) => setEntry((current) => ({ ...current, ...next })), []);
+  const [busy, setBusy] = useState(false);
+  // Only what a save would write: revealing the currency row or the amount
+  // options changes nothing that could be lost, so it prompts about nothing.
+  const { showCurrency: _currencyShown, showAmountOptions: _optionsShown, amountMinor: _parsed, categoryId, sourceId, personChoice, ...written } = entry;
+  const { allowExit } = useDirtyExitGuard(useDraftDirty(JSON.stringify({ ...written, ...(isEdit ? { categoryId, sourceId, personChoice } : {}) }), data.ready) && !busy);
+
+  useEntryDefaults({ fresh: !isEdit && !refundOf, ready: data.ready, entry, patch, categories, sources });
 
   useFxRates();
   const today = todayISO();
-  const selectedRateDate = dateMode === "month"
-    ? (monthKey === monthKeyOf(today) ? today : lastDayOf(monthKey))
-    : (isISODate(dateStr) ? dateStr : today);
-  const rate = lookupRate(userId, currency, selectedRateDate);
+  const rate = lookupRate(userId, entry.currency, rateDateOf(entry, today));
   // Editing a foreign-currency row must NOT silently re-price it at today's
   // rate — the transaction's TRY value was snapshotted when it occurred. So
   // when the currency is unchanged from the stored row, keep its original
   // fxRate; only a fresh entry or a currency change uses the live rate.
-  const editingSameCurrency = isEdit && existing?.currency === currency && currency !== "TRY";
-  const historicalRateTry =
-    editingSameCurrency && existing?.fxRate ? Number(existing.fxRate) : null;
-  const effectiveRateTry: number | null =
-    currency === "TRY" ? 1 : (historicalRateTry ?? rate?.rate.rateTry ?? null);
+  const historicalRateTry = existing?.currency === entry.currency && entry.currency !== "TRY" && existing.fxRate ? Number(existing.fxRate) : null;
+  const effectiveRateTry = entry.currency === "TRY" ? 1 : historicalRateTry ?? rate?.rate.rateTry ?? null;
 
-  const kindForCategories = entryType === "income" ? "income" : "expense";
-  const categoryOptions = categories
-    .filter((c) => c.kind === kindForCategories && (entryType !== "transfer" || c.isTransfer))
-    .map((c) => ({ value: c.id, label: c.name, icon: categoryIconComponent(c) }));
+  const personId = assignedPersonId(personChoice, persons);
+  // The person ROW, not just the id: a person deleted on another device while
+  // this form is open arrives by sync, and the save then refuses rather than throws.
+  const selectedPerson = persons.find((person) => person.id === personId) ?? null;
+  const { source: selectedSource, cycle: cardCycle, isCreditCardExpense, cardCycleValid, looksLikeCardBill } = cardContext(entry, sources, persons, categories);
 
-  const sourceOptions = sources.map((s) => ({ value: s.id, label: s.name, icon: <PaymentSourceLogo name={s.name} type={s.type} logoRef={s.logoRef} size={SOURCE_MARK} /> }));
-  const selectedSource = sources.find((source) => source.id === sourceId);
-  const isCreditCardExpense = entryType === "expense" && selectedSource?.type === "credit_card";
-  const cardCycle = selectedSource
-    ? { statementDay: selectedSource.statementDay, dueDay: selectedSource.dueDay }
-    : { statementDay: null, dueDay: null };
-  const cardCycleValid = !isCreditCardExpense || isValidCardCycle(cardCycle);
-  const looksLikeCardBill = entryType === "expense"
-    && selectedSource?.type !== "credit_card"
-    && sources.some((source) => source.type === "credit_card" && persons.some((person) => person.isSelf && person.id === source.personId))
-    && CARD_BILL.test(`${categories.find((category) => category.id === categoryId)?.name ?? ""} ${note}`);
-
-  // Resolve the two date modes to one effective date + a dateless flag. Month
-  // mode anchors to the first of the month and marks the row dateless (shown by
-  // month, kept out of "upcoming"); day mode uses the exact day. A month-only
-  // card charge joins that month's statement, which the repository resolves.
-  const dateless = dateMode === "month";
-  const effectiveDate = dateless ? (`${monthKey}-01` as string) : dateStr;
-  const dateValid = dateless || isISODate(dateStr);
-  const count = Number(countStr);
-  const paid = Number(paidStr);
-  const installmentValid =
-    !installment || (isValidInstallmentCount(count) && count >= 2 && Number.isInteger(paid) && paid >= 0 && paid < count);
-  const tryMinor = previewTryMinor(amountMinor, isReversal, effectiveRateTry);
+  // Month mode anchors to the first of the month and marks the row dateless
+  // (shown by month, kept out of "upcoming"); day mode uses the exact day. A
+  // month-only card charge joins that month's statement, which the repository resolves.
+  const dateless = entry.dateMode === "month";
+  const effectiveDate = dateless ? `${entry.monthKey}-01` : entry.dateStr;
+  const dateValid = dateless || isISODate(entry.dateStr);
+  const count = Number(entry.countStr);
+  const paid = Number(entry.paidStr);
+  const installmentValid = !entry.installment || (isValidInstallmentCount(count) && count >= 2 && Number.isInteger(paid) && paid >= 0 && paid < count);
   // The rule itself is in `domain/transaction-draft.ts`, where a test can hold
   // it without a renderer. This screen owns the fields; that owns the answer.
   const saveable = resolveTransactionSave({
-    dataReady,
-    type: entryType,
-    amountMinor,
-    isReversal,
-    currency,
-    rateTry: effectiveRateTry,
-    categoryId,
-    person: selectedPerson,
-    dateValid,
-    installmentValid,
-    cardCycleValid,
-    installment,
+    dataReady: data.ready, type: entry.entryType, amountMinor: entry.amountMinor, isReversal: entry.isReversal, currency: entry.currency,
+    rateTry: effectiveRateTry, categoryId, person: selectedPerson, dateValid, installmentValid, cardCycleValid, installment: entry.installment,
   });
   // The expense this row refunds: the one it was opened from, or the one an
   // existing refund is already linked to.
-  const refundLink = refundOf ?? (existing?.refundOfTransactionId
-    ? transactionsState.data.find((row) => row.id === existing.refundOfTransactionId)
-    : undefined);
+  const refundLink = refundOf ?? transactionsState.data.find((row) => existing?.refundOfTransactionId != null && row.id === existing.refundOfTransactionId);
   const refundLeftMinor = refundLink
     ? refundLink.amountMinor + transactionsState.data
       .filter((row) => row.refundOfTransactionId === refundLink.id && row.id !== existing?.id)
       .reduce((sum, row) => sum + row.amountMinor, 0)
     : 0;
-  let refundProblem: string | null = null;
-  if (refundLink && (refundOf != null || isReversal)) {
-    if (!isReversal || entryType !== "expense" || currency !== refundLink.currency) refundProblem = tr.tx.refundMismatch;
-    else if (amountMinor != null && amountMinor > refundLeftMinor) {
-      refundProblem = tr.tx.refundTooLarge(formatMinorCompact(refundLeftMinor, refundLink.currency));
-    }
-  }
+  const refundProblem = refundProblemOf(entry, refundLink, refundLeftMinor, refundOf != null);
   const canSave = saveable != null && refundProblem == null;
-
   const cardStatementPreview = isCreditCardExpense && isValidCardCycle(cardCycle) && dateValid
-    ? dateless ? statementPeriod(monthKey, cardCycle) : statementForPurchase(dateStr, cardCycle)
+    ? dateless ? statementPeriod(entry.monthKey, cardCycle) : statementForPurchase(entry.dateStr, cardCycle)
     : null;
-
-  const fail = (msg: string) => void appAlert(msg, tr.errors.title);
 
   /**
    * Confirm the write with what it DID, not merely that it happened.
@@ -595,13 +576,10 @@ function TransactionForm({ existing, refundOf, investmentRefund = false }: { exi
    * have already delivered the row underneath it, so there is no refresh, no
    * remount and no reload behind this.
    */
-  const confirmSave = React.useCallback((summary: SaveSummary, editId: string | null) => {
+  const confirmSave = (summary: SaveSummary, editId: string | null) => {
     const parts: string[] = [];
-    if (summary.effect.balanceMinor !== 0) {
-      parts.push(tr.tx.savedBalanceEffect(formatMinorCompact(summary.effect.balanceMinor)));
-    } else if (summary.effect.forecastOnly) {
-      parts.push(tr.tx.savedForecastEffect(formatMinorCompact(summary.effect.projectedMinor)));
-    }
+    if (summary.effect.balanceMinor !== 0) parts.push(tr.tx.savedBalanceEffect(formatMinorCompact(summary.effect.balanceMinor)));
+    else if (summary.effect.forecastOnly) parts.push(tr.tx.savedForecastEffect(formatMinorCompact(summary.effect.projectedMinor)));
     if (summary.otherMonth) parts.push(tr.tx.savedOtherMonth(monthLabel(summary.otherMonth as MonthKey)));
     const message = summary.kind === "updated" ? tr.tx.updatedNotice : tr.tx.savedNotice;
     if (parts.length === 0) {
@@ -610,282 +588,196 @@ function TransactionForm({ existing, refundOf, investmentRefund = false }: { exi
     }
     undo.showDetailed(message, {
       text: parts.join(" · "),
-      action: editId
-        ? { label: tr.common.edit, run: () => router.push({ pathname: "/transaction", params: { id: editId } }) }
-        : null,
-    });
-  }, [undo, router]);
-
-  const save = async (thenNew: boolean) => {
-    if (!saveable) return;
-    await operationGuard.run(async () => {
-      setBusy(true);
-      try {
-        assertISODate(effectiveDate);
-        const fxRate = currency === "TRY" ? null : String(effectiveRateTry);
-        // The id of the row just written, so the confirmation can offer to
-        // open it. A plan writes many rows and has no single one to open.
-        let createdId: string | null = null;
-        // The same eleven fields either way — an edit patches them, a new
-        // entry creates them. One literal is what stops a twelfth from being
-        // added to only one of the two write paths.
-        const written = {
-          type: entryType,
-          amountMinor: saveable.signedAmountMinor,
-          currency,
-          fxRate,
-          amountTryMinor: saveable.tryMinor,
-          effectiveDate,
-          isAggregate: dateless,
-          categoryId: saveable.categoryId,
-          paymentSourceId: sourceId,
-          personId: saveable.person.id,
-          note: note.trim() || null,
-        };
-        // Same reasoning as `written`: the confirmation describes the same row
-        // either way, so one literal is what stops a field being added to the
-        // "created" summary and forgotten in the "updated" one.
-        const saved: SavedTransaction = {
-          type: entryType,
-          amountTryMinor: Math.abs(saveable.tryMinor),
-          effectiveDate,
-          status: effectiveDate <= todayISO() ? "realized" : "pending",
-          personIsSelf: saveable.person.isSelf,
-        };
-        if (isEdit) {
-          await updateTransaction(userId, existing, written);
-          scheduleSync(userId);
-          confirmSave(
-            buildSaveSummary({ kind: "updated", saved, today: todayISO(), enteredFor: dateStr }),
-            null,
-          );
-          allowExit(close);
-          return;
-        }
-        if (installment) {
-          await createInstallmentPlan(userId, {
-            title: note.trim() || tr.installments.defaultTitle(formatMinorCompact(saveable.amountMinor, currency)),
-            kind: "card_installment",
-            totalAmountMinor: saveable.amountMinor,
-            monthlyAmountMinor: null,
-            installmentCount: count,
-            currency,
-            fxRate,
-            startMonth:
-              paid > 0
-                ? deriveStartMonth(paid, monthKeyOf(todayISO()), sources.find((s) => s.id === sourceId)?.dueDay ?? null, todayISO())
-                : cardStatementPreview ? monthKeyOf(cardStatementPreview.dueDate) : dateless ? monthKey : monthKeyOf(dateStr),
-            dueDay: sources.find((s) => s.id === sourceId)?.dueDay ?? null,
-            paymentSourceId: sourceId,
-            personId: saveable.person.id,
-            personIsSelf: saveable.person.isSelf,
-            categoryId: saveable.categoryId,
-            note: note.trim() || null,
-            tryFactor: saveable.rateTry,
-          });
-        } else {
-          createdId = await addTransaction(userId, refundOf ? { ...written, refundOfTransactionId: refundOf.id } : written);
-        }
-        void kv.set(`helix.last.${entryType}`, JSON.stringify({ categoryId, sourceId }));
-        scheduleSync(userId);
-        // An installment plan is many rows across many months; a single-row
-        // balance sentence would misdescribe it, so it keeps the plain notice.
-        const summary = installment
-          ? null
-          : buildSaveSummary({ kind: "created", saved, today: todayISO(), enteredFor: dateStr });
-        if (thenNew) {
-          setAmountRaw("");
-          setAmountMinor(null);
-          setIsReversal(false);
-          setNote("");
-          // Staying on the form means the cleared amount is the only thing that
-          // changes, and a blank field reads just as easily as "my input was
-          // discarded". Confirm the write through the shared bar.
-          if (summary) confirmSave(summary, createdId);
-          else undo.show(tr.tx.savedNotice);
-        } else {
-          if (summary) confirmSave(summary, createdId);
-          allowExit(close);
-        }
-      } catch (e) {
-        // Never surface a raw engine error (English, technical) to the user.
-        devError("transaction.save", e);
-        fail(
-          e instanceof CreditCardCycleRequiredError
-            ? tr.sources.cycleRequired
-            : e instanceof RefundExceedsExpenseError && refundLink
-              ? tr.tx.refundTooLarge(formatMinorCompact(e.remainingMinor, refundLink.currency))
-              : tr.errors.saveFailed,
-        );
-      } finally {
-        setBusy(false);
-      }
+      action: editId ? { label: tr.common.edit, run: () => router.push({ pathname: "/transaction", params: { id: editId } }) } : null,
     });
   };
 
-  // Desktop: Enter saves (unless the note textarea or a popup has focus).
-  useSubmitOnEnter(() => void save(false), canSave && !busy);
-  // Only while the field is actually showing one. See `placeholders.ts`.
-  const amountPlaceholder = useRotatingPlaceholder(placeholderPools.amount, { active: amountRaw.length === 0 });
-  const notePlaceholder = useRotatingPlaceholder(placeholderPools.note, { active: note.length === 0 });
+  const saveFailure = (e: unknown) => {
+    if (e instanceof CreditCardCycleRequiredError) return tr.sources.cycleRequired;
+    return e instanceof RefundExceedsExpenseError && refundLink ? tr.tx.refundTooLarge(formatMinorCompact(e.remainingMinor, refundLink.currency)) : tr.errors.saveFailed;
+  };
 
-  if (!dataReady) {
-    return (
-      <DataGateScreen status={dataStatus} retry={retryData}>
-        <Stack.Screen options={{ title: isEdit ? tr.tx.edit : tr.tx.new }} />
-      </DataGateScreen>
-    );
-  }
+  /** A card purchase in instalments: its plan starts on the statement the purchase joins, or where "already paid" places it. */
+  const writePlan = (fxRate: string | null) => {
+    const dueDay = selectedSource?.dueDay ?? null;
+    const firstMonth = cardStatementPreview ? monthKeyOf(cardStatementPreview.dueDate) : dateless ? entry.monthKey : monthKeyOf(entry.dateStr);
+    return createInstallmentPlan(userId, {
+      title: entry.note.trim() || tr.installments.defaultTitle(formatMinorCompact(saveable!.amountMinor, entry.currency)),
+      kind: "card_installment", totalAmountMinor: saveable!.amountMinor, monthlyAmountMinor: null, installmentCount: count,
+      currency: entry.currency, fxRate,
+      startMonth: paid > 0 ? deriveStartMonth(paid, monthKeyOf(todayISO()), dueDay, todayISO()) : firstMonth,
+      dueDay, paymentSourceId: sourceId, personId: saveable!.person.id, personIsSelf: saveable!.person.isSelf,
+      categoryId: saveable!.categoryId, note: entry.note.trim() || null, tryFactor: saveable!.rateTry,
+    });
+  };
+
+  const save = (thenNew: boolean) => operationGuard.run(async () => {
+    if (!saveable) return;
+    setBusy(true);
+    try {
+      assertISODate(effectiveDate);
+      const fxRate = entry.currency === "TRY" ? null : String(effectiveRateTry);
+      // The same eleven fields either way — an edit patches them, a new entry
+      // creates them. One literal is what stops a twelfth reaching only one path.
+      const fields = {
+        type: entry.entryType, amountMinor: saveable.signedAmountMinor, currency: entry.currency, fxRate, amountTryMinor: saveable.tryMinor,
+        effectiveDate, isAggregate: dateless, categoryId: saveable.categoryId, paymentSourceId: sourceId, personId: saveable.person.id,
+        note: entry.note.trim() || null,
+      };
+      const saved: SavedTransaction = {
+        type: entry.entryType, amountTryMinor: Math.abs(saveable.tryMinor), effectiveDate,
+        status: effectiveDate <= todayISO() ? "realized" : "pending", personIsSelf: saveable.person.isSelf,
+      };
+      if (existing) {
+        await updateTransaction(userId, existing, fields);
+        scheduleSync(userId);
+        confirmSave(buildSaveSummary({ kind: "updated", saved, today: todayISO(), enteredFor: entry.dateStr }), null);
+        allowExit(close);
+        return;
+      }
+      // A plan writes many rows across many months: no single row to open and
+      // no one-row balance sentence to say, so it keeps the plain notice.
+      const createdId = entry.installment ? null : await addTransaction(userId, refundOf ? { ...fields, refundOfTransactionId: refundOf.id } : fields);
+      if (entry.installment) await writePlan(fxRate);
+      void kv.set(`helix.last.${entry.entryType}`, JSON.stringify({ categoryId, sourceId }));
+      scheduleSync(userId);
+      const summary = entry.installment ? null : buildSaveSummary({ kind: "created", saved, today: todayISO(), enteredFor: entry.dateStr });
+      if (summary) confirmSave(summary, createdId);
+      // Staying on the form clears only the amount; the shared bar confirms the write.
+      if (thenNew) {
+        patch({ amountRaw: "", amountMinor: null, isReversal: false, note: "" });
+        if (!summary) undo.show(tr.tx.savedNotice);
+      } else allowExit(close);
+    } catch (e) {
+      // Never surface a raw engine error (English, technical) to the user.
+      devError("transaction.save", e);
+      void appAlert(saveFailure(e), tr.errors.title);
+    } finally {
+      setBusy(false);
+    }
+  });
 
   const chooseEntryType = (next: EntryType) => {
-    selectionTapIfChanged(entryType, next);
-    setEntryType(next);
-    setIsReversal(false);
-    setCategoryId((current) => {
-      if (!current) return current;
-      const expectedKind = next === "income" ? "income" : "expense";
-      return categories.some((category) =>
-        category.id === current
-        && category.kind === expectedKind
-        && (next !== "transfer" || category.isTransfer),
-      ) ? current : null;
-    });
-    if (next !== "expense") setInstallment(false);
+    selectionTapIfChanged(entry.entryType, next);
+    setEntry((current) => ({
+      ...current,
+      entryType: next,
+      isReversal: false,
+      categoryId: current.categoryId && categories.some((category) => category.id === current.categoryId && acceptsEntry(category, next)) ? current.categoryId : null,
+      installment: next === "expense" && current.installment,
+    }));
   };
 
-  return (
-    <Screen width="workspace">
-      <Stack.Screen options={{ title: isEdit ? tr.tx.edit : tr.tx.new }} />
-      <DataStateNotice status={dataStatus} retry={retryData} />
-      <WorkspaceSplit
-        testID="transaction-workspace"
-        primary={(
-      <HeroCard>
-      <PanelHeader icon={WalletCards} title={tr.tx.amountDetails} description={tr.tx.amountDetailsHint} />
-      {refundLink ? (
-        // A linked refund is an expense refund and nothing else, so the type
-        // is stated rather than offered.
-        <View style={{ marginBottom: spacing.md, padding: spacing.md, borderRadius: radius.md, backgroundColor: palette.surfaceAlt, gap: spacing.xs }}>
-          <Body style={{ color: palette.primaryText }}>
-            {tr.tx.refundOfLine(
-              categories.find((category) => category.id === refundLink.categoryId)?.name ?? tr.common.none,
-              formatMinorCompact(refundLink.amountMinor, refundLink.currency),
-              dateLabel(refundLink.purchaseDate ?? refundLink.effectiveDate),
-            )}
-          </Body>
-          <Body muted style={{ fontSize: type.small.fontSize }}>{tr.tx.refundOfLeft(formatMinorCompact(refundLeftMinor, refundLink.currency))}</Body>
-          {refundProblem ? <Body accessibilityRole="alert" style={{ color: palette.warningText }}>{refundProblem}</Body> : null}
-        </View>
-      ) : (
-      <View
-        role="radiogroup"
-        accessibilityLabel={tr.tx.type}
-        style={{ flexDirection: "row", gap: spacing.sm, marginBottom: spacing.md }}
-      >
-        <EntryTypeChoice
-          label={tr.tx.expense}
-          icon={ArrowUpRight}
-          tone={palette.negative}
-          selected={entryType === "expense"}
-          onPress={() => chooseEntryType("expense")}
-        />
-        <EntryTypeChoice
-          label={tr.tx.income}
-          icon={ArrowDownLeft}
-          tone={palette.positive}
-          selected={entryType === "income"}
-          onPress={() => chooseEntryType("income")}
-        />
-        <EntryTypeChoice
-          label={tr.tx.transferInvest}
-          icon={TrendingUp}
-          tone={palette.primary}
-          selected={entryType === "transfer"}
-          onPress={() => chooseEntryType("transfer")}
-        />
-      </View>
-      )}
+  return {
+    existing, refundOf, isEdit, data, entry, patch, busy, save, canSave, chooseEntryType, userId,
+    categories, sources, persons, personId, historicalRateTry, rate, isCreditCardExpense, cardCycleValid, looksLikeCardBill,
+    dateless, installmentValid, count, cardStatementPreview, refundLink, refundLeftMinor, refundProblem,
+    tryMinor: previewTryMinor(entry.amountMinor, entry.isReversal, effectiveRateTry),
+  };
+}
 
-      <MoneyField
-        testID="transaction-amount"
-        // The code alone, no flag. A flag belongs where a currency is being
-        // chosen or shown as itself — the picker chips, the disclosure above
-        // them. Here it would join the field's ACCESSIBLE NAME, so a screen
-        // reader would announce "Tutar, Türkiye bayrağı, TRY" before the
-        // person could type a number.
-        label={`${tr.tx.amount} · ${currency}`}
-        value={amountRaw}
-        expression={entryType !== "transfer"}
-        placeholder={amountPlaceholder}
-        onChangeMinor={(raw, minor) => {
-          setAmountRaw(entryType === "transfer" ? raw.replace(/^-/, "") : raw);
-          if (entryType !== "transfer" && minor != null && minor < 0) setIsReversal(true);
-          setAmountMinor(minor == null ? null : Math.abs(minor));
-        }}
-      />
-      {!showAmountOptions ? (
-        <InlineDisclosure
-          icon={SlidersHorizontal}
-          label={tr.tx.amountOptions(entryType, currency)}
-          expanded={showAmountOptions}
-          onPress={() => setShowAmountOptions(true)}
-        />
-      ) : (
-      <>
-      {entryType !== "transfer" || (isEdit && isReversal) ? (
-        <View
-        style={{
-          flexDirection: "row",
-          alignItems: "center",
-          gap: spacing.md,
-          backgroundColor: palette.surfaceAlt,
-          borderRadius: radius.md,
-          borderWidth: isReversal ? 1 : StyleSheet.hairlineWidth,
-          borderColor: isReversal ? palette.primary : palette.border,
-          padding: spacing.md,
-          marginBottom: spacing.md,
-        }}
-      >
-        <Undo2 accessible={false} size={20} color={isReversal ? palette.primary : palette.textSecondary} />
-        <View style={{ flex: 1 }}>
-          <Body style={{ color: isReversal ? palette.primaryText : palette.text }}>{tr.tx.reversalLabel(entryType)}</Body>
-          <Body muted style={{ fontSize: type.small.fontSize, marginTop: 2 }}>
-            {isReversal ? tr.tx.reversalHint(entryType) : tr.tx.refundToggleHint(entryType)}
-          </Body>
-        </View>
-        <Toggle
-          label={tr.tx.reversalLabel(entryType)}
-          value={isReversal}
-          onValueChange={(v) => {
-            setIsReversal(v);
-            if (v) setInstallment(false);
-          }}
-        />
-        </View>
-      ) : null}
-      {showCurrency ? (
+type TransactionFormModel = ReturnType<typeof useTransactionForm>;
+
+/** A linked refund is an expense refund and nothing else, so the type is stated rather than offered. */
+function RefundOfLine({ form }: { form: TransactionFormModel }) {
+  const { palette } = useTheme();
+  const link = form.refundLink!;
+  return (
+    <View style={{ marginBottom: spacing.md, padding: spacing.md, borderRadius: radius.md, backgroundColor: palette.surfaceAlt, gap: spacing.xs }}>
+      <Body style={{ color: palette.primaryText }}>
+        {tr.tx.refundOfLine(
+          form.categories.find((category) => category.id === link.categoryId)?.name ?? tr.common.none,
+          formatMinorCompact(link.amountMinor, link.currency),
+          dateLabel(link.purchaseDate ?? link.effectiveDate),
+        )}
+      </Body>
+      <Body muted style={{ fontSize: type.small.fontSize }}>{tr.tx.refundOfLeft(formatMinorCompact(form.refundLeftMinor, link.currency))}</Body>
+      {form.refundProblem ? <Body accessibilityRole="alert" style={{ color: palette.warningText }}>{form.refundProblem}</Body> : null}
+    </View>
+  );
+}
+
+function EntryTypePicker({ form }: { form: TransactionFormModel }) {
+  const { palette } = useTheme();
+  const choices: [EntryType, string, LucideIcon, string][] = [
+    ["expense", tr.tx.expense, ArrowUpRight, palette.negative],
+    ["income", tr.tx.income, ArrowDownLeft, palette.positive],
+    ["transfer", tr.tx.transferInvest, TrendingUp, palette.primary],
+  ];
+  return (
+    <View role="radiogroup" accessibilityLabel={tr.tx.type} style={{ flexDirection: "row", gap: spacing.sm, marginBottom: spacing.md }}>
+      {choices.map(([type, label, icon, tone]) => (
+        <EntryTypeChoice key={type} label={label} icon={icon} tone={tone} selected={form.entry.entryType === type} onPress={() => form.chooseEntryType(type)} />
+      ))}
+    </View>
+  );
+}
+
+function ReversalToggle({ form }: { form: TransactionFormModel }) {
+  const { palette } = useTheme();
+  const { entryType, isReversal } = form.entry;
+  return (
+    <View
+      style={{
+        flexDirection: "row",
+        alignItems: "center",
+        gap: spacing.md,
+        backgroundColor: palette.surfaceAlt,
+        borderRadius: radius.md,
+        borderWidth: isReversal ? 1 : StyleSheet.hairlineWidth,
+        borderColor: isReversal ? palette.primary : palette.border,
+        padding: spacing.md,
+        marginBottom: spacing.md,
+      }}
+    >
+      <Undo2 accessible={false} size={20} color={isReversal ? palette.primary : palette.textSecondary} />
+      <View style={{ flex: 1 }}>
+        <Body style={{ color: isReversal ? palette.primaryText : palette.text }}>{tr.tx.reversalLabel(entryType)}</Body>
+        <Body muted style={{ fontSize: type.small.fontSize, marginTop: 2 }}>
+          {isReversal ? tr.tx.reversalHint(entryType) : tr.tx.refundToggleHint(entryType)}
+        </Body>
+      </View>
+      <Toggle label={tr.tx.reversalLabel(entryType)} value={isReversal} onValueChange={(v) => form.patch(v ? { isReversal: v, installment: false } : { isReversal: v })} />
+    </View>
+  );
+}
+
+function AmountOptions({ form }: { form: TransactionFormModel }) {
+  const { entry, patch } = form;
+  if (!entry.showAmountOptions) {
+    return <InlineDisclosure icon={SlidersHorizontal} label={tr.tx.amountOptions(entry.entryType, entry.currency)} expanded={false} onPress={() => patch({ showAmountOptions: true })} />;
+  }
+  return (
+    <>
+      {entry.entryType !== "transfer" || (form.isEdit && entry.isReversal) ? <ReversalToggle form={form} /> : null}
+      {entry.showCurrency ? (
         <>
           <Label>{tr.tx.currency}</Label>
-          <CurrencyPicker value={currency} onChange={setCurrency} />
+          <CurrencyPicker value={entry.currency} onChange={(currency) => patch({ currency })} />
         </>
       ) : (
-        <InlineDisclosure
-          label={tr.tx.changeCurrency(currencyLabel(currency))}
-          expanded={showCurrency}
-          onPress={() => setShowCurrency(true)}
-        />
+        <InlineDisclosure label={tr.tx.changeCurrency(currencyLabel(entry.currency))} expanded={false} onPress={() => patch({ showCurrency: true })} />
       )}
-      {currency !== "TRY" ? (
+      {entry.currency !== "TRY" ? (
         <View style={{ marginBottom: spacing.md, alignItems: "flex-start" }}>
-          {tryMinor != null ? <Body muted>{tr.tx.tryEquivalent(formatMinorCompact(tryMinor))}</Body> : <Body muted>{tr.tx.rateNotFound}</Body>}
-          {!historicalRateTry && rate?.isStale ? <Badge text={`⚠ ${tr.tx.staleRate}`} tone="warning" /> : null}
+          {form.tryMinor != null ? <Body muted>{tr.tx.tryEquivalent(formatMinorCompact(form.tryMinor))}</Body> : <Body muted>{tr.tx.rateNotFound}</Body>}
+          {!form.historicalRateTry && form.rate?.isStale ? <Badge text={`⚠ ${tr.tx.staleRate}`} tone="warning" /> : null}
         </View>
       ) : null}
-      </>
-      )}
-      {/* Category and payment source are open-ended lists — a household can
-          carry forty categories — so they read as one dropdown row rather than
-          a chip block that dwarfs the rest of the form. */}
+    </>
+  );
+}
+
+/** Category and source are open-ended lists — a household can carry forty categories — so each reads as one dropdown row. */
+function AssignmentFields({ form }: { form: TransactionFormModel }) {
+  const router = useRouter();
+  const { palette } = useTheme();
+  const { entry, patch } = form;
+  const categoryOptions = form.categories
+    .filter((category) => acceptsEntry(category, entry.entryType))
+    .map((category) => ({ value: category.id, label: category.name, icon: categoryIconComponent(category) }));
+  return (
+    <>
       <Divider />
       <SectionHeader>{tr.tx.assignment}</SectionHeader>
       {categoryOptions.length > 0 ? (
@@ -894,8 +786,8 @@ function TransactionForm({ existing, refundOf, investmentRefund = false }: { exi
           label={tr.tx.category}
           placeholder={tr.tx.categoryPlaceholder}
           options={categoryOptions}
-          value={categoryId}
-          onChange={setCategoryId}
+          value={entry.categoryId}
+          onChange={(categoryId) => patch({ categoryId })}
           onCreate={{ label: tr.tx.addCategory, run: () => router.push("/columns-editor") }}
         />
       ) : (
@@ -905,18 +797,17 @@ function TransactionForm({ existing, refundOf, investmentRefund = false }: { exi
           <Button size="sm" variant="secondary" label={tr.settings.categories} onPress={() => router.push("/columns-editor")} />
         </View>
       )}
-
-      {sources.length > 0 && entryType !== "income" ? (
+      {form.sources.length > 0 && entry.entryType !== "income" ? (
         <Select
           label={tr.tx.source}
           placeholder={tr.tx.sourcePlaceholder}
-          options={sourceOptions}
-          value={sourceId}
-          onChange={setSourceId}
+          options={form.sources.map((s) => ({ value: s.id, label: s.name, icon: <PaymentSourceLogo name={s.name} type={s.type} logoRef={s.logoRef} size={SOURCE_MARK} /> }))}
+          value={entry.sourceId}
+          onChange={(sourceId) => patch({ sourceId })}
           onCreate={{ label: tr.tx.addSource, run: () => router.push("/payment-sources") }}
         />
       ) : null}
-      {looksLikeCardBill ? (
+      {form.looksLikeCardBill ? (
         <View accessibilityRole="alert" style={{ marginBottom: spacing.md, gap: spacing.xs }}>
           <Body style={{ color: palette.warningText }}>{tr.tx.cardBillTitle}</Body>
           <Body muted>{tr.tx.cardBillWarning}</Body>
@@ -925,140 +816,170 @@ function TransactionForm({ existing, refundOf, investmentRefund = false }: { exi
           </View>
         </View>
       ) : null}
+      <PersonAssignment people={form.persons} value={form.personId} onChange={(personChoice) => patch({ personChoice })} />
+    </>
+  );
+}
 
-      <PersonAssignment people={persons} value={personId} onChange={setPersonChoice} />
-      </HeroCard>
-        )}
-        secondary={(
-      <Card>
+function AmountCard({ form }: { form: TransactionFormModel }) {
+  const { entry, patch } = form;
+  // Only while the field is actually showing one. See `placeholders.ts`.
+  const amountPlaceholder = useRotatingPlaceholder(placeholderPools.amount, { active: entry.amountRaw.length === 0 });
+  const transfer = entry.entryType === "transfer";
+  return (
+    <HeroCard>
+      <PanelHeader icon={WalletCards} title={tr.tx.amountDetails} description={tr.tx.amountDetailsHint} />
+      {form.refundLink ? <RefundOfLine form={form} /> : <EntryTypePicker form={form} />}
+      <MoneyField
+        testID="transaction-amount"
+        // The code alone, no flag: a flag would join the field's accessible
+        // name, announced before the person could type a number.
+        label={`${tr.tx.amount} · ${entry.currency}`}
+        value={entry.amountRaw}
+        expression={!transfer}
+        placeholder={amountPlaceholder}
+        onChangeMinor={(raw, minor) => patch({
+          amountRaw: transfer ? raw.replace(/^-/, "") : raw,
+          amountMinor: minor == null ? null : Math.abs(minor),
+          ...(!transfer && minor != null && minor < 0 ? { isReversal: true } : {}),
+        })}
+      />
+      <AmountOptions form={form} />
+      <AssignmentFields form={form} />
+    </HeroCard>
+  );
+}
+
+/** Where the card-cycle hint and the way to fix a missing one sit under a date field. */
+function CardCycleFix({ form }: { form: TransactionFormModel }) {
+  const router = useRouter();
+  return form.isCreditCardExpense && !form.cardCycleValid
+    ? <Button size="sm" variant="secondary" label={tr.settings.sources} onPress={() => router.push("/payment-sources")} />
+    : null;
+}
+
+function TimingFields({ form }: { form: TransactionFormModel }) {
+  const { entry, patch, cardStatementPreview: preview, isCreditCardExpense } = form;
+  const cardNote = isCreditCardExpense ? tr.tx.cardCycleMissing : null;
+  return (
+    <>
       <PanelHeader icon={CalendarClock} title={tr.tx.timing} description={tr.tx.timingHint} />
       <Label>{tr.tx.whenLabel}</Label>
       <ChipPicker
-        options={[
-          { value: "month", label: tr.tx.monthOnly },
-          { value: "day", label: tr.tx.specificDay },
-        ]}
-        value={dateMode}
-        onChange={setDateMode}
+        options={[{ value: "month", label: tr.tx.monthOnly }, { value: "day", label: tr.tx.specificDay }]}
+        value={entry.dateMode}
+        onChange={(dateMode) => patch({ dateMode })}
       />
-      {dateless ? (
-        <>
-          <FieldNote
-            note={cardStatementPreview
-              ? tr.tx.cardMonthOnlyHint(monthLabel(monthKey), dateLabel(cardStatementPreview.statementDate), dateLabel(cardStatementPreview.dueDate))
-              : isCreditCardExpense ? tr.tx.cardCycleMissing
-              : tr.tx.monthOnlyHint(monthLabel(monthKey))}
-          >
-            <MonthStepper value={monthKey} onChange={setMonthKey} />
-          </FieldNote>
-          {isCreditCardExpense && !cardCycleValid ? (
-            <Button size="sm" variant="secondary" label={tr.settings.sources} onPress={() => router.push("/payment-sources")} />
-          ) : null}
-        </>
+      {form.dateless ? (
+        <FieldNote
+          note={preview
+            ? tr.tx.cardMonthOnlyHint(monthLabel(entry.monthKey), dateLabel(preview.statementDate), dateLabel(preview.dueDate))
+            : cardNote ?? tr.tx.monthOnlyHint(monthLabel(entry.monthKey))}
+        >
+          <MonthStepper value={entry.monthKey} onChange={(monthKey) => patch({ monthKey })} />
+        </FieldNote>
       ) : (
-        <>
-          <FieldNote
-            note={cardStatementPreview
-              ? tr.tx.cardPurchaseHint(dateLabel(cardStatementPreview.statementDate), dateLabel(cardStatementPreview.dueDate))
-              : isCreditCardExpense ? tr.tx.cardCycleMissing
-              : dateStr > todayISO() ? tr.tx.futureHint : tr.tx.effectiveDateHint}
-          >
-            <DateField label={isCreditCardExpense ? tr.tx.cardPurchaseDate : tr.tx.effectiveDate} value={dateStr} onChange={setDateStr} />
-          </FieldNote>
-          {isCreditCardExpense && !cardCycleValid ? (
-            <Button size="sm" variant="secondary" label={tr.settings.sources} onPress={() => router.push("/payment-sources")} />
-          ) : null}
-        </>
+        <FieldNote
+          note={preview
+            ? tr.tx.cardPurchaseHint(dateLabel(preview.statementDate), dateLabel(preview.dueDate))
+            : cardNote ?? (entry.dateStr > todayISO() ? tr.tx.futureHint : tr.tx.effectiveDateHint)}
+        >
+          <DateField label={isCreditCardExpense ? tr.tx.cardPurchaseDate : tr.tx.effectiveDate} value={entry.dateStr} onChange={(dateStr) => patch({ dateStr })} />
+        </FieldNote>
       )}
+      <CardCycleFix form={form} />
+    </>
+  );
+}
 
-      {!isEdit && !refundOf && entryType === "expense" && sources.find((s) => s.id === sourceId)?.type === "credit_card" ? (
-        <View style={{ marginVertical: spacing.md }}>
-          <ChipPicker
-            options={[
-              { value: "single", label: tr.tx.singleCharge },
-              { value: "installment", label: tr.tx.installmentToggle },
-            ]}
-            value={installment ? "installment" : "single"}
-            onChange={(v) => setInstallment(v === "installment")}
-          />
-          {installment ? (
-            <Row>
-              <View style={{ flex: 1 }}>
-                <Field label={tr.tx.installmentCount} value={countStr} onChangeText={setCountStr} keyboardType="number-pad" />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Field label={tr.tx.alreadyPaid} value={paidStr} onChangeText={setPaidStr} keyboardType="number-pad" />
-              </View>
-            </Row>
-          ) : null}
-          {installment && installmentValid && amountMinor ? (
-            <Body muted>{(() => {
-                const shares = installmentShareRange(amountMinor, count);
-                if (!shares) return null;
-                return shares.first === shares.rest
-                  ? tr.tx.installmentInfo(formatMinorCompact(shares.first, currency), count)
-                  : tr.tx.installmentInfoUneven(count, formatMinorCompact(shares.first, currency), formatMinorCompact(shares.rest, currency));
-              })()}</Body>
-          ) : null}
-        </View>
+function InstallmentFields({ form }: { form: TransactionFormModel }) {
+  const { entry, patch } = form;
+  const onCard = form.sources.find((source) => source.id === entry.sourceId)?.type === "credit_card";
+  if (form.isEdit || form.refundOf || entry.entryType !== "expense" || !onCard) return null;
+  return (
+    <View style={{ marginVertical: spacing.md }}>
+      <ChipPicker
+        options={[{ value: "single", label: tr.tx.singleCharge }, { value: "installment", label: tr.tx.installmentToggle }]}
+        value={entry.installment ? "installment" : "single"}
+        onChange={(v) => patch({ installment: v === "installment" })}
+      />
+      {entry.installment ? (
+        <Row>
+          <View style={{ flex: 1 }}>
+            <Field label={tr.tx.installmentCount} value={entry.countStr} onChangeText={(countStr) => patch({ countStr })} keyboardType="number-pad" />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Field label={tr.tx.alreadyPaid} value={entry.paidStr} onChangeText={(paidStr) => patch({ paidStr })} keyboardType="number-pad" />
+          </View>
+        </Row>
       ) : null}
+      {entry.installment && form.installmentValid && entry.amountMinor ? <Body muted>{installmentSplitText(entry.amountMinor, form.count, entry.currency)}</Body> : null}
+    </View>
+  );
+}
+
+function CompletionFields({ form }: { form: TransactionFormModel }) {
+  const { entry, existing } = form;
+  const attachmentsState = useAttachmentsState();
+  const notePlaceholder = useRotatingPlaceholder(placeholderPools.note, { active: entry.note.length === 0 });
+  return (
+    <>
       <Divider />
       <SectionHeader>{tr.tx.completion}</SectionHeader>
-      <Field
-        testID="transaction-note"
-        label={tr.common.note}
-        value={note}
-        onChangeText={setNote}
-        multiline
-        placeholder={notePlaceholder}
-      />
+      <Field testID="transaction-note" label={tr.common.note} value={entry.note} onChangeText={(note) => form.patch({ note })} multiline placeholder={notePlaceholder} />
       {/* Documents belong to a row that exists: there is nothing to attach
           them to until the transaction has been saved once. */}
-      {isEdit && existing ? (
+      {existing ? (
         <AttachmentPanel
-          userId={userId}
+          userId={form.userId}
           transactionId={existing.id}
           attachments={attachmentsState.data
             .filter((attachment) => attachment.transactionId === existing.id)
-            .map((attachment) => ({
-              id: attachment.id,
-              transactionId: attachment.transactionId,
-              fileName: attachment.fileName,
-              storedName: attachment.storedName,
-              mimeType: attachment.mimeType,
-              byteSize: attachment.byteSize,
-              kind: attachment.kind,
-            }))}
+            .map(({ id, transactionId, fileName, storedName, mimeType, byteSize, kind }) => ({ id, transactionId, fileName, storedName, mimeType, byteSize, kind }))}
         />
       ) : null}
-      {/* Where this row came from, when there is a row to have come from.
-          Answering "did I type this, or did it arrive from the spreadsheet?"
-          used to require remembering. A row written before provenance existed
-          says so rather than claiming to have been typed. */}
-      {/* Only when it says something. Nearly every row IS hand-entered, so
-          labelling those states the obvious and buries the two cases that
-          matter: a row that arrived from a spreadsheet or a statement. */}
-      {isEdit && existing && provenanceOf(existing) !== "manual" ? (
-        <Body
-          muted
-          testID="transaction-provenance"
-          style={{ fontSize: type.small.fontSize, marginBottom: spacing.md }}
-        >
+      {/* Only when it says something: nearly every row IS hand-entered, and
+          labelling those buries a row that arrived from a spreadsheet or a statement. */}
+      {existing && provenanceOf(existing) !== "manual" ? (
+        <Body muted testID="transaction-provenance" style={{ fontSize: type.small.fontSize, marginBottom: spacing.md }}>
           {tr.provenance.label(tr.provenance[provenanceOf(existing)])}
         </Body>
       ) : null}
-      {/* The commit pair is a cluster, not a banner: across a desktop column
-          each button ran to ~490px. */}
-      {/* The form's own width. Bounded to what two buttons need, the primary
-          action of a full-width form rendered as a small block under it — and
-          moved every time the window changed. */}
+      {/* The form's own width: a pair bounded to what two buttons need rendered
+          as a small block that moved with the window. */}
       <View style={{ gap: spacing.sm, width: "100%" }}>
-        <Button label={tr.common.save} onPress={() => void save(false)} disabled={!canSave} loading={busy} />
-        {!isEdit ? (
-          <Button label={tr.tx.saveAndNew} variant="secondary" onPress={() => void save(true)} disabled={!canSave || busy} />
-        ) : null}
+        <Button label={tr.common.save} onPress={() => void form.save(false)} disabled={!form.canSave} loading={form.busy} />
+        {!form.isEdit ? <Button label={tr.tx.saveAndNew} variant="secondary" onPress={() => void form.save(true)} disabled={!form.canSave || form.busy} /> : null}
       </View>
-      </Card>
+    </>
+  );
+}
+
+function TransactionForm({ existing, refundOf, investmentRefund = false }: { existing?: ExistingTx; refundOf?: ExistingTx; investmentRefund?: boolean }) {
+  const form = useTransactionForm({ existing, refundOf, investmentRefund });
+  const title = form.isEdit ? tr.tx.edit : tr.tx.new;
+  // Desktop: Enter saves (unless the note textarea or a popup has focus).
+  useSubmitOnEnter(() => void form.save(false), form.canSave && !form.busy);
+  if (!form.data.ready) {
+    return (
+      <DataGateScreen status={form.data.status} retry={form.data.retry}>
+        <Stack.Screen options={{ title }} />
+      </DataGateScreen>
+    );
+  }
+  return (
+    <Screen width="workspace">
+      <Stack.Screen options={{ title }} />
+      <DataStateNotice status={form.data.status} retry={form.data.retry} />
+      <WorkspaceSplit
+        testID="transaction-workspace"
+        primary={<AmountCard form={form} />}
+        secondary={(
+          <Card>
+            <TimingFields form={form} />
+            <InstallmentFields form={form} />
+            <CompletionFields form={form} />
+          </Card>
         )}
       />
       {existing && existing.type === "expense" && existing.amountMinor > 0 && !existing.refundOfTransactionId

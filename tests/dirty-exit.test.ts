@@ -17,10 +17,13 @@ describe("dirty form navigation contract", () => {
     "%s keeps disclosure state out of the draft snapshot",
     (file) => {
       const source = readFileSync(join(process.cwd(), file), "utf8");
-      const start = source.indexOf("const draftSnapshot = JSON.stringify({");
-      const snapshot = source.slice(start, source.indexOf("\n", source.indexOf("})", start)));
-      expect(snapshot).not.toBe("");
-      expect(snapshot).not.toContain("showCurrency");
+      // The snapshot is the form's fields minus what a save does not write, taken
+      // apart in one destructuring whose rest is what `useDraftDirty` reads.
+      const split = /const \{([^}]*?)\.\.\.(\w+) \} = \w+;/.exec(source);
+      expect(split, "the draft is the fields with the disclosure state taken out").not.toBeNull();
+      const [, omitted, rest] = split!;
+      expect(omitted).toContain("showCurrency");
+      expect(source).toMatch(new RegExp(`useDraftDirty\\(JSON\\.stringify\\((\\{ \\.\\.\\.)?${rest}\\b`));
     },
   );
 

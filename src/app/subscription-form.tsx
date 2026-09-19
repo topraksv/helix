@@ -12,6 +12,7 @@ import { useAnsweredForId, useCategoriesState, usePersonsState, useSourcesState,
 import { combineLiveStates } from "../data/live-state";
 import { classifyRecordId } from "../domain/route-params";
 import { advanceDueDate, dueDateInMonth, nextDueAfter } from "../domain/recurrence";
+import { isValidCardCycle } from "../domain/card-statements";
 import { normalizedMonthlyLoadMinor } from "../domain/analytics";
 import { currencyLabel } from "../domain/fx-provider";
 import { isMonthDay, monthKeyOf, todayISO, type ISODate } from "../domain/dates";
@@ -33,7 +34,7 @@ import { useDirtyExitGuard, useDraftDirty } from "../ui/dirty-exit";
 import { MonthDayField } from "../ui/month-day-field";
 import { font, radius, spacing, type, useTheme } from "../ui/theme";
 import { WorkspaceSplit } from "../ui/workspace-layout";
-import { PersonAssignment } from "../ui/person-assignment";
+import { assignedPersonId, PersonAssignment } from "../ui/person-assignment";
 
 /** The Select's own icon column, so a source mark fits it exactly. */
 const SOURCE_MARK = 22;
@@ -197,158 +198,145 @@ export default function SubscriptionFormModal() {
   return <SubscriptionForm key={existing?.id ?? "new"} existing={existing} />;
 }
 
-function SubscriptionForm({ existing }: { existing?: ReturnType<typeof useSubscriptionsState>["data"][number] }) {
+type ExistingSubscription = ReturnType<typeof useSubscriptionsState>["data"][number];
+
+interface SubscriptionFields {
+  name: string;
+  amountRaw: string;
+  amountMinor: number | null;
+  amountMode: "fixed" | "variable";
+  currency: string;
+  showCurrency: boolean;
+  cycle: "monthly" | "yearly" | "custom";
+  intervalStr: string;
+  billingDayStr: string;
+  yearlyRenewalDate: ISODate | null;
+  categoryId: string | null;
+  sourceId: string | null;
+  personChoice: string | null;
+  isActive: boolean;
+  autoPay: boolean;
+  isTrial: boolean;
+  trialDate: string | null;
+  note: string;
+}
+
+const NEW_SUBSCRIPTION: SubscriptionFields = {
+  name: "", amountRaw: "", amountMinor: null, amountMode: "fixed", currency: "TRY", showCurrency: false, cycle: "monthly",
+  intervalStr: "1", billingDayStr: "1", yearlyRenewalDate: null, categoryId: null, sourceId: null, personChoice: null,
+  isActive: true, autoPay: false, isTrial: false, trialDate: null, note: "",
+};
+
+/** What the form opens as: the rule being edited, or a new monthly one. */
+function initialSubscription(existing: ExistingSubscription | undefined): SubscriptionFields {
+  if (!existing) return NEW_SUBSCRIPTION;
+  // 0 on a variable rule is the "no estimate yet" sentinel, not a real
+  // amount — the field reopens empty rather than pre-filling "0,00".
+  const amountKnown = !(existing.amountMode === "variable" && existing.amountMinor === 0);
+  return {
+    name: existing.name,
+    amountRaw: amountKnown ? formatMinorInput(existing.amountMinor) : "",
+    amountMinor: amountKnown ? existing.amountMinor : null,
+    amountMode: existing.amountMode,
+    currency: existing.currency,
+    showCurrency: existing.currency !== "TRY",
+    cycle: existing.cycle,
+    intervalStr: String(existing.intervalMonths),
+    billingDayStr: String(existing.billingDay),
+    yearlyRenewalDate: existing.cycle === "yearly" ? existing.nextDueDate : null,
+    categoryId: existing.categoryId,
+    sourceId: existing.paymentSourceId,
+    personChoice: existing.personId,
+    isActive: existing.isActive,
+    autoPay: existing.autoPay,
+    isTrial: existing.trialEndDate != null,
+    trialDate: existing.trialEndDate,
+    note: existing.note ?? "",
+  };
+}
+
+/** The first charge on or after today: this month's billing day while it is still ahead, else the next one. */
+function firstDueDate(today: ISODate, billingDay: number, intervalMonths: number): ISODate {
+  const thisMonth = dueDateInMonth(monthKeyOf(today), billingDay);
+  return thisMonth >= today ? thisMonth : nextDueAfter(today, today, intervalMonths, billingDay);
+}
+
+function useSubscriptionForm(existing: ExistingSubscription | undefined) {
   const userId = useUserId();
   const categoriesState = useCategoriesState();
   const sourcesState = useSourcesState();
   const personsState = usePersonsState();
-  const categories = categoriesState.data;
   const sources = sourcesState.data;
   const persons = personsState.data;
   const router = useRouter();
-  const { palette } = useTheme();
+  const operationGuard = useOperationGuard();
   const close = () => navigateBack(router, "/(tabs)/subscriptions");
-
-  const [name, setName] = useState(existing?.name ?? "");
-  // 0 on a variable rule is the "no estimate yet" sentinel, not a real
-  // amount — the field reopens empty rather than pre-filling "0,00".
-  const existingAmountKnown = existing != null && !(existing.amountMode === "variable" && existing.amountMinor === 0);
-  const [amountRaw, setAmountRaw] = useState(existingAmountKnown ? formatMinorInput(existing!.amountMinor) : "");
-  const [amountMinor, setAmountMinor] = useState<number | null>(existingAmountKnown ? existing!.amountMinor : null);
-  const [amountMode, setAmountMode] = useState<"fixed" | "variable">(existing?.amountMode ?? "fixed");
-  const [currency, setCurrency] = useState(existing?.currency ?? "TRY");
-  const [showCurrency, setShowCurrency] = useState((existing?.currency ?? "TRY") !== "TRY");
-  const [cycle, setCycle] = useState<"monthly" | "yearly" | "custom">(existing?.cycle ?? "monthly");
-  const [intervalStr, setIntervalStr] = useState(String(existing?.intervalMonths ?? 1));
-  const [billingDayStr, setBillingDayStr] = useState(String(existing?.billingDay ?? 1));
-  const [yearlyRenewalDate, setYearlyRenewalDate] = useState<ISODate | null>(
-    existing?.cycle === "yearly" ? existing.nextDueDate : null,
-  );
-  const [categoryId, setCategoryId] = useState<string | null>(existing?.categoryId ?? null);
-  const [sourceId, setSourceId] = useState<string | null>(existing?.paymentSourceId ?? null);
-  // persons load async (live query) — derive the default instead of freezing
-  // a null initial state computed before the first query resolves.
-  const [personChoice, setPersonChoice] = useState<string | null>(existing?.personId ?? null);
-  const personId = personChoice ?? persons.find((p) => p.isSelf)?.id ?? persons[0]?.id ?? null;
-  const [isActive, setIsActive] = useState(existing?.isActive ?? true);
-  const [autoPay, setAutoPay] = useState(existing?.autoPay ?? false);
-  const [isTrial, setIsTrial] = useState(existing?.trialEndDate != null);
-  const [trialDate, setTrialDate] = useState<string | null>(existing?.trialEndDate ?? null);
-  // Logos are derived from the name (ui/logo.tsx); the old manual domain
-  // field is gone but stored values keep working as a favicon fallback.
-  const domain = existing?.websiteDomain ?? "";
-  const [note, setNote] = useState(existing?.note ?? "");
+  const data = combineLiveStates([categoriesState, sourcesState, personsState]);
+  const [fields, setFields] = useState(() => initialSubscription(existing));
+  const patch = (next: Partial<SubscriptionFields>) => setFields((current) => ({ ...current, ...next }));
   const [busy, setBusy] = useState(false);
   const [showCategoryOffer, setShowCategoryOffer] = useState(false);
-  const operationGuard = useOperationGuard();
-  const { status: dataStatus, ready: dataReady, retry: retryData } = combineLiveStates([categoriesState, sourcesState, personsState]);
   const [draftId] = useState(() => existing?.id ?? createRecordId());
-  const draftSnapshot = JSON.stringify({
-    name,
-    amountRaw,
-    amountMode,
-    currency,
-    cycle,
-    intervalStr,
-    billingDayStr,
-    yearlyRenewalDate,
-    categoryId,
-    sourceId,
-    personChoice,
-    isActive,
-    autoPay,
-    isTrial,
-    trialDate,
-    note,
-  });
-  const { allowExit, confirmDiscard } = useDirtyExitGuard(useDraftDirty(draftSnapshot, dataReady) && !busy);
+  const { amountMinor: _parsed, showCurrency: _currencyShown, ...draft } = fields;
+  const { allowExit, confirmDiscard } = useDirtyExitGuard(useDraftDirty(JSON.stringify(draft), data.ready) && !busy);
 
-  const billingDay = cycle === "yearly" && yearlyRenewalDate
-    ? Number(yearlyRenewalDate.slice(8, 10))
-    : Number(billingDayStr);
-  const intervalMonths = cycle === "monthly" ? 1 : cycle === "yearly" ? 12 : Number(intervalStr);
-  const trialValid = !isTrial || trialDate != null;
-  const effectiveAutoPay = amountMode === "variable" ? false : autoPay;
-  const selectedSource = sources.find((source) => source.id === sourceId);
-  const sourceValid = !selectedSource || selectedSource.type !== "credit_card" || Boolean(
-    selectedSource.statementDay != null && selectedSource.statementDay >= 1 && selectedSource.statementDay <= 31 &&
-    selectedSource.dueDay != null && selectedSource.dueDay >= 1 && selectedSource.dueDay <= 31
-  );
+  const { cycle, amountMode } = fields;
+  const billingDay = cycle === "yearly" && fields.yearlyRenewalDate ? Number(fields.yearlyRenewalDate.slice(8, 10)) : Number(fields.billingDayStr);
+  const intervalMonths = cycle === "monthly" ? 1 : cycle === "yearly" ? 12 : Number(fields.intervalStr);
+  const scheduleValid = isMonthDay(billingDay) && Number.isInteger(intervalMonths) && intervalMonths >= 1;
+  const personId = assignedPersonId(fields.personChoice, persons);
+  const selectedSource = sources.find((source) => source.id === fields.sourceId);
+  const sourceValid = selectedSource?.type !== "credit_card" || isValidCardCycle(selectedSource);
   // A variable bill's cost is genuinely unknown until the first invoice
   // arrives, so it is the one field that may stay empty; a fixed
   // subscription always names a real recurring charge.
-  const amountValid = amountMode === "variable"
-    ? amountMinor == null || amountMinor >= 0
-    : amountMinor != null && amountMinor > 0;
-  const baseValid =
-    dataReady &&
-    name.trim() !== "" &&
-    amountValid &&
-    isMonthDay(billingDay) &&
-    (cycle !== "yearly" || yearlyRenewalDate != null) &&
-    Number.isInteger(intervalMonths) &&
-    intervalMonths >= 1 &&
-    trialValid &&
-    personId != null &&
-    sourceValid;
-  const expenseCategories = categories.filter((category) => category.kind === "expense");
-  const selectedCategoryId = expenseCategories.some((category) => category.id === categoryId) ? categoryId : null;
+  const amountValid = amountMode === "variable" ? fields.amountMinor == null || fields.amountMinor >= 0 : fields.amountMinor != null && fields.amountMinor > 0;
+  const valid = data.ready && fields.name.trim() !== "" && amountValid && scheduleValid && (cycle !== "yearly" || fields.yearlyRenewalDate != null)
+    && (!fields.isTrial || fields.trialDate != null) && personId != null && sourceValid;
+  const expenseCategories = categoriesState.data.filter((category) => category.kind === "expense");
+  const selectedCategoryId = expenseCategories.some((category) => category.id === fields.categoryId) ? fields.categoryId : null;
   const today = todayISO();
-  const previewDueDate: ISODate | null =
-    cycle === "yearly"
-      ? yearlyRenewalDate
-      : isMonthDay(billingDay) && Number.isInteger(intervalMonths) && intervalMonths >= 1
-        ? dueDateInMonth(monthKeyOf(today), billingDay) >= today
-          ? dueDateInMonth(monthKeyOf(today), billingDay)
-          : nextDueAfter(today, today, intervalMonths, billingDay)
-        : null;
-  const followingDueDate =
-    previewDueDate && isMonthDay(billingDay) && Number.isInteger(intervalMonths) && intervalMonths >= 1
-      ? advanceDueDate(previewDueDate, intervalMonths, billingDay)
-      : null;
+  const previewDueDate = cycle === "yearly" ? fields.yearlyRenewalDate : scheduleValid ? firstDueDate(today, billingDay, intervalMonths) : null;
+  const followingDueDate = previewDueDate && scheduleValid ? advanceDueDate(previewDueDate, intervalMonths, billingDay) : null;
 
-  const persist = async (resolvedCategoryId: string) => {
-    if (!personId) return;
-    const today = todayISO();
-    const nextDueDate = cycle === "yearly" && yearlyRenewalDate
-      ? yearlyRenewalDate
-      : existing
-        ? existing.billingDay === billingDay && existing.intervalMonths === intervalMonths
-          ? existing.nextDueDate
-          : nextDueAfter(today, today, intervalMonths, billingDay)
-        : dueDateInMonth(monthKeyOf(today), billingDay) >= today
-          ? dueDateInMonth(monthKeyOf(today), billingDay)
-          : nextDueAfter(today, today, intervalMonths, billingDay);
+  const persist = async (categoryId: string) => {
+    const now = todayISO();
+    // An edit that keeps the day and interval keeps the charge it was waiting for.
+    const unchanged = existing?.billingDay === billingDay && existing.intervalMonths === intervalMonths;
+    const nextDueDate = cycle === "yearly" && fields.yearlyRenewalDate
+      ? fields.yearlyRenewalDate
+      : unchanged ? existing.nextDueDate : existing ? nextDueAfter(now, now, intervalMonths, billingDay) : firstDueDate(now, billingDay, intervalMonths);
     await upsertSubscription(userId, {
       id: existing ? draftId : undefined,
-      name: name.trim(),
-      amountMinor: amountMinor ?? 0,
+      name: fields.name.trim(),
+      amountMinor: fields.amountMinor ?? 0,
       amountMode,
-      currency,
+      currency: fields.currency,
       cycle,
       intervalMonths,
       billingDay,
       nextDueDate,
-      paymentSourceId: sourceId,
-      categoryId: resolvedCategoryId,
-      personId,
-      isActive,
-      trialEndDate: isTrial ? trialDate : null,
-      autoPay: effectiveAutoPay,
-      websiteDomain: domain || null,
-      note: note.trim() || null,
+      paymentSourceId: fields.sourceId,
+      categoryId,
+      personId: personId!,
+      isActive: fields.isActive,
+      trialEndDate: fields.isTrial ? fields.trialDate : null,
+      autoPay: amountMode === "variable" ? false : fields.autoPay,
+      // Logos are derived from the name; a stored domain still serves as a favicon fallback.
+      websiteDomain: existing?.websiteDomain || null,
+      note: fields.note.trim() || null,
     });
     scheduleSync(userId);
     allowExit(close);
   };
 
-  const save = async () => {
-    if (!baseValid || !personId) return;
+  const save = () => {
+    if (!valid) return;
     if (!selectedCategoryId) {
       setShowCategoryOffer(true);
       return;
     }
-    await operationGuard.run(async () => {
+    return operationGuard.run(async () => {
       setBusy(true);
       try {
         await persist(selectedCategoryId);
@@ -361,227 +349,211 @@ function SubscriptionForm({ existing }: { existing?: ReturnType<typeof useSubscr
     });
   };
 
-  const acceptCategoryOffer = async () => {
-    if (!baseValid) return;
-    await operationGuard.run(async () => {
-      setBusy(true);
-      try {
-        const resolvedCategoryId = await ensureSubscriptionCategory(userId, tr.subs.suggestedCategoryName);
-        setCategoryId(resolvedCategoryId);
-        setShowCategoryOffer(false);
-        await persist(resolvedCategoryId);
-      } catch (e) {
-        devError("subscription.category", e);
-        void appAlert(tr.errors.saveFailed, tr.errors.title);
-      } finally {
-        setBusy(false);
-      }
-    });
+  const acceptCategoryOffer = () => operationGuard.run(async () => {
+    if (!valid) return;
+    setBusy(true);
+    try {
+      const categoryId = await ensureSubscriptionCategory(userId, tr.subs.suggestedCategoryName);
+      patch({ categoryId });
+      setShowCategoryOffer(false);
+      await persist(categoryId);
+    } catch (e) {
+      devError("subscription.category", e);
+      void appAlert(tr.errors.saveFailed, tr.errors.title);
+    } finally {
+      setBusy(false);
+    }
+  });
+
+  return {
+    existing, data, fields, patch, busy, valid, save, acceptCategoryOffer, confirmDiscard, close, persons, sources, personId, sourceValid,
+    expenseCategories, selectedCategoryId, showCategoryOffer, setShowCategoryOffer, previewDueDate, followingDueDate,
   };
+}
 
-  useSubmitOnEnter(() => void save(), baseValid && !busy);
+type SubscriptionFormModel = ReturnType<typeof useSubscriptionForm>;
 
+/** A setting that is on or off, said with what it does. */
+function ToggleRow({ label, hint, value, onChange, disabled }: { label: string; hint: string; value: boolean; onChange: (value: boolean) => void; disabled?: boolean }) {
+  return (
+    <Spread style={{ marginBottom: spacing.md }}>
+      <View style={{ flex: 1, paddingRight: spacing.md }}>
+        <Body>{label}</Body>
+        <Body muted style={{ fontSize: type.small.fontSize }}>{hint}</Body>
+      </View>
+      <Toggle label={label} value={value} onValueChange={onChange} disabled={disabled} />
+    </Spread>
+  );
+}
+
+function SubscriptionIdentityCard({ form }: { form: SubscriptionFormModel }) {
+  const { fields, patch } = form;
   const namePlaceholder = useRotatingPlaceholder(placeholderPools.subscription);
-  if (!dataReady) return <DataGateScreen status={dataStatus} retry={retryData} />;
+  const variable = fields.amountMode === "variable";
+  return (
+    <Card>
+      <SubscriptionFormArtwork
+        name={fields.name}
+        cycle={fields.cycle}
+        intervalMonths={Number(fields.intervalStr)}
+        amountMinor={fields.amountMinor}
+        amountMode={fields.amountMode}
+        currency={fields.currency}
+        nextDueDate={form.previewDueDate}
+        followingDueDate={form.followingDueDate}
+        schedule={fields.cycle === "yearly"
+          ? (fields.yearlyRenewalDate ? dateLabel(fields.yearlyRenewalDate) : "")
+          : (fields.billingDayStr ? tr.subs.daySchedule(fields.billingDayStr) : "")}
+      />
+      <Field label={tr.subs.name} value={fields.name} onChangeText={(name) => patch({ name })} placeholder={namePlaceholder} />
+      {/* The choice between a fixed and a variable amount changes what the
+          field below it is for — asked first, "tahmini tutar" and an
+          empty field both read as intentional instead of unfinished. */}
+      <ToggleRow
+        label={tr.subs.variableAmount}
+        hint={tr.subs.variableAmountHint}
+        value={variable}
+        onChange={(value) => patch(value ? { amountMode: "variable", autoPay: false } : { amountMode: "fixed" })}
+      />
+      <MoneyField
+        label={`${variable ? tr.subs.estimatedAmountFieldLabel : tr.tx.amount} · ${fields.currency}`}
+        value={fields.amountRaw}
+        onChangeMinor={(amountRaw, amountMinor) => patch({ amountRaw, amountMinor })}
+      />
+      {fields.showCurrency ? (
+        <>
+          <Label>{tr.tx.currency}</Label>
+          <CurrencyPicker value={fields.currency} onChange={(currency) => patch({ currency })} />
+        </>
+      ) : (
+        <InlineDisclosure label={tr.tx.changeCurrency(currencyLabel(fields.currency))} expanded={false} onPress={() => patch({ showCurrency: true })} />
+      )}
+    </Card>
+  );
+}
 
+function SubscriptionScheduleCard({ form }: { form: SubscriptionFormModel }) {
+  const router = useRouter();
+  const { palette } = useTheme();
+  const { fields, patch } = form;
+  return (
+    <Card>
+      <PanelHeader icon={CalendarClock} title={tr.subs.formSchedule} description={tr.subs.formScheduleHint} />
+      <Label>{tr.subs.cycle}</Label>
+      <ChipPicker
+        options={[{ value: "monthly", label: tr.subs.monthly }, { value: "yearly", label: tr.subs.yearly }, { value: "custom", label: tr.subs.custom }]}
+        value={fields.cycle}
+        onChange={(cycle) => patch({ cycle })}
+      />
+      {fields.cycle === "custom" ? (
+        <FieldNote note={tr.subs.intervalHint}>
+          <Field label={tr.subs.intervalLabel} value={fields.intervalStr} onChangeText={(intervalStr) => patch({ intervalStr })} keyboardType="number-pad" />
+        </FieldNote>
+      ) : null}
+      {fields.cycle === "yearly" ? (
+        <FieldNote note={tr.subs.yearlyRenewalHint}>
+          <DateField
+            label={tr.subs.yearlyRenewalDate}
+            value={fields.yearlyRenewalDate}
+            min={todayISO()}
+            onChange={(date) => patch({ yearlyRenewalDate: date, billingDayStr: String(Number(date.slice(8, 10))) })}
+          />
+        </FieldNote>
+      ) : (
+        <FieldNote note={tr.subs.billingDayHint}>
+          <MonthDayField
+            label={tr.subs.billingDay}
+            value={fields.billingDayStr}
+            onChange={(billingDayStr) => patch({ billingDayStr })}
+            quickDays={QUICK_DAYS}
+            error={fields.billingDayStr !== "" && !isMonthDay(fields.billingDayStr) ? tr.incomes.dayError : null}
+          />
+        </FieldNote>
+      )}
+      {form.expenseCategories.length > 0 ? (
+        <Select
+          label={tr.tx.category}
+          placeholder={tr.tx.categoryPlaceholder}
+          options={form.expenseCategories.map((category) => ({ value: category.id, label: category.name, icon: categoryIconComponent(category) }))}
+          value={form.selectedCategoryId}
+          onChange={(categoryId) => {
+            patch({ categoryId });
+            form.setShowCategoryOffer(false);
+          }}
+          onCreate={{ label: tr.tx.addCategory, run: () => router.push("/columns-editor") }}
+        />
+      ) : null}
+      {form.showCategoryOffer && !form.selectedCategoryId ? (
+        <View style={{ backgroundColor: palette.primarySoft, borderRadius: radius.md, padding: spacing.md, marginBottom: spacing.md }}>
+          <Body style={{ marginBottom: spacing.sm }}>{tr.subs.categoryOffer}</Body>
+          <Row gap={spacing.sm} style={{ alignItems: "center", flexWrap: "wrap" }}>
+            <Button size="sm" label={tr.subs.categoryOfferAccept} onPress={() => void form.acceptCategoryOffer()} loading={form.busy} />
+            <Button size="sm" variant="ghost" label={tr.subs.categoryOfferDecline} onPress={() => form.setShowCategoryOffer(false)} disabled={form.busy} />
+          </Row>
+        </View>
+      ) : null}
+      {form.sources.length > 0 ? (
+        <>
+          <Select
+            label={tr.tx.source}
+            placeholder={tr.tx.sourcePlaceholder}
+            options={form.sources.map((s) => ({ value: s.id, label: s.name, icon: <PaymentSourceLogo name={s.name} type={s.type} logoRef={s.logoRef} size={SOURCE_MARK} /> }))}
+            value={fields.sourceId}
+            onChange={(sourceId) => patch({ sourceId })}
+            onCreate={{ label: tr.tx.addSource, run: () => router.push("/payment-sources") }}
+          />
+          {!form.sourceValid ? <Body muted style={{ marginBottom: spacing.sm }}>{tr.tx.cardCycleMissing}</Body> : null}
+        </>
+      ) : null}
+      <PersonAssignment people={form.persons} value={form.personId} onChange={(personChoice) => patch({ personChoice })} />
+    </Card>
+  );
+}
+
+function SubscriptionBehaviorCard({ form }: { form: SubscriptionFormModel }) {
+  const { fields, patch, existing } = form;
+  const variable = fields.amountMode === "variable";
+  return (
+    <Card>
+      <PanelHeader icon={BellRing} title={tr.subs.formBehavior} description={tr.subs.formBehaviorHint} />
+      <ToggleRow label={tr.subs.trialToggle} hint={tr.subs.trialToggleHint} value={fields.isTrial} onChange={(isTrial) => patch({ isTrial })} />
+      {fields.isTrial ? <DateField label={tr.subs.trialDate} value={fields.trialDate} onChange={(trialDate) => patch({ trialDate })} /> : null}
+      <Field label={tr.common.note} value={fields.note} onChangeText={(note) => patch({ note })} multiline placeholder={tr.common.optionalHint} />
+      <Spread style={{ marginBottom: spacing.md }}>
+        <View style={{ flex: 1 }}>
+          <Body>{tr.subs.autoPay}</Body>
+          <Body muted>{variable ? tr.subs.variableAutoPayHint : tr.subs.autoPayHint}</Body>
+        </View>
+        <Toggle label={tr.subs.autoPay} value={!variable && fields.autoPay} onValueChange={(autoPay) => patch({ autoPay })} disabled={variable} />
+      </Spread>
+      <Spread style={{ marginBottom: spacing.lg }}>
+        <Body>{tr.common.active}</Body>
+        <Toggle label={tr.common.active} value={fields.isActive} onValueChange={(isActive) => patch({ isActive })} />
+      </Spread>
+      {existing && fields.amountMinor != null && fields.amountMinor !== existing.amountMinor ? (
+        <Body muted style={{ marginBottom: spacing.md }}>
+          {tr.subs.priceHistory}: {formatMinorCompact(existing.amountMinor, existing.currency)} → {formatMinorCompact(fields.amountMinor, fields.currency)}
+        </Body>
+      ) : null}
+    </Card>
+  );
+}
+
+function SubscriptionForm({ existing }: { existing?: ExistingSubscription }) {
+  const form = useSubscriptionForm(existing);
+  useSubmitOnEnter(() => void form.save(), form.valid && !form.busy);
+  if (!form.data.ready) return <DataGateScreen status={form.data.status} retry={form.data.retry} />;
   return (
     <Screen width="workspace">
       <Stack.Screen options={{ title: existing ? tr.subs.edit : tr.subs.add }} />
-      <DataStateNotice status={dataStatus} retry={retryData} />
-      <WorkspaceSplit
-        testID="subscription-form-workspace"
-        primary={(
-          <Card>
-            <SubscriptionFormArtwork
-              name={name}
-              cycle={cycle}
-              intervalMonths={Number(intervalStr)}
-              amountMinor={amountMinor}
-              amountMode={amountMode}
-              currency={currency}
-              nextDueDate={previewDueDate}
-              followingDueDate={followingDueDate}
-              schedule={cycle === "yearly"
-                ? (yearlyRenewalDate ? dateLabel(yearlyRenewalDate) : "")
-                : (billingDayStr ? tr.subs.daySchedule(billingDayStr) : "")}
-            />
-            <Field label={tr.subs.name} value={name} onChangeText={setName} placeholder={namePlaceholder} />
-            {/* The choice between a fixed and a variable amount changes what the
-                field below it is for — asked first, "tahmini tutar" and an
-                empty field both read as intentional instead of unfinished. */}
-            <Spread style={{ marginBottom: spacing.md }}>
-              <View style={{ flex: 1, paddingRight: spacing.md }}>
-                <Body>{tr.subs.variableAmount}</Body>
-                <Body muted style={{ fontSize: type.small.fontSize }}>{tr.subs.variableAmountHint}</Body>
-              </View>
-              <Toggle
-                label={tr.subs.variableAmount}
-                value={amountMode === "variable"}
-                onValueChange={(value) => {
-                  setAmountMode(value ? "variable" : "fixed");
-                  if (value) setAutoPay(false);
-                }}
-              />
-            </Spread>
-            <MoneyField
-              label={`${amountMode === "variable" ? tr.subs.estimatedAmountFieldLabel : tr.tx.amount} · ${currency}`}
-              value={amountRaw}
-              onChangeMinor={(raw, minor) => {
-                setAmountRaw(raw);
-                setAmountMinor(minor);
-              }}
-            />
-            {showCurrency ? (
-              <>
-                <Label>{tr.tx.currency}</Label>
-                <CurrencyPicker value={currency} onChange={setCurrency} />
-              </>
-            ) : (
-              <InlineDisclosure
-                label={tr.tx.changeCurrency(currencyLabel(currency))}
-                expanded={showCurrency}
-                onPress={() => setShowCurrency(true)}
-              />
-            )}
-          </Card>
-        )}
-        secondary={(
-          <Card>
-            <PanelHeader icon={CalendarClock} title={tr.subs.formSchedule} description={tr.subs.formScheduleHint} />
-            <Label>{tr.subs.cycle}</Label>
-            <ChipPicker
-              options={[
-                { value: "monthly", label: tr.subs.monthly },
-                { value: "yearly", label: tr.subs.yearly },
-                { value: "custom", label: tr.subs.custom },
-              ]}
-              value={cycle}
-              onChange={setCycle}
-            />
-            {cycle === "custom" ? (
-              <FieldNote note={tr.subs.intervalHint}>
-                <Field label={tr.subs.intervalLabel} value={intervalStr} onChangeText={setIntervalStr} keyboardType="number-pad" />
-              </FieldNote>
-            ) : null}
-
-            {cycle === "yearly" ? (
-              <FieldNote note={tr.subs.yearlyRenewalHint}>
-                <DateField
-                  label={tr.subs.yearlyRenewalDate}
-                  value={yearlyRenewalDate}
-                  min={todayISO()}
-                  onChange={(date) => {
-                    setYearlyRenewalDate(date);
-                    setBillingDayStr(String(Number(date.slice(8, 10))));
-                  }}
-                />
-              </FieldNote>
-            ) : (
-              <FieldNote note={tr.subs.billingDayHint}>
-                <MonthDayField
-                  label={tr.subs.billingDay}
-                  value={billingDayStr}
-                  onChange={setBillingDayStr}
-                  quickDays={QUICK_DAYS}
-                  error={billingDayStr !== "" && !isMonthDay(billingDayStr) ? tr.incomes.dayError : null}
-                />
-              </FieldNote>
-            )}
-
-            {expenseCategories.length > 0 ? (
-              <Select
-                label={tr.tx.category}
-                placeholder={tr.tx.categoryPlaceholder}
-                options={expenseCategories.map((category) => ({ value: category.id, label: category.name, icon: categoryIconComponent(category) }))}
-                value={selectedCategoryId}
-                onChange={(value) => {
-                  setCategoryId(value);
-                  setShowCategoryOffer(false);
-                }}
-                onCreate={{ label: tr.tx.addCategory, run: () => router.push("/columns-editor") }}
-              />
-            ) : null}
-            {showCategoryOffer && !selectedCategoryId ? (
-              <View style={{ backgroundColor: palette.primarySoft, borderRadius: radius.md, padding: spacing.md, marginBottom: spacing.md }}>
-                <Body style={{ marginBottom: spacing.sm }}>{tr.subs.categoryOffer}</Body>
-                <Row gap={spacing.sm} style={{ alignItems: "center", flexWrap: "wrap" }}>
-                  <Button
-                    size="sm"
-                    label={tr.subs.categoryOfferAccept}
-                    onPress={() => void acceptCategoryOffer()}
-                    loading={busy}
-                  />
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    label={tr.subs.categoryOfferDecline}
-                    onPress={() => setShowCategoryOffer(false)}
-                    disabled={busy}
-                  />
-                </Row>
-              </View>
-            ) : null}
-            {sources.length > 0 ? (
-              <>
-                <Select
-                  label={tr.tx.source}
-                  placeholder={tr.tx.sourcePlaceholder}
-                  options={sources.map((s) => ({ value: s.id, label: s.name, icon: <PaymentSourceLogo name={s.name} type={s.type} logoRef={s.logoRef} size={SOURCE_MARK} /> }))}
-                  value={sourceId}
-                  onChange={setSourceId}
-                  onCreate={{ label: tr.tx.addSource, run: () => router.push("/payment-sources") }}
-                />
-                {!sourceValid ? (
-                  <Body muted style={{ marginBottom: spacing.sm }}>{tr.tx.cardCycleMissing}</Body>
-                ) : null}
-              </>
-            ) : null}
-            <PersonAssignment people={persons} value={personId} onChange={setPersonChoice} />
-          </Card>
-        )}
-      />
-
-      <Card>
-        <PanelHeader icon={BellRing} title={tr.subs.formBehavior} description={tr.subs.formBehaviorHint} />
-        <Spread style={{ marginBottom: spacing.md }}>
-          <View style={{ flex: 1, paddingRight: spacing.md }}>
-            <Body>{tr.subs.trialToggle}</Body>
-            <Body muted style={{ fontSize: type.small.fontSize }}>{tr.subs.trialToggleHint}</Body>
-          </View>
-          <Toggle label={tr.subs.trialToggle} value={isTrial} onValueChange={setIsTrial} />
-        </Spread>
-        {isTrial ? <DateField label={tr.subs.trialDate} value={trialDate} onChange={setTrialDate} /> : null}
-        <Field label={tr.common.note} value={note} onChangeText={setNote} multiline placeholder={tr.common.optionalHint} />
-
-        <Spread style={{ marginBottom: spacing.md }}>
-          <View style={{ flex: 1 }}>
-            <Body>{tr.subs.autoPay}</Body>
-            <Body muted>{amountMode === "variable" ? tr.subs.variableAutoPayHint : tr.subs.autoPayHint}</Body>
-          </View>
-          <Toggle label={tr.subs.autoPay} value={effectiveAutoPay} onValueChange={setAutoPay} disabled={amountMode === "variable"} />
-        </Spread>
-        <Spread style={{ marginBottom: spacing.lg }}>
-          <Body>{tr.common.active}</Body>
-          <Toggle label={tr.common.active} value={isActive} onValueChange={setIsActive} />
-        </Spread>
-
-        {existing && amountMinor != null && amountMinor !== existing.amountMinor ? (
-          <Body muted style={{ marginBottom: spacing.md }}>
-            {tr.subs.priceHistory}: {formatMinorCompact(existing.amountMinor, existing.currency)} → {formatMinorCompact(amountMinor, currency)}
-          </Body>
-        ) : null}
-      </Card>
-
+      <DataStateNotice status={form.data.status} retry={form.data.retry} />
+      <WorkspaceSplit testID="subscription-form-workspace" primary={<SubscriptionIdentityCard form={form} />} secondary={<SubscriptionScheduleCard form={form} />} />
+      <SubscriptionBehaviorCard form={form} />
       <Row style={{ alignItems: "center" }}>
         <View style={{ flex: 1 }}>
-          <Button label={tr.common.save} onPress={() => void save()} disabled={!baseValid} loading={busy} />
+          <Button label={tr.common.save} onPress={() => void form.save()} disabled={!form.valid} loading={form.busy} />
         </View>
-        <Button
-          label={tr.common.cancel}
-          variant="secondary"
-          disabled={busy}
-          onPress={() => confirmDiscard(close)}
-        />
+        <Button label={tr.common.cancel} variant="secondary" disabled={form.busy} onPress={() => form.confirmDiscard(form.close)} />
       </Row>
     </Screen>
   );

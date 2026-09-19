@@ -293,14 +293,245 @@ function RecordsCard({ plan }: { plan: RecordImportPlan }) {
 }
 
 // --- screen ----------------------------------------------------------------
+type CycleDraft = { statementDay: string; dueDay: string };
+
+/**
+ * The cards a workbook's instalment notes name, and the cycle the owner gives
+ * each. A card the workspace already holds opens with its own days.
+ */
+function useCardCycles(sheets: ParsedSheet[], workbook: ParsedWorkbook | null, excluded: string[], selectedYears: number[]) {
+  const sources = useSourcesState().data;
+  const [drafts, setDrafts] = useState<Record<string, CycleDraft>>({});
+  const normalized = (name: string) => name.trim().toLocaleLowerCase("tr-TR");
+  const cards = [...new Set(
+    collectInstallmentPlans(sheets, {
+      excludedLabels: excluded,
+      informationalCards: workbook?.informationalCards ?? [],
+      yearAllowed: (year) => selectedYears.includes(year),
+    }).map((plan) => plan.card),
+  )];
+  const draftOf = (card: string): CycleDraft => {
+    const existing = sources.find((source) => source.type === "credit_card" && normalized(source.name) === normalized(card));
+    return drafts[card] ?? { statementDay: existing?.statementDay == null ? "" : String(existing.statementDay), dueDay: existing?.dueDay == null ? "" : String(existing.dueDay) };
+  };
+  const filled = (cycle: CycleDraft) => cycle.statementDay.trim() !== "" && cycle.dueDay.trim() !== "";
+  return {
+    cards,
+    draftOf,
+    change: (card: string, next: Partial<CycleDraft>) => setDrafts((current) => ({ ...current, [card]: { ...draftOf(card), ...next } })),
+    reset: () => setDrafts({}),
+    // Blank is an answer: a card whose cycle nobody knows still imports, and its
+    // instalments fall on their own months. A HALF-filled pair is not, and the
+    // importer creates real cards, so a pair it accepts must be one the settings screen can reopen.
+    valid: cards.every((card) => {
+      const cycle = draftOf(card);
+      if (cycle.statementDay.trim() === "" && cycle.dueDay.trim() === "") return true;
+      return isMonthDay(cycle.statementDay) && isMonthDay(cycle.dueDay) && cardCycleError(Number(cycle.statementDay), Number(cycle.dueDay)) === null;
+    }),
+    requested: () => Object.fromEntries(cards.map((card) => [card, draftOf(card)] as const).filter(([, cycle]) => filled(cycle))
+      .map(([card, cycle]) => [card, { statementDay: Number(cycle.statementDay), dueDay: Number(cycle.dueDay) }])),
+  };
+}
+
+type CardCycles = ReturnType<typeof useCardCycles>;
+
+/** Every column of the sheets being imported, by first-seen kind. */
+function columnsOf(sheets: ParsedSheet[]) {
+  const columns = new Map<string, { label: string; income: boolean; balanceLike: boolean }>();
+  for (const column of sheets.flatMap((sheet) => sheet.columns)) {
+    if (!columns.has(column.label)) columns.set(column.label, { label: column.label, income: column.kindGuess === "income", balanceLike: column.balanceLike });
+  }
+  return [...columns.values()];
+}
+
+function ImportDoneCard({ count, ledger, plans, records }: { count: number; ledger: boolean; plans: number; records: RecordImportPlan | null }) {
+  const router = useRouter();
+  const { palette } = useTheme();
+  return (
+    <>
+      <ImportJourney stage={2} fileIcon={FileSpreadsheet} />
+      <Card tone="success">
+        <Row gap={spacing.md} style={{ alignItems: "center" }}>
+          <CheckCircle2 accessible={false} size={26} color={palette.success} />
+          <View style={{ flex: 1 }}>
+            <Text accessibilityRole="header" style={[type.heading, { color: palette.text }]}>{ledger ? tr.importer.doneTitle(count) : tr.importer.recordsTitle}</Text>
+            {ledger ? <Body muted style={{ marginTop: spacing.xs }}>{tr.importer.doneHint}</Body> : null}
+            {/* Said out loud: the plans a workbook's instalment notes produce are
+                the half of the import nobody can see from the table. */}
+            {plans > 0 ? <Body muted style={{ marginTop: spacing.xs }}>{tr.importer.donePlans(plans)}</Body> : null}
+            {records ? (
+              <>
+                <Body muted style={{ marginTop: spacing.xs }}>
+                  {tr.importer.recordsDone(records.subscriptions.added + records.subscriptions.updated, records.investments.added + records.investments.updated)}
+                </Body>
+                {records.walletMissing ? <Body muted style={{ marginTop: spacing.xs }}>{tr.importer.recordsWalletMissing}</Body> : null}
+                <RecordProblems problems={records.problems} />
+              </>
+            ) : null}
+          </View>
+        </Row>
+      </Card>
+      <Button icon={CheckCircle2} label={tr.common.done} onPress={() => navigateBack(router, "/(tabs)/cash-flow")} />
+    </>
+  );
+}
+
+function ColumnsPicker({ columns, excluded, onExcluded }: { columns: ReturnType<typeof columnsOf>; excluded: string[]; onExcluded: (next: string[]) => void }) {
+  const balanceLike = columns.filter((column) => column.balanceLike);
+  return (
+    <>
+      <SectionHeader>{tr.importer.columnsTitle}</SectionHeader>
+      <Body muted style={{ marginBottom: spacing.sm }}>{tr.importer.columnsLead}</Body>
+      <Row gap={spacing.sm} style={{ marginBottom: spacing.sm, alignItems: "center" }}>
+        <Button label={tr.common.selectAll} variant="ghost" size="sm" disabled={excluded.length === 0} onPress={() => onExcluded([])} />
+        <Button label={tr.common.clearAll} variant="ghost" size="sm" disabled={excluded.length >= columns.length} onPress={() => onExcluded(columns.map((c) => c.label))} />
+      </Row>
+      <SelectionGrid
+        options={columns.map((c) => ({ value: c.label, label: `${c.label}${c.income ? " ↑" : ""}${c.balanceLike ? " Σ" : ""}` }))}
+        values={columns.map((c) => c.label).filter((label) => !excluded.includes(label))}
+        onToggle={(label) => onExcluded(excluded.includes(label) ? excluded.filter((x) => x !== label) : [...excluded, label])}
+        searchable
+      />
+      {/* Said where the decision is made: a running total is off because importing
+          it counts the month twice, and this is where a mis-read heading gets put right. */}
+      {balanceLike.length > 0 ? (
+        <Body muted style={{ marginBottom: spacing.md }}>{tr.importer.balanceColumnsNote(balanceLike.map((column) => column.label).join(", "))}</Body>
+      ) : null}
+    </>
+  );
+}
+
+/**
+ * The one figure the whole chained ledger hangs off, said out loud before it
+ * is written: adopted silently and only on the first import, a wrong anchor
+ * could never be put right by re-importing a corrected workbook.
+ */
+function OpeningCard({ sheets, selectedYears, column, onColumn, adopt, onAdopt }: {
+  sheets: ParsedSheet[];
+  selectedYears: number[];
+  column: string | null;
+  onColumn: (column: string | null) => void;
+  adopt: boolean;
+  onAdopt: (adopt: boolean) => void;
+}) {
+  const settings = useSettingsMapState().data;
+  const choices = [...new Map(
+    sheets.flatMap((sheet) => sheet.openingCandidates)
+      .filter((candidate) => selectedYears.includes(yearOf(candidate.month)))
+      .map((candidate) => [candidate.label, candidate]),
+  ).values()];
+  // Drawn whenever the sheet HAS columns, not only when the heading rule found
+  // one: the workbook whose opening sits under an unreadable heading is the one
+  // this choice exists for.
+  if (choices.length === 0) return null;
+  const opening = openingBalanceFromSheets(sheets, (year: number) => selectedYears.includes(year), column);
+  const currentStart = settingValue<MonthKey | null>(settings, "start_month", null);
+  // Earlier data wins without being asked, figure or no figure: the ledger
+  // back-anchors to the earliest month it holds, and a balance typed at setup
+  // is kept as that month's declared opening (spec §3.1e).
+  const earlier = opening != null && (currentStart == null || opening.month < currentStart);
+  return (
+    <Card>
+      <PanelHeader icon={Scale} title={tr.importer.openingTitle} description={tr.importer.openingHint} />
+      <Select
+        label={tr.importer.openingColumn}
+        value={column ?? ""}
+        // The figure each column would give, beside its name: a heading only its
+        // author can read is picked by the number under it.
+        options={[{ value: "", label: tr.importer.openingColumnAuto }, ...choices.map((candidate) => ({ value: candidate.label, label: `${candidate.label} · ${formatMinorCompact(candidate.minor)}` }))]}
+        onChange={(value) => onColumn(value === "" ? null : value)}
+      />
+      {opening ? (
+        <>
+          <Spread style={{ marginTop: spacing.sm, marginBottom: spacing.sm }}>
+            <Body>{monthLabel(opening.month)}</Body>
+            <Amount minor={opening.minor ?? 0} colorized={false} />
+          </Spread>
+          {earlier ? (
+            <Body muted>{tr.importer.openingEarlier}</Body>
+          ) : (
+            <FieldNote note={tr.importer.openingAdoptHint(monthLabel(currentStart ?? opening.month))}>
+              <Toggle label={tr.importer.openingAdopt} value={adopt} onValueChange={onAdopt} />
+            </FieldNote>
+          )}
+        </>
+      ) : (
+        <Body muted style={{ marginTop: spacing.sm }}>{tr.importer.openingNone}</Body>
+      )}
+    </Card>
+  );
+}
+
+function CardCyclesCard({ cycles }: { cycles: CardCycles }) {
+  if (cycles.cards.length === 0) return null;
+  return (
+    <Card>
+      <SectionHeader>{tr.importer.cardCyclesTitle}</SectionHeader>
+      <Body muted style={{ marginBottom: spacing.md }}>{tr.importer.cardCyclesHint}</Body>
+      {cycles.cards.map((card) => {
+        const cycle = cycles.draftOf(card);
+        return (
+          <View key={card} style={{ marginBottom: spacing.sm }}>
+            <Body style={{ marginBottom: spacing.xs }}>{card}</Body>
+            <CardCycleFields
+              statementDayValue={cycle.statementDay}
+              dueDayValue={cycle.dueDay}
+              onStatementDayChange={(statementDay) => cycles.change(card, { statementDay })}
+              onDueDayChange={(dueDay) => cycles.change(card, { dueDay })}
+            />
+          </View>
+        );
+      })}
+    </Card>
+  );
+}
+
+/** The first sheet being imported, as the importer read it. */
+function SheetPreview({ sheet }: { sheet: ParsedSheet }) {
+  const { palette } = useTheme();
+  return (
+    <>
+      <Body muted style={{ marginBottom: spacing.sm }}>
+        {tr.importer.detected(sheet.months.length, sheet.columns.length)}
+        {sheet.skippedColumns.length > 0 ? ` ${tr.importer.skipped(sheet.skippedColumns.join(", "))}` : ""}
+      </Body>
+      <Card padded={false}>
+        <ScrollView horizontal>
+          <View style={{ padding: spacing.md }}>
+            <View style={{ flexDirection: "row" }}>
+              <Text style={[type.label, { color: palette.textSecondary, width: 96 }]}>{tr.cashflow.monthHeader}</Text>
+              {sheet.columns.map((c) => (
+                <Text key={c.label} style={[type.label, { color: palette.textSecondary, width: 108, textAlign: "right" }]}>{c.label}</Text>
+              ))}
+            </View>
+            {sheet.months.map((m, r) => (
+              <View key={m} style={{ flexDirection: "row", marginTop: spacing.sm }}>
+                <Text style={[type.small, { color: palette.text, width: 96 }]}>{monthLabel(m)}</Text>
+                {sheet.columns.map((c, i) => {
+                  const cell = sheet.cells[r]?.[i];
+                  return cell ? (
+                    <View key={c.label} style={{ width: 108, flexDirection: "row", alignItems: "center", justifyContent: "flex-end" }}>
+                      {hasBreakdown(cell) ? <Text style={{ color: palette.primaryText }}>• </Text> : null}
+                      {cell.valueMinor != null ? (
+                        <Amount minor={cell.valueMinor} colorized={false} color={palette.textSecondary} accessibilityLabel={formatMinorCompact(cell.valueMinor)} style={[type.amountSm, { textAlign: "right" }]} />
+                      ) : null}
+                    </View>
+                  ) : null;
+                })}
+              </View>
+            ))}
+          </View>
+        </ScrollView>
+      </Card>
+      <Body muted style={{ marginTop: spacing.xs, marginBottom: spacing.md, fontSize: type.small.fontSize }}>{tr.importer.breakdownHint}</Body>
+    </>
+  );
+}
+
 export default function ImportWizardModal() {
   const userId = useUserId();
   const personsState = usePersonsState();
   const sourcesState = useSourcesState();
-  const settingsState = useSettingsMapState();
-  const persons = personsState.data;
-  const sources = sourcesState.data;
-  const router = useRouter();
   const { palette } = useTheme();
   const wide = shouldUseWideImportGuide(useContentWidth());
   const [workbook, setWorkbook] = useState<ParsedWorkbook | null>(null);
@@ -308,146 +539,79 @@ export default function ImportWizardModal() {
   const [excluded, setExcluded] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [reimportYears, setReimportYears] = useState<number[] | null>(null);
-  const [doneCount, setDoneCount] = useState<number | null>(null);
-  const [donePlans, setDonePlans] = useState(0);
   const [recordPlan, setRecordPlan] = useState<RecordImportPlan | null>(null);
-  const [doneRecords, setDoneRecords] = useState<RecordImportPlan | null>(null);
-  // Whether the ledger was written too: a records-only import has no totals to
-  // split and no notes to place, so the ledger's own summary would be untrue.
-  const [doneLedger, setDoneLedger] = useState(false);
-  const [cardCycleDrafts, setCardCycleDrafts] = useState<Record<string, { statementDay: string; dueDay: string }>>({});
-  /**
-   * Whether this import may move the ledger's anchor.
-   *
-   * The whole chained balance hangs off one figure, and it used to be written
-   * with nothing on screen naming it — and only ever on the FIRST import, so a
-   * wrong opening balance could not be corrected by re-importing a fixed
-   * workbook. It is stated and it is a choice now.
-   */
+  // What was written: a records-only import has no ledger totals to split and no
+  // notes to place, so the ledger's own summary would be untrue for it.
+  const [done, setDone] = useState<{ count: number; ledger: boolean; plans: number; records: RecordImportPlan | null } | null>(null);
+  /** Whether this import may move the ledger's anchor: stated, and a choice. */
   const [adoptOpening, setAdoptOpening] = useState(false);
-  /**
-   * Which balance column the month-opening figure comes from.
-   *
-   * `null` means "whatever the heading rule decided". A heading is the one
-   * part of a personal spreadsheet nobody else wrote the rules for, and the
-   * anchor the whole chained balance hangs off is the worst place to be sure
-   * about somebody else's wording.
-   */
+  /** Which column the month-opening figure comes from; `null` is whatever the heading rule decided. */
   const [openingColumn, setOpeningColumn] = useState<string | null>(null);
   const [committing, setCommitting] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
   const operation = useTrackedOperation();
   const busy = operation.state.active;
-  const { confirmDiscard } = useDirtyExitGuard(workbook != null && doneCount == null && !busy);
+  const { confirmDiscard } = useDirtyExitGuard(workbook != null && done == null && !busy);
   const { status: dataStatus, ready: dataReady, retry: retryData } = combineLiveStates([personsState, sourcesState]);
-
-  useEffect(() => {
-    if (doneCount == null) return;
-    requestAnimationFrame(() => scrollRef.current?.scrollTo({ y: 0, animated: true }));
-  }, [doneCount]);
-
-  const pick = async () => {
-    await operation.run(async ({ signal }) => {
-      try {
-        setError(null);
-        setReimportYears(null);
-        const picked = await DocumentPicker.getDocumentAsync({
-          // Excel only. The screen is called "Excel'den İçe Aktar" and the
-          // template it hands out is an `.xlsx`, so offering CSV in the file
-          // dialog invited a format the wizard is no longer documented to take.
-          // The PARSER still reads a CSV — nothing was removed from it — so a
-          // file picked another way (a share sheet, a drag) still works.
-          type: [
-            "application/vnd.ms-excel",
-            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            "application/vnd.ms-excel.sheet.macroEnabled.12", // xlsm
-            "application/vnd.ms-excel.sheet.binary.macroEnabled.12", // xlsb
-            "application/vnd.oasis.opendocument.spreadsheet", // ods
-          ],
-          copyToCacheDirectory: true,
-        });
-        if (picked.canceled || !picked.assets[0]) return;
-        const bytes = await readPickedBytes(picked.assets[0], MAX_WORKBOOK_BYTES, tr.importer.fileTooLarge);
-        if (signal.aborted) throw signal.reason;
-        const parsed = await parseWorkbookBytes(bytes);
-        if (signal.aborted) throw signal.reason;
-        if (parsed.sheets.length === 0 && !hasRecords(parsed)) {
-          setError(parsed.unparsed[0]?.reason ?? tr.importer.parseError);
-          setWorkbook(null);
-          return;
-        }
-        // Said before anything is written, like the ledger's own preview.
-        setRecordPlan(hasRecords(parsed) ? await planWorkbookRecords(userId, parsed.records) : null);
-        setWorkbook(parsed);
-        setSelectedYears(yearsOf(parsed));
-        // Balances and running totals start OFF: importing a sum of the columns
-        // beside it counts the month twice. They are offered rather than
-        // dropped, because a heading is the one part of a personal spreadsheet
-        // nobody else wrote the rules for.
-        setExcluded([...new Set(parsed.sheets.flatMap((sheet) => sheet.skippedColumns))]);
-        setAdoptOpening(false);
-        setCardCycleDrafts({});
-      } catch (e) {
-        if (e instanceof OperationCancelledError) return;
-        devError("import.pick", e);
-        setError(userMessage(e, tr.errors.requestFailed));
-      }
-    });
-  };
-
   // Sheets that contribute at least one month in a selected year.
   const activeSheets = (workbook?.sheets ?? []).filter((s) => s.months.some((m) => selectedYears.includes(yearOf(m))));
-  const normalizeCard = (name: string) => name.trim().toLocaleLowerCase("tr-TR");
-  const installmentCards = [...new Set(
-    collectInstallmentPlans(activeSheets, {
-      excludedLabels: excluded,
-      informationalCards: workbook?.informationalCards ?? [],
-      yearAllowed: (year) => selectedYears.includes(year),
-    }).map((plan) => plan.card),
-  )];
-  const cycleDraft = (card: string) => {
-    const explicit = cardCycleDrafts[card];
-    if (explicit) return explicit;
-    const existing = sources.find((source) => source.type === "credit_card" && normalizeCard(source.name) === normalizeCard(card));
-    return {
-      statementDay: existing?.statementDay == null ? "" : String(existing.statementDay),
-      dueDay: existing?.dueDay == null ? "" : String(existing.dueDay),
-    };
-  };
-  const cardCyclesValid = installmentCards.every((card) => {
-    const cycle = cycleDraft(card);
-    // Blank is an answer: a card whose cycle nobody knows still imports, and
-    // its instalments fall on their own months. A HALF-filled pair is not an
-    // answer, and the importer creates real cards, so a pair it accepts here
-    // must be a pair the settings screen can reopen.
-    if (cycle.statementDay.trim() === "" && cycle.dueDay.trim() === "") return true;
-    return isMonthDay(cycle.statementDay)
-      && isMonthDay(cycle.dueDay)
-      && cardCycleError(Number(cycle.statementDay), Number(cycle.dueDay)) === null;
-  });
+  const cycles = useCardCycles(activeSheets, workbook, excluded, selectedYears);
 
-  const startImport = async () => {
-    if (selectedYears.length === 0) return;
-    await operation.run(async (context) => {
+  useEffect(() => {
+    if (done == null) return;
+    requestAnimationFrame(() => scrollRef.current?.scrollTo({ y: 0, animated: true }));
+  }, [done]);
+
+  /** One step of the wizard: a cancelled one says nothing, a failed one says why. */
+  const attempt = (label: string, work: (context: TrackedOperationContext) => Promise<void>, message = (e: unknown) => userMessage(e, tr.errors.requestFailed)) =>
+    operation.run(async (context) => {
       setError(null);
       try {
-        const already = await importedYears(userId, selectedYears);
-        if (context.signal.aborted) throw context.signal.reason;
-        if (already.length > 0) {
-          setReimportYears(already.sort((a, b) => a - b));
-          return;
-        }
-        await performImport("add", context);
+        await work(context);
       } catch (e) {
         if (e instanceof OperationCancelledError) return;
-        devError("import.start", e);
-        setError(userMessage(e, tr.errors.requestFailed));
+        devError(label, e);
+        setError(message(e));
       }
     });
-  };
+
+  const pick = () => attempt("import.pick", async ({ signal }) => {
+    setReimportYears(null);
+    const picked = await DocumentPicker.getDocumentAsync({
+      // Excel only: the screen and its template are Excel's. The parser still
+      // reads a CSV, so a file that arrives another way still works.
+      type: [
+        "application/vnd.ms-excel",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "application/vnd.ms-excel.sheet.macroEnabled.12", // xlsm
+        "application/vnd.ms-excel.sheet.binary.macroEnabled.12", // xlsb
+        "application/vnd.oasis.opendocument.spreadsheet", // ods
+      ],
+      copyToCacheDirectory: true,
+    });
+    if (picked.canceled || !picked.assets[0]) return;
+    const bytes = await readPickedBytes(picked.assets[0], MAX_WORKBOOK_BYTES, tr.importer.fileTooLarge);
+    if (signal.aborted) throw signal.reason;
+    const parsed = await parseWorkbookBytes(bytes);
+    if (signal.aborted) throw signal.reason;
+    if (parsed.sheets.length === 0 && !hasRecords(parsed)) {
+      setError(parsed.unparsed[0]?.reason ?? tr.importer.parseError);
+      setWorkbook(null);
+      return;
+    }
+    // Said before anything is written, like the ledger's own preview.
+    setRecordPlan(hasRecords(parsed) ? await planWorkbookRecords(userId, parsed.records) : null);
+    setWorkbook(parsed);
+    setSelectedYears(yearsOf(parsed));
+    // Balances and running totals start OFF — importing a sum of the columns
+    // beside it counts the month twice — and are offered rather than dropped.
+    setExcluded([...new Set(parsed.sheets.flatMap((sheet) => sheet.skippedColumns))]);
+    setAdoptOpening(false);
+    cycles.reset();
+  });
 
   const performImport = async (mode: "replace" | "add", context: TrackedOperationContext) => {
-    const selfId = persons.find((p) => p.isSelf)?.id;
+    const selfId = personsState.data.find((p) => p.isSelf)?.id;
     if (!selfId) {
       setError(tr.importer.missingSelf);
       return;
@@ -464,147 +628,55 @@ export default function ImportWizardModal() {
       informationalCards: workbook?.informationalCards ?? [],
       adoptOpeningBalance: adoptOpening,
       openingColumnLabel: openingColumn,
-      cardCycles: Object.fromEntries(
-        installmentCards
-          .map((card) => [card, cycleDraft(card)] as const)
-          .filter(([, cycle]) => cycle.statementDay.trim() !== "" && cycle.dueDay.trim() !== "")
-          .map(([card, cycle]) => [card, { statementDay: Number(cycle.statementDay), dueDay: Number(cycle.dueDay) }]),
-      ),
+      cardCycles: cycles.requested(),
     };
     context.report(2, 4);
     if (context.signal.aborted) throw context.signal.reason;
     setCommitting(true);
-    const { imported, plans } = await importSheets(userId, request)
-      .then(async (result) => {
-        setDoneRecords(workbook && hasRecords(workbook) ? await importWorkbookRecords(userId, workbook.records) : null);
-        return result;
-      })
+    const { result, records } = await importSheets(userId, request)
+      .then(async (result) => ({ result, records: workbook && hasRecords(workbook) ? await importWorkbookRecords(userId, workbook.records) : null }))
       .finally(() => setCommitting(false));
     context.report(3, 4);
     scheduleSync(userId);
     context.report(4, 4);
-    setDoneLedger(true);
-    setDonePlans(plans);
-    setDoneCount(imported);
+    setDone({ count: result.imported, ledger: true, plans: result.plans, records });
   };
+
+  const startImport = () => attempt("import.start", async (context) => {
+    if (selectedYears.length === 0) return;
+    const already = await importedYears(userId, selectedYears);
+    if (context.signal.aborted) throw context.signal.reason;
+    if (already.length > 0) setReimportYears(already.sort((a, b) => a - b));
+    else await performImport("add", context);
+  });
 
   /** A workbook holding only the record sheets: no year to choose, nothing of the ledger to write. */
-  const importRecordsOnly = async () => {
+  const importRecordsOnly = () => attempt("import.records", async () => {
     if (!workbook || !hasRecords(workbook)) return;
-    await operation.run(async () => {
-      setError(null);
-      try {
-        setCommitting(true);
-        const outcome = await importWorkbookRecords(userId, workbook.records).finally(() => setCommitting(false));
-        scheduleSync(userId);
-        setDoneRecords(outcome);
-        setDoneLedger(false);
-        setDonePlans(0);
-        setDoneCount(outcome.subscriptions.added + outcome.subscriptions.updated + outcome.investments.added + outcome.investments.updated);
-      } catch (e) {
-        if (e instanceof OperationCancelledError) return;
-        devError("import.records", e);
-        setError(userMessage(e, tr.errors.requestFailed));
-      }
-    });
-  };
+    setCommitting(true);
+    const outcome = await importWorkbookRecords(userId, workbook.records).finally(() => setCommitting(false));
+    scheduleSync(userId);
+    const written = outcome.subscriptions.added + outcome.subscriptions.updated + outcome.investments.added + outcome.investments.updated;
+    setDone({ count: written, ledger: false, plans: 0, records: outcome });
+  });
 
-  const doImport = async (mode: "replace" | "add") => {
-    await operation.run(async (context) => {
-      setError(null);
-      try {
-        await performImport(mode, context);
-      } catch (e) {
-        if (e instanceof OperationCancelledError) return;
-        // A refused replace is a precise, actionable condition — never a raw
-        // engine message, and never a silent downgrade to "add".
-        devError("import.run", e);
-        setError(
-          e instanceof ImportBatchUnreadableError
-            ? tr.importer.batchUnreadable(e.years.join(", "))
-            : userMessage(e, tr.errors.requestFailed),
-        );
-      }
-    });
-  };
+  // A refused replace is a precise, actionable condition — never a raw engine
+  // message, and never a silent downgrade to "add".
+  const doImport = (mode: "replace" | "add") => attempt("import.run", (context) => performImport(mode, context), (e) =>
+    e instanceof ImportBatchUnreadableError ? tr.importer.batchUnreadable(e.years.join(", ")) : userMessage(e, tr.errors.requestFailed));
 
-  if (!dataReady) {
-    return <DataGateScreen status={dataStatus} retry={retryData} scrollRef={scrollRef} width="workspace" />;
-  }
-
-  if (doneCount != null) {
+  if (!dataReady) return <DataGateScreen status={dataStatus} retry={retryData} scrollRef={scrollRef} width="workspace" />;
+  if (done != null) {
     return (
       <Screen scrollRef={scrollRef} width="workspace">
-        <ImportJourney stage={2} fileIcon={FileSpreadsheet} />
-        <Card tone="success">
-          <Row gap={spacing.md} style={{ alignItems: "center" }}>
-            <CheckCircle2 accessible={false} size={26} color={palette.success} />
-            <View style={{ flex: 1 }}>
-              <Text accessibilityRole="header" style={[type.heading, { color: palette.text }]}>
-                {doneLedger ? tr.importer.doneTitle(doneCount) : tr.importer.recordsTitle}
-              </Text>
-              {doneLedger ? <Body muted style={{ marginTop: spacing.xs }}>{tr.importer.doneHint}</Body> : null}
-              {/* Said out loud, because it is the half of the import nobody can
-                  see from the table: a workbook whose comments list instalments
-                  produces plans, and "kayıt geldi" alone never mentioned them. */}
-              {donePlans > 0 ? <Body muted style={{ marginTop: spacing.xs }}>{tr.importer.donePlans(donePlans)}</Body> : null}
-              {doneRecords ? (
-                <>
-                  <Body muted style={{ marginTop: spacing.xs }}>
-                    {tr.importer.recordsDone(
-                      doneRecords.subscriptions.added + doneRecords.subscriptions.updated,
-                      doneRecords.investments.added + doneRecords.investments.updated,
-                    )}
-                  </Body>
-                  {doneRecords.walletMissing ? <Body muted style={{ marginTop: spacing.xs }}>{tr.importer.recordsWalletMissing}</Body> : null}
-                  <RecordProblems problems={doneRecords.problems} />
-                </>
-              ) : null}
-            </View>
-          </Row>
-        </Card>
-        <Button icon={CheckCircle2} label={tr.common.done} onPress={() => navigateBack(router, "/(tabs)/cash-flow")} />
+        <ImportDoneCard count={done.count} ledger={done.ledger} plans={done.plans} records={done.records} />
       </Screen>
     );
   }
 
   const years = workbook ? yearsOf(workbook) : [];
-  // Column toggles: union of the active sheets' columns (first-seen kind).
-  const unionColumns: { label: string; income: boolean; balanceLike: boolean }[] = [];
-  const seenCol = new Set<string>();
-  for (const s of activeSheets) {
-    for (const col of s.columns) {
-      if (!seenCol.has(col.label)) {
-        seenCol.add(col.label);
-        unionColumns.push({ label: col.label, income: col.kindGuess === "income", balanceLike: col.balanceLike });
-      }
-    }
-  }
-  const balanceLikeColumns = unionColumns.filter((column) => column.balanceLike);
-  // What the workbook says the ledger should start from, and whether adopting
-  // it is even a question: data earlier than the current anchor always wins,
-  // because the ledger back-anchors to the earliest month it holds.
-  const openingChoices = [...new Map(
-    activeSheets
-      .flatMap((sheet) => sheet.openingCandidates)
-      .filter((candidate) => selectedYears.includes(yearOf(candidate.month)))
-      .map((candidate) => [candidate.label, candidate]),
-  ).values()];
-  const workbookOpening = openingBalanceFromSheets(
-    activeSheets,
-    (year: number) => selectedYears.includes(year),
-    openingColumn,
-  );
-  const currentStartMonth = settingValue<MonthKey | null>(settingsState.data, "start_month", null);
-  // Earlier data wins without being asked, figure or no figure: the workbook's
-  // first month opens at its own figure or at zero, which is the owner's rule.
-  // The line below states that month and amount. A balance typed at setup is
-  // not lost with the old anchor: the import keeps it as that month's declared
-  // opening (spec §3.1e).
-  const openingIsEarlier = workbookOpening != null
-    && (currentStartMonth == null || workbookOpening.month < currentStartMonth);
   const preview: ParsedSheet | undefined = activeSheets[0];
-
+  const importDisabled = busy || !cycles.valid;
   return (
     <Screen scrollRef={scrollRef} width="workspace">
       <DataStateNotice status={dataStatus} retry={retryData} />
@@ -613,9 +685,7 @@ export default function ImportWizardModal() {
           <WorkbookArtwork ready={workbook != null} />
           <View style={{ flex: 1, minWidth: 0, alignSelf: "stretch", justifyContent: "center" }}>
             <Text style={[type.heading, { color: palette.textStrong }]}>{tr.importer.heroTitle}</Text>
-            <Body muted style={{ marginTop: spacing.xs, marginBottom: spacing.md }}>
-              {workbook ? tr.importer.heroReady(workbook.sheets.length) : tr.importer.intro}
-            </Body>
+            <Body muted style={{ marginTop: spacing.xs, marginBottom: spacing.md }}>{workbook ? tr.importer.heroReady(workbook.sheets.length) : tr.importer.intro}</Body>
             <Button
               icon={Upload}
               label={workbook ? tr.importer.pickAgain : tr.importer.pick}
@@ -628,19 +698,13 @@ export default function ImportWizardModal() {
         </View>
       </Card>
       <ImportJourney stage={workbook ? 1 : 0} fileIcon={FileSpreadsheet} />
-      <OperationStatusNotice
-        state={operation.state}
-        label={workbook ? tr.operation.importing : tr.dataState.loading}
-        onCancel={committing ? undefined : operation.cancel}
-      />
-
+      <OperationStatusNotice state={operation.state} label={workbook ? tr.operation.importing : tr.dataState.loading} onCancel={committing ? undefined : operation.cancel} />
       {error ? (
         <Card tone="error" style={{ marginTop: spacing.md }}>
           <SectionHeader>{tr.importer.errorTitle}</SectionHeader>
           <Body accessibilityRole="alert" accessibilityLiveRegion="assertive" style={{ color: palette.errorText, marginBottom: spacing.sm }}>{error}</Body>
         </Card>
       ) : null}
-
       {!workbook ? (
         <View style={{ marginTop: spacing.md }}>
           <FormatGuide wide={wide} />
@@ -650,13 +714,9 @@ export default function ImportWizardModal() {
         <>
           {years.length > 0 ? (
             <>
-              {/* which years to import */}
               <SectionHeader>{tr.importer.yearSelectTitle}</SectionHeader>
               <SelectionGrid
-                options={years.map((y) => ({
-                  value: String(y),
-                  label: tr.importer.yearChip(y, monthCount(workbook, y)),
-                }))}
+                options={years.map((y) => ({ value: String(y), label: tr.importer.yearChip(y, monthCount(workbook, y)) }))}
                 values={selectedYears.map(String)}
                 onToggle={(v) => {
                   const y = Number(v);
@@ -666,195 +726,33 @@ export default function ImportWizardModal() {
             </>
           ) : null}
           {workbook.unparsed.length > 0 ? (
-            <Body muted style={{ marginBottom: spacing.md }}>
-              {tr.importer.unparsedNote(workbook.unparsed.map((s) => s.sheetName).join(", "))}
-            </Body>
+            <Body muted style={{ marginBottom: spacing.md }}>{tr.importer.unparsedNote(workbook.unparsed.map((s) => s.sheetName).join(", "))}</Body>
           ) : null}
           {recordPlan ? <RecordsCard plan={recordPlan} /> : null}
           {!preview && hasRecords(workbook) ? (
             <Button icon={FileSpreadsheet} label={tr.importer.recordsImport} onPress={() => void importRecordsOnly()} loading={busy} disabled={busy} />
           ) : null}
-
           {preview ? (
             <>
-              {/* which columns */}
-              <SectionHeader>{tr.importer.columnsTitle}</SectionHeader>
-              <Body muted style={{ marginBottom: spacing.sm }}>{tr.importer.columnsLead}</Body>
-              <Row gap={spacing.sm} style={{ marginBottom: spacing.sm, alignItems: "center" }}>
-                <Button label={tr.common.selectAll} variant="ghost" size="sm" disabled={excluded.length === 0} onPress={() => setExcluded([])} />
-                <Button
-                  label={tr.common.clearAll}
-                  variant="ghost"
-                  size="sm"
-                  disabled={excluded.length >= unionColumns.length}
-                  onPress={() => setExcluded(unionColumns.map((c) => c.label))}
-                />
-              </Row>
-              <SelectionGrid
-                options={unionColumns.map((c) => ({
-                  value: c.label,
-                  label: `${c.label}${c.income ? " ↑" : ""}${c.balanceLike ? " Σ" : ""}`,
-                }))}
-                values={unionColumns.map((c) => c.label).filter((l) => !excluded.includes(l))}
-                onToggle={(label) => setExcluded((xs) => (xs.includes(label) ? xs.filter((x) => x !== label) : [...xs, label]))}
-                searchable
-              />
-              {/* Said where the decision is made, not in help. A running total
-                  is off because importing it counts the month twice — and this
-                  is also where a heading the parser read wrongly gets put
-                  right, which is the only thing standing between a mis-read
-                  column and a balance nobody can explain. */}
-              {balanceLikeColumns.length > 0 ? (
-                <Body muted style={{ marginBottom: spacing.md }}>
-                  {tr.importer.balanceColumnsNote(balanceLikeColumns.map((column) => column.label).join(", "))}
-                </Body>
-              ) : null}
-
-              {/* The one figure the whole chained ledger hangs off, said out
-                  loud before it is written. It used to be adopted silently and
-                  only on the first import, so a wrong anchor produced a balance
-                  the owner could not explain and re-importing a corrected
-                  workbook could never put right. */}
-              {openingChoices.length > 0 ? (
-                <Card>
-                  <PanelHeader
-                    icon={Scale}
-                    title={tr.importer.openingTitle}
-                    description={tr.importer.openingHint}
-                  />
-                  {/* The card is drawn whenever the sheet HAS columns, not only
-                      when the heading rule recognised one. It used to appear
-                      only on a successful guess, so the workbook whose opening
-                      balance sits under a heading nobody else would read that
-                      way — the whole reason this choice exists — was the one
-                      workbook that never got offered it. */}
-                  <Select
-                    label={tr.importer.openingColumn}
-                    value={openingColumn ?? ""}
-                    options={[
-                      { value: "", label: tr.importer.openingColumnAuto },
-                      // The figure each column would give, beside its name. A
-                      // heading nobody but its author can read is picked by the
-                      // number under it, not by the word above it.
-                      ...openingChoices.map((candidate) => ({
-                        value: candidate.label,
-                        label: `${candidate.label} · ${formatMinorCompact(candidate.minor)}`,
-                      })),
-                    ]}
-                    onChange={(value) => setOpeningColumn(value === "" ? null : value)}
-                  />
-                  {workbookOpening ? (
-                    <>
-                      <Spread style={{ marginTop: spacing.sm, marginBottom: spacing.sm }}>
-                        <Body>{monthLabel(workbookOpening.month)}</Body>
-                        <Amount minor={workbookOpening.minor ?? 0} colorized={false} />
-                      </Spread>
-                      {openingIsEarlier ? (
-                        <Body muted>{tr.importer.openingEarlier}</Body>
-                      ) : (
-                        <FieldNote note={tr.importer.openingAdoptHint(monthLabel(currentStartMonth ?? workbookOpening.month))}>
-                          <Toggle
-                            label={tr.importer.openingAdopt}
-                            value={adoptOpening}
-                            onValueChange={setAdoptOpening}
-                          />
-                        </FieldNote>
-                      )}
-                    </>
-                  ) : (
-                    <Body muted style={{ marginTop: spacing.sm }}>{tr.importer.openingNone}</Body>
-                  )}
-                </Card>
-              ) : null}
-
-              {installmentCards.length > 0 ? (
-                <Card>
-                  <SectionHeader>{tr.importer.cardCyclesTitle}</SectionHeader>
-                  <Body muted style={{ marginBottom: spacing.md }}>{tr.importer.cardCyclesHint}</Body>
-                  {installmentCards.map((card) => {
-                    const cycle = cycleDraft(card);
-                    return (
-                      <View key={card} style={{ marginBottom: spacing.sm }}>
-                        <Body style={{ marginBottom: spacing.xs }}>{card}</Body>
-                        <CardCycleFields
-                          statementDayValue={cycle.statementDay}
-                          dueDayValue={cycle.dueDay}
-                          onStatementDayChange={(statementDay) => setCardCycleDrafts((current) => ({
-                            ...current,
-                            [card]: { ...cycleDraft(card), statementDay },
-                          }))}
-                          onDueDayChange={(dueDay) => setCardCycleDrafts((current) => ({
-                            ...current,
-                            [card]: { ...cycleDraft(card), dueDay },
-                          }))}
-                        />
-                      </View>
-                    );
-                  })}
-                </Card>
-              ) : null}
-
-              {/* preview grid (first active sheet) */}
-              <Body muted style={{ marginBottom: spacing.sm }}>
-                {tr.importer.detected(preview.months.length, preview.columns.length)}
-                {preview.skippedColumns.length > 0 ? ` ${tr.importer.skipped(preview.skippedColumns.join(", "))}` : ""}
-              </Body>
-              <Card padded={false}>
-                <ScrollView horizontal>
-                  <View style={{ padding: spacing.md }}>
-                    <View style={{ flexDirection: "row" }}>
-                      <Text style={[type.label, { color: palette.textSecondary, width: 96 }]}>{tr.cashflow.monthHeader}</Text>
-                      {preview.columns.map((c) => (
-                        <Text key={c.label} style={[type.label, { color: palette.textSecondary, width: 108, textAlign: "right" }]}>
-                          {c.label}
-                        </Text>
-                      ))}
-                    </View>
-                    {preview.months.map((m, r) => (
-                      <View key={m} style={{ flexDirection: "row", marginTop: spacing.sm }}>
-                        <Text style={[type.small, { color: palette.text, width: 96 }]}>{monthLabel(m)}</Text>
-                        {preview.columns.map((c, i) => {
-                          const cell = preview.cells[r]?.[i];
-                          if (!cell) return null;
-                          return (
-                            <View key={c.label} style={{ width: 108, flexDirection: "row", alignItems: "center", justifyContent: "flex-end" }}>
-                              {hasBreakdown(cell) ? <Text style={{ color: palette.primaryText }}>• </Text> : null}
-                              {cell.valueMinor != null ? (
-                                <Amount
-                                  minor={cell.valueMinor}
-                                  colorized={false}
-                                  color={palette.textSecondary}
-                                  accessibilityLabel={formatMinorCompact(cell.valueMinor)}
-                                  style={[type.amountSm, { textAlign: "right" }]}
-                                />
-                              ) : null}
-                            </View>
-                          );
-                        })}
-                      </View>
-                    ))}
-                  </View>
-                </ScrollView>
-              </Card>
-              <Body muted style={{ marginTop: spacing.xs, marginBottom: spacing.md, fontSize: type.small.fontSize }}>
-                {tr.importer.breakdownHint}
-              </Body>
-
+              <ColumnsPicker columns={columnsOf(activeSheets)} excluded={excluded} onExcluded={setExcluded} />
+              <OpeningCard sheets={activeSheets} selectedYears={selectedYears} column={openingColumn} onColumn={setOpeningColumn} adopt={adoptOpening} onAdopt={setAdoptOpening} />
+              <CardCyclesCard cycles={cycles} />
+              <SheetPreview sheet={preview} />
               {reimportYears ? (
                 <Card>
                   <Body style={{ marginBottom: spacing.sm }}>{tr.importer.reimportPrompt(reimportYears.join(", "))}</Body>
                   <Row gap={spacing.sm}>
                     <View style={{ flex: 1 }}>
-                      <Button label={tr.importer.reimportReplace} onPress={() => void doImport("replace")} loading={busy} disabled={busy || !cardCyclesValid} />
+                      <Button label={tr.importer.reimportReplace} onPress={() => void doImport("replace")} loading={busy} disabled={importDisabled} />
                     </View>
                     <View style={{ flex: 1 }}>
-                      <Button label={tr.importer.reimportAdd} variant="secondary" onPress={() => void doImport("add")} loading={busy} disabled={busy || !cardCyclesValid} />
+                      <Button label={tr.importer.reimportAdd} variant="secondary" onPress={() => void doImport("add")} loading={busy} disabled={importDisabled} />
                     </View>
                   </Row>
                   <Button label={tr.common.cancel} variant="ghost" size="sm" onPress={() => setReimportYears(null)} disabled={busy} />
                 </Card>
               ) : (
-                <Button icon={FileSpreadsheet} label={tr.importer.confirm} onPress={() => void startImport()} loading={busy} disabled={busy || selectedYears.length === 0 || !cardCyclesValid} />
+                <Button icon={FileSpreadsheet} label={tr.importer.confirm} onPress={() => void startImport()} loading={busy} disabled={importDisabled || selectedYears.length === 0} />
               )}
             </>
           ) : null}

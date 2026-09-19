@@ -8,9 +8,9 @@ import { useAllTransactionsState, useAnsweredForId, useCategoriesState, usePerso
 import { combineLiveStates } from "../data/live-state";
 import { classifyRecordId } from "../domain/route-params";
 import { addMonthsToKey, monthKeyOf, todayISO, type ISODate, type MonthKey } from "../domain/dates";
-import { firstInstallmentMonth, isValidCardCycle } from "../domain/card-statements";
-import { deriveStartMonth, isValidInstallmentCount, planProgress, type GeneratedInstallment } from "../domain/installments";
-import { formatMinorCompact, formatMinorInput, installmentShareRange } from "../domain/money";
+import { isValidInstallmentCount, planAmounts, planDraft, planForSighting, planProgress, type GeneratedInstallment } from "../domain/installments";
+import { formatMinorCompact, formatMinorInput } from "../domain/money";
+import { installmentSplitText } from "../ui/installment-text";
 import { dateLabel, monthLabel, tr } from "../i18n/tr";
 import CalendarRange from "lucide-react-native/icons/calendar-range";
 import ChevronLeft from "lucide-react-native/icons/chevron-left";
@@ -36,7 +36,7 @@ import { useDirtyExitGuard, useDraftDirty } from "../ui/dirty-exit";
 import { WorkspaceSplit } from "../ui/workspace-layout";
 import { DateField } from "../ui/calendar";
 import { useUndo } from "../ui/undo";
-import { PersonAssignment } from "../ui/person-assignment";
+import { assignedPersonId, PersonAssignment } from "../ui/person-assignment";
 
 /** The Select's own icon column, so a source mark fits it exactly. */
 const SOURCE_MARK = 22;
@@ -499,327 +499,260 @@ function CloseLoanCard({ plan, instalments }: { plan: Plan; instalments: PlanRow
   );
 }
 
-function PlanForm({ existing }: { existing?: ReturnType<typeof usePlansState>["data"][number] }) {
+function saveFailureMessage(error: unknown): string {
+  if (error instanceof CreditCardCycleRequiredError) return tr.sources.cycleRequired;
+  return error instanceof InstallmentHistoryConflictError ? tr.installments.historyConflict : tr.errors.saveFailed;
+}
+
+/** How the entered figure splits: a monthly amount's total, or a whole purchase's first and later instalments. */
+function amountInfo(mode: "total" | "monthly", amountMinor: number, count: number, currency: string): string | null {
+  return mode === "monthly"
+    ? tr.installments.monthlyTotalInfo(count, formatMinorCompact(amountMinor, currency), formatMinorCompact(amountMinor * count, currency))
+    : installmentSplitText(amountMinor, count, currency);
+}
+
+type ExistingPlan = ReturnType<typeof usePlansState>["data"][number];
+
+interface PlanFields {
+  kind: "card_installment" | "loan";
+  title: string;
+  amountRaw: string;
+  amountMinor: number | null;
+  countText: string;
+  /** "6.000 in 6" and "1.000 a month, 6 times" are one plan said two ways; until chosen, it follows the kind. */
+  modeChoice: "total" | "monthly" | null;
+  paidText: string | null;
+  startChoice: MonthKey | null;
+  sourceId: string | null;
+  personChoice: string | null;
+  categoryId: string | null;
+  /** A loan's own payment day; without one a loan from an account with no day put every instalment on the 1st. */
+  dueDayText: string;
+}
+
+const NEW_PLAN: PlanFields = {
+  kind: "card_installment", title: "", amountRaw: "", amountMinor: null, countText: "6", modeChoice: null, paidText: null,
+  startChoice: null, sourceId: null, personChoice: null, categoryId: null, dueDayText: "",
+};
+
+function planFields(plan: ExistingPlan | undefined): PlanFields {
+  if (!plan) return NEW_PLAN;
+  // Whichever figure the plan was saved with: imported plans carry a monthly amount even on a card.
+  const amountMinor = plan.totalAmountMinor ?? plan.monthlyAmountMinor;
+  return {
+    kind: plan.kind, title: plan.title, amountRaw: amountMinor != null ? formatMinorInput(amountMinor) : "", amountMinor,
+    countText: String(plan.installmentCount), modeChoice: plan.totalAmountMinor != null ? "total" : "monthly", paidText: null,
+    startChoice: plan.startMonth, sourceId: plan.paymentSourceId, personChoice: plan.personId, categoryId: plan.categoryId,
+    dueDayText: plan.kind === "loan" && plan.dueDay != null ? String(plan.dueDay) : "",
+  };
+}
+
+/** A plan keeps the currency it was bought in; saving a USD plan as TRY at a factor of 1 once rewrote 100 USD as ₺100. */
+function usePlanRate(userId: string, plan: ExistingPlan | undefined) {
+  const currency = plan?.currency ?? "TRY";
+  useFxRates();
+  return { currency, rateTry: currency === "TRY" ? 1 : lookupRate(userId, currency)?.rate.rateTry ?? null };
+}
+
+/** The plan form's fields, what they add up to, and saving it. */
+function usePlanForm(existing: ExistingPlan | undefined) {
   const userId = useUserId();
   const sourcesState = useSourcesState();
   const personsState = usePersonsState();
-  const operationGuard = useOperationGuard();
   const categoriesState = useCategoriesState();
   const transactionsState = useAllTransactionsState();
-  const sources = sourcesState.data;
-  const persons = personsState.data;
-  const categories = categoriesState.data;
+  const plansState = usePlansState();
+  const operationGuard = useOperationGuard();
   const router = useRouter();
-  const isEdit = existing != null;
+  const data = combineLiveStates([sourcesState, personsState, categoriesState, transactionsState]);
+  const persons = personsState.data;
   const close = () => navigateBack(router, "/(tabs)/cash-flow/installments");
-  const { status: dataStatus, ready: dataReady, retry: retryData } = combineLiveStates([sourcesState, personsState, categoriesState, transactionsState]);
-  // How many instalments the plan's own rows say were paid. The field starts
-  // there on an edit, so correcting a wrong count is changing one number.
-  const storedPaid = existing
-    ? transactionsState.data.filter((t) => t.installmentPlanId === existing.id && t.installmentNo != null && t.status === "realized").length
-    : 0;
-
-  // A plan keeps the currency it was bought in. This form used to write every
-  // save as TRY at a factor of 1, so editing a 100 USD plan rewrote its unpaid
-  // instalments as ₺100. The TRY figure is the last known rate; maintenance
-  // restates coming instalments as rates arrive.
-  const currency = existing?.currency ?? "TRY";
-  useFxRates();
-  const rateTry = currency === "TRY" ? 1 : lookupRate(userId, currency)?.rate.rateTry ?? null;
-  const [kind, setKind] = useState<"card_installment" | "loan">(existing?.kind ?? "card_installment");
-  // Whichever figure the plan was saved with. A plan imported from a workbook
-  // or a statement carries a MONTHLY amount even on a card, and reading only
-  // the total opened those plans with an empty amount.
-  const existingAmountMinor = existing ? (existing.totalAmountMinor ?? existing.monthlyAmountMinor) : null;
-  const [title, setTitle] = useState(existing?.title ?? "");
-  const [amountRaw, setAmountRaw] = useState(existingAmountMinor != null ? formatMinorInput(existingAmountMinor) : "");
-  const [amountMinor, setAmountMinor] = useState<number | null>(existingAmountMinor ?? null);
-  const [countStr, setCountStr] = useState(String(existing?.installmentCount ?? 6));
-  /**
-   * Entered as the whole purchase or as one instalment — "6.000 in 6" and
-   * "1.000 a month, 6 times" are the same plan said two ways, and people read
-   * whichever one their statement printed. Until chosen, it follows the kind.
-   */
-  const [modeChoice, setModeChoice] = useState<"total" | "monthly" | null>(
-    existing ? (existing.totalAmountMinor != null ? "total" : "monthly") : null,
-  );
-  const amountMode = modeChoice ?? (kind === "loan" ? "monthly" : "total");
-  const [paidChoice, setPaidChoice] = useState<string | null>(null);
-  const paidStr = paidChoice ?? String(storedPaid);
-  const [startChoice, setStartMonth] = useState<MonthKey | null>(existing?.startMonth ?? null);
-  const [sourceId, setSourceId] = useState<string | null>(existing?.paymentSourceId ?? null);
-  // persons load async (live query) — derive the default instead of freezing
-  // a null initial state computed before the first query resolves.
-  const [personChoice, setPersonChoice] = useState<string | null>(existing?.personId ?? null);
-  const personId = personChoice ?? persons.find((p) => p.isSelf)?.id ?? persons[0]?.id ?? null;
-  const [categoryId, setCategoryId] = useState<string | null>(existing?.categoryId ?? null);
-  // A loan's own payment day. Without one a loan paid from an account with no
-  // day of its own put every instalment on the 1st.
-  const [dueDayStr, setDueDayStr] = useState(existing?.kind === "loan" && existing.dueDay != null ? String(existing.dueDay) : "");
+  const [fields, setFields] = useState(() => planFields(existing));
+  const set = <K extends keyof PlanFields>(key: K) => (value: PlanFields[K]) => setFields((current) => ({ ...current, [key]: value }));
   const [busy, setBusy] = useState(false);
-  const draftSnapshot = JSON.stringify({ kind, title, amountRaw, modeChoice, countStr, paidChoice, startChoice, sourceId, personChoice, categoryId, dueDayStr });
-  const { allowExit } = useDirtyExitGuard(useDraftDirty(draftSnapshot, dataReady) && !busy);
-  const selectedSource = sources.find((source) => source.id === sourceId);
-  const cardSourceValid = kind !== "card_installment" || Boolean(
-    selectedSource?.type === "credit_card" &&
-    selectedSource.statementDay != null && selectedSource.statementDay >= 1 && selectedSource.statementDay <= 31 &&
-    selectedSource.dueDay != null && selectedSource.dueDay >= 1 && selectedSource.dueDay <= 31
-  );
-  // Until the owner picks a month, a new card plan starts on the statement a
-  // purchase made today joins. Starting it in the current month dated the first
-  // instalment on this month's due day, which on a card already past it counted
-  // as paid and came straight off today's balance.
-  const cardCycle = { statementDay: selectedSource?.statementDay ?? null, dueDay: selectedSource?.dueDay ?? null };
-  const startMonth = startChoice ?? (kind === "card_installment" && isValidCardCycle(cardCycle)
-    ? firstInstallmentMonth(todayISO(), cardCycle)
-    : monthKeyOf(todayISO()));
-  const typedDueDay = dueDayStr.trim() === "" ? null : Number(dueDayStr);
-  const dueDayValid = kind !== "loan" || typedDueDay == null || (Number.isInteger(typedDueDay) && typedDueDay >= 1 && typedDueDay <= 31);
-  const dueDay = (kind === "loan" ? typedDueDay : null) ?? selectedSource?.dueDay ?? null;
+  const { allowExit } = useDirtyExitGuard(useDraftDirty(JSON.stringify(fields), data.ready) && !busy);
+  // The field starts at what the plan's rows say was paid, so correcting it is changing one number.
+  const storedPaid = existing ? transactionsState.data.filter((t) => t.installmentPlanId === existing.id && t.installmentNo != null && t.status === "realized").length : 0;
+  const { currency, rateTry } = usePlanRate(userId, existing);
+  const amountMode = fields.modeChoice ?? (fields.kind === "loan" ? "monthly" : "total");
+  const personId = assignedPersonId(fields.personChoice, persons);
+  const selectedSource = sourcesState.data.find((source) => source.id === fields.sourceId) ?? null;
+  const draft = planDraft({ ...fields, storedPaid, existingStartMonth: existing?.startMonth ?? null, card: selectedSource, today: todayISO() });
   const closed = existing?.closedOn != null;
-  const sourceOptions = kind === "card_installment"
-    ? sources.filter((source) => source.type === "credit_card")
-    : sources;
+  const valid = data.ready && draft.valid && personId != null && rateTry != null && !closed;
 
-  const count = Number(countStr);
-  const paid = Number(paidStr);
-  const valid =
-    dataReady &&
-    title.trim() !== "" &&
-    amountMinor != null &&
-    amountMinor > 0 &&
-    isValidInstallmentCount(count) &&
-    Number.isInteger(paid) &&
-    paid >= 0 &&
-    paid <= count &&
-    personId != null &&
-    rateTry != null &&
-    cardSourceValid &&
-    dueDayValid &&
-    !closed;
-
-  // "Already paid N" places the start month: on a new plan whenever it is set,
-  // on an edit only once the owner corrects it — an edit that leaves the count
-  // alone leaves the schedule where it is.
-  const paidChanged = isEdit ? paidChoice != null && paid !== storedPaid : paid > 0;
-  const resolvedStart = paidChanged
-    ? deriveStartMonth(paid, monthKeyOf(todayISO()), dueDay, todayISO())
-    : startMonth;
-  const reschedule = existing != null && resolvedStart !== existing.startMonth;
-
-  const save = async () => {
+  const save = () => operationGuard.run(async () => {
     if (!valid || !personId) return;
-    await operationGuard.run(async () => {
-      setBusy(true);
-      try {
-        const person = persons.find((p) => p.id === personId)!;
-        const input = {
-          title: title.trim(),
-          kind,
-          totalAmountMinor: amountMode === "total" ? amountMinor! : null,
-          monthlyAmountMinor: amountMode === "monthly" ? amountMinor! : null,
-          installmentCount: count,
-          currency,
-          fxRate: currency === "TRY" ? null : String(rateTry),
-          startMonth: resolvedStart,
-          dueDay,
-          paymentSourceId: sourceId,
-          personId,
-          personIsSelf: person.isSelf,
-          categoryId,
-          note: existing?.note ?? null,
-          tryFactor: rateTry!,
-        };
-        if (isEdit) await updateInstallmentPlan(userId, existing!.id, input, { reschedule });
-        else await createInstallmentPlan(userId, input);
-        scheduleSync(userId);
-        allowExit(close);
-      } catch (e) {
-        devError("installment.save", e);
-        void appAlert(
-          e instanceof CreditCardCycleRequiredError
-            ? tr.sources.cycleRequired
-            : e instanceof InstallmentHistoryConflictError
-              ? tr.installments.historyConflict
-              : tr.errors.saveFailed,
-          tr.errors.title,
-        );
-      } finally {
-        setBusy(false);
-      }
-    });
-  };
+    const amounts = {
+      totalAmountMinor: amountMode === "total" ? fields.amountMinor! : null,
+      monthlyAmountMinor: amountMode === "monthly" ? fields.amountMinor! : null,
+      installmentCount: draft.count,
+    };
+    // The purchase may already be here from a workbook or a statement under another name.
+    // Said, not refused: two identical purchases are two plans.
+    const twin = existing ? null : planForSighting({
+      month: draft.resolvedStart,
+      amountMinor: planAmounts(amounts)[0]!,
+      endMonth: addMonthsToKey(draft.resolvedStart, draft.count - 1),
+      startMonth: draft.resolvedStart,
+      paymentSourceId: fields.sourceId,
+    }, currency === "TRY" ? plansState.data : []);
+    if (twin && !(await appConfirm(tr.installments.twinTitle, tr.installments.twinBody(twin.plan.title), { confirmLabel: tr.installments.twinConfirm }))) return;
+    setBusy(true);
+    try {
+      const input = {
+        title: fields.title.trim(), kind: fields.kind, ...amounts, currency, fxRate: currency === "TRY" ? null : String(rateTry),
+        startMonth: draft.resolvedStart, dueDay: draft.dueDay, paymentSourceId: fields.sourceId, personId,
+        personIsSelf: persons.find((p) => p.id === personId)!.isSelf, categoryId: fields.categoryId, note: existing?.note ?? null, tryFactor: rateTry!,
+      };
+      if (existing) await updateInstallmentPlan(userId, existing.id, input, { reschedule: draft.reschedule });
+      else await createInstallmentPlan(userId, input);
+      scheduleSync(userId);
+      allowExit(close);
+    } catch (e) {
+      devError("installment.save", e);
+      void appAlert(saveFailureMessage(e), tr.errors.title);
+    } finally {
+      setBusy(false);
+    }
+  });
 
-  const confirmDelete = () => {
-    void (async () => {
-      try {
-        // Deleting a plan tombstones every generated installment and can't be
-        // undone, so the confirmation spells out how many records go with it.
-        const count = await countInstallmentsForPlan(userId, existing!.id);
-        const ok = await appConfirm(existing!.title, tr.installments.deleteBody(count), {
-          confirmLabel: tr.common.delete,
-          danger: true,
-        });
-        if (!ok) return;
-        await deletePlan(userId, existing!.id);
-        scheduleSync(userId);
-        allowExit(close);
-      } catch {
-        void appAlert(tr.errors.saveFailed, tr.errors.title);
-      }
-    })();
-  };
+  // Deleting a plan tombstones every generated instalment and cannot be undone, so the confirmation counts them.
+  const confirmDelete = () => void (async () => {
+    try {
+      const count = await countInstallmentsForPlan(userId, existing!.id);
+      if (!(await appConfirm(existing!.title, tr.installments.deleteBody(count), { confirmLabel: tr.common.delete, danger: true }))) return;
+      await deletePlan(userId, existing!.id);
+      scheduleSync(userId);
+      allowExit(close);
+    } catch {
+      void appAlert(tr.errors.saveFailed, tr.errors.title);
+    }
+  })();
 
-  useSubmitOnEnter(() => void save(), valid && !busy);
+  return {
+    isEdit: existing != null, data, persons, categories: categoriesState.data, sources: sourcesState.data, selectedSource, currency, rateTry, storedPaid,
+    fields, set, amountMode, personId, draft, closed, valid, busy, save, confirmDelete,
+  };
+}
+
+type PlanFormModel = ReturnType<typeof usePlanForm>;
+
+function PlanDetailsCard({ form }: { form: PlanFormModel }) {
+  const { fields, set, draft, currency, amountMode } = form;
   const titlePlaceholder = useRotatingPlaceholder(placeholderPools.installment);
+  const amountLabel = amountMode === "total" ? tr.installments.totalAmount : tr.installments.monthlyAmount;
+  return (
+    <Card>
+      <PanelHeader icon={CreditCard} title={tr.installments.planDetails} description={form.isEdit ? tr.installments.editHint : tr.installments.planDetailsHint} />
+      <InstallmentTimeline count={draft.count} startMonth={draft.resolvedStart} />
+      <View accessibilityRole="radiogroup" accessibilityLabel={tr.installments.planType} style={{ flexDirection: "row", gap: spacing.sm, marginBottom: spacing.md }}>
+        <PlanKindChoice icon={CreditCard} label={tr.installments.plan} selected={fields.kind === "card_installment"} onPress={() => set("kind")("card_installment")} />
+        <PlanKindChoice icon={Landmark} label={tr.installments.loan} selected={fields.kind === "loan"} onPress={() => set("kind")("loan")} />
+      </View>
+      <Field label={tr.installments.titleField} value={fields.title} onChangeText={set("title")} placeholder={titlePlaceholder} />
+      <Segmented
+        options={[{ value: "total", label: tr.installments.totalAmount }, { value: "monthly", label: tr.installments.monthlyAmount }]}
+        value={amountMode}
+        onChange={set("modeChoice")}
+      />
+      <MoneyField
+        label={currency === "TRY" ? amountLabel : `${amountLabel} · ${currency}`}
+        value={fields.amountRaw}
+        onChangeMinor={(raw, minor) => {
+          set("amountRaw")(raw);
+          set("amountMinor")(minor);
+        }}
+      />
+      <Row>
+        <View style={{ flex: 1 }}>
+          <Field label={tr.installments.count} value={fields.countText} onChangeText={set("countText")} keyboardType="number-pad" />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Field label={tr.tx.alreadyPaid} value={fields.paidText ?? String(form.storedPaid)} onChangeText={set("paidText")} keyboardType="number-pad" />
+        </View>
+      </Row>
+      {form.rateTry == null ? <Body muted style={{ marginBottom: spacing.sm }}>{tr.errors.fxUnavailable}</Body> : null}
+      {form.valid && fields.amountMinor ? <Body muted>{amountInfo(amountMode, fields.amountMinor, draft.count, currency)}</Body> : null}
+    </Card>
+  );
+}
 
-  if (!dataReady) {
+function PlanScheduleCard({ form }: { form: PlanFormModel }) {
+  const router = useRouter();
+  const { fields, set, draft } = form;
+  const sourceOptions = fields.kind === "card_installment" ? form.sources.filter((source) => source.type === "credit_card") : form.sources;
+  return (
+    <Card>
+      <PanelHeader icon={CalendarRange} title={tr.installments.scheduleAndAssignment} description={tr.installments.scheduleAndAssignmentHint} />
+      {draft.paidChanged ? (
+        <Body muted style={{ marginBottom: spacing.md }}>
+          {tr.installments.progress(draft.paid, draft.count)} → {tr.installments.startMonth}: {monthLabel(draft.resolvedStart)}
+        </Body>
+      ) : (
+        <>
+          <Label>{tr.installments.startMonth}</Label>
+          <Spread style={{ marginBottom: spacing.md }}>
+            <IconButton icon={ChevronLeft} label={tr.installments.startMonth} onPress={() => set("startChoice")(addMonthsToKey(draft.startMonth, -1))} />
+            <Heading>{monthLabel(draft.startMonth)}</Heading>
+            <IconButton icon={ChevronRight} label={tr.installments.startMonth} onPress={() => set("startChoice")(addMonthsToKey(draft.startMonth, 1))} />
+          </Spread>
+        </>
+      )}
+      {draft.reschedule ? <Body muted style={{ marginBottom: spacing.md }}>{tr.installments.rescheduleNote}</Body> : null}
+      <Select
+        label={tr.tx.source}
+        placeholder={tr.tx.sourcePlaceholder}
+        options={sourceOptions.map((s) => ({ value: s.id, label: s.name, icon: <PaymentSourceLogo name={s.name} type={s.type} logoRef={s.logoRef} size={SOURCE_MARK} /> }))}
+        value={fields.sourceId}
+        onChange={set("sourceId")}
+        onCreate={{ label: tr.installments.addCard, run: () => router.push("/payment-sources") }}
+      />
+      {draft.cardSourceValid ? null : <Body muted style={{ marginBottom: spacing.sm }}>{tr.tx.cardCycleMissing}</Body>}
+      {fields.kind === "loan" ? (
+        <>
+          <Field label={tr.installments.dueDayField} value={fields.dueDayText} onChangeText={set("dueDayText")} keyboardType="number-pad" placeholder={String(form.selectedSource?.dueDay ?? 1)} />
+          <Body muted style={{ marginBottom: spacing.md }}>{tr.installments.dueDayHint}</Body>
+        </>
+      ) : null}
+      <PersonAssignment people={form.persons} value={form.personId} onChange={set("personChoice")} />
+      <Select
+        label={tr.tx.category}
+        placeholder={tr.tx.categoryPlaceholder}
+        options={form.categories.filter((c) => c.kind === "expense").map((c) => ({ value: c.id, label: c.name, icon: categoryIconComponent(c) }))}
+        value={fields.categoryId}
+        onChange={set("categoryId")}
+        onCreate={{ label: tr.tx.addCategory, run: () => router.push("/columns-editor") }}
+      />
+      {form.closed ? <Body muted style={{ marginBottom: spacing.sm }}>{tr.installments.closedEditLocked}</Body> : null}
+      <Button label={tr.common.save} onPress={() => void form.save()} disabled={!form.valid} loading={form.busy} />
+      {form.isEdit ? (
+        <View style={{ marginTop: spacing.md }}>
+          <Button icon={Trash} label={tr.installments.delete} variant="danger" onPress={form.confirmDelete} />
+        </View>
+      ) : null}
+    </Card>
+  );
+}
+
+function PlanForm({ existing }: { existing?: ExistingPlan }) {
+  const form = usePlanForm(existing);
+  const title = existing ? tr.installments.editTitle : tr.installments.newTitle;
+  useSubmitOnEnter(() => void form.save(), form.valid && !form.busy);
+  if (!form.data.ready) {
     return (
-      <DataGateScreen status={dataStatus} retry={retryData}>
-        <Stack.Screen options={{ title: isEdit ? tr.installments.editTitle : tr.installments.newTitle }} />
+      <DataGateScreen status={form.data.status} retry={form.data.retry}>
+        <Stack.Screen options={{ title }} />
       </DataGateScreen>
     );
   }
-
   return (
     <Screen width="workspace">
-      <Stack.Screen options={{ title: isEdit ? tr.installments.editTitle : tr.installments.newTitle }} />
-      <DataStateNotice status={dataStatus} retry={retryData} />
+      <Stack.Screen options={{ title }} />
+      <DataStateNotice status={form.data.status} retry={form.data.retry} />
       {existing ? <PlanState planId={existing.id} /> : null}
-      <WorkspaceSplit
-        testID="installment-form-workspace"
-        primary={(
-          <Card>
-            <PanelHeader
-              icon={CreditCard}
-              title={tr.installments.planDetails}
-              description={isEdit ? tr.installments.editHint : tr.installments.planDetailsHint}
-            />
-            <InstallmentTimeline count={count} startMonth={resolvedStart} />
-            <View
-              accessibilityRole="radiogroup"
-              accessibilityLabel={tr.installments.planType}
-              style={{ flexDirection: "row", gap: spacing.sm, marginBottom: spacing.md }}
-            >
-              <PlanKindChoice
-                icon={CreditCard}
-                label={tr.installments.plan}
-                selected={kind === "card_installment"}
-                onPress={() => setKind("card_installment")}
-              />
-              <PlanKindChoice
-                icon={Landmark}
-                label={tr.installments.loan}
-                selected={kind === "loan"}
-                onPress={() => setKind("loan")}
-              />
-            </View>
-            <Field label={tr.installments.titleField} value={title} onChangeText={setTitle} placeholder={titlePlaceholder} />
-            <Segmented
-              options={[
-                { value: "total", label: tr.installments.totalAmount },
-                { value: "monthly", label: tr.installments.monthlyAmount },
-              ]}
-              value={amountMode}
-              onChange={setModeChoice}
-            />
-            <MoneyField
-              label={`${amountMode === "total" ? tr.installments.totalAmount : tr.installments.monthlyAmount}${currency === "TRY" ? "" : ` · ${currency}`}`}
-              value={amountRaw}
-              onChangeMinor={(raw, minor) => {
-                setAmountRaw(raw);
-                setAmountMinor(minor);
-              }}
-            />
-            <Row>
-              <View style={{ flex: 1 }}>
-                <Field label={tr.installments.count} value={countStr} onChangeText={setCountStr} keyboardType="number-pad" />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Field label={tr.tx.alreadyPaid} value={paidStr} onChangeText={setPaidChoice} keyboardType="number-pad" />
-              </View>
-            </Row>
-            {rateTry == null ? <Body muted style={{ marginBottom: spacing.sm }}>{tr.errors.fxUnavailable}</Body> : null}
-            {valid && amountMinor ? (
-              <Body muted>
-                {amountMode === "monthly"
-                  ? tr.installments.monthlyTotalInfo(count, formatMinorCompact(amountMinor, currency), formatMinorCompact(amountMinor * count, currency))
-                  : (() => {
-                const shares = installmentShareRange(amountMinor, count);
-                if (!shares) return null;
-                return shares.first === shares.rest
-                  ? tr.tx.installmentInfo(formatMinorCompact(shares.first, currency), count)
-                  : tr.tx.installmentInfoUneven(count, formatMinorCompact(shares.first, currency), formatMinorCompact(shares.rest, currency));
-              })()}
-              </Body>
-            ) : null}
-          </Card>
-        )}
-        secondary={(
-          <Card>
-            <PanelHeader icon={CalendarRange} title={tr.installments.scheduleAndAssignment} description={tr.installments.scheduleAndAssignmentHint} />
-            {paidChanged ? (
-              <Body muted style={{ marginBottom: spacing.md }}>
-                {tr.installments.progress(paid, count)} → {tr.installments.startMonth}: {monthLabel(resolvedStart)}
-              </Body>
-            ) : (
-              <>
-                <Label>{tr.installments.startMonth}</Label>
-                <Spread style={{ marginBottom: spacing.md }}>
-                  <IconButton icon={ChevronLeft} label={tr.installments.startMonth} onPress={() => setStartMonth(addMonthsToKey(startMonth, -1))} />
-                  <Heading>{monthLabel(startMonth)}</Heading>
-                  <IconButton icon={ChevronRight} label={tr.installments.startMonth} onPress={() => setStartMonth(addMonthsToKey(startMonth, 1))} />
-                </Spread>
-              </>
-            )}
-            {reschedule ? (
-              <Body muted style={{ marginBottom: spacing.md }}>{tr.installments.rescheduleNote}</Body>
-            ) : null}
-
-            <Select
-              label={tr.tx.source}
-              placeholder={tr.tx.sourcePlaceholder}
-              options={sourceOptions.map((s) => ({ value: s.id, label: s.name, icon: <PaymentSourceLogo name={s.name} type={s.type} logoRef={s.logoRef} size={SOURCE_MARK} /> }))}
-              value={sourceId}
-              onChange={setSourceId}
-              onCreate={{ label: tr.installments.addCard, run: () => router.push("/payment-sources") }}
-            />
-            {kind === "card_installment" && !cardSourceValid ? (
-              <Body muted style={{ marginBottom: spacing.sm }}>{tr.tx.cardCycleMissing}</Body>
-            ) : null}
-            {kind === "loan" ? (
-              <>
-                <Field
-                  label={tr.installments.dueDayField}
-                  value={dueDayStr}
-                  onChangeText={setDueDayStr}
-                  keyboardType="number-pad"
-                  placeholder={String(selectedSource?.dueDay ?? 1)}
-                />
-                <Body muted style={{ marginBottom: spacing.md }}>{tr.installments.dueDayHint}</Body>
-              </>
-            ) : null}
-            <PersonAssignment people={persons} value={personId} onChange={setPersonChoice} />
-            <Select
-              label={tr.tx.category}
-              placeholder={tr.tx.categoryPlaceholder}
-              options={categories.filter((c) => c.kind === "expense").map((c) => ({ value: c.id, label: c.name, icon: categoryIconComponent(c) }))}
-              value={categoryId}
-              onChange={setCategoryId}
-              onCreate={{ label: tr.tx.addCategory, run: () => router.push("/columns-editor") }}
-            />
-
-            {closed ? <Body muted style={{ marginBottom: spacing.sm }}>{tr.installments.closedEditLocked}</Body> : null}
-            <Button label={tr.common.save} onPress={() => void save()} disabled={!valid} loading={busy} />
-            {isEdit ? (
-              <View style={{ marginTop: spacing.md }}>
-                <Button icon={Trash} label={tr.installments.delete} variant="danger" onPress={confirmDelete} />
-              </View>
-            ) : null}
-          </Card>
-        )}
-      />
-      {existing?.kind === "loan" ? <LoanActions plan={existing} persons={persons} rateTry={rateTry} /> : null}
+      <WorkspaceSplit testID="installment-form-workspace" primary={<PlanDetailsCard form={form} />} secondary={<PlanScheduleCard form={form} />} />
+      {existing?.kind === "loan" ? <LoanActions plan={existing} persons={form.persons} rateTry={form.rateTry} /> : null}
       {existing ? <PlanRefunds planId={existing.id} /> : null}
     </Screen>
   );

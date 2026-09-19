@@ -173,7 +173,7 @@ function earliestRecordedMonth(
  * seed it may never exceed — and that bound is exactly what a caller asking
  * "where does the data start" must not inherit.
  */
-export function firstRecordedMonth(
+function firstRecordedMonth(
   transactions: TxLike[],
   adjustments: AdjustmentLike[],
 ): MonthKey | null {

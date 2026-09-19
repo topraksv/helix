@@ -87,7 +87,7 @@ export async function repairCardStatementLinks(userId: string, today: ISODate): 
               ...fromDbShape("transactions", transaction),
               effectiveDate,
               status: effectiveDate <= today ? "realized" : "pending",
-              cardStatementId: idByPeriod.get(period.periodMonth) ?? null,
+              cardStatementId: idByPeriod.get(period.periodMonth)!,
             },
           };
         }),
@@ -154,8 +154,7 @@ async function runMaintenanceInner(userId: string): Promise<void> {
     [userId],
   );
   if (selves.length > 1) {
-    const keepId = selves[0]?.id;
-    if (!keepId) throw new Error("Self-person repair invariant failed");
+    const keepId = selves[0]!.id;
     for (const dup of selves.slice(1)) {
       const repairWrites: RowWrite[] = [];
       for (const table of ["transactions", "payment_sources", "subscriptions", "recurring_incomes", "installment_plans"] as const) {
@@ -169,8 +168,8 @@ async function runMaintenanceInner(userId: string): Promise<void> {
         `SELECT * FROM persons WHERE id = ? AND user_id = ?`,
         [dup.id, userId],
       );
-      if (duplicate) repairWrites.push({ table: "persons", row: { ...fromDbShape("persons", duplicate), deletedAt: nowIso() } });
-      if (repairWrites.length > 0) await writeRows(userId, repairWrites, false);
+      repairWrites.push({ table: "persons", row: { ...fromDbShape("persons", duplicate!), deletedAt: nowIso() } });
+      await writeRows(userId, repairWrites, false);
     }
   }
 
@@ -350,7 +349,7 @@ async function runMaintenanceInner(userId: string): Promise<void> {
       id: s.id as string,
       name: s.name as string,
       amountMinor: s.amount_minor as number,
-      amountMode: (s.amount_mode as "fixed" | "variable" | undefined) ?? "fixed",
+      amountMode: s.amount_mode as "fixed" | "variable",
       currency: s.currency as string,
       cycle: s.cycle as "monthly" | "yearly" | "custom",
       intervalMonths: s.interval_months as number,
@@ -367,8 +366,8 @@ async function runMaintenanceInner(userId: string): Promise<void> {
       defaultAmountMinor: r.default_amount_minor as number,
       currency: r.currency as string,
       payDay: r.pay_day as number,
-      recurrence: (r.recurrence as "monthly" | "weekly" | "biweekly" | undefined) ?? "monthly",
-      anchorDate: (r.anchor_date as string | null | undefined) ?? null,
+      recurrence: r.recurrence as "monthly" | "weekly" | "biweekly",
+      anchorDate: r.anchor_date as string | null,
       isActive: Boolean(r.is_active),
       personIsSelf: Boolean(r.is_self),
     })),

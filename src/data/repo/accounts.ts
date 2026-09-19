@@ -3,9 +3,9 @@ import { newId } from "../../db/ids";
 import { assertLiveRow, fromDbShape, nowIso, restoreRow, restoreRows, writeRows, writeRowsValidated, type RowWrite } from "../../db/mutations";
 import { todayISO, type MonthKey } from "../../domain/dates";
 import { PAYMENT_SOURCE_TYPES, type PaymentSourceType } from "../../domain/types";
-import { isValidCardCycle, statementForDueDate, statementForPurchase, statementPeriod } from "../../domain/card-statements";
+import { isValidCardCycle, statementForDueDate, statementForPurchase, statementPeriod, type CardCycle, type CardStatementPeriod } from "../../domain/card-statements";
 import { CreditCardCycleRequiredError, ReferencedRecordError } from "./errors";
-import { cardStatementWrite, type LivePaymentSource } from "./transactions";
+import { cardStatementWrite, livePaymentSource } from "./transactions";
 import { repairCardStatementLinks, runMaintenance } from "./maintenance";
 import { assertInputWithinLimit } from "../../domain/input";
 import { assertInvestmentWrites } from "./investment-validation";
@@ -101,41 +101,48 @@ export async function restorePaymentSource(
 }
 
 /** Repo-level validation protects imports/non-UI callers as well as the form. */
-export async function upsertPaymentSource(userId: string, input: PaymentSourceInput): Promise<string> {
+async function assertPaymentSourceInput(userId: string, input: PaymentSourceInput): Promise<void> {
   if (!input.name.trim() || !input.personId) throw new Error("Payment source name and owner are required");
   assertInputWithinLimit(input.name, "text");
   if (!PAYMENT_SOURCE_TYPES.includes(input.type)) throw new Error("Invalid payment source type");
-  const sqlite = await getSqliteAsync();
-  const person = await sqlite.getFirstAsync<{ id: string }>(
+  const person = await (await getSqliteAsync()).getFirstAsync<{ id: string }>(
     `SELECT id FROM persons WHERE id = ? AND user_id = ? AND deleted_at IS NULL`,
     [input.personId, userId],
   );
   if (!person) throw new Error("Payment source owner does not exist");
   if (input.type === "credit_card" && !isValidCardCycle(input)) throw new CreditCardCycleRequiredError();
+}
+
+function paymentSourceRow(existing: Record<string, unknown> | null, id: string, input: PaymentSourceInput): Record<string, unknown> {
+  const onCard = input.type === "credit_card";
+  return {
+    ...(existing ? fromDbShape("payment_sources", existing) : {}),
+    id,
+    name: input.name.trim(),
+    type: input.type,
+    personId: input.personId,
+    dueDay: onCard ? input.dueDay : null,
+    statementDay: onCard ? input.statementDay : null,
+    color: existing?.color ?? null,
+    logoSource: existing?.logo_source ?? "initials",
+    logoRef: existing?.logo_ref ?? null,
+    isActive: existing?.is_active == null ? true : Boolean(existing.is_active),
+    deletedAt: null,
+  };
+}
+
+export async function upsertPaymentSource(userId: string, input: PaymentSourceInput): Promise<string> {
+  await assertPaymentSourceInput(userId, input);
   const existing = input.id
-    ? await sqlite.getFirstAsync<Record<string, unknown>>(
+    ? await (await getSqliteAsync()).getFirstAsync<Record<string, unknown>>(
         `SELECT * FROM payment_sources WHERE id = ? AND user_id = ? AND deleted_at IS NULL`,
         [input.id, userId],
       )
     : null;
   const id = input.id ?? newId();
-  const writes: RowWrite[] = [{
-    table: "payment_sources",
-    row: {
-      ...(existing ? fromDbShape("payment_sources", existing) : {}),
-      id,
-      name: input.name.trim(),
-      type: input.type,
-      personId: input.personId,
-      dueDay: input.type === "credit_card" ? input.dueDay : null,
-      statementDay: input.type === "credit_card" ? input.statementDay : null,
-      color: existing?.color ?? null,
-      logoSource: existing?.logo_source ?? "initials",
-      logoRef: existing?.logo_ref ?? null,
-      isActive: existing?.is_active == null ? true : Boolean(existing.is_active),
-      deletedAt: null,
-    },
-  }];
+  const writes: RowWrite[] = [{ table: "payment_sources", row: paymentSourceRow(existing, id, input) }];
+  const cycleChanged = existing?.type === "credit_card" && (existing.statement_day !== input.statementDay || existing.due_day !== input.dueDay);
+  if (input.type === "credit_card" && isValidCardCycle(input) && cycleChanged) writes.push(...await cardOnNewCycle(userId, id, input));
   await writeRowsValidated(
     userId,
     writes,
@@ -277,13 +284,86 @@ export async function deleteUnreferencedPaymentSource(
 
 /** The live payments recorded against any of `statementIds`. */
 async function statementPaymentsOf(userId: string, statementIds: readonly string[]): Promise<Record<string, unknown>[]> {
-  if (statementIds.length === 0) return [];
   const sqlite = await getSqliteAsync();
   return sqlite.getAllAsync<Record<string, unknown>>(
     `SELECT * FROM card_statement_payments
      WHERE user_id = ? AND deleted_at IS NULL AND statement_id IN (${statementIds.map(() => "?").join(", ")})`,
     [userId, ...statementIds],
   );
+}
+
+/** The statement `period` is on `cardId`, written once however many rows of the batch join it. */
+async function statementOnce(userId: string, cardId: string, period: CardStatementPeriod, statementWrites: Map<string, RowWrite>): Promise<RowWrite> {
+  const write = statementWrites.get(period.periodMonth) ?? await cardStatementWrite(userId, cardId, period);
+  statementWrites.set(period.periodMonth, write);
+  return write;
+}
+
+/**
+ * A card's pending charge placed on `cycle`: by its purchase day, else by the
+ * statement month it was entered for, else by its due date. Null for what is
+ * not pending card spending — settled charges are accounting history.
+ */
+async function pendingChargeOnCycle(
+  userId: string,
+  cardId: string,
+  cycle: CardCycle,
+  transaction: Record<string, unknown>,
+  periodByStatement: ReadonlyMap<string, MonthKey>,
+  statementWrites: Map<string, RowWrite>,
+): Promise<RowWrite | null> {
+  const oldPeriod = periodByStatement.get(String(transaction.card_statement_id));
+  // A month-only charge moves with its statement month; a legacy month total has none.
+  const monthOnly = Boolean(transaction.is_aggregate);
+  if (transaction.type !== "expense" || transaction.status !== "pending" || (monthOnly && oldPeriod == null)) return null;
+  const period = monthOnly || (!transaction.purchase_date && oldPeriod)
+    ? statementPeriod(oldPeriod!, cycle)
+    : transaction.purchase_date
+      ? statementForPurchase(String(transaction.purchase_date), cycle)
+      : statementForDueDate(String(transaction.effective_date), cycle);
+  const statementWrite = await statementOnce(userId, cardId, period, statementWrites);
+  return {
+    table: "transactions",
+    row: {
+      ...fromDbShape("transactions", transaction),
+      paymentSourceId: cardId,
+      purchaseDate: monthOnly ? period.statementDate : transaction.purchase_date ?? null,
+      effectiveDate: period.dueDate,
+      status: period.dueDate <= todayISO() ? "realized" : "pending",
+      cardStatementId: statementWrite.row.id,
+    },
+  };
+}
+
+/** A card whose statement and due days changed: its pending charges and card plans follow the new cycle. */
+async function cardOnNewCycle(userId: string, cardId: string, cycle: CardCycle): Promise<RowWrite[]> {
+  const sqlite = await getSqliteAsync();
+  const [transactions, statements, plans] = await Promise.all([
+    sqlite.getAllAsync<Record<string, unknown>>(
+      `SELECT * FROM transactions WHERE user_id = ? AND payment_source_id = ? AND status = 'pending' AND deleted_at IS NULL`,
+      [userId, cardId],
+    ),
+    sqlite.getAllAsync<{ id: string; period_month: MonthKey }>(
+      `SELECT id, period_month FROM credit_card_statements WHERE user_id = ? AND payment_source_id = ? AND deleted_at IS NULL`,
+      [userId, cardId],
+    ),
+    sqlite.getAllAsync<Record<string, unknown>>(
+      `SELECT * FROM installment_plans WHERE user_id = ? AND payment_source_id = ? AND kind = 'card_installment' AND deleted_at IS NULL`,
+      [userId, cardId],
+    ),
+  ]);
+  const periodByStatement = new Map(statements.map((statement) => [statement.id, statement.period_month]));
+  const statementWrites = new Map<string, RowWrite>();
+  const moved: RowWrite[] = [];
+  for (const transaction of transactions) {
+    const write = await pendingChargeOnCycle(userId, cardId, cycle, transaction, periodByStatement, statementWrites);
+    if (write) moved.push(write);
+  }
+  return [
+    ...statementWrites.values(),
+    ...moved,
+    ...plans.map((plan) => ({ table: "installment_plans" as const, row: { ...fromDbShape("installment_plans", plan), dueDay: cycle.dueDay } })),
+  ];
 }
 
 export async function reassignAndDeletePaymentSource(
@@ -298,127 +378,63 @@ export async function reassignAndDeletePaymentSource(
     [sourceId, userId],
   );
   if (!source) return;
-  let replacement: LivePaymentSource | null = null;
-  if (replacementId) {
-    replacement = await sqlite.getFirstAsync<LivePaymentSource>(
-      `SELECT id, type, statement_day, due_day FROM payment_sources WHERE id = ? AND user_id = ? AND deleted_at IS NULL`,
-      [replacementId, userId],
-    );
-    if (!replacement) throw new Error("Payment source not found");
-  }
-  const plans = await sqlite.getAllAsync<Record<string, unknown>>(
-    `SELECT * FROM installment_plans WHERE user_id = ? AND payment_source_id = ? AND deleted_at IS NULL`,
-    [userId, sourceId],
-  );
-  const hasCardPlan = plans.some((plan) => plan.kind === "card_installment");
-  const replacementCycle = { statementDay: replacement?.statement_day, dueDay: replacement?.due_day };
-  if (hasCardPlan && (!replacement || replacement.type !== "credit_card" || !isValidCardCycle(replacementCycle))) {
-    throw new CreditCardCycleRequiredError();
-  }
-  const transactions = await sqlite.getAllAsync<Record<string, unknown>>(
-    `SELECT * FROM transactions WHERE user_id = ? AND payment_source_id = ? AND deleted_at IS NULL`,
-    [userId, sourceId],
-  );
-  const oldStatements = await sqlite.getAllAsync<Record<string, unknown> & { id: string; period_month: MonthKey }>(
-    `SELECT * FROM credit_card_statements
-     WHERE user_id = ? AND payment_source_id = ? AND deleted_at IS NULL`,
-    [userId, sourceId],
-  );
+  const replacement = await livePaymentSource(userId, replacementId);
+  if (replacementId && !replacement) throw new Error("Payment source not found");
+  const cycle = { statementDay: replacement?.statement_day, dueDay: replacement?.due_day };
+  const card = replacement?.type === "credit_card" && isValidCardCycle(cycle) ? { id: replacement.id, cycle } : null;
+  const [plans, transactions, oldStatements] = await Promise.all([
+    sqlite.getAllAsync<Record<string, unknown>>(
+      `SELECT * FROM installment_plans WHERE user_id = ? AND payment_source_id = ? AND deleted_at IS NULL`,
+      [userId, sourceId],
+    ),
+    sqlite.getAllAsync<Record<string, unknown>>(
+      `SELECT * FROM transactions WHERE user_id = ? AND payment_source_id = ? AND deleted_at IS NULL`,
+      [userId, sourceId],
+    ),
+    sqlite.getAllAsync<Record<string, unknown> & { id: string; period_month: MonthKey }>(
+      `SELECT * FROM credit_card_statements WHERE user_id = ? AND payment_source_id = ? AND deleted_at IS NULL`,
+      [userId, sourceId],
+    ),
+  ]);
+  if (!card && plans.some((plan) => plan.kind === "card_installment")) throw new CreditCardCycleRequiredError();
   const oldPeriodById = new Map(oldStatements.map((statement) => [statement.id, statement.period_month]));
   const statementWrites = new Map<string, RowWrite>();
   const transactionWrites: RowWrite[] = [];
   for (const transaction of transactions) {
-    const next = { ...fromDbShape("transactions", transaction), paymentSourceId: replacementId };
-    if (!replacement || replacement.type !== "credit_card") {
-      transactionWrites.push({ table: "transactions", row: { ...next, purchaseDate: null, cardStatementId: null } });
-      continue;
-    }
-    const oldPeriod = oldPeriodById.get(String(transaction.card_statement_id));
-    // A month-only card charge moves with the statement month it was entered
-    // for; a legacy month total with no statement has no month to move by.
-    const monthOnlyCardCharge = Boolean(transaction.is_aggregate) && oldPeriod != null;
-    if (
-      transaction.type !== "expense" ||
-      (Boolean(transaction.is_aggregate) && !monthOnlyCardCharge) ||
-      transaction.status !== "pending" ||
-      !isValidCardCycle(replacementCycle)
-    ) {
-      // Historical effective dates are accounting history. Reassignment changes
-      // their label/source, never retroactively moves the balance.
-      transactionWrites.push({ table: "transactions", row: { ...next, purchaseDate: null, cardStatementId: null } });
-      continue;
-    }
-    const period = monthOnlyCardCharge
-      ? statementPeriod(oldPeriod!, replacementCycle)
-      : transaction.purchase_date
-        ? statementForPurchase(String(transaction.purchase_date), replacementCycle)
-        : oldPeriod
-          ? statementPeriod(oldPeriod, replacementCycle)
-          : statementForDueDate(String(transaction.effective_date), replacementCycle);
-    let statementWrite = statementWrites.get(period.periodMonth);
-    if (!statementWrite) {
-      statementWrite = await cardStatementWrite(userId, replacement.id, period);
-      statementWrites.set(period.periodMonth, statementWrite);
-    }
-    transactionWrites.push({
+    const moved = card && await pendingChargeOnCycle(userId, card.id, card.cycle, transaction, oldPeriodById, statementWrites);
+    // What does not move is history: it changes source, never date.
+    transactionWrites.push(moved || {
       table: "transactions",
-      row: {
-        ...next,
-        purchaseDate: monthOnlyCardCharge ? period.statementDate : transaction.purchase_date ?? null,
-        effectiveDate: period.dueDate,
-        status: period.dueDate <= todayISO() ? "realized" : "pending",
-        cardStatementId: statementWrite.row.id,
-      },
+      row: { ...fromDbShape("transactions", transaction), paymentSourceId: replacementId, purchaseDate: null, cardStatementId: null },
     });
   }
-  // A payment recorded against one of this card's statements follows that
-  // statement's month onto the replacement card. A replacement that cannot hold
-  // a statement cannot hold a payment against one either, so it goes with the
-  // card it was made for.
+  // A payment against one of this card's statements follows that statement's
+  // month onto the replacement card. A replacement that cannot hold a statement
+  // cannot hold a payment against one either, so it goes with its card.
   const paymentWrites: RowWrite[] = [];
   for (const payment of await statementPaymentsOf(userId, oldStatements.map((statement) => statement.id))) {
-    const oldPeriod = oldPeriodById.get(String(payment.statement_id));
-    if (!replacement || replacement.type !== "credit_card" || !isValidCardCycle(replacementCycle) || oldPeriod == null) {
-      paymentWrites.push({ table: "card_statement_payments", row: { ...fromDbShape("card_statement_payments", payment), deletedAt: nowIso() } });
-      continue;
-    }
-    const period = statementPeriod(oldPeriod, replacementCycle);
-    let statementWrite = statementWrites.get(period.periodMonth);
-    if (!statementWrite) {
-      statementWrite = await cardStatementWrite(userId, replacement.id, period);
-      statementWrites.set(period.periodMonth, statementWrite);
-    }
+    // Fetched by these statements' ids, so each payment's month is known.
+    const oldPeriod = oldPeriodById.get(String(payment.statement_id))!;
+    const statement = card ? await statementOnce(userId, card.id, statementPeriod(oldPeriod, card.cycle), statementWrites) : null;
     paymentWrites.push({
       table: "card_statement_payments",
-      row: { ...fromDbShape("card_statement_payments", payment), statementId: statementWrite.row.id },
+      row: { ...fromDbShape("card_statement_payments", payment), ...(statement ? { statementId: statement.row.id } : { deletedAt: nowIso() }) },
     });
   }
-  const otherWrites = (
-    await Promise.all([
-      referenceUpdateRows(userId, "subscriptions", "payment_source_id", sourceId, "paymentSourceId", replacementId),
-    ])
-  ).flat();
   const deletedAt = nowIso();
-  const writes: RowWrite[] = [
+  await writeRows(userId, [
     ...statementWrites.values(),
     ...plans.map((plan) => ({
       table: "installment_plans" as const,
-      row: {
-        ...fromDbShape("installment_plans", plan),
-        paymentSourceId: replacementId,
-        dueDay: plan.kind === "card_installment" && isValidCardCycle(replacementCycle)
-          ? replacementCycle.dueDay
-          : plan.due_day,
-      },
+      row: { ...fromDbShape("installment_plans", plan), paymentSourceId: replacementId, dueDay: card && plan.kind === "card_installment" ? card.cycle.dueDay : plan.due_day },
     })),
     ...transactionWrites,
     ...paymentWrites,
-    ...otherWrites,
+    ...await referenceUpdateRows(userId, "subscriptions", "payment_source_id", sourceId, "paymentSourceId", replacementId),
     ...oldStatements.map((statement) => ({
       table: "credit_card_statements" as const,
       row: { ...fromDbShape("credit_card_statements", statement), deletedAt },
     })),
-  ];
-  writes.push({ table: "payment_sources", row: { ...fromDbShape("payment_sources", source), deletedAt } });
-  await writeRows(userId, writes);
+    { table: "payment_sources", row: { ...fromDbShape("payment_sources", source), deletedAt } },
+  ]);
 }

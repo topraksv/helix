@@ -20,9 +20,8 @@ import {
   validateExportBundle,
   type ExistingImportIds,
 } from "./backup-validation";
-import { applyIdRemap, buildIdRemap } from "./backup-remap";
 import { composeWorkbook } from "./workbook-export";
-import { buildLedgerGrids, toInvestmentRow, toLedgerTotal, toSubscriptionRow } from "../domain/workbook-format";
+import { buildLedgerGrids, toInvestmentRow, toLedgerInstalment, toLedgerTotal, toSubscriptionRow } from "../domain/workbook-format";
 import type { InvestmentRow, SubscriptionRow } from "../domain/workbook-format";
 import { normalizeMatrixColorToken } from "../domain/matrix-colors";
 export { MAX_BACKUP_BYTES, parseExportBundleText } from "./backup-validation";
@@ -99,6 +98,8 @@ export async function importBundle(
   // row's id is proven to come from a specific natural-key template instead
   // of guessed at.
   const sourceUserId = bundleSourceUserId(parsedBundle);
+  // Loaded by a restore, which most sessions never run.
+  const { applyIdRemap, buildIdRemap } = await import("./backup-remap");
   const idMap = sourceUserId != null && sourceUserId !== userId
     ? await buildIdRemap(parsedBundle, sourceUserId, userId)
     : new Map<string, string>();
@@ -204,36 +205,57 @@ export async function importBundle(
  * edit in Excel and re-import.
  *
  * A grid is not a compromise for that. Mali Tablo IS a month-by-item matrix on
- * screen, so this is the same table the owner already reads, written down.
+ * screen, so this is the same table the owner already reads, written down: a
+ * cell is the owner's own signed rows, so a refund takes off and a watched
+ * person's spending is not in it. A cell's lira card plans ride in its note, in
+ * the card-grouped shape the importer rebuilds plans from.
  *
- * Three deliberate losses, none of them silent:
+ * Deliberate losses, none of them silent:
  *   - A month's cell is the category's TOTAL, so individual transactions, their
  *     notes and their dates do not survive. The JSON backup is what carries
  *     those, and `settings` says so.
- *   - Amounts are written positive. The importer decides income from the column
- *     HEADING, not the sign, and it shows that guess for review — so a category
- *     the hints do not recognise is corrected by a person rather than by a rule
- *     nobody can see.
+ *   - The importer decides income from the column HEADING, not the sign, and it
+ *     shows that guess for review — so a category the hints do not recognise is
+ *     corrected by a person rather than by a rule nobody can see.
+ *   - Loans, foreign-currency plans and plans not whole in the ledger stay in
+ *     their cells' totals: the importer rebuilds only lira card plans.
  *   - Opening and closing balances are omitted. The importer excludes
  *     balance-like columns by default precisely because importing a sum of the
  *     columns beside it counts the month twice.
  */
-async function ledgerGridsByYear(userId: string, signal?: AbortSignal): Promise<[year: number, grid: string[][]][]> {
+async function ledgerGridsByYear(userId: string, signal?: AbortSignal) {
   const sqlite = await getSqliteAsync();
   throwIfAborted(signal);
-  const rows = await sqlite.getAllAsync<Record<string, unknown>>(
-    `SELECT COALESCE(c.name, ?) AS item,
-            substr(t.effective_date, 1, 7) AS month,
-            SUM(ABS(t.amount_try_minor)) AS total
-     FROM transactions t
-     LEFT JOIN categories c ON c.id = t.category_id AND c.user_id = t.user_id
-     WHERE t.user_id = ? AND t.deleted_at IS NULL
-     GROUP BY item, month
-     ORDER BY month`,
-    [tr.cashflow.uncategorized, userId],
-  );
+  const ownRows = `FROM transactions t
+     JOIN persons pe ON pe.id = t.person_id AND pe.user_id = t.user_id AND pe.is_self = 1
+     LEFT JOIN categories c ON c.id = t.category_id AND c.user_id = t.user_id`;
+  const [totals, instalments] = await Promise.all([
+    sqlite.getAllAsync<Record<string, unknown>>(
+      // A row saved under a category of the other kind reverses it, as `financialFlow` counts it.
+      `SELECT COALESCE(c.name, ?) AS item, substr(t.effective_date, 1, 7) AS month,
+              SUM(CASE WHEN t.type <> 'transfer' AND c.kind IS NOT NULL AND c.kind <> t.type THEN -t.amount_try_minor ELSE t.amount_try_minor END) AS total
+       ${ownRows}
+       WHERE t.user_id = ? AND t.deleted_at IS NULL
+       GROUP BY item, month
+       ORDER BY month`,
+      [tr.cashflow.uncategorized, userId],
+    ),
+    sqlite.getAllAsync<Record<string, unknown>>(
+      `SELECT p.id AS plan_id, p.title, p.installment_count, p.total_amount_minor, p.monthly_amount_minor, ps.name AS card,
+              COALESCE(c.name, ?) AS item, substr(t.effective_date, 1, 7) AS month, t.installment_no
+       ${ownRows}
+       JOIN installment_plans p ON p.id = t.installment_plan_id AND p.user_id = t.user_id
+       JOIN payment_sources ps ON ps.id = p.payment_source_id AND ps.user_id = p.user_id
+       WHERE t.user_id = ? AND t.deleted_at IS NULL AND t.installment_no IS NOT NULL
+         AND p.deleted_at IS NULL AND p.closed_on IS NULL AND p.kind = 'card_installment' AND p.currency = 'TRY' AND ps.type = 'credit_card'`,
+      [tr.cashflow.uncategorized, userId],
+    ),
+  ]);
   throwIfAborted(signal);
-  return buildLedgerGrids(rows.map((row) => toLedgerTotal(row, tr.cashflow.uncategorized)));
+  return buildLedgerGrids(
+    totals.map((row) => toLedgerTotal(row, tr.cashflow.uncategorized)),
+    instalments.map((row) => toLedgerInstalment(row, tr.cashflow.uncategorized)),
+  );
 }
 
 async function subscriptionRows(userId: string, signal?: AbortSignal): Promise<SubscriptionRow[]> {

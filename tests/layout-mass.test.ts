@@ -81,7 +81,7 @@ describe("the biometric lock is named after the device's own sensor", () => {
 describe("the month-end forecast carries one colour meaning", () => {
   const dashboard = readFileSync(join(root, "src/app/(tabs)/index.tsx"), "utf8");
   const arrow = dashboard.slice(
-    dashboard.indexOf("{projectedDelta != null && projectedDelta >= 0 ?"),
+    dashboard.indexOf("function ForecastToggle("),
     dashboard.indexOf("<View style={{ flex: 1, gap: 2, minWidth: 0 }}>"),
   );
 
@@ -245,7 +245,7 @@ describe("a declared balance can be compared with the ledger later", () => {
 
   it("is written when a balance is confirmed, and read where it matters", () => {
     const editor = readFileSync(join(root, "src/ui/opening-balance-editor.tsx"), "utf8");
-    expect(editor).toContain("setBalanceDeclaration(userId, effectiveTarget, todayISO())");
+    expect(editor).toContain("setBalanceDeclaration(userId, target.minor, todayISO())");
     for (const path of ["src/app/(tabs)/index.tsx", "src/app/(tabs)/cash-flow/index.tsx"]) {
       expect(readFileSync(join(root, path), "utf8")).toContain("balanceDeclarationDrift(");
     }

@@ -26,10 +26,12 @@
  * until a person accepts them.
  */
 
+import { sameCard } from "./card-statements";
 import { addMonthsToKey, daysBetweenISO, isISODate, type ISODate, type MonthKey } from "./dates";
 import { conceptOf } from "./category-icons";
-import { foldForMatch } from "./logo-domain";
-import type { Minor } from "./money";
+import { planForSighting, type PlanSighting } from "./installments";
+import { foldForMatch, nameMentions } from "./logo-domain";
+import { splitIntoInstallments, type Minor } from "./money";
 
 /** What a candidate turned out to be. */
 type StatementEntryKind = "purchase" | "installment";
@@ -53,10 +55,11 @@ export interface StatementCandidate {
   installmentNo: number | null;
   installmentCount: number | null;
   /**
-   * Payments still to come, when the statement prints a remaining count but
-   * not a position. The reference statement's `Kalan Tutar/Taksit` column is
-   * exactly this: it says two payments are left, never that this is the third
-   * of nine.
+   * Payments still to come AFTER this one, when the statement prints a
+   * remaining count but not a position. The reference statement's `Kalan
+   * Tutar/Taksit` column is exactly this: it says two payments are left, never
+   * that this is the third of nine. Measured against the owner's workbook, 3 of
+   * 3 plans it already held: the count excludes the payment on this statement.
    */
   remainingInstallments: number | null;
   /** The line as printed, kept so review can show what was read. */
@@ -64,7 +67,7 @@ export interface StatementCandidate {
 }
 
 /** A line that looked like an entry but could not be read confidently. */
-export interface StatementRejection {
+interface StatementRejection {
   sourceLine: string;
   reason: "ambiguous_amount" | "ambiguous_date" | "no_description";
 }
@@ -80,7 +83,7 @@ export interface StatementRejection {
  * Surfaced rather than dropped. A statement importer that silently discards
  * lines is one whose total can never be reconciled against the paper.
  */
-export interface StatementSkip {
+interface StatementSkip {
   sourceLine: string;
   reason: "card_payment";
 }
@@ -95,73 +98,41 @@ export interface StatementParseResult {
   ignoredLineCount: number;
 }
 
-/**
- * What a statement line looks like.
- *
- * One constant, because it is the only thing that changes per bank and the
- * only thing that has to be re-verified against a real document.
- */
+/** How a statement writes money: `1.234,56` or `1,234.56`. */
+export type AmountFormat = "tr" | "en";
+
+/** What a statement line looks like: the one thing to re-verify against a real document. */
 const STATEMENT_FORMAT = {
-  /**
-   * `4 Ağustos 2026`, as the reference statement prints it, and the numeric
-   * `dd.mm.yyyy` form as a second accepted shape.
-   *
-   * The long form is the one verified against a real document; the numeric one
-   * costs a few characters and is refused by the day/month validity check if a
-   * bank ever prints something else in that position.
-   */
+  /** `4 Ağustos 2026`, or `dd.mm.yyyy` / `dd/mm/yy`. */
   longDate: /(\d{1,2})\s+(Ocak|Şubat|Mart|Nisan|Mayıs|Haziran|Temmuz|Ağustos|Eylül|Ekim|Kasım|Aralık)\s+(\d{4})/u,
   date: /(\d{2})[./](\d{2})[./](\d{4}|\d{2})/,
-  /** `1.234,56`, `+24.381,40`. The decimal comma is required so a card number,
-   *  a reference number or a bare year can never be read as money. */
-  amount: /([+-])?(\d{1,3}(?:\.\d{3})*|\d+),(\d{2})(?!\d)/,
   /**
-   * An explicit instalment position, e.g. `3/9`.
-   *
-   * The reference statement's columns are
-   * `İşlem Tarihi | İşlemler | Tutar(TL) | Kalan Tutar/Taksit | Puan`, and in
-   * that document the trailing integer after the amount is PUAN — loyalty
-   * points. Reading it as an instalment count would turn a 92-point grocery
-   * shop into a 92-month plan, so only an explicit `n/m` counts, and a bare
-   * trailing number is ignored.
+   * Money needs its two decimals, so a card number, a reference or a year is
+   * never money. A credit is signed before (`-250,00`) or marked after (`(-)`).
    */
-  installment: /(?:^|\s)(\d{1,2})\s*\/\s*(\d{1,2})(?=\s|$)/,
+  amount: {
+    tr: /([+-])?(\d{1,3}(?:\.\d{3})*|\d+),(\d{2})(?!\d)(\(-\))?/g,
+    en: /([+-])?(\d{1,3}(?:,\d{3})*|\d+)\.(\d{2})(?!\d)(\(-\))?/g,
+  },
   /**
-   * The reference statement's `Kalan Tutar/Taksit` column, printed after the
-   * amount as `604,98 / 2` — remaining total, then remaining payments.
-   *
-   * It gives how many payments are LEFT, never which one this is, so a
-   * candidate built from it says exactly that and no more.
+   * An explicit position, `3/9` or `9/4.taksit`. A bare trailing number is
+   * loyalty points: read as a count, a 92-point shop became a 92-month plan.
    */
-  remainder: /(\d{1,3}(?:\.\d{3})*|\d+),(\d{2})\s*\/\s*(\d{1,2})(?!\d)/,
-  /**
-   * The same column printed the other way round: `1/3 TAKSIT (5.987,19)`, a
-   * position followed by the remaining total in brackets. The bracketed figure
-   * is that total, not a second charge.
-   */
-  bracketedRemainder: /\((\d{1,3}(?:\.\d{3})*|\d+),(\d{2})\)/,
-  /** An interest-rate row is not a transaction. */
+  position: /(?:^|\s)(\d{1,2})\s*\/\s*(\d{1,2})(?:\.?taksit)?(?=\s|$)/i,
+  /** After an amount, payments left: `604,98 / 2` (what is left) or `302,49x2` (each). */
+  remainder: /^\s*(?:\/\s*|x)(\d{1,2})(?!\d)/,
+  /** A bracketed amount is a total — the purchase's before the charge, what is left of it after. */
+  bracketOpen: /\(\s*$/,
+  bracketClose: /^\s*(?:TL)?\s*\)/,
+  /** An interest-rate row prints money-shaped numbers and is not a transaction. */
   rate: /%/,
   /**
-   * A payment TO the card, which is money leaving an account this ledger
-   * already tracks — not a refund and not a purchase.
-   *
-   * It is printed exactly like a refund: a dated line with a credit amount.
-   * The reference statement's first entry is last period's settlement, so the
-   * importer was offering the whole previous balance back as income, which no
-   * total it produced could ever reconcile with.
-   *
-   * Matched against the FOLDED line, never with the `i` flag: a statement is
-   * printed in capitals, and Turkish dotless `ı` does not case-fold to `I`, so
-   * `/yapılan/i` is simply false for "YAPILAN". Written in the folded alphabet
-   * (`foldForMatch`) so one spelling covers every case the printer uses.
-   *
-   * Matched anywhere on the line, because it sits in the merchant position
-   * rather than at the start. Deliberately narrow — these are the wordings a
-   * card issuer uses for its own settlement, and a merchant genuinely called
-   * "ÖDEME" would need one of them verbatim.
+   * A payment TO the card: printed like a refund, and money leaving an account
+   * this ledger already tracks. Matched on the folded line (`foldForMatch`),
+   * because Turkish `ı` does not case-fold to `I`; deliberately narrow, and only
+   * together with a credit amount.
    */
-  cardPayment: /(?:^|\s)(?:hesaptan (?:yapilan )?odeme|kredi karti odemesi|kart odemesi|otomatik odeme|odeme[ -]tesekkur|tesekkur ederiz|tahsilat|virman|donem borcu odemesi)/,
+  cardPayment: /(?:^|[\s-])(?:hesaptan (?:yapilan )?odeme|kredi karti odemesi|kart odemesi|otomatik odeme|odeme[ -]tesekkur|odemeniz icin tesekkur|tesekkur ederiz|tahsilat|virman|donem borcu odemesi)/,
   /** Lines that are structure, not entries. */
   ignore: /^(?:toplam|ara toplam|genel toplam|son ödeme|asgari|dönem|ekstre|hesap özeti|hesap bilgileri|işlem tarihi|sayfa|devreden|bakiye|limit|kullanılabilir|puan özeti|worldpuan)\b/i,
   /** A description has to be words, not a reference number. */
@@ -174,23 +145,57 @@ const MONTH_NUMBER = new Map<string, number>([
   ["temmuz", 7], ["ağustos", 8], ["eylül", 9], ["ekim", 10], ["kasım", 11], ["aralık", 12],
 ]);
 
-/** Two-digit years belong to this century; a statement is never from 1998. */
-function fullYear(raw: string): number {
-  return raw.length === 4 ? Number(raw) : 2000 + Number(raw);
+/** A line's date, or null when it has none; `iso` is null for an impossible one (31.02 is refused, not shifted). */
+function readDate(text: string): { iso: ISODate | null; end: number } | null {
+  const long = STATEMENT_FORMAT.longDate.exec(text);
+  const match = long ?? STATEMENT_FORMAT.date.exec(text);
+  if (!match) return null;
+  const month = long ? String(MONTH_NUMBER.get(long[2]!.toLocaleLowerCase("tr-TR")) ?? 0).padStart(2, "0") : match[2]!;
+  // Two-digit years belong to this century; a statement is never from 1998.
+  const year = match[3]!.length === 4 ? match[3]! : `20${match[3]}`;
+  const iso = `${year}-${month}-${match[1]!.padStart(2, "0")}`;
+  return { iso: isISODate(iso) ? iso : null, end: match.index + match[0].length };
 }
 
-function toIso(day: string, month: string, year: string): ISODate | null {
-  const candidate = `${fullYear(year)}-${month}-${day}`;
-  // `isISODate` rejects an impossible day, which is what makes 31.02 a refusal
-  // rather than a silently shifted date.
-  return isISODate(candidate) ? candidate : null;
+interface LineAmount {
+  start: number;
+  end: number;
+  minor: Minor | null;
+  credit: boolean;
+  bracketed: boolean;
+  /** Payments left, when this amount is a remainder column. */
+  remaining: number | null;
 }
 
-function parseAmountMinor(whole: string, fraction: string): Minor | null {
-  const digits = whole.replace(/\./g, "");
-  if (!/^\d+$/.test(digits)) return null;
-  const minor = Number(digits) * 100 + Number(fraction);
-  return Number.isSafeInteger(minor) ? minor : null;
+function readAmounts(text: string, from: number, format: AmountFormat): LineAmount[] {
+  const pattern = new RegExp(STATEMENT_FORMAT.amount[format]);
+  pattern.lastIndex = from;
+  const amounts: LineAmount[] = [];
+  for (let match = pattern.exec(text); match; match = pattern.exec(text)) {
+    const end = match.index + match[0].length;
+    const digits = match[2]!.replace(/[.,]/g, "");
+    const minor = Number(digits) * 100 + Number(match[3]);
+    const remaining = STATEMENT_FORMAT.remainder.exec(text.slice(end));
+    amounts.push({
+      start: match.index,
+      end,
+      minor: Number.isSafeInteger(minor) ? minor : null,
+      credit: match[1] != null || match[4] != null,
+      bracketed: STATEMENT_FORMAT.bracketOpen.test(text.slice(0, match.index)) && STATEMENT_FORMAT.bracketClose.test(text.slice(end)),
+      remaining: remaining ? Number(remaining[1]) : null,
+    });
+  }
+  return amounts;
+}
+
+/** How the statement writes money, by which shape more of its dated lines carry. */
+export function amountFormat(lines: readonly string[]): AmountFormat {
+  let balance = 0;
+  for (const line of lines) {
+    const date = readDate(line);
+    if (date) balance += readAmounts(line, date.end, "en").length - readAmounts(line, date.end, "tr").length;
+  }
+  return balance > 0 ? "en" : "tr";
 }
 
 /**
@@ -255,130 +260,98 @@ function separateGluedFields(line: string): string {
 }
 
 /**
- * Read one line, or decline to.
- *
- * Returns null for a line that is plainly not an entry, a rejection for a line
- * that looked like one and could not be trusted, and a candidate otherwise.
+ * The position a line prints, as `no/count`, or as `count/no` where the line's
+ * own purchase total proves it — the charge is that total's share at `no`.
  */
-export function parseStatementLine(
-  line: string,
-  period: string,
-):
+function positionOf(text: string, charge: Minor, total: Minor | null): { match: string; no: number; count: number } | null {
+  const match = STATEMENT_FORMAT.position.exec(text);
+  if (!match) return null;
+  const [first, second] = [Number(match[1]), Number(match[2])];
+  const reversed = first > second && total != null && Math.abs(splitIntoInstallments(total, first)[second - 1]! - charge) < first;
+  const [no, count] = reversed ? [second, first] : [first, second];
+  // `1/1` is a single payment; a position past its own count is a misread.
+  return count > 1 && no >= 1 && no <= count ? { match: match[0], no, count } : null;
+}
+
+type ParsedLine =
   | { kind: "ignored" }
   | { kind: "rejected"; rejection: StatementRejection }
   | { kind: "skipped"; skip: StatementSkip }
-  | { kind: "candidate"; candidate: StatementCandidate } {
-  const trimmed = separateGluedFields(line.trim().replace(/\s+/g, " "));
-  if (trimmed === "") return { kind: "ignored" };
-  if (STATEMENT_FORMAT.ignore.test(trimmed)) return { kind: "ignored" };
-  // A rate table prints the same `n,nn / n,nn` shape as money and is not a
-  // transaction; the percent sign is what tells them apart.
-  if (STATEMENT_FORMAT.rate.test(trimmed)) return { kind: "ignored" };
+  | { kind: "candidate"; candidate: StatementCandidate };
 
-  const longMatch = STATEMENT_FORMAT.longDate.exec(trimmed);
-  const numericMatch = longMatch ? null : STATEMENT_FORMAT.date.exec(trimmed);
-  const dateMatch = longMatch ?? numericMatch;
-  const amountMatch = STATEMENT_FORMAT.amount.exec(trimmed);
-  // A line missing either is structure, not a refused entry: saying "rejected"
-  // about a page header would bury the refusals that matter.
-  if (!dateMatch || !amountMatch) return { kind: "ignored" };
+const IGNORED: ParsedLine = { kind: "ignored" };
 
-  const date = longMatch
-    ? toIso(
-        longMatch[1]!.padStart(2, "0"),
-        String(MONTH_NUMBER.get(longMatch[2]!.toLocaleLowerCase("tr-TR")) ?? 0).padStart(2, "0"),
-        longMatch[3]!,
-      )
-    : toIso(dateMatch[1]!, dateMatch[2]!, dateMatch[3]!);
-  if (!date) return { kind: "rejected", rejection: { sourceLine: trimmed, reason: "ambiguous_date" } };
+/** Why a dated line with a charge cannot be trusted, or null when it can. */
+function refusalOf(date: { iso: ISODate | null }, charge: LineAmount, after: readonly LineAmount[]): StatementRejection["reason"] | null {
+  if (!date.iso) return "ambiguous_date";
+  // Every amount besides the charge must be a total or a remainder: an unexplained
+  // pair is where importing the wrong one looks exactly like importing the right one.
+  return !charge.minor || after.some((amount) => !amount.bracketed && amount.remaining == null) ? "ambiguous_amount" : null;
+}
 
-  // More than one amount on a line is a row this cannot read: a statement that
-  // prints "amount" and "running total" side by side would otherwise have its
-  // balance imported as a purchase.
-  const afterAmount = trimmed.slice(amountMatch.index + amountMatch[0].length);
-  // `Tutar` followed by `Kalan Tutar / Kalan Taksit` is an instalment row, and
-  // the second amount is accounted for by that column rather than being a
-  // second charge. Anything ELSE carrying two amounts stays a refusal: an
-  // unexplained pair is exactly the case where importing the wrong one is
-  // indistinguishable from importing the right one.
-  const remainderMatch = STATEMENT_FORMAT.remainder.exec(afterAmount);
-  const bracketed = STATEMENT_FORMAT.bracketedRemainder.exec(afterAmount);
-  const remainingInstallments = remainderMatch ? Number(remainderMatch[3]) : null;
-  // A bracketed remaining total closes the charge portion of the line:
-  // everything from it onwards belongs to the plan column and the points
-  // beside it, and counting those as competing charges rejected rows this can
-  // read perfectly well. Without a bracket, only one amount may appear before
-  // the remaining-instalment column.
-  const chargePortion = bracketed
-    ? trimmed.slice(0, trimmed.indexOf(bracketed[0]))
-    : trimmed;
-  const accountedFor = remainderMatch && !bracketed ? 2 : 1;
-  const allAmounts = chargePortion.match(new RegExp(STATEMENT_FORMAT.amount.source, "g")) ?? [];
-  if (allAmounts.length > accountedFor) {
-    return { kind: "rejected", rejection: { sourceLine: trimmed, reason: "ambiguous_amount" } };
-  }
-  const amountMinor = parseAmountMinor(amountMatch[2]!, amountMatch[3]!);
-  if (amountMinor == null || amountMinor === 0) {
-    return { kind: "rejected", rejection: { sourceLine: trimmed, reason: "ambiguous_amount" } };
-  }
+type Position = NonNullable<ReturnType<typeof positionOf>>;
 
-  // Everything between the date and the amount is the merchant.
-  const between = trimmed
-    .slice(dateMatch.index + dateMatch[0].length, amountMatch.index)
-    .trim();
-  // The position can sit either inside the description (`TEKNOSA 3/9 500,00`)
-  // or after the amount, in the plan column (`1.995,73 1/3 TAKSIT (5.987,19)`).
-  // Both are the same fact and are read the same way.
-  const installmentMatch = STATEMENT_FORMAT.installment.exec(between)
-    ?? STATEMENT_FORMAT.installment.exec(afterAmount);
-  const description = (installmentMatch
-    ? between.replace(installmentMatch[0], " ")
-    : between).replace(/\s+/g, " ").trim();
-  if (description.length < STATEMENT_FORMAT.minimumDescriptionLength) {
-    return { kind: "rejected", rejection: { sourceLine: trimmed, reason: "no_description" } };
-  }
+/**
+ * The merchant between the date and the charge, without the totals and position
+ * printed among it — or why the line cannot be trusted.
+ */
+function readPurchase(
+  text: string,
+  date: { iso: ISODate | null; end: number },
+  charge: LineAmount,
+  amounts: readonly LineAmount[],
+): { reason: StatementRejection["reason"] } | { description: string; position: Position | null } {
+  const refusal = refusalOf(date, charge, amounts.filter((amount) => amount.start > charge.start));
+  if (refusal) return { reason: refusal };
+  const total = amounts.find((amount) => amount.bracketed && amount.start < charge.start)?.minor ?? null;
+  const zone = text.slice(date.end, charge.start);
+  const position = positionOf(zone, charge.minor!, total) ?? positionOf(text.slice(charge.end), charge.minor!, total);
+  const description = (position ? zone.replace(position.match, " ") : zone).replace(/\([^()]*\)/g, " ").replace(/\s+/g, " ").trim();
+  return description.length < STATEMENT_FORMAT.minimumDescriptionLength ? { reason: "no_description" } : { description, position };
+}
 
-  const isCredit = amountMatch[1] === "-" || amountMatch[1] === "+";
-  // Settling the card is not a transaction this ledger takes: the purchases it
-  // pays for are already here, and the money left an account this ledger also
-  // tracks. Both halves of the test matter — the wording AND the credit sign —
-  // so a merchant whose name happens to contain one of these words still
-  // imports as the charge it is.
-  if (isCredit && STATEMENT_FORMAT.cardPayment.test(foldForMatch(trimmed))) {
-    return { kind: "skipped", skip: { sourceLine: trimmed, reason: "card_payment" } };
-  }
-
-  const installmentNo = installmentMatch ? Number(installmentMatch[1]) : null;
-  const installmentCount = installmentMatch ? Number(installmentMatch[2]) : null;
-  // `1/1` is a single payment printed in instalment notation, not a plan; and
-  // an instalment beyond its own total is a misread, not an instalment.
-  const hasPosition = installmentNo != null && installmentCount != null
-    && installmentCount > 1 && installmentNo >= 1 && installmentNo <= installmentCount;
-  // A remaining count of 1 means this is the last payment of a plan: still an
-  // instalment, and worth saying so.
-  const isInstallment = hasPosition || (remainingInstallments != null && remainingInstallments >= 1);
-
-  return {
-    kind: "candidate",
-    candidate: {
-      importKey: statementImportKey({
-        period,
-        date,
-        description,
-        amountMinor,
-        installmentNo: hasPosition ? installmentNo : null,
-      }),
-      kind: isInstallment ? "installment" : "purchase",
-      date,
-      description,
-      amountMinor,
-      isRefund: isCredit,
-      installmentNo: hasPosition ? installmentNo : null,
-      installmentCount: hasPosition ? installmentCount : null,
-      remainingInstallments,
-      sourceLine: trimmed,
-    },
+function candidateOf(period: string, text: string, date: ISODate, charge: LineAmount, remainder: LineAmount | undefined, purchase: { description: string; position: Position | null }): StatementCandidate {
+  const { description, position } = purchase;
+  const remainingInstallments = remainder?.remaining ?? null;
+  const read = {
+    kind: position || (remainingInstallments ?? 0) >= 1 ? "installment" as const : "purchase" as const,
+    date,
+    description,
+    amountMinor: charge.minor!,
+    isRefund: charge.credit,
+    installmentNo: position?.no ?? null,
+    installmentCount: position?.count ?? null,
+    remainingInstallments,
+    sourceLine: text,
   };
+  return { importKey: statementImportKey({ period, ...read }), ...read };
+}
+
+/** The text of a line worth reading, or null for an empty line, a heading or a rate row. */
+function lineText(line: string, format: AmountFormat): string | null {
+  const collapsed = line.trim().replace(/\s+/g, " ");
+  const text = format === "tr" ? separateGluedFields(collapsed) : collapsed;
+  return text === "" || STATEMENT_FORMAT.ignore.test(text) || STATEMENT_FORMAT.rate.test(text) ? null : text;
+}
+
+/**
+ * Read one line, or decline to: ignored when it is plainly not an entry,
+ * rejected when it looks like one and cannot be trusted.
+ */
+export function parseStatementLine(line: string, period: string, format: AmountFormat = "tr"): ParsedLine {
+  const text = lineText(line, format) ?? "";
+  const date = readDate(text);
+  const amounts = date ? readAmounts(text, date.end, format) : [];
+  const charge = amounts.find((amount) => !amount.bracketed);
+  // A line missing either is structure: calling a page header "rejected" would bury the refusals that matter.
+  if (!date || !charge) return IGNORED;
+  const purchase = readPurchase(text, date, charge, amounts);
+  if ("reason" in purchase) return { kind: "rejected", rejection: { sourceLine: text, reason: purchase.reason } };
+  if (charge.credit && STATEMENT_FORMAT.cardPayment.test(foldForMatch(text))) {
+    return { kind: "skipped", skip: { sourceLine: text, reason: "card_payment" } };
+  }
+  const remainder = amounts.find((amount) => amount.start > charge.start && amount.remaining != null);
+  return { kind: "candidate", candidate: candidateOf(period, text, date.iso!, charge, remainder, purchase) };
 }
 
 
@@ -398,15 +371,18 @@ export function parseStatementLine(
  * same count, so the identity built from them converges instead of producing a
  * second plan per statement.
  *
- * A line that only says how many payments REMAIN gets a plan that begins here.
- * Nothing before this statement is known from it, so nothing before it is
- * invented.
+ * A line that says how many payments REMAIN gets a plan that begins here: this
+ * payment and the ones after it — including a line whose position was printed
+ * on the line under it, which says the same thing. The months before belong to
+ * statements already imported, or to a workbook, and writing them from here
+ * would reach past the one month a statement may touch. Its start and count
+ * change every month, so only its END identifies it.
  */
 export interface StatementPlanSpec {
   startMonth: MonthKey;
   installmentCount: number;
-  /** Which payment this statement bills. 1 when only a remainder was printed. */
-  installmentNo: number;
+  /** Which payment this statement bills; null when only a remainder was printed. */
+  installmentNo: number | null;
 }
 
 export function statementPlanSpec(
@@ -414,18 +390,29 @@ export function statementPlanSpec(
   statementMonth: MonthKey,
 ): StatementPlanSpec | null {
   if (candidate.kind !== "installment") return null;
-  const { installmentNo, installmentCount } = candidate;
+  const { installmentNo, installmentCount, remainingInstallments } = candidate;
   if (installmentNo != null && installmentCount != null) {
-    return {
-      startMonth: addMonthsToKey(statementMonth, -(installmentNo - 1)),
-      installmentCount,
-      installmentNo,
-    };
+    return { startMonth: addMonthsToKey(statementMonth, -(installmentNo - 1)), installmentCount, installmentNo };
   }
-  if (candidate.remainingInstallments != null && candidate.remainingInstallments >= 1) {
-    return { startMonth: statementMonth, installmentCount: candidate.remainingInstallments, installmentNo: 1 };
-  }
-  return null;
+  return remainingInstallments != null && remainingInstallments >= 1
+    ? { startMonth: statementMonth, installmentCount: remainingInstallments + 1, installmentNo: null }
+    : null;
+}
+
+/** What one instalment line says about the plan behind it, for finding that plan by its schedule. */
+export function statementSighting(
+  spec: StatementPlanSpec,
+  amountMinor: Minor,
+  statementMonth: MonthKey,
+  paymentSourceId: string | null,
+): PlanSighting {
+  return {
+    month: statementMonth,
+    amountMinor,
+    endMonth: addMonthsToKey(spec.startMonth, spec.installmentCount - 1),
+    startMonth: spec.installmentNo == null ? null : spec.startMonth,
+    paymentSourceId,
+  };
 }
 
 
@@ -498,6 +485,26 @@ export function matchStatementCategory(
   return null;
 }
 
+/**
+ * The position a statement prints on the line UNDER a charge, beside the
+ * purchase's whole total: `1.814,94 TL'lik işlemin 4 / 6 taksidi` on the owner's
+ * Yapı Kredi statement, whose charge line prints only the payments left — and
+ * on a plan's last payment nothing, so it read as a new purchase.
+ *
+ * Settled by arithmetic, never wording: a dateless line with one amount and a
+ * position belongs to the line above only when that line bills the total's
+ * share there and any count left it printed agrees. Measured: 8 of 8 lines.
+ */
+function printedPosition(line: string, above: StatementCandidate, format: AmountFormat): { installmentNo: number; installmentCount: number } | null {
+  const text = line.trim().replace(/\s+/g, " ");
+  const amounts = readDate(text) ? [] : readAmounts(text, 0, format);
+  const total = amounts.length === 1 ? amounts[0]!.minor : null;
+  const position = total == null ? null : positionOf(text, above.amountMinor, total);
+  if (!position || (above.remainingInstallments != null && above.remainingInstallments !== position.count - position.no)) return null;
+  const share = splitIntoInstallments(total!, position.count)[position.no - 1]!;
+  return Math.abs(share - above.amountMinor) < position.count ? { installmentNo: position.no, installmentCount: position.count } : null;
+}
+
 /** How many candidates one statement may produce. A statement is not a ledger. */
 export const MAX_STATEMENT_CANDIDATES = 500;
 
@@ -508,19 +515,31 @@ export const MAX_STATEMENT_CANDIDATES = 500;
  * one day), so they are NOT collapsed here — but they would collide on
  * `importKey`, so the second and later copies take an occurrence suffix. That
  * keeps re-import idempotent while still admitting genuine repeats.
+ *
+ * A position printed under a line (`printedPosition`) is added to that line
+ * and leaves its key alone: the key is the line's own identity, and a statement
+ * imported before the position was read must still be recognised.
  */
 export function parseStatement(text: string, period: string): StatementParseResult {
+  const lines = text.split("\n");
+  const format = amountFormat(lines);
   const candidates: StatementCandidate[] = [];
   const rejected: StatementRejection[] = [];
   const skipped: StatementSkip[] = [];
   let ignoredLineCount = 0;
   const seenKeys = new Map<string, number>();
+  /** The candidate the previous line produced, which a position line may belong to. */
+  let above: StatementCandidate | null = null;
 
-  for (const line of text.split("\n")) {
+  for (const line of lines) {
     if (candidates.length >= MAX_STATEMENT_CANDIDATES) break;
-    const parsed = parseStatementLine(line, period);
+    const parsed = parseStatementLine(line, period, format);
+    const previous = above;
+    above = null;
     if (parsed.kind === "ignored") {
       ignoredLineCount += 1;
+      const position = previous?.installmentNo == null && previous ? printedPosition(line, previous, format) : null;
+      if (position) candidates[candidates.length - 1] = { ...previous!, kind: "installment", ...position };
       continue;
     }
     if (parsed.kind === "rejected") {
@@ -533,18 +552,23 @@ export function parseStatement(text: string, period: string): StatementParseResu
     }
     const seen = seenKeys.get(parsed.candidate.importKey) ?? 0;
     seenKeys.set(parsed.candidate.importKey, seen + 1);
-    candidates.push(seen === 0
+    above = seen === 0
       ? parsed.candidate
-      : { ...parsed.candidate, importKey: `${parsed.candidate.importKey}#${seen + 1}` });
+      : { ...parsed.candidate, importKey: `${parsed.candidate.importKey}#${seen + 1}` };
+    candidates.push(above);
   }
   return { candidates, rejected, skipped, ignoredLineCount };
 }
 
 /**
- * The statement period, taken from the candidates themselves.
+ * The period folded into every import key, taken from the candidates
+ * themselves.
  *
  * Not read from a header: header wording is the most bank-specific thing on
- * the page, and getting it wrong would change every import key.
+ * the page, and getting it wrong would change every import key. Frozen as the
+ * median for the same reason — a statement imported before must derive the
+ * keys it was imported under. It is an identity, not the bill's month; that is
+ * `billedMonthFromDates`.
  */
 export function periodFromDates(dates: readonly ISODate[]): string {
   if (dates.length === 0) return "unknown";
@@ -552,115 +576,172 @@ export function periodFromDates(dates: readonly ISODate[]): string {
   return sorted[Math.floor(sorted.length / 2)]!.slice(0, 7);
 }
 
+/**
+ * The month the statement bills, as first offered to the owner: the month of
+ * its newest line. An instalment line prints the day its purchase was made,
+ * months back, and the median of those dates put the owner's own statement a
+ * month before the one it closed in.
+ */
+export function billedMonthFromDates(dates: readonly ISODate[]): MonthKey | null {
+  if (dates.length === 0) return null;
+  return [...dates].sort().at(-1)!.slice(0, 7) as MonthKey;
+}
+
 // ---------------------------------------------------------------------------
 // Review: what already exists, and what would be new
 // ---------------------------------------------------------------------------
 
 /** An existing ledger row, as the review needs to see it. */
-export interface ExistingRow {
+interface ExistingRow {
   id: string;
   amountTryMinor: Minor;
   effectiveDate: ISODate;
+  /** A card charge's own day; its effective date is the day it is due. */
+  purchaseDate?: ISODate | null;
   importKey?: string | null;
-  installmentPlanId?: string | null;
 }
 
 /** An existing plan, so an instalment line is not imported as a loose charge. */
 export interface ExistingPlan {
   id: string;
   title: string;
+  startMonth: MonthKey;
   installmentCount: number;
+  totalAmountMinor: Minor | null;
   monthlyAmountMinor: Minor | null;
+  currency: string;
+  paymentSourceId: string | null;
+  /** A foreign-currency plan's instalment for the review's month, in lira. */
+  billedTryMinor?: Minor | null;
+}
+
+/** A subscription payment still expected, which a statement line may be. */
+interface ExistingExpectation {
+  id: string;
+  /** The subscription's name. */
+  title: string;
+  dueDate: ISODate;
+  amountMinor: Minor;
+  paymentSourceId: string | null;
 }
 
 /**
  * What the review says about one candidate before anything is written.
  *
- * - `imported`: this exact line is already in the ledger. Re-importing the
- *   same statement must land here for every row, which is what makes the
- *   operation repeatable rather than doubling.
- * - `plan`: the line belongs to an instalment plan that already exists and
- *   already materialises its own monthly rows. Importing it would charge the
- *   same instalment twice.
- * - `similar`: nothing proves it is a repeat, but something close enough is
- *   already there. Offered for a decision, never resolved automatically.
+ * - `imported`: this exact line is already in the ledger.
+ * - `plan`: an existing plan already writes this instalment. `differenceMinor`
+ *   is what the line bills beyond it — shown, never written.
+ * - `similar`: an unkeyed row looks like it. A question, never resolved alone.
+ * - `expected`: the line is a subscription payment still expected. Importing
+ *   it settles that payment, so confirming it cannot write the charge again.
  * - `new`: nothing like it was found.
  */
 export type CandidateVerdict =
   | { state: "imported"; existingId: string }
-  | { state: "plan"; planId: string; planTitle: string }
+  | { state: "plan"; planId: string; planTitle: string; differenceMinor: Minor }
   | { state: "similar"; existingId: string; dayGap: number }
+  | { state: "expected"; expectedId: string; title: string }
   | { state: "new" };
 
-/** How close a date has to be for an unkeyed row to be worth mentioning. */
-const STATEMENT_SIMILAR_WINDOW_DAYS = 3;
+/** How far apart two dates may be and still be one charge. */
+const SAME_CHARGE_WINDOW_DAYS = 3;
 
-function normalizedTitle(value: string): string {
-  return value.toLowerCase().replace(/\s+/g, " ").trim();
-}
-
-/**
- * Decide, for each candidate, whether the ledger already has it.
- *
- * Ordered from certainty to suspicion, and it stops at the first thing it can
- * prove: an exact import key is arithmetic, a matching plan is structural, and
- * only then does it fall back to "this looks similar", which is a question for
- * the owner rather than an answer.
- */
-export function reviewCandidates(input: {
+interface ReviewInput {
   candidates: readonly StatementCandidate[];
   existing: readonly ExistingRow[];
   plans: readonly ExistingPlan[];
-}): Map<string, CandidateVerdict> {
-  const byImportKey = new Map<string, ExistingRow>();
-  for (const row of input.existing) {
-    if (row.importKey) byImportKey.set(row.importKey, row);
-  }
-  const planByTitle = new Map<string, ExistingPlan>();
-  for (const plan of input.plans) planByTitle.set(normalizedTitle(plan.title), plan);
+  expected: readonly ExistingExpectation[];
+  /** The month and card being imported into. */
+  period: MonthKey;
+  paymentSourceId: string | null;
+}
 
-  const verdicts = new Map<string, CandidateVerdict>();
-  for (const candidate of input.candidates) {
-    const alreadyImported = byImportKey.get(candidate.importKey);
-    if (alreadyImported) {
-      verdicts.set(candidate.importKey, { state: "imported", existingId: alreadyImported.id });
-      continue;
-    }
-    if (candidate.kind === "installment") {
-      // A plan already materialises one transaction per month. Importing its
-      // statement line as well would charge the same instalment twice, and the
-      // second copy would look exactly like a real purchase.
-      const plan = planByTitle.get(normalizedTitle(candidate.description));
-      if (plan && plan.installmentCount === candidate.installmentCount) {
-        verdicts.set(candidate.importKey, { state: "plan", planId: plan.id, planTitle: plan.title });
-        continue;
-      }
-    }
-    const similar = input.existing.find((row) =>
-      !row.importKey
-      && Math.abs(row.amountTryMinor) === candidate.amountMinor
-      && Math.abs(daysBetweenISO(candidate.date, row.effectiveDate)) <= STATEMENT_SIMILAR_WINDOW_DAYS);
-    if (similar) {
-      verdicts.set(candidate.importKey, {
-        state: "similar",
-        existingId: similar.id,
-        dayGap: Math.abs(daysBetweenISO(candidate.date, similar.effectiveDate)),
-      });
-      continue;
-    }
-    verdicts.set(candidate.importKey, { state: "new" });
+function planVerdict(candidate: StatementCandidate, input: ReviewInput, claimed: Set<string>): CandidateVerdict | null {
+  const spec = candidate.isRefund ? null : statementPlanSpec(candidate, input.period);
+  const match = spec && planForSighting(statementSighting(spec, candidate.amountMinor, input.period, input.paymentSourceId), input.plans, claimed);
+  if (!match) return null;
+  claimed.add(match.plan.id);
+  return { state: "plan", planId: match.plan.id, planTitle: match.plan.title, differenceMinor: candidate.amountMinor - match.shareMinor };
+}
+
+function similarVerdict(candidate: StatementCandidate, existing: readonly ExistingRow[]): CandidateVerdict | null {
+  for (const row of existing) {
+    if (row.importKey || Math.abs(row.amountTryMinor) !== candidate.amountMinor) continue;
+    const dayGap = Math.abs(daysBetweenISO(candidate.date, row.purchaseDate ?? row.effectiveDate));
+    if (dayGap <= SAME_CHARGE_WINDOW_DAYS) return { state: "similar", existingId: row.id, dayGap };
   }
-  return verdicts;
+  return null;
+}
+
+/** Same card, within days of its due date, and the same amount or the subscription's name printed on the line. */
+function expectedVerdict(candidate: StatementCandidate, input: ReviewInput, claimed: Set<string>): CandidateVerdict | null {
+  if (candidate.isRefund || candidate.kind !== "purchase") return null;
+  const payment = input.expected.find((expected) =>
+    !claimed.has(expected.id)
+    && sameCard(expected.paymentSourceId, input.paymentSourceId)
+    && Math.abs(daysBetweenISO(candidate.date, expected.dueDate)) <= SAME_CHARGE_WINDOW_DAYS
+    && (expected.amountMinor === candidate.amountMinor || nameMentions(candidate.description, expected.title)));
+  if (!payment) return null;
+  claimed.add(payment.id);
+  return { state: "expected", expectedId: payment.id, title: payment.title };
+}
+
+/**
+ * Decide, for each candidate, whether the ledger already has it: from what is
+ * certain (the line's own key) to what is only suspected, stopping at the first.
+ */
+export function reviewCandidates(input: ReviewInput): Map<string, CandidateVerdict> {
+  const imported = new Map(input.existing.filter((row) => row.importKey).map((row) => [row.importKey!, row.id]));
+  const claimed = new Set<string>();
+  return new Map(input.candidates.map((candidate) => {
+    const existingId = imported.get(candidate.importKey);
+    const verdict: CandidateVerdict = (existingId && { state: "imported", existingId })
+      || planVerdict(candidate, input, claimed)
+      || similarVerdict(candidate, input.existing)
+      || expectedVerdict(candidate, input, claimed)
+      || { state: "new" };
+    return [candidate.importKey, verdict];
+  }));
+}
+
+/**
+ * The card a statement belongs to, read from the plans its instalment lines
+ * already are — the card most of them were entered against, or null when none
+ * match or two cards tie. Filing a statement under the owner's own card is what
+ * lets its lines meet those plans at all; `plans` should hold only cards.
+ */
+export function cardFromPlans(
+  candidates: readonly StatementCandidate[],
+  plans: readonly ExistingPlan[],
+  period: MonthKey,
+): string | null {
+  const byCard = new Map<string, ExistingPlan[]>();
+  for (const plan of plans) {
+    if (plan.paymentSourceId != null) byCard.set(plan.paymentSourceId, [...(byCard.get(plan.paymentSourceId) ?? []), plan]);
+  }
+  const votes = new Map<string, number>();
+  const claimed = new Set<string>();
+  for (const candidate of candidates) {
+    const spec = candidate.isRefund ? null : statementPlanSpec(candidate, period);
+    // Every card that holds the line gets its vote, so a plan two cards both
+    // hold ties rather than going to whichever card was listed first.
+    for (const [card, held] of spec ? byCard : []) {
+      const match = planForSighting(statementSighting(spec!, candidate.amountMinor, period, card), held, claimed);
+      if (!match) continue;
+      claimed.add(match.plan.id);
+      votes.set(card, (votes.get(card) ?? 0) + 1);
+    }
+  }
+  const [first, second] = [...votes].sort((a, b) => b[1] - a[1]);
+  return first && first[1] !== second?.[1] ? first[0] : null;
 }
 
 /** What the review offers by default, per verdict. Nothing certain is ticked. */
 export function defaultSelection(verdicts: ReadonlyMap<string, CandidateVerdict>): Set<string> {
   const selected = new Set<string>();
   for (const [key, verdict] of verdicts) {
-    // Only rows with nothing like them already present start ticked. A repeat
-    // and a plan instalment start OFF, so the safe outcome is the one that
-    // happens when the owner accepts the defaults without reading closely.
-    if (verdict.state === "new") selected.add(key);
+    // Accepting the defaults unread must never write a charge twice.
+    if (verdict.state === "new" || verdict.state === "expected") selected.add(key);
   }
   return selected;
 }

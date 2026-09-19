@@ -9,6 +9,9 @@
 import { describe, expect, it } from "vitest";
 import {
   MAX_STATEMENT_CANDIDATES,
+  amountFormat,
+  billedMonthFromDates,
+  cardFromPlans,
   defaultSelection,
   reviewCandidates,
   parseStatement,
@@ -180,6 +183,20 @@ describe("reading a whole statement", () => {
     expect(periodFromDates([])).toBe("unknown");
   });
 
+  /**
+   * An instalment line prints the day the purchase was MADE, months before the
+   * statement it is billed on. Three running plans beside four new charges put
+   * the median in the month before the bill — which is still the right key,
+   * because a statement imported before must derive the keys it was imported
+   * under, and the wrong month to offer as the bill's.
+   */
+  it("offers the month of the newest line, however old the running plans' purchase dates", () => {
+    const dates = ["2026-03-25", "2026-04-25", "2026-06-02", "2026-07-19", "2026-07-22", "2026-07-28", "2026-08-10"] as const;
+    expect(billedMonthFromDates(dates)).toBe("2026-08");
+    expect(periodFromDates(dates)).toBe("2026-07");
+    expect(billedMonthFromDates([])).toBeNull();
+  });
+
   it("keys on what the bank printed, so a description's case cannot split it", () => {
     const base = { period: PERIOD, date: "2026-08-12" as const, amountMinor: 100, installmentNo: null };
     expect(statementImportKey({ ...base, description: "Migros  Market" }))
@@ -191,8 +208,21 @@ describe("what the review already knows about a candidate", () => {
   const candidate = parseStatement("12.08.2026 MIGROS MARKET 1.234,56", PERIOD).candidates[0]!;
   const installment = parseStatement("03.08.2026 TEKNOSA 3/9 500,00", PERIOD).candidates[0]!;
 
-  const review = (existing: Parameters<typeof reviewCandidates>[0]["existing"], plans: Parameters<typeof reviewCandidates>[0]["plans"] = []) =>
-    reviewCandidates({ candidates: [candidate, installment], existing, plans });
+  type Plans = Parameters<typeof reviewCandidates>[0]["plans"];
+  const review = (existing: Parameters<typeof reviewCandidates>[0]["existing"], plans: Plans = []) =>
+    reviewCandidates({ candidates: [candidate, installment], existing, plans, expected: [], period: PERIOD, paymentSourceId: "card" });
+  /** The plan behind `TEKNOSA 3/9 500,00` on the August statement: nine from June. */
+  const teknosa = (over: Partial<Plans[number]> = {}): Plans[number] => ({
+    id: "plan-1",
+    title: "Teknosa",
+    startMonth: "2026-06",
+    installmentCount: 9,
+    totalAmountMinor: null,
+    monthlyAmountMinor: 50_000,
+    currency: "TRY",
+    paymentSourceId: "card",
+    ...over,
+  });
 
   /** Re-importing the same statement must recognise every row it already has. */
   it("recognises a line it has already imported, by the line's own identity", () => {
@@ -208,21 +238,91 @@ describe("what the review already knows about a candidate", () => {
    * look exactly like an ordinary purchase.
    */
   it("recognises an instalment that an existing plan already covers", () => {
-    const verdicts = review([], [
-      { id: "plan-1", title: "Teknosa", installmentCount: 9, monthlyAmountMinor: 50_000 },
-    ]);
-    expect(verdicts.get(installment.importKey)).toEqual({
+    expect(review([], [teknosa()]).get(installment.importKey)).toEqual({
       state: "plan",
       planId: "plan-1",
       planTitle: "Teknosa",
+      differenceMinor: 0,
     });
   });
 
-  it("does not claim a plan when the instalment count disagrees", () => {
-    const verdicts = review([], [
-      { id: "plan-1", title: "Teknosa", installmentCount: 12, monthlyAmountMinor: 50_000 },
-    ]);
-    expect(verdicts.get(installment.importKey)).toEqual({ state: "new" });
+  /**
+   * A plan is known by its schedule. The owner names a plan after what was
+   * bought; the statement prints who was paid. Matching on the title found
+   * none of the three plans a workbook had already brought in for the owner's
+   * own statement, and ticked all three to be written a second time.
+   */
+  it("recognises an instalment by its schedule when the plan carries another name", () => {
+    expect(review([], [teknosa({ title: "Telefon" })]).get(installment.importKey))
+      .toMatchObject({ state: "plan", planId: "plan-1", planTitle: "Telefon" });
+  });
+
+  it("does not claim a plan by its name when the schedule disagrees", () => {
+    expect(review([], [teknosa({ installmentCount: 12 })]).get(installment.importKey)).toEqual({ state: "new" });
+    expect(review([], [teknosa({ startMonth: "2026-05" })]).get(installment.importKey)).toEqual({ state: "new" });
+  });
+
+  it("finds a plan from a line that prints only what remains, whatever month it began", () => {
+    const remainder = parseStatement("25 Mayıs 2026 BIR ISYERI TR 302,49 604,98 / 2", PERIOD).candidates[0]!;
+    const verdicts = reviewCandidates({
+      candidates: [remainder],
+      existing: [],
+      plans: [teknosa({ startMonth: "2026-05", installmentCount: 6, monthlyAmountMinor: 30_249 })],
+      expected: [],
+      period: PERIOD,
+      paymentSourceId: null,
+    });
+    expect(verdicts.get(remainder.importKey)).toMatchObject({ state: "plan", planId: "plan-1" });
+  });
+
+  /** A kuruş the plan split differently is shown, and the plan is left as the owner made it. */
+  it("names what the line bills beyond the plan's own instalment", () => {
+    expect(review([], [teknosa({ monthlyAmountMinor: 49_998 })]).get(installment.importKey))
+      .toMatchObject({ state: "plan", differenceMinor: 2 });
+  });
+
+  it("leaves a refund printed with an instalment marker to be read as a refund", () => {
+    const refund = parseStatement("03.08.2026 TEKNOSA 3/9 -500,00", PERIOD).candidates[0]!;
+    const verdicts = reviewCandidates({ candidates: [refund], existing: [], plans: [teknosa()], expected: [], period: PERIOD, paymentSourceId: "card" });
+    expect(verdicts.get(refund.importKey)).toEqual({ state: "new" });
+  });
+
+  /**
+   * A plan was entered against a card, and a statement is filed under one. The
+   * statement's card is read from the plans its instalment lines already are,
+   * so the import is tied to the owner's own card rather than to whichever one
+   * was picked first.
+   */
+  it("reads the statement's card from the plans its lines already are", () => {
+    const lines = parseStatement("03.08.2026 TEKNOSA 3/9 500,00\n12.08.2026 MIGROS 1.234,56", PERIOD).candidates;
+    const onCard = (id: string, over: Partial<Plans[number]> = {}) => teknosa({ id: `plan-${id}`, paymentSourceId: id, ...over });
+    expect(cardFromPlans(lines, [onCard("card-a")], PERIOD)).toBe("card-a");
+    expect(cardFromPlans(lines, [onCard("card-a", { startMonth: "2026-05" })], PERIOD)).toBeNull();
+    expect(cardFromPlans(lines, [teknosa({ paymentSourceId: null })], PERIOD)).toBeNull();
+    // Two cards holding the same plan say nothing about which one this is.
+    expect(cardFromPlans(lines, [onCard("card-a"), onCard("card-b")], PERIOD)).toBeNull();
+  });
+
+  it("lets the card most of the lines agree on win", () => {
+    const lines = parseStatement([
+      "03.08.2026 TEKNOSA 3/9 500,00",
+      "04.08.2026 MEDIAMARKT 2/6 250,00",
+    ].join("\n"), PERIOD).candidates;
+    const plans = [
+      teknosa({ id: "p1", paymentSourceId: "card-a" }),
+      teknosa({ id: "p2", paymentSourceId: "card-b" }),
+      teknosa({ id: "p3", paymentSourceId: "card-b", startMonth: "2026-07", installmentCount: 6, monthlyAmountMinor: 25_000 }),
+    ];
+    expect(cardFromPlans(lines, plans, PERIOD)).toBe("card-b");
+    const refund = parseStatement("03.08.2026 TEKNOSA 3/9 -500,00", PERIOD).candidates;
+    expect(cardFromPlans(refund, [teknosa()], PERIOD)).toBeNull();
+  });
+
+  /** Two genuinely identical purchases on one statement are two plans, and only one of them exists yet. */
+  it("lets one plan account for one line of the statement, not two", () => {
+    const twice = parseStatement("03.08.2026 TEKNOSA 3/9 500,00\n03.08.2026 TEKNOSA 3/9 500,00", PERIOD).candidates;
+    const verdicts = reviewCandidates({ candidates: twice, existing: [], plans: [teknosa()], expected: [], period: PERIOD, paymentSourceId: "card" });
+    expect(twice.map((line) => verdicts.get(line.importKey)?.state)).toEqual(["plan", "new"]);
   });
 
   it("raises a similar hand-entered row as a question, not as a fact", () => {
@@ -230,6 +330,64 @@ describe("what the review already knows about a candidate", () => {
       { id: "tx-9", amountTryMinor: -123_456, effectiveDate: "2026-08-13", importKey: null },
     ]);
     expect(verdicts.get(candidate.importKey)).toEqual({ state: "similar", existingId: "tx-9", dayGap: 1 });
+  });
+
+  /** A card charge is due weeks after it was bought; the statement prints the day it was bought. */
+  it("finds a card charge entered by hand by the day it was bought, not the day it is due", () => {
+    const verdicts = review([
+      { id: "tx-9", amountTryMinor: -123_456, effectiveDate: "2026-09-10", purchaseDate: "2026-08-11", importKey: null },
+    ]);
+    expect(verdicts.get(candidate.importKey)).toEqual({ state: "similar", existingId: "tx-9", dayGap: 1 });
+  });
+
+  describe("a subscription payment still expected", () => {
+    const netflix = parseStatement("12.08.2026 NETFLIX.COM 229,99", PERIOD).candidates[0]!;
+    const expecting = (over: Partial<Parameters<typeof reviewCandidates>[0]["expected"][number]> = {}) => ({
+      id: "exp-1", title: "Film Aboneliği", dueDate: "2026-08-13" as const, amountMinor: 22_999, paymentSourceId: "card", ...over,
+    });
+    const verdictFor = (line: typeof netflix, expected: ReturnType<typeof expecting>[], paymentSourceId: string | null = "card") =>
+      reviewCandidates({ candidates: [line], existing: [], plans: [], expected, period: PERIOD, paymentSourceId }).get(line.importKey);
+
+    /** Imported, the line IS that payment; left expected, confirming it would write the same charge again. */
+    it("settles the payment the line is, and offers it ticked", () => {
+      const verdicts = reviewCandidates({ candidates: [netflix], existing: [], plans: [], expected: [expecting()], period: PERIOD, paymentSourceId: "card" });
+      expect(verdicts.get(netflix.importKey)).toEqual({ state: "expected", expectedId: "exp-1", title: "Film Aboneliği" });
+      expect(defaultSelection(verdicts).has(netflix.importKey)).toBe(true);
+    });
+
+    it("knows it by name when the price has moved", () => {
+      expect(verdictFor(netflix, [expecting({ title: "Netflix", amountMinor: 19_999 })])).toMatchObject({ state: "expected" });
+      expect(verdictFor(netflix, [expecting({ amountMinor: 19_999 })])).toEqual({ state: "new" });
+    });
+
+    it("is not another card's, another week's, a refund's or a plan's", () => {
+      expect(verdictFor(netflix, [expecting({ paymentSourceId: "other" })])).toEqual({ state: "new" });
+      expect(verdictFor(netflix, [expecting({ paymentSourceId: null })], null)).toMatchObject({ state: "expected" });
+      expect(verdictFor(netflix, [expecting({ dueDate: "2026-08-16" })])).toEqual({ state: "new" });
+      expect(verdictFor(netflix, [expecting({ dueDate: "2026-08-09" })])).toMatchObject({ state: "expected" });
+      const refund = parseStatement("12.08.2026 NETFLIX.COM -229,99", PERIOD).candidates[0]!;
+      expect(verdictFor(refund, [expecting()])).toEqual({ state: "new" });
+      const instalment = parseStatement("12.08.2026 NETFLIX.COM 1/3 229,99", PERIOD).candidates[0]!;
+      expect(verdictFor(instalment, [expecting()])).toEqual({ state: "new" });
+    });
+
+    it("lets one expected payment settle one line", () => {
+      const twice = parseStatement("12.08.2026 NETFLIX.COM 229,99\n12.08.2026 NETFLIX.COM 229,99", PERIOD).candidates;
+      const verdicts = reviewCandidates({ candidates: twice, existing: [], plans: [], expected: [expecting()], period: PERIOD, paymentSourceId: "card" });
+      expect(twice.map((line) => verdicts.get(line.importKey)?.state)).toEqual(["expected", "new"]);
+    });
+
+    it("leaves a row already in the ledger to say so first", () => {
+      const verdicts = reviewCandidates({
+        candidates: [netflix],
+        existing: [{ id: "tx-1", amountTryMinor: -22_999, effectiveDate: "2026-09-10", purchaseDate: "2026-08-12", importKey: null }],
+        plans: [],
+        expected: [expecting()],
+        period: PERIOD,
+        paymentSourceId: "card",
+      });
+      expect(verdicts.get(netflix.importKey)).toMatchObject({ state: "similar" });
+    });
   });
 
   it("leaves a genuinely new line alone", () => {
@@ -243,7 +401,7 @@ describe("what the review already knows about a candidate", () => {
   it("ticks only the rows nothing resembles", () => {
     const verdicts = review(
       [{ id: "tx-1", amountTryMinor: 123_456, effectiveDate: "2026-08-12", importKey: candidate.importKey }],
-      [{ id: "plan-1", title: "Teknosa", installmentCount: 9, monthlyAmountMinor: 50_000 }],
+      [teknosa()],
     );
     expect([...defaultSelection(verdicts)]).toEqual([]);
 
@@ -306,7 +464,7 @@ describe("the reference statement layout", () => {
     });
   });
 
-  it("still counts the last payment of a plan as an instalment", () => {
+  it("counts a line with one payment still to follow as an instalment", () => {
     expect(candidateOf("25 Nisan 2026 BIR ISYERI TR 92,63 92,63 / 1")).toMatchObject({
       kind: "installment",
       remainingInstallments: 1,
@@ -418,6 +576,126 @@ describe("the reference statement layout", () => {
       expect(parse(line).kind, line).toBe("ignored");
     }
   });
+
+  /**
+   * The position is printed on the line UNDER the charge, with the purchase's
+   * whole total: measured on the owner's statement, eight of eight belong to
+   * the line above, and all five remaining counts are `m − n`. On a plan's last
+   * payment the line above prints no remaining count at all, so without this
+   * line the final instalment read as a new purchase beside its plan's own row.
+   */
+  describe("the position printed under an instalment", () => {
+    const read = (...lines: string[]) => parseStatement(lines.join("\n"), PERIOD);
+
+    it("reads a plan's last payment as an instalment, not as a new purchase", () => {
+      const [line] = read("25 Mayıs 2026 BIR ISYERI TR 302,49", "1.814,94 TL'lik işlemin 6 / 6 taksidi").candidates;
+      expect(line).toMatchObject({ kind: "installment", installmentNo: 6, installmentCount: 6 });
+      expect(statementPlanSpec(line!, PERIOD)).toEqual({ startMonth: "2026-03", installmentCount: 6, installmentNo: 6 });
+    });
+
+    it("meets the plan whose last month this is", () => {
+      const [line] = read("25 Mayıs 2026 BIR ISYERI TR 302,49", "1.814,94 TL'lik işlemin 6 / 6 taksidi").candidates;
+      const plan = { id: "plan-1", title: "Telefon", startMonth: "2026-03" as const, installmentCount: 6, totalAmountMinor: 181_494, monthlyAmountMinor: null, currency: "TRY", paymentSourceId: null };
+      expect(reviewCandidates({ candidates: [line!], existing: [], plans: [plan], expected: [], period: PERIOD, paymentSourceId: null }).get(line!.importKey))
+        .toMatchObject({ state: "plan", planId: "plan-1" });
+    });
+
+    it("gives a remaining-count line its position, and the key it had without it", () => {
+      const alone = read("25 Mayıs 2026 BIR ISYERI TR 302,49 604,98 / 2").candidates[0]!;
+      const result = read("25 Mayıs 2026 BIR ISYERI TR 302,49 604,98 / 2", "1.814,94 TL'lik işlemin 4 / 6 taksidi");
+      expect(result.candidates).toEqual([{ ...alone, installmentNo: 4, installmentCount: 6 }]);
+      expect(result.ignoredLineCount).toBe(1);
+    });
+
+    it("takes the first instalment's rounding as belonging to the purchase", () => {
+      expect(read("25 Mayıs 2026 BIR ISYERI TR 333,34", "1.000,00 TL'lik işlemin 1 / 3 taksidi").candidates[0])
+        .toMatchObject({ installmentNo: 1, installmentCount: 3 });
+    });
+
+    it("leaves a line alone when the arithmetic says the position is not its own", () => {
+      for (const lines of [
+        ["25 Mayıs 2026 BIR ISYERI TR 302,49", "1.814,94 TL'lik işlemin 5 / 5 taksidi"],
+        ["25 Mayıs 2026 BIR ISYERI TR 302,49 604,98 / 2", "1.814,94 TL'lik işlemin 5 / 6 taksidi"],
+        ["25 Mayıs 2026 BIR ISYERI TR 302,49", "Sayfa 2 / 3"],
+        ["25 Mayıs 2026 BIR ISYERI TR 302,49", "1.814,94 TL 604,98 TL 6 / 6"],
+        ["25 Mayıs 2026 BIR ISYERI TR 302,49", "1.814,94 TL'lik işlemin 7 / 6 taksidi"],
+        ["25 Mayıs 2026 BIR ISYERI TR 302,49", "302,49 TL'lik işlemin 1 / 1 taksidi"],
+      ]) {
+        expect(read(...lines).candidates[0], lines[1]).toMatchObject({ installmentNo: null, installmentCount: null });
+      }
+    });
+
+    it("belongs only to the line directly above it", () => {
+      const result = read(
+        "25 Mayıs 2026 BIR ISYERI TR 302,49",
+        "TOPLAM",
+        "1.814,94 TL'lik işlemin 6 / 6 taksidi",
+      );
+      expect(result.candidates[0]).toMatchObject({ kind: "purchase", installmentNo: null });
+      for (const dated of ["Son Ödeme Tarihi 05.09.2026 1.814,94 TL 6 / 6", "Son Ödeme Tarihi 5 Eylül 2026 1.814,94 TL 6 / 6"]) {
+        expect(read("25 Mayıs 2026 BIR ISYERI TR 302,49", dated).candidates[0], dated).toMatchObject({ kind: "purchase", installmentNo: null });
+      }
+    });
+
+    it("never overrides a position the line itself printed", () => {
+      expect(read("03.08.2026 TEKNOSA 3/9 500,00", "4.500,00 TL'lik işlemin 9 / 9 taksidi").candidates[0])
+        .toMatchObject({ installmentNo: 3, installmentCount: 9 });
+    });
+  });
+});
+
+/** Layouts measured on real statements, rebuilt with invented merchants and figures. */
+describe("other statement layouts", () => {
+  /** Fields positioned rather than spaced, so the text runs them together. */
+  it("reads a line whose date, merchant, amount and position were run together", () => {
+    expect(candidateOf("16/07/2026MERKEZ ECZANE1.995,731/3 TAKSIT (5.987,19)")).toMatchObject({
+      date: "2026-07-16",
+      description: "MERKEZ ECZANE",
+      amountMinor: 199_573,
+      installmentNo: 1,
+      installmentCount: 3,
+    });
+  });
+
+  describe("money written 1,234.56, as a page-format statement prints it", () => {
+    const read = (...lines: string[]) => parseStatement(["24/08/2026 BIR ISYERI TR 1,234.56", ...lines].join("\n"), PERIOD);
+
+    it("tells how a statement writes money from its dated lines", () => {
+      expect(amountFormat(["24/08/2026 BIR ISYERI TR 1,234.56", "Yıllık: %3,25"])).toBe("en");
+      expect(amountFormat(["12.08.2026 MIGROS 1.234,56", "Toplam 12,50"])).toBe("tr");
+      expect(amountFormat([])).toBe("tr");
+    });
+
+    it("reads the amount, and a credit marked after it", () => {
+      const [charge, refund] = read("20/08/2026 IADE-BIR ISYERI 150.00(-)").candidates;
+      expect(charge).toMatchObject({ amountMinor: 123_456, isRefund: false });
+      expect(refund).toMatchObject({ amountMinor: 15_000, isRefund: true, description: "IADE-BIR ISYERI" });
+    });
+
+    it("leaves the card's own settlement out", () => {
+      expect(read("05/08/2026 İNTERNET Şb-Ödemeniz için Teşekkürler 4,500.00(-)").skipped).toHaveLength(1);
+    });
+
+    /** `(total TL) count/position.taksit charge each×left`: the order is count first, proved by the total. */
+    it("reads the purchase total, the position it proves and the payments left", () => {
+      const [, line] = read("10/06/2026 BIR MAGAZA (9,000.00 TL) 9/4.taksit 1,000.00 1,000.00x5").candidates;
+      expect(line).toMatchObject({
+        kind: "installment",
+        description: "BIR MAGAZA",
+        amountMinor: 100_000,
+        installmentNo: 4,
+        installmentCount: 9,
+        remainingInstallments: 5,
+      });
+      expect(read("10/06/2026 BIR MAGAZA (3,000.00 TL) 3/3.taksit 1,000.00").candidates[1])
+        .toMatchObject({ installmentNo: 3, installmentCount: 3, remainingInstallments: null });
+    });
+
+    it("does not reverse a position the total does not prove", () => {
+      expect(read("10/06/2026 BIR MAGAZA (9,000.00 TL) 9/4.taksit 1,500.00 1,000.00x5").candidates[1])
+        .toMatchObject({ installmentNo: null, installmentCount: null });
+    });
+  });
 });
 
 /**
@@ -482,15 +760,15 @@ describe("the instalment plan a statement line implies", () => {
 
   /**
    * The reference statement's `Kalan Tutar/Taksit` column says how many
-   * payments are LEFT and never which one this is. A plan built from it can
-   * only be the remainder, beginning here — everything earlier is unknown, so
-   * nothing earlier is invented.
+   * payments are LEFT after this one and never which one this is. A plan built
+   * from it can only be the remainder, beginning here — everything earlier is
+   * unknown, so nothing earlier is invented.
    */
-  it("builds only the remainder when the position was not printed", () => {
+  it("builds this payment and the ones left when the position was not printed", () => {
     expect(statementPlanSpec(
       line({ installmentNo: null, installmentCount: null, remainingInstallments: 2 }),
       "2026-07",
-    )).toEqual({ startMonth: "2026-07", installmentCount: 2, installmentNo: 1 });
+    )).toEqual({ startMonth: "2026-07", installmentCount: 3, installmentNo: null });
   });
 
   it("crosses a year boundary the way months do", () => {
@@ -511,6 +789,11 @@ describe("the instalment plan a statement line implies", () => {
       line({ installmentNo: null, installmentCount: null, remainingInstallments: 0 }),
       "2026-07",
     )).toBeNull();
+  });
+
+  it("takes a printed position over the count left, which says less", () => {
+    expect(statementPlanSpec(line({ installmentNo: 4, installmentCount: 6, remainingInstallments: 2 }), "2026-07"))
+      .toEqual({ startMonth: "2026-04", installmentCount: 6, installmentNo: 4 });
   });
 
   /** Two statements of one plan must derive the SAME plan, or each opens its own. */

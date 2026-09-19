@@ -10,7 +10,7 @@ import { shouldPairByMass } from "./responsive";
  * boundary between its two panes, and a strip that guesses at 50/50 lands a
  * finger's width off the card below it.
  */
-export const WORKSPACE_SPLIT = { breakpoint: 900, primaryWeight: 0.9, secondaryWeight: 1.1, gap: spacing.xl } as const;
+const WORKSPACE_SPLIT = { breakpoint: 900, primaryWeight: 0.9, secondaryWeight: 1.1, gap: spacing.xl } as const;
 
 /**
  * The share of the full width the primary pane takes, gap included, or null

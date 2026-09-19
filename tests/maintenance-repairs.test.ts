@@ -281,10 +281,23 @@ describe("foreign-currency instalments", () => {
 
   it("fixes an instalment whose day has come at the rate stored for that day", async () => {
     insert("transactions", instalmentRow("due", "USD", "2020-01-05", 200_00));
+    insert("transactions", instalmentRow("due-lira", "TRY", "2020-01-05", 10_00));
 
     await runMaintenance(USER);
 
     expect(transaction("due")).toEqual({ status: "realized", amount_try_minor: 310_00, fx_rate: "31" });
+    expect(transaction("due-lira")).toEqual({ status: "realized", amount_try_minor: 10_00, fx_rate: null });
+  });
+
+  it("leaves a coming instalment already at the last rate, and one too small to survive conversion", async () => {
+    insert("fx_rates", { ...stamps, id: "jpy", currency: "JPY", rate_date: "2019-12-31", rate_try: "0.2" });
+    insert("transactions", { ...instalmentRow("current", "USD", "2099-01-05", 350_00), fx_rate: "35" });
+    insert("transactions", { ...instalmentRow("tiny", "JPY", "2099-01-05", 1), amount_minor: 1 });
+
+    await runMaintenance(USER);
+
+    expect(transaction("current")).toEqual({ status: "pending", amount_try_minor: 350_00, fx_rate: "35" });
+    expect(transaction("tiny")).toEqual({ status: "pending", amount_try_minor: 1, fx_rate: "20" });
   });
 
   it("restates a coming instalment at the last known rate, and leaves lira and rateless ones alone", async () => {
@@ -297,6 +310,52 @@ describe("foreign-currency instalments", () => {
     expect(transaction("coming")).toEqual({ status: "pending", amount_try_minor: 350_00, fx_rate: "35" });
     expect(transaction("lira")).toEqual({ status: "pending", amount_try_minor: 10_00, fx_rate: null });
     expect(transaction("no-rate")).toEqual({ status: "pending", amount_try_minor: 200_00, fx_rate: "20" });
+  });
+});
+
+describe("card charges without a statement", () => {
+  /**
+   * A card's charge is placed on the statement its day joins. One with only a
+   * due date keeps it when it is already paid there, and a card with no cycle
+   * has no statement to place anything on.
+   */
+  it("places each charge on its statement, and leaves a card with no cycle alone", async () => {
+    insert("payment_sources", { ...stamps, id: "card", name: "Kart", type: "credit_card", person_id: "self", statement_day: 25, due_day: 5, logo_source: "initials", is_active: 1 });
+    insert("payment_sources", { ...stamps, id: "bare", name: "Eski", type: "credit_card", person_id: "self", logo_source: "initials", is_active: 1 });
+    insert("installment_plans", { ...stamps, id: "plan", title: "Telefon", kind: "card_installment", monthly_amount_minor: 100_00, installment_count: 2, currency: "TRY", start_month: "2026-08", person_id: "self", payment_source_id: "card" });
+    const charge = (id: string, source: string, row: Record<string, unknown>) => insert("transactions", {
+      ...stamps, id, type: "expense", amount_minor: 100_00, currency: "TRY", amount_try_minor: 100_00, entry_date: "2026-07-01",
+      person_id: "self", is_aggregate: 0, payment_source_id: source, ...row,
+    });
+    charge("paid", "card", { installment_plan_id: "plan", installment_no: 1, effective_date: "2026-08-05", status: "realized" });
+    charge("coming", "card", { purchase_date: "2099-01-10", effective_date: "2099-01-10", status: "pending" });
+    charge("uncycled", "bare", { purchase_date: "2026-07-10", effective_date: "2026-07-10", status: "realized" });
+
+    await runMaintenance(USER);
+
+    const rows = harness.db!.prepare(`SELECT id, effective_date, status, card_statement_id IS NOT NULL AS linked FROM transactions ORDER BY id`).all();
+    expect(rows).toEqual([
+      { id: "coming", effective_date: "2099-02-05", status: "pending", linked: 1 },
+      { id: "paid", effective_date: "2026-08-05", status: "realized", linked: 1 },
+      { id: "uncycled", effective_date: "2026-07-10", status: "realized", linked: 0 },
+    ]);
+  });
+});
+
+describe("an automatic payment the pass cannot make", () => {
+  /** Only a missing rate is waited out; anything else stops the pass where it can be seen (see the note in maintenance.ts). */
+  it("stops on a rule that no longer fits its payment", async () => {
+    insert("categories", { ...stamps, id: "salary", name: "Maaş", kind: "income", sort_order: 0, is_column: 1, is_transfer: 0 });
+    insert("subscriptions", {
+      ...stamps, id: "sub", name: "Netflix", amount_minor: 20_000, currency: "TRY", cycle: "monthly", interval_months: 1, billing_day: 1,
+      next_due_date: "2026-09-01", person_id: "self", category_id: "salary", is_active: 1, auto_pay: 1, logo_source: "none", amount_mode: "fixed",
+    });
+    insert("expected_payments", {
+      ...stamps, id: "due", direction: "outflow", kind: "subscription", ref_id: "sub", due_date: "2026-09-10",
+      amount_minor: 20_000, currency: "TRY", status: "pending", auto_confirmed: 0, amount_is_estimated: 0,
+    });
+
+    await expect(runMaintenance(USER)).rejects.toThrow("Transaction type and category do not match");
   });
 });
 

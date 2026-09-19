@@ -30,6 +30,9 @@ export interface CardStatementPeriod {
   dueDate: ISODate;
 }
 
+/** Two sources name the same card, or one of them names none. */
+export const sameCard = (a: string | null, b: string | null): boolean => a == null || b == null || a === b;
+
 export function isValidCardCycle(cycle: {
   statementDay: number | null | undefined;
   dueDay: number | null | undefined;
@@ -308,7 +311,7 @@ function settleStatement(
 }
 
 /** `items` grouped by `key`, leaving out the ones it gives no key. */
-function groupBy<T>(items: readonly T[], key: (item: T) => string | null): Map<string, T[]> {
+export function groupBy<T>(items: readonly T[], key: (item: T) => string | null): Map<string, T[]> {
   const groups = new Map<string, T[]>();
   for (const item of items) {
     const group = key(item);

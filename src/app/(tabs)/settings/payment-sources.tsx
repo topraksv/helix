@@ -41,7 +41,8 @@ import { isMonthDay } from "../../../domain/dates";
 import { monthDayLabel } from "../../../ui/month-day-field";
 import { CardCycleFields, CardCycleRing, cardCycleError } from "../../../ui/card-cycle-fields";
 import { selectionTapIfChanged } from "../../../ui/haptics";
-import { PersonAssignment } from "../../../ui/person-assignment";
+import { assignedPersonId, PersonAssignment } from "../../../ui/person-assignment";
+import { isValidCardCycle } from "../../../domain/card-statements";
 import { shouldUseTripleTileGrid } from "../../../ui/responsive";
 
 const TYPES = PAYMENT_SOURCE_TYPES.map((value) => ({ value, label: tr.sources[value] }));
@@ -174,142 +175,91 @@ function PaymentSourceRow({
   );
 }
 
-export default function SourcesScreen() {
-  const { palette } = useTheme();
+type Source = ReturnType<typeof useSourcesState>["data"][number];
+type Busy = [boolean, (busy: boolean) => void];
+
+/** The add-or-edit form: its fields, whether it would change anything, and saving it. */
+function useSourceForm(sources: Source[], persons: { id: string; isSelf: boolean }[], [busy, setBusy]: Busy) {
   const userId = useUserId();
-  const sourcesState = useSourcesState();
-  const statementsState = useCreditCardStatementsState();
-  const transactionsState = useAllTransactionsState();
-  const personsState = usePersonsState();
-  const sources = sourcesState.data;
-  const statements = statementsState.data;
-  const transactions = transactionsState.data;
-  const persons = personsState.data;
-  const undo = useUndo();
   const operationGuard = useOperationGuard();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [sourceType, setSourceType] = useState<PaymentSourceType>("credit_card");
-  // persons load async (live query) — derive the default owner.
   const [personChoice, setPersonChoice] = useState<string | null>(null);
-  const personId = personChoice ?? persons.find((p) => p.isSelf)?.id ?? persons[0]?.id ?? null;
   const [dueDayStr, setDueDayStr] = useState("");
   const [statementDayStr, setStatementDayStr] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [resolving, setResolving] = useState<{ source: (typeof sources)[number]; usage: PaymentSourceReferenceUsage } | null>(null);
-  const [replacementChoice, setReplacementChoice] = useState<string>(NO_SOURCE);
-
+  const personId = assignedPersonId(personChoice, persons);
   const dueDay = dueDayStr.trim() === "" ? null : Number(dueDayStr);
   const statementDay = statementDayStr.trim() === "" ? null : Number(statementDayStr);
-  const editingSource = editingId ? sources.find((source) => source.id === editingId) : null;
-  const sourceDraftDirty = editingSource
-    ? name.trim() !== editingSource.name ||
-      sourceType !== editingSource.type ||
-      personId !== editingSource.personId ||
-      dueDay !== editingSource.dueDay ||
-      statementDay !== editingSource.statementDay
-    : Boolean(
-      name.trim() ||
-      sourceType !== "credit_card" ||
-      personChoice ||
-      dueDayStr.trim() ||
-      statementDayStr.trim()
-    );
-  const { confirmDiscard } = useDirtyExitGuard(sourceDraftDirty && !busy);
-  const sourcePlaceholder = useRotatingPlaceholder(placeholderPools.source);
-  const { status: dataStatus, ready: dataReady, retry: retryData } = combineLiveStates([sourcesState, statementsState, transactionsState, personsState]);
-  const validDay = (day: number | null) => day != null && isMonthDay(day);
+  const editing = editingId ? sources.find((source) => source.id === editingId) : null;
+  const dirty = editing
+    ? name.trim() !== editing.name || sourceType !== editing.type || personId !== editing.personId || dueDay !== editing.dueDay || statementDay !== editing.statementDay
+    : Boolean(name.trim() || sourceType !== "credit_card" || personChoice || dueDayStr.trim() || statementDayStr.trim());
+  const { confirmDiscard } = useDirtyExitGuard(dirty && !busy);
   // A statement that closes on the day it is due has no period at all, and
   // "ayın sonu" is day 31 — so typing 31 opposite the month-end chip is the
   // same collision written a different way. Beyond that, the gap itself has to
   // look like a card cycle; `CardCycleFields` owns both rules and shows why.
   const cycleValid = sourceType !== "credit_card"
-    || (validDay(statementDay) && validDay(dueDay) && cardCycleError(statementDay, dueDay) === null);
-  const formValid = Boolean(name.trim() && personId && cycleValid);
+    || (statementDay != null && isMonthDay(statementDay) && dueDay != null && isMonthDay(dueDay) && cardCycleError(statementDay, dueDay) === null);
+  const valid = Boolean(name.trim() && personId && cycleValid);
 
-  const resetForm = () => {
-    setEditingId(null);
-    setName("");
-    setSourceType("credit_card");
-    setPersonChoice(null);
-    setDueDayStr("");
-    setStatementDayStr("");
+  const fill = (source: Source | null) => {
+    setEditingId(source?.id ?? null);
+    setName(source?.name ?? "");
+    setSourceType(source?.type ?? "credit_card");
+    setPersonChoice(source?.personId ?? null);
+    setDueDayStr(source?.dueDay != null ? String(source.dueDay) : "");
+    setStatementDayStr(source?.statementDay != null ? String(source.statementDay) : "");
   };
 
-  const eligibleReplacements = (sourceId: string, usage: PaymentSourceReferenceUsage) => {
-    const cardRequired = usage.cardInstallmentPlans > 0;
-    return sources.filter((source) =>
-      source.id !== sourceId &&
-      (!cardRequired || (
-        source.type === "credit_card" &&
-        source.statementDay != null && source.statementDay >= 1 && source.statementDay <= 31 &&
-        source.dueDay != null && source.dueDay >= 1 && source.dueDay <= 31
-      )),
-    );
-  };
+  const save = () => operationGuard.run(async () => {
+    if (!valid || !personId) return;
+    setBusy(true);
+    try {
+      await upsertPaymentSource(userId, { id: editingId ?? undefined, name, type: sourceType, personId, dueDay, statementDay });
+      scheduleSync(userId);
+      fill(null);
+    } catch (error) {
+      void appAlert(error instanceof CreditCardCycleRequiredError ? tr.sources.cycleRequired : tr.errors.saveFailed, tr.errors.title);
+    } finally {
+      setBusy(false);
+    }
+  });
 
-  const startEdit = (src: (typeof sources)[number]) => {
-    confirmDiscard(() => {
-      setEditingId(src.id);
-      setName(src.name);
-      setSourceType(src.type);
-      setPersonChoice(src.personId);
-      setDueDayStr(src.dueDay != null ? String(src.dueDay) : "");
-      setStatementDayStr(src.statementDay != null ? String(src.statementDay) : "");
-    });
+  return {
+    editingId, name, setName, sourceType, setSourceType, personId, setPersonChoice, dueDayStr, setDueDayStr, statementDayStr, setStatementDayStr,
+    valid, save, reset: () => fill(null), startEdit: (source: Source) => confirmDiscard(() => fill(source)),
   };
+}
 
-  const save = async () => {
-    if (!formValid || !personId) return;
-    await operationGuard.run(async () => {
-      setBusy(true);
-      try {
-        await upsertPaymentSource(userId, {
-          id: editingId ?? undefined,
-          name,
-          type: sourceType,
-          personId,
-          dueDay,
-          statementDay,
-        });
-        scheduleSync(userId);
-        resetForm();
-      } catch (error) {
-        void appAlert(
-          error instanceof CreditCardCycleRequiredError ? tr.sources.cycleRequired : tr.errors.saveFailed,
-          tr.errors.title,
-        );
-      } finally {
-        setBusy(false);
-      }
-    });
-  };
+/** Deleting a source: at once when nothing uses it, else after choosing where its records go. */
+function useSourceRemoval(sources: Source[], [busy, setBusy]: Busy) {
+  const userId = useUserId();
+  const undo = useUndo();
+  const [resolving, setResolving] = useState<{ source: Source; usage: PaymentSourceReferenceUsage } | null>(null);
+  const [replacementChoice, setReplacementChoice] = useState<string>(NO_SOURCE);
+  // A card instalment plan can only move to another card with a cycle.
+  const eligible = (sourceId: string, usage: PaymentSourceReferenceUsage) =>
+    sources.filter((source) => source.id !== sourceId && (usage.cardInstallmentPlans === 0 || (source.type === "credit_card" && isValidCardCycle(source))));
 
-  const remove = async (s: (typeof sources)[number]) => {
+  const remove = async (source: Source) => {
     if (busy) return;
     setBusy(true);
     try {
-      const usage = await paymentSourceReferenceUsage(userId, s.id);
+      const usage = await paymentSourceReferenceUsage(userId, source.id);
       if (usage.total > 0) {
-        setResolving({ source: s, usage });
-        setReplacementChoice(eligibleReplacements(s.id, usage)[0]?.id ?? NO_SOURCE);
+        setResolving({ source, usage });
+        setReplacementChoice(eligible(source.id, usage)[0]?.id ?? NO_SOURCE);
         return;
       }
-      if (!(await appConfirm(s.name, tr.references.deleteUnusedSource, { confirmLabel: tr.common.delete, danger: true }))) return;
-      const snapshot = await deleteUnreferencedPaymentSource(userId, s.id);
+      if (!(await appConfirm(source.name, tr.references.deleteUnusedSource, { confirmLabel: tr.common.delete, danger: true }))) return;
+      const snapshot = await deleteUnreferencedPaymentSource(userId, source.id);
       scheduleSync(userId);
-      if (snapshot) {
-        undo.show(`${s.name} · ${tr.common.deleted}`, () => {
-          return restorePaymentSource(userId, snapshot).then(() => scheduleSync(userId));
-        }, "warning");
-      }
+      if (snapshot) undo.show(`${source.name} · ${tr.common.deleted}`, () => restorePaymentSource(userId, snapshot).then(() => scheduleSync(userId)), "warning");
     } catch (error) {
-      if (error instanceof ReferencedRecordError) {
-        const usage = await paymentSourceReferenceUsage(userId, s.id);
-        setResolving({ source: s, usage });
-      } else {
-        void appAlert(tr.errors.saveFailed, tr.errors.title);
-      }
+      if (error instanceof ReferencedRecordError) setResolving({ source, usage: await paymentSourceReferenceUsage(userId, source.id) });
+      else void appAlert(tr.errors.saveFailed, tr.errors.title);
     } finally {
       setBusy(false);
     }
@@ -318,14 +268,11 @@ export default function SourcesScreen() {
   const reassign = async () => {
     if (!resolving || busy) return;
     const replacementId = replacementChoice === NO_SOURCE ? null : replacementChoice;
-    const replacementName = replacementId
-      ? sources.find((source) => source.id === replacementId)?.name ?? tr.references.noSource
-      : tr.references.noSource;
-    const confirmed = await appConfirm(
-      resolving.source.name,
-      tr.references.reassignSourceConfirm(resolving.usage.total, replacementName),
-      { confirmLabel: tr.references.reassignAndDelete, danger: true },
-    );
+    const replacementName = sources.find((source) => source.id === replacementId)?.name ?? tr.references.noSource;
+    const confirmed = await appConfirm(resolving.source.name, tr.references.reassignSourceConfirm(resolving.usage.total, replacementName), {
+      confirmLabel: tr.references.reassignAndDelete,
+      danger: true,
+    });
     if (!confirmed) return;
     setBusy(true);
     try {
@@ -334,222 +281,198 @@ export default function SourcesScreen() {
       setResolving(null);
       setReplacementChoice(NO_SOURCE);
     } catch (error) {
-      void appAlert(
-        error instanceof CreditCardCycleRequiredError ? tr.references.cardReplacementRequired : tr.errors.saveFailed,
-        tr.errors.title,
-      );
+      void appAlert(error instanceof CreditCardCycleRequiredError ? tr.references.cardReplacementRequired : tr.errors.saveFailed, tr.errors.title);
     } finally {
       setBusy(false);
     }
   };
 
-  const usageRows = resolving
-    ? [
-        [tr.references.installmentPlans, resolving.usage.installmentPlans],
-        [tr.references.transactions, resolving.usage.transactions],
-        [tr.references.subscriptions, resolving.usage.subscriptions],
-      ].filter(([, count]) => Number(count) > 0)
-    : [];
-  const editingStatements = editingId
-    ? statements.filter((statement) => statement.paymentSourceId === editingId).sort((a, b) => b.dueDate.localeCompare(a.dueDate))
-    : [];
-  const editingStatementIds = new Set(editingStatements.map((statement) => statement.id));
-  const statementAmountById = new Map<string, number>();
-  if (editingStatementIds.size > 0) {
-    for (const transaction of transactions) {
-      const statementId = transaction.cardStatementId;
-      if (!statementId || !editingStatementIds.has(statementId)) continue;
-      statementAmountById.set(
-        statementId,
-        (statementAmountById.get(statementId) ?? 0) + transaction.amountTryMinor,
-      );
-    }
-  }
-  /**
-   * Six periods, not every period a card has ever had.
-   *
-   * A card kept for three years has thirty-six of these, and the thirty-first
-   * answers nothing anyone opened this screen to ask. Six is a half-year — long
-   * enough to see a season, short enough to stay a shape rather than a page.
-   */
-  const shownStatements = editingStatements.slice(0, 6);
-  const largestStatementAmount = shownStatements.reduce(
-    (largest, statement) => Math.max(largest, Math.abs(statementAmountById.get(statement.id) ?? 0)),
-    0,
+  return { resolving, cancel: () => setResolving(null), replacementChoice, setReplacementChoice, remove, reassign, options: resolving ? eligible(resolving.source.id, resolving.usage) : [] };
+}
+
+function SourceInUseCard({ removal, busy }: { removal: ReturnType<typeof useSourceRemoval>; busy: boolean }) {
+  const { resolving, replacementChoice } = removal;
+  if (!resolving) return null;
+  const cardRequired = resolving.usage.cardInstallmentPlans > 0;
+  const usageRows = ([
+    [tr.references.installmentPlans, resolving.usage.installmentPlans],
+    [tr.references.transactions, resolving.usage.transactions],
+    [tr.references.subscriptions, resolving.usage.subscriptions],
+  ] as const).filter(([, count]) => count > 0);
+  return (
+    <Card>
+      <PanelHeader icon={Trash} title={tr.references.sourceInUse(resolving.source.name)} description={tr.references.resolveBeforeDelete} />
+      {usageRows.map(([label, count]) => (
+        <Spread key={label} style={{ marginBottom: spacing.xs }}>
+          <Body muted>{label}</Body>
+          <Body>{String(count)}</Body>
+        </Spread>
+      ))}
+      <Body style={{ marginTop: spacing.sm, marginBottom: spacing.sm }}>{tr.references.chooseSource}</Body>
+      {cardRequired ? <Body muted style={{ marginBottom: spacing.sm }}>{tr.references.cardReplacementRequired}</Body> : null}
+      <ChipPicker
+        options={[
+          ...(!cardRequired ? [{ value: NO_SOURCE, label: tr.references.noSource }] : []),
+          ...removal.options.map((source) => ({ value: source.id, label: source.name })),
+        ]}
+        value={replacementChoice}
+        onChange={removal.setReplacementChoice}
+      />
+      <Row>
+        <View style={{ flex: 1 }}>
+          <Button
+            label={tr.references.reassignAndDelete}
+            onPress={() => void removal.reassign()}
+            disabled={busy || (cardRequired && replacementChoice === NO_SOURCE)}
+            loading={busy}
+          />
+        </View>
+        <Button label={tr.common.cancel} variant="ghost" onPress={removal.cancel} disabled={busy} />
+      </Row>
+    </Card>
   );
-  const replacementOptions = resolving ? eligibleReplacements(resolving.source.id, resolving.usage) : [];
-  const cardReplacementRequired = Boolean(resolving && resolving.usage.cardInstallmentPlans > 0);
+}
 
-  if (!dataReady) return <DataGateScreen status={dataStatus} retry={retryData} />;
+/**
+ * A card's recent periods as one row each — month, bar, amount — so which month
+ * cost the most is the tallest bar, not a paragraph of dates.
+ *
+ * Six periods, not every period a card has ever had: a half-year is long enough
+ * to see a season and short enough to stay a shape rather than a page.
+ */
+function StatementHistoryCard({ cardId }: { cardId: string }) {
+  const { palette } = useTheme();
+  const statements = useCreditCardStatementsState().data
+    .filter((statement) => statement.paymentSourceId === cardId)
+    .sort((a, b) => b.dueDate.localeCompare(a.dueDate));
+  const transactions = useAllTransactionsState().data;
+  if (statements.length === 0) return null;
+  const ids = new Set(statements.map((statement) => statement.id));
+  const amountById = new Map<string, number>();
+  for (const transaction of transactions) {
+    const statementId = transaction.cardStatementId;
+    if (statementId && ids.has(statementId)) amountById.set(statementId, (amountById.get(statementId) ?? 0) + transaction.amountTryMinor);
+  }
+  const shown = statements.slice(0, 6);
+  const largest = shown.reduce((max, statement) => Math.max(max, Math.abs(amountById.get(statement.id) ?? 0)), 0);
+  return (
+    <Card>
+      <PanelHeader icon={ReceiptText} title={tr.sources.statementHistory} description={tr.sources.statementSummary(shown.length, formatMinorCompact(largest))} />
+      <View style={{ gap: spacing.sm }}>
+        {shown.map((statement) => {
+          const amount = amountById.get(statement.id) ?? 0;
+          const share = largest > 0 ? Math.max(2, Math.round((Math.abs(amount) / largest) * 100)) : 0;
+          const dates = tr.sources.statementDates(dateLabel(statement.statementDate), dateLabel(statement.dueDate));
+          return (
+            <View key={statement.id} accessible accessibilityLabel={`${monthLabel(statement.periodMonth)} · ${formatMinorCompact(amount)} · ${dates}`} style={{ gap: 5 }}>
+              <Spread style={{ alignItems: "center" }}>
+                <Body style={{ flex: 1, paddingRight: spacing.sm }}>{monthLabel(statement.periodMonth)}</Body>
+                <Amount minor={amount} colorized={false} accessibilityLabel={formatMinorCompact(amount)} style={{ textAlign: "right" }} />
+              </Spread>
+              <View style={{ height: 4, borderRadius: 2, overflow: "hidden", backgroundColor: palette.surfaceAlt }}>
+                <View style={{ width: `${share}%`, height: "100%", borderRadius: 2, backgroundColor: palette.primary }} />
+              </View>
+              <Body muted style={{ fontSize: type.small.fontSize }}>{dates}</Body>
+            </View>
+          );
+        })}
+      </View>
+      {statements.length > shown.length ? (
+        <Body muted style={{ marginTop: spacing.sm, fontSize: type.small.fontSize }}>{tr.sources.statementMore(statements.length - shown.length)}</Body>
+      ) : null}
+    </Card>
+  );
+}
 
+function SourceFormCard({ form, persons, busy }: { form: ReturnType<typeof useSourceForm>; persons: { id: string; name: string }[]; busy: boolean }) {
+  const sourcePlaceholder = useRotatingPlaceholder(placeholderPools.source);
+  const saveButton = <Button label={form.editingId ? tr.common.save : tr.common.add} onPress={() => void form.save()} disabled={!form.valid || busy} loading={busy} />;
+  return (
+    <Card>
+      <PanelHeader
+        icon={sourceIcon(form.sourceType)}
+        title={form.editingId ? tr.sources.editTitle : tr.sources.formTitle}
+        description={form.editingId ? tr.sources.editHint(form.name || tr.sources.formTitle) : tr.sources.formHint}
+      />
+      {/* The mark resolves from the name as it is typed, the same live preview
+          the subscription form gives. It is the FIELD's leading mark: wrapping
+          the field centred it against label and input, above the box it names. */}
+      <View style={{ marginBottom: spacing.sm }}>
+        <Field
+          noMargin
+          leading={<PaymentSourceLogo name={form.name || tr.sources.formTitle} type={form.sourceType} size={46} />}
+          label={tr.onboarding.addSource}
+          value={form.name}
+          onChangeText={form.setName}
+          placeholder={sourcePlaceholder}
+        />
+      </View>
+      <SourceTypePicker value={form.sourceType} onChange={form.setSourceType} />
+      <PersonAssignment people={persons} value={form.personId} onChange={form.setPersonChoice} />
+      {form.sourceType === "credit_card" ? (
+        <CardCycleFields
+          statementDayValue={form.statementDayStr}
+          dueDayValue={form.dueDayStr}
+          onStatementDayChange={form.setStatementDayStr}
+          onDueDayChange={form.setDueDayStr}
+        />
+      ) : null}
+      {form.editingId ? (
+        <Row>
+          <View style={{ flex: 1 }}>{saveButton}</View>
+          <Button label={tr.common.cancel} variant="ghost" onPress={form.reset} />
+        </Row>
+      ) : saveButton}
+    </Card>
+  );
+}
+
+export default function SourcesScreen() {
+  const sourcesState = useSourcesState();
+  const statementsState = useCreditCardStatementsState();
+  const transactionsState = useAllTransactionsState();
+  const personsState = usePersonsState();
+  const sources = sourcesState.data;
+  const persons = personsState.data;
+  const busy = useState(false);
+  const form = useSourceForm(sources, persons, busy);
+  const removal = useSourceRemoval(sources, busy);
+  const { status, ready, retry } = combineLiveStates([sourcesState, statementsState, transactionsState, personsState]);
+  if (!ready) return <DataGateScreen status={status} retry={retry} />;
   return (
     <Screen width="workspace">
-      <DataStateNotice status={dataStatus} retry={retryData} />
+      <DataStateNotice status={status} retry={retry} />
       <WorkspaceSplit
         testID="payment-sources-workspace"
         wideLayout={sources.length === 0 ? "stack" : "split"}
         primary={(
           <View>
-          <Card>
-        <PanelHeader
-          icon={sourceIcon(sourceType)}
-          title={editingId ? tr.sources.editTitle : tr.sources.formTitle}
-          description={editingId ? tr.sources.editHint(name || tr.sources.formTitle) : tr.sources.formHint}
-        />
-        {/* The mark resolves from the name as it is typed, so "Garanti"
-            becoming a Garanti mark is visible at the moment it happens rather
-            than after saving. Same live preview the subscription form gives.
-
-            It is the FIELD's leading mark rather than a row wrapping the
-            field: wrapping centred it against the label and the input
-            together, which put it above the box it names. */}
-        <View style={{ marginBottom: spacing.sm }}>
-          <Field
-            noMargin
-            leading={<PaymentSourceLogo name={name || tr.sources.formTitle} type={sourceType} size={46} />}
-            label={tr.onboarding.addSource}
-            value={name}
-            onChangeText={setName}
-            placeholder={sourcePlaceholder}
-          />
-        </View>
-        <SourceTypePicker value={sourceType} onChange={setSourceType} />
-        <PersonAssignment people={persons} value={personId} onChange={setPersonChoice} />
-        {sourceType === "credit_card" ? (
-          <CardCycleFields
-            statementDayValue={statementDayStr}
-            dueDayValue={dueDayStr}
-            onStatementDayChange={setStatementDayStr}
-            onDueDayChange={setDueDayStr}
-          />
-        ) : null}
-        {editingId ? (
-          <Row>
-            <View style={{ flex: 1 }}>
-              <Button label={tr.common.save} onPress={() => void save()} disabled={!formValid || busy} loading={busy} />
-            </View>
-            <Button label={tr.common.cancel} variant="ghost" onPress={resetForm} />
-          </Row>
-        ) : (
-          <Button label={tr.common.add} onPress={() => void save()} disabled={!formValid || busy} loading={busy} />
-        )}
-          </Card>
-
-          {editingId && sourceType === "credit_card" && editingStatements.length > 0 ? (
-            <Card>
-              <PanelHeader
-                icon={ReceiptText}
-                title={tr.sources.statementHistory}
-                description={tr.sources.statementSummary(shownStatements.length, formatMinorCompact(largestStatementAmount))}
-              />
-              {/* Six rows of "Kesim 15 Ağustos · Son ödeme 25 Ağustos" under
-                  six month names was a paragraph where a shape belongs: the
-                  question a person opens this for is which month cost the
-                  most, and three lines of prose per period buried it.
-                  Each period is now one row — month, bar, amount — so the
-                  answer is the tallest bar, and the exact dates stay one tap
-                  away on the row itself rather than printed twelve times. */}
-              <View style={{ gap: spacing.sm }}>
-                {shownStatements.map((statement) => {
-                  const amount = statementAmountById.get(statement.id) ?? 0;
-                  const share = largestStatementAmount > 0
-                    ? Math.max(2, Math.round((Math.abs(amount) / largestStatementAmount) * 100))
-                    : 0;
-                  const dates = tr.sources.statementDates(
-                    dateLabel(statement.statementDate),
-                    dateLabel(statement.dueDate),
-                  );
-                  return (
-                    <View
-                      key={statement.id}
-                      accessible
-                      accessibilityLabel={`${monthLabel(statement.periodMonth)} · ${formatMinorCompact(amount)} · ${dates}`}
-                      style={{ gap: 5 }}
-                    >
-                      <Spread style={{ alignItems: "center" }}>
-                        <Body style={{ flex: 1, paddingRight: spacing.sm }}>{monthLabel(statement.periodMonth)}</Body>
-                        <Amount
-                          minor={amount}
-                          colorized={false}
-                          accessibilityLabel={formatMinorCompact(amount)}
-                          style={{ textAlign: "right" }}
-                        />
-                      </Spread>
-                      <View style={{ height: 4, borderRadius: 2, overflow: "hidden", backgroundColor: palette.surfaceAlt }}>
-                        <View style={{ width: `${share}%`, height: "100%", borderRadius: 2, backgroundColor: palette.primary }} />
-                      </View>
-                      <Body muted style={{ fontSize: type.small.fontSize }}>{dates}</Body>
-                    </View>
-                  );
-                })}
-              </View>
-              {editingStatements.length > shownStatements.length ? (
-                <Body muted style={{ marginTop: spacing.sm, fontSize: type.small.fontSize }}>
-                  {tr.sources.statementMore(editingStatements.length - shownStatements.length)}
-                </Body>
-              ) : null}
-            </Card>
-          ) : null}
+            <SourceFormCard form={form} persons={persons} busy={busy[0]} />
+            {form.editingId && form.sourceType === "credit_card" ? <StatementHistoryCard cardId={form.editingId} /> : null}
           </View>
         )}
         secondary={(
           <View>
-          {resolving ? (
-            <Card>
-          <PanelHeader
-            icon={Trash}
-            title={tr.references.sourceInUse(resolving.source.name)}
-            description={tr.references.resolveBeforeDelete}
-          />
-          {usageRows.map(([label, count]) => (
-            <Spread key={String(label)} style={{ marginBottom: spacing.xs }}>
-              <Body muted>{label}</Body>
-              <Body>{String(count)}</Body>
-            </Spread>
-          ))}
-          <Body style={{ marginTop: spacing.sm, marginBottom: spacing.sm }}>{tr.references.chooseSource}</Body>
-          {cardReplacementRequired ? <Body muted style={{ marginBottom: spacing.sm }}>{tr.references.cardReplacementRequired}</Body> : null}
-          <ChipPicker
-            options={[
-              ...(!cardReplacementRequired ? [{ value: NO_SOURCE, label: tr.references.noSource }] : []),
-              ...replacementOptions.map((source) => ({ value: source.id, label: source.name })),
-            ]}
-            value={replacementChoice}
-            onChange={setReplacementChoice}
-          />
-          <Row>
-            <View style={{ flex: 1 }}>
-              <Button
-                label={tr.references.reassignAndDelete}
-                onPress={() => void reassign()}
-                disabled={busy || (cardReplacementRequired && replacementChoice === NO_SOURCE)}
-                loading={busy}
-              />
-            </View>
-            <Button label={tr.common.cancel} variant="ghost" onPress={() => setResolving(null)} disabled={busy} />
-          </Row>
-            </Card>
-          ) : null}
-
-          {sources.length === 0 ? (
-            <EmptyState icon={WalletCards} title={tr.sources.emptyTitle} hint={tr.sources.emptyHint} />
-          ) : (
-            <>
-              <SectionHeader description={tr.sources.listHint}>{tr.sources.listTitle}</SectionHeader>
-              <CardList
-                items={sources}
-                keyExtractor={(s) => s.id}
-                renderItem={(s) => (
-                  <PaymentSourceRow
-                    source={s}
-                    ownerName={persons.length > 1 ? persons.find((p) => p.id === s.personId)?.name ?? tr.common.none : null}
-                    onEdit={() => startEdit(s)}
-                    onDelete={() => void remove(s)}
-                  />
-                )}
-              />
-            </>
-          )}
+            <SourceInUseCard removal={removal} busy={busy[0]} />
+            {sources.length === 0 ? (
+              <EmptyState icon={WalletCards} title={tr.sources.emptyTitle} hint={tr.sources.emptyHint} />
+            ) : (
+              <>
+                <SectionHeader description={tr.sources.listHint}>{tr.sources.listTitle}</SectionHeader>
+                <CardList
+                  items={sources}
+                  keyExtractor={(s) => s.id}
+                  renderItem={(s) => (
+                    <PaymentSourceRow
+                      source={s}
+                      ownerName={persons.length > 1 ? persons.find((p) => p.id === s.personId)?.name ?? tr.common.none : null}
+                      onEdit={() => form.startEdit(s)}
+                      onDelete={() => void removal.remove(s)}
+                    />
+                  )}
+                />
+              </>
+            )}
           </View>
         )}
       />

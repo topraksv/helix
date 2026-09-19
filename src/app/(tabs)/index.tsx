@@ -409,17 +409,11 @@ function greeting(): string {
   return tr.dashboard.greetingEvening;
 }
 
-export default function DashboardScreen() {
-  // The ledger is the tab this app exists for and the most expensive one to
-  // create. Built while the navigator is fading between two scenes it drops
-  // frames once, on the first arrival; built here, in idle, it drops none.
-  useWarmRoute("cash-flow");
-  useHourTick();
-  const userId = useUserId();
-  const previousLoginAt = useSession((state) => state.previousLoginAt);
-  // "You told me X; the table says Y" — computed here so the hero can mark it
-  // and the ledger's own closing row can mark the same thing.
+type Expected = ReturnType<typeof usePendingExpectedState>["data"][number];
 
+/** Everything the dashboard reads, and the month model built from it. */
+function useDashboardData() {
+  const userId = useUserId();
   const today = todayISO();
   const year = yearOf(today);
   const month = monthKeyOf(today);
@@ -434,12 +428,9 @@ export default function DashboardScreen() {
   const cardStatementsState = useCreditCardStatementsState();
   const bundle = ledgerState.data;
   const categories = categoriesState.data;
-  const persons = personsState.data;
   const expected = expectedState.data;
   const subscriptions = subscriptionsState.data;
   const incomes = incomesState.data;
-  const sources = sourcesState.data;
-  const cardStatements = cardStatementsState.data;
   // Payments recorded by hand. A partly paid statement still owes the rest on
   // the list, and its charges no longer come off the forecast (spec §3.1f).
   const { byStatement } = useCardSettlement();
@@ -451,47 +442,25 @@ export default function DashboardScreen() {
     () => new Set([...byStatement.values()].filter((settled) => settled.paidInFullOn == null).map((settled) => settled.statementId)),
     [byStatement],
   );
-  const { status: dataStatus, retry: retryData } = combineLiveStates([
-    ledgerState,
-    categoriesState,
-    personsState,
-    expectedState,
-    subscriptionsState,
-    incomesState,
-    sourcesState,
-    cardStatementsState,
-  ]);
-  const router = useRouter();
-  const undo = useUndo();
-  const { palette, scheme } = useTheme();
-  const hero = heroSurface(palette, scheme);
-  const heroInk = hero.ink;
-  const contentWidth = useContentWidth();
-  const chartColors = useSeriesColors();
+  const live = combineLiveStates([ledgerState, categoriesState, personsState, expectedState, subscriptionsState, incomesState, sourcesState, cardStatementsState]);
   // Re-render when FX rates land so foreign-currency projections settle.
   useFxRates();
 
   // Its own memo, so the empty-ledger fallback is one stable array rather than
   // a new one per render feeding everything derived from it.
   const txLike = useMemo(() => bundle?.txLike ?? [], [bundle]);
-  const selfPersonId = persons.find((p) => p.isSelf)?.id;
   const categoryById = useMemo(() => new Map(categories.map((category) => [category.id, category])), [categories]);
   const subscriptionById = useMemo(() => new Map(subscriptions.map((s) => [s.id, s])), [subscriptions]);
   const incomeById = useMemo(() => new Map(incomes.map((income) => [income.id, income])), [incomes]);
-
-  const catName = React.useCallback(
-    (id: string | null) => (id ? categoryById.get(id)?.name : undefined),
-    [categoryById],
-  );
-  const nameOf = (e: (typeof expected)[number]) =>
-    subscriptionById.get(e.refId)?.name ?? incomeById.get(e.refId)?.name ?? tr.common.paymentFallback;
+  const catName = React.useCallback((id: string | null) => (id ? categoryById.get(id)?.name : undefined), [categoryById]);
   // Missing FX stays missing; a foreign amount is never treated as TRY.
   const expectedTryMinor = (currency: string, amountMinor: number): number | null => {
     if (currency === "TRY") return amountMinor;
     const rateTry = marketSellRateTry(currency) ?? lookupRate(userId, currency)?.rate.rateTry ?? null;
     return rateTry == null ? null : convertToTryMinor(amountMinor, rateTry);
   };
-  const monthEnd = lastDayOf(month);
+  // Deliberately NOT memoized: `expectedTryMinor` reads the live market store,
+  // which this screen does not subscribe to, so a dependency list would pin a rate.
   const model = buildDashboardModel({
     transactions: txLike,
     expected,
@@ -499,236 +468,84 @@ export default function DashboardScreen() {
     actualBalanceMinor: bundle?.actualBalanceMinor ?? null,
     today,
     monthStart: firstDayOf(month),
-    monthEnd,
+    monthEnd: lastDayOf(month),
     currentMonth: month,
     year,
     expectedTryMinor,
     partlyPaidStatementIds,
   });
-  const { lateItems: late, incomingMinor, outgoingMinor: remainingFixedMinor } = model;
-  // Derived from every transaction the account has, so it is derived from the
-  // data and not from the render. `buildDashboardModel` above deliberately is
-  // NOT memoized: its `expectedTryMinor` reads the live market store, which
-  // this screen does not subscribe to, so pinning it to a dependency list would
-  // pin an exchange rate.
+  // Derived from every transaction the account has, so from the data and not the render.
   const upcoming = useMemo(() => buildUpcomingTimeline({
     expected,
     transactions: txLike,
     expectedSources: [
-      ...subscriptions.map((subscription) => ({
-        id: subscription.id,
-        name: subscription.name,
-        sourceType: "subscription" as const,
-        categoryName: catName(subscription.categoryId) ?? null,
-      })),
-      ...incomes.map((income) => ({
-        id: income.id,
-        name: income.name,
-        sourceType: "recurring_income" as const,
-        categoryName: catName(income.categoryId) ?? null,
-      })),
+      ...subscriptions.map((subscription) => ({ id: subscription.id, name: subscription.name, sourceType: "subscription" as const, categoryName: catName(subscription.categoryId) ?? null })),
+      ...incomes.map((income) => ({ id: income.id, name: income.name, sourceType: "recurring_income" as const, categoryName: catName(income.categoryId) ?? null })),
     ],
     categories: categories.map((category) => ({ id: category.id, name: category.name })),
-    cards: sources.filter((source) => source.type === "credit_card"),
-    statements: cardStatements,
+    cards: sourcesState.data.filter((source) => source.type === "credit_card"),
+    statements: cardStatementsState.data,
     statementPaidMinor,
     today,
     horizonDays: 31,
   }).filter((item) => item.status === "upcoming"),
-  [expected, txLike, subscriptions, incomes, categories, sources, cardStatements, statementPaidMinor, today, catName]);
-  const dashboardLate = late.slice(0, 5);
-  const dashboardUpcoming = upcoming.slice(0, Math.max(0, 5 - dashboardLate.length));
-  const timelineTypeLabel = (sourceType: (typeof upcoming)[number]["sourceType"]) => ({
-    recurring_income: tr.dashboard.expectedIncome,
-    subscription: tr.subs.title,
-    scheduled_transaction: tr.dashboard.scheduledTx,
-    card_statement: tr.dashboard.cardStatement,
-  })[sourceType];
+  [expected, txLike, subscriptions, incomes, categories, sourcesState.data, cardStatementsState.data, statementPaidMinor, today, catName]);
 
-  const projected = model.projectedMinor;
-  const monthIncomeMinor = model.distribution.incomeTotalMinor;
-  const monthOutflowMinor = model.distribution.expenseTotalMinor + model.distribution.transferTotalMinor;
-  const monthNetMinor = monthIncomeMinor - monthOutflowMinor;
-  const monthDonut = distributionDonutData(
-    model.distribution,
-    chartColors,
-    (id) => categoryById.get(id)?.name ?? tr.common.none,
-  );
-  const hasMonthFlow = monthIncomeMinor !== 0 || monthDonut.slices.length > 0 || monthDonut.supplementalSlices.length > 0;
-  const monthBars = [{
-    label: monthName(month),
-    values: [monthIncomeMinor, model.distribution.expenseTotalMinor, model.distribution.transferTotalMinor],
-  }];
-  const monthBarSeries = [
-    { label: tr.cashflow.income, color: palette.positive },
-    { label: tr.cashflow.expense, color: palette.negative },
-    { label: tr.cashflow.transfer, color: palette.secondary },
-  ];
+  return {
+    userId, today, month, bundle, expected, model, upcoming, categoryById, subscriptionById, incomeById, live,
+    selfPersonId: personsState.data.find((p) => p.isSelf)?.id,
+    nameOf: (e: Expected) => subscriptionById.get(e.refId)?.name ?? incomeById.get(e.refId)?.name ?? tr.common.paymentFallback,
+    // "You told me X; the table says Y" — the ledger has moved away from the last
+    // figure the user confirmed against a real account.
+    balanceDrift: balanceDeclarationDrift(
+      parseBalanceDeclaration(settingValue<unknown>(settingsState.data, "balance_declared", null)),
+      bundle?.actualBalanceMinor ?? null,
+    ),
+  };
+}
 
-  // A paid item realizes on its actual payment day, not its planned due day.
-  const [showForecast, setShowForecast] = React.useState(false);
-  // Remembered, like the ledger's own view mode and pins. It was the one
-  // view preference in the app that reset itself: choosing bars and coming
-  // back from another tab put the pie chart back.
-  const [chartType, setChartType] = React.useState<"pie" | "bars">("pie");
-  React.useEffect(() => {
-    void kv.get(CHART_TYPE_KEY).then((value) => {
-      if (value === "pie" || value === "bars") setChartType(value);
-    });
-  }, []);
-  const changeChartType = React.useCallback((value: "pie" | "bars") => {
-    setChartType(value);
-    void kv.set(CHART_TYPE_KEY, value);
-  }, []);
-  const [paying, setPaying] = React.useState<(typeof expected)[number] | null>(null);
-  const [amountEditing, setAmountEditing] = React.useState<(typeof expected)[number] | null>(null);
-  const defaultPaidDate = (dueDate: string): ISODate => (dueDate <= today ? (dueDate as ISODate) : today);
-  const [confirmingId, setConfirmingId] = React.useState<string | null>(null);
+type DashboardData = ReturnType<typeof useDashboardData>;
+
+/** Marking an expected payment paid on the day it was paid, or entering a variable bill's amount first. */
+function useExpectedActions(data: DashboardData) {
+  const { userId, today, selfPersonId, subscriptionById, incomeById } = data;
+  const undo = useUndo();
   const operationGuard = useOperationGuard();
-  const needsAmountEntry = (e: (typeof expected)[number]) => needsVariableAmountEntry(e, subscriptionById);
-  // One rule for how an estimated amount reads, shared with the catch-up and
-  // upcoming screens so the three cannot drift apart.
-  const amountFragment = (item: { amountMinor: number; currency: string; amountIsEstimated?: boolean }) =>
-    occurrenceAmountText(item, formatMinorCompact, AMOUNT_LABELS);
-  const saveExpectedAmount = async (amountMinor: number) => {
-    if (!amountEditing) return;
-    await setExpectedAmount(userId, amountEditing.id, amountMinor);
-    scheduleSync(userId);
-    undo.show(tr.subs.amountEntrySaved);
-  };
-  const confirm = async (e: (typeof expected)[number], paidOn: ISODate) => {
+  const [paying, setPaying] = React.useState<Expected | null>(null);
+  const [amountEditing, setAmountEditing] = React.useState<Expected | null>(null);
+  const [confirmingId, setConfirmingId] = React.useState<string | null>(null);
+  const open = (e: Expected) => (needsVariableAmountEntry(e, subscriptionById) ? setAmountEditing(e) : setPaying(e));
+  const confirm = (e: Expected, paidOn: ISODate) => operationGuard.run(async () => {
     if (!selfPersonId) return;
-    await operationGuard.run(async () => {
-      setConfirmingId(e.id);
-      try {
-        const sub = subscriptionById.get(e.refId);
-        const income = incomeById.get(e.refId);
-        await confirmExpected(userId, e.id, {
-          personId: sub?.personId ?? income?.personId ?? selfPersonId,
-          categoryId: sub?.categoryId ?? income?.categoryId ?? null,
-          paidOn,
-        });
-        scheduleSync(userId);
-        undo.show(`${nameOf(e)} ✓`, () => revertExpected(userId, e.id));
-      } catch (err) {
-        errorNotice();
-        if (err instanceof FxRateUnavailableError) void appAlert(tr.errors.fxUnavailable);
-        else {
-          devError("confirm", err);
-          void appAlert(tr.errors.saveFailed);
-        }
-      } finally {
-        setConfirmingId(null);
+    setConfirmingId(e.id);
+    try {
+      const sub = subscriptionById.get(e.refId);
+      const income = incomeById.get(e.refId);
+      await confirmExpected(userId, e.id, {
+        personId: sub?.personId ?? income?.personId ?? selfPersonId,
+        categoryId: sub?.categoryId ?? income?.categoryId ?? null,
+        paidOn,
+      });
+      scheduleSync(userId);
+      undo.show(`${data.nameOf(e)} ✓`, () => revertExpected(userId, e.id));
+    } catch (err) {
+      errorNotice();
+      if (err instanceof FxRateUnavailableError) void appAlert(tr.errors.fxUnavailable);
+      else {
+        devError("confirm", err);
+        void appAlert(tr.errors.saveFailed);
       }
-    });
-  };
-
-  const projectedDelta = bundle && projected != null ? projected - bundle.actualBalanceMinor : null;
-  // "You told me X; the table says Y" — the ledger has moved away from the last
-  // figure the user confirmed against a real account.
-  const balanceDrift = balanceDeclarationDrift(
-    parseBalanceDeclaration(settingValue<unknown>(settingsState.data, "balance_declared", null)),
-    bundle?.actualBalanceMinor ?? null,
-  );
-  const wideDashboard = shouldSplitDashboardHero(contentWidth);
-  const pairedDashboard = shouldPairDashboardPanels(contentWidth);
-  const dashboardUpcomingCount = late.length + upcoming.length;
-  const marketDesktopColumns: 2 | 3 = dashboardUpcomingCount <= 3 ? 3 : 2;
-  const analysisSection = (
+    } finally {
+      setConfirmingId(null);
+    }
+  });
+  const sheets = (
     <>
-      <SectionHeader>{tr.dashboard.monthInsight}</SectionHeader>
-      {/* `rows`, because the first child is a pressable row: without it the
-          card's own top padding sits outside that row's pressable and the
-          hover lights a band that stops short of the card's top edge, which
-          reads as a fill that missed rather than as the control it is. The
-          block below gives the padding back on the side that has no row. */}
-      <Card rows>
-        <ListRow
-          icon={ChartNoAxesColumn}
-          title={tr.dashboard.monthNet(formatMinorCompact(monthNetMinor))}
-          // Signed, like the hero strip six centimetres above it and like the
-          // month card. Gelir + Çıkış = Net değişim only reads as arithmetic
-          // when the outflow carries its sign; this line showed the same
-          // ₺7.669,05 unsigned while the strip showed it signed, so one screen
-          // stated one figure two ways.
-          subtitle={tr.dashboard.monthFlowSummary(formatMinorCompact(monthIncomeMinor), formatMinorCompact(-monthOutflowMinor))}
-          chevron
-          // Root-level route, not the tab's own. Pushing into the Cash Flow
-          // stack from here would mount that tab's index underneath, and the
-          // iOS edge swipe pops to whatever is underneath — the Financial
-          // Table, not this screen. At the root, what is underneath IS this
-          // screen, so the gesture and the back button agree.
-          onPress={() => router.push("/analytics")}
-        />
-        {/* Flush, because the row above it is a pressable that carries its own
-            padding: a divider with margins pushed the rule eight pixels clear
-            of the row and the hover fill stopped there, short of it. The block
-            below takes that half of the space back so the chart does not move. */}
-        <Divider flush />
-        <View style={{ paddingTop: spacing.sm, paddingBottom: density.list.cardPadding }}>
-        {hasMonthFlow ? (
-          <>
-            <Segmented
-              noMargin
-              options={[
-                { value: "pie", label: tr.analysis.chartPie },
-                { value: "bars", label: tr.analysis.chartBars },
-              ]}
-              value={chartType}
-              onChange={changeChartType}
-            />
-            {/* No `alignItems: center` here: the chart already lays its ring
-                and legend out as one centred row, and centring the wrapper
-                collapsed that row to its content width so the two wrapped and
-                stacked with a third of the card empty on either side. */}
-            <View style={{ marginTop: spacing.lg }}>
-              {chartType === "pie" ? (
-                <Donut
-                  slices={monthDonut.slices}
-                  supplementalSlices={monthDonut.supplementalSlices}
-                  totalMinor={monthDonut.totalMinor}
-                  // A ceiling per class of viewport, not a fixed ring: the
-                  // month card owns a whole desktop row, and a 236 ring in it
-                  // is a small picture in a large frame. `Donut` still fits
-                  // whatever box it actually gets.
-                  size={shouldUseCompactChart(contentWidth) ? 152 : shouldUseLargeDonut(contentWidth) ? 300 : 236}
-                />
-              ) : (
-                <ChartFrame>
-                  {(chartWidth) => <Bars width={chartWidth} groups={monthBars} series={monthBarSeries} />}
-                </ChartFrame>
-              )}
-            </View>
-          </>
-        ) : (
-          <Body muted style={{ marginTop: spacing.md }}>{tr.analysis.noResults}</Body>
-        )}
-        </View>
-      </Card>
-    </>
-  );
-  return (
-    <Screen
-      title={greeting()}
-      subtitle={dateLabel(today)}
-      // The rail already carries the mark and the product name at desktop
-      // widths; repeating it beside the greeting is the same identity twice on
-      // one screen. Phones have no rail, so the greeting keeps it.
-      leading={<BrandMark size={40} />}
-      width="workspace"
-    >
-      <FirstRunTour />
-      <DataStateNotice status={dataStatus} retry={retryData} />
-      {previousLoginAt ? (
-        <View style={{ marginBottom: spacing.sm, alignSelf: "flex-start" }}>
-          <Badge icon={ShieldCheck} text={tr.dashboard.lastLogin(dateTimeLabel(previousLoginAt))} />
-        </View>
-      ) : null}
-      {/* "When did you pay?" — records the actual paid day for an expected item,
-          so an early/manual payment realizes on that date. Future days disabled. */}
+      {/* "When did you pay?" — records the actual paid day, so an early or manual
+          payment realizes on that date. Future days disabled. */}
       {paying ? (
         <CalendarSheet
-          value={defaultPaidDate(paying.dueDate)}
+          value={paying.dueDate <= today ? (paying.dueDate as ISODate) : today}
           max={today}
           onSelect={(iso) => void confirm(paying, iso)}
           onClose={() => setPaying(null)}
@@ -739,7 +556,11 @@ export default function DashboardScreen() {
           currency={amountEditing.currency}
           currentMinor={amountEditing.amountMinor}
           isEstimated={amountEditing.amountIsEstimated === true}
-          onSave={saveExpectedAmount}
+          onSave={async (amountMinor) => {
+            await setExpectedAmount(userId, amountEditing.id, amountMinor);
+            scheduleSync(userId);
+            undo.show(tr.subs.amountEntrySaved);
+          }}
           onClose={() => setAmountEditing(null)}
           onError={(error) => {
             devError("dashboard.amount", error);
@@ -747,10 +568,496 @@ export default function DashboardScreen() {
           }}
         />
       ) : null}
-      {/* Reconciliation nudge — shown only when payments are actually overdue and
-          awaiting confirmation (not on a stale "days since last entry" timer, which
-          lingered even with nothing to do). Derived from live data, so it clears
-          itself the moment the last item is confirmed. */}
+    </>
+  );
+  return { open, confirmingId, sheets, needsAmountEntry: (e: Expected) => needsVariableAmountEntry(e, subscriptionById) };
+}
+
+/** The ledger has moved away from the last figure the owner confirmed; the mark opens the screen that says by how much. */
+function BalanceDriftPill() {
+  const router = useRouter();
+  const { palette } = useTheme();
+  return (
+    // The painted pill stays compact beside a label in a hero, but the PRESSABLE
+    // is the platform minimum: an 18pt pill navigated, and react-native-web does
+    // not implement `hitSlop` to rescue it.
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={tr.settings.balanceDriftTitle}
+      onPress={() => router.push("/opening-balance")}
+      style={{ minHeight: controlSize.minimumTarget, justifyContent: "center" }}
+    >
+      {(state) => (
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            gap: 4,
+            paddingHorizontal: spacing.sm,
+            paddingVertical: spacing.xs,
+            borderRadius: radius.full,
+            backgroundColor: palette.warning + "1C",
+            ...interactionSurface(palette, state, { base: palette.warning + "1C" }),
+            borderWidth: StyleSheet.hairlineWidth,
+            borderColor: palette.warning + "80",
+          }}
+        >
+          <TriangleAlert accessible={false} size={iconSize.compact} color={palette.warningText} strokeWidth={2.4} />
+          <Text style={[type.small, { color: palette.warningText, fontFamily: font.semibold }]}>{tr.settings.balanceDriftShort}</Text>
+        </View>
+      )}
+    </Pressable>
+  );
+}
+
+function ForecastToggle({ projected, actual, open, onToggle, wide }: { projected: number; actual: number; open: boolean; onToggle: () => void; wide: boolean }) {
+  const { palette } = useTheme();
+  const rising = projected - actual >= 0;
+  return (
+    <Pressable
+      testID="dashboard-forecast-toggle"
+      accessibilityRole="button"
+      accessibilityLabel={`${tr.dashboard.forecastToggle} ${rising ? tr.dashboard.forecastRising : tr.dashboard.forecastFalling}`}
+      aria-expanded={open}
+      accessibilityState={{ expanded: open }}
+      onPress={onToggle}
+      style={(state) => ({
+        flexDirection: "row",
+        alignItems: "center",
+        gap: spacing.sm,
+        marginTop: spacing.md,
+        borderTopWidth: StyleSheet.hairlineWidth,
+        borderTopColor: palette.border,
+        // The row reaches the rule below it with its own PADDING, symmetric as
+        // `resilience.spec.ts` requires: a cancelled margin put the rule through
+        // the lit band. The wide layout draws that rule beside this column instead.
+        ...(wide ? { paddingVertical: spacing.md, marginBottom: -spacing.md } : { paddingVertical: spacing.lg }),
+        ...interactionSurface(palette, state),
+      })}
+    >
+      {/* Direction is carried by the glyph, never by colour: a forecast that fell
+          but stayed positive once showed a red arrow beside a green number. */}
+      {rising
+        ? <TrendingUp accessible={false} size={iconSize.accessory} color={palette.textSecondary} />
+        : <TrendingDown accessible={false} size={iconSize.accessory} color={palette.textSecondary} />}
+      <View style={{ flex: 1, gap: 2, minWidth: 0 }}>
+        <Text style={[type.label, { color: palette.textSecondary }]}>{tr.dashboard.forecastToggle}</Text>
+        <Amount minor={projected} colorized={false} color={projected >= 0 ? palette.positiveText : palette.negativeText} style={{ textAlign: "left" }} />
+      </View>
+      <DisclosureChevron open={open} size={18} color={palette.accentText} />
+    </Pressable>
+  );
+}
+
+function BalanceHero({ data, wide, showForecast, onToggleForecast }: { data: DashboardData; wide: boolean; showForecast: boolean; onToggleForecast: () => void }) {
+  const router = useRouter();
+  const { palette, scheme } = useTheme();
+  const heroInk = heroSurface(palette, scheme).ink;
+  const { bundle, model, month } = data;
+  if (!bundle) {
+    return (
+      <HeroCard>
+        {/* Same label and amount line heights as the loaded state, so the hero
+            does not change height when the figures arrive. */}
+        <Skeleton width={120} height={type.label.fontSize} />
+        <Skeleton width={208} height={type.amountLg.fontSize} style={{ marginTop: spacing.xs }} />
+      </HeroCard>
+    );
+  }
+  const projected = model.projectedMinor;
+  const incomeMinor = model.distribution.incomeTotalMinor;
+  const outflowMinor = model.distribution.expenseTotalMinor + model.distribution.transferTotalMinor;
+  return (
+    <HeroCard>
+      <View style={wide ? { flexDirection: "row", alignItems: "stretch" } : undefined}>
+        <View style={wide ? { flex: 1, paddingRight: spacing.xl, justifyContent: "center" } : undefined}>
+          <Row gap={spacing.sm} style={{ alignItems: "center" }}>
+            <Eyebrow color={heroInk}>{tr.dashboard.actualBalance}</Eyebrow>
+            {data.balanceDrift != null ? <BalanceDriftPill /> : null}
+          </Row>
+          <Amount
+            testID="dashboard-current-balance"
+            minor={bundle.actualBalanceMinor}
+            hero
+            count
+            colorized={false}
+            color={heroInk}
+            style={{ marginTop: spacing.xs, textAlign: "left" }}
+          />
+          {projected != null ? <ForecastToggle projected={projected} actual={bundle.actualBalanceMinor} open={showForecast} onToggle={onToggleForecast} wide={wide} /> : null}
+        </View>
+        <View
+          accessible={false}
+          style={wide
+            ? { width: StyleSheet.hairlineWidth, backgroundColor: palette.border, marginHorizontal: spacing.xl }
+            // The forecast row owns the space down to this line, so its hover ends ON
+            // the rule; the full gap returns when that row is absent.
+            : { height: StyleSheet.hairlineWidth, backgroundColor: palette.border, marginTop: projected != null ? 0 : spacing.lg, marginBottom: spacing.lg }}
+        />
+        <View style={wide ? { flex: 1, paddingLeft: spacing.xl, justifyContent: "space-between" } : undefined}>
+          <View>
+            <Eyebrow>{monthName(month)}</Eyebrow>
+            <MetricStrip
+              testID="dashboard-month-metrics"
+              style={{ marginTop: spacing.md }}
+              // The three figures share one line and shorten together on the
+              // shared compact scale rather than dropping "Net değişim" a row.
+              items={[
+                { label: tr.cashflow.income, minor: incomeMinor, color: palette.positiveText },
+                { label: tr.dashboard.outflow, minor: -outflowMinor, color: palette.negativeText },
+                { label: tr.dashboard.netChange, minor: incomeMinor - outflowMinor },
+              ]}
+            />
+          </View>
+          {/* One door per destination: the warning card above already opens reconciliation. */}
+          <Row style={{ marginTop: spacing.lg }}>
+            <View style={{ flex: 1 }}>
+              <Button icon={Plus} label={tr.cashflow.addTransaction} onPress={() => router.push("/transaction")} />
+            </View>
+          </Row>
+        </View>
+      </View>
+    </HeroCard>
+  );
+}
+
+/** A line of the forecast's arithmetic. */
+function ForecastLine({ label, minor, color }: { label: string; minor: number; color?: string }) {
+  return (
+    <Spread style={{ marginBottom: spacing.xs }}>
+      <Body muted={color == null} style={color ? { color } : undefined}>{label}</Body>
+      <Amount minor={minor} colorized={color == null} color={color} />
+    </Spread>
+  );
+}
+
+function ForecastPanel({ data }: { data: DashboardData }) {
+  const { palette } = useTheme();
+  const { bundle, model } = data;
+  const projected = model.projectedMinor;
+  if (!bundle || projected == null) return null;
+  const resultColor = projected >= 0 ? palette.positiveText : palette.negativeText;
+  return (
+    <Card style={{ marginBottom: 0 }}>
+      {/* One sentence: what the figure is, and that today's balance is not it. */}
+      <Body muted style={{ fontSize: type.small.fontSize, marginBottom: spacing.sm }}>{tr.dashboard.forecastHint}</Body>
+      <ForecastLine label={tr.dashboard.forecastCurrent} minor={bundle.actualBalanceMinor} />
+      {model.incomingMinor > 0 ? <ForecastLine label={tr.dashboard.forecastIncoming} minor={model.incomingMinor} color={palette.positiveText} /> : null}
+      {model.outgoingMinor > 0 ? <ForecastLine label={tr.dashboard.forecastOutgoing} minor={-model.outgoingMinor} color={palette.negativeText} /> : null}
+      <Divider />
+      <Spread>
+        <Body style={{ fontFamily: font.semibold }}>{tr.dashboard.forecastResult}</Body>
+        <Amount minor={projected} colorized={false} color={resultColor} />
+      </Spread>
+      {/* The figure above sums what is KNOWN. This is the month once the spending
+          no rule predicts happens too — measured from history, not recorded, so
+          it sits below the result where a reader can tell the two apart. */}
+      {model.expectedVariableMinor != null && model.expectedVariableMinor > 0 ? (
+        <>
+          <Spread style={{ marginTop: spacing.xs }}>
+            <Body muted>{tr.dashboard.forecastTypical}</Body>
+            <Amount minor={projected - model.expectedVariableMinor} colorized={false} color={palette.textSecondary} />
+          </Spread>
+          <Body muted style={{ fontSize: type.small.fontSize, marginTop: spacing.xs }}>
+            {tr.dashboard.forecastTypicalHint(formatMinorCompact(model.expectedVariableMinor))}
+          </Body>
+        </>
+      ) : null}
+    </Card>
+  );
+}
+
+function MonthInsightCard({ data }: { data: DashboardData }) {
+  const router = useRouter();
+  const { palette } = useTheme();
+  const contentWidth = useContentWidth();
+  const chartColors = useSeriesColors();
+  // Remembered, like the ledger's own view mode and pins: coming back from
+  // another tab used to put the pie chart back.
+  const [chartType, setChartType] = React.useState<"pie" | "bars">("pie");
+  React.useEffect(() => {
+    void kv.get(CHART_TYPE_KEY).then((value) => {
+      if (value === "pie" || value === "bars") setChartType(value);
+    });
+  }, []);
+  const { distribution } = data.model;
+  const incomeMinor = distribution.incomeTotalMinor;
+  const outflowMinor = distribution.expenseTotalMinor + distribution.transferTotalMinor;
+  const donut = distributionDonutData(distribution, chartColors, (id) => data.categoryById.get(id)?.name ?? tr.common.none);
+  const hasFlow = incomeMinor !== 0 || donut.slices.length > 0 || donut.supplementalSlices.length > 0;
+  return (
+    <>
+      <SectionHeader>{tr.dashboard.monthInsight}</SectionHeader>
+      {/* `rows`, because the first child is a pressable row whose hover must
+          reach the card's top edge; the block below gives the padding back. */}
+      <Card rows>
+        <ListRow
+          icon={ChartNoAxesColumn}
+          title={tr.dashboard.monthNet(formatMinorCompact(incomeMinor - outflowMinor))}
+          // Signed, like the hero strip above it: Gelir + Çıkış = Net değişim
+          // only reads as arithmetic when the outflow carries its sign.
+          subtitle={tr.dashboard.monthFlowSummary(formatMinorCompact(incomeMinor), formatMinorCompact(-outflowMinor))}
+          chevron
+          // Root-level route, so the iOS edge swipe pops back to this screen and
+          // not to the Cash Flow tab's own index.
+          onPress={() => router.push("/analytics")}
+        />
+        {/* Flush, because the row above carries its own padding and the hover fill must reach the rule. */}
+        <Divider flush />
+        <View style={{ paddingTop: spacing.sm, paddingBottom: density.list.cardPadding }}>
+          {hasFlow ? (
+            <>
+              <Segmented
+                noMargin
+                options={[{ value: "pie", label: tr.analysis.chartPie }, { value: "bars", label: tr.analysis.chartBars }]}
+                value={chartType}
+                onChange={(value) => {
+                  setChartType(value);
+                  void kv.set(CHART_TYPE_KEY, value);
+                }}
+              />
+              {/* No `alignItems: center`: the chart lays its ring and legend out as
+                  one centred row, and a centred wrapper collapsed that row. */}
+              <View style={{ marginTop: spacing.lg }}>
+                {chartType === "pie" ? (
+                  <Donut
+                    slices={donut.slices}
+                    supplementalSlices={donut.supplementalSlices}
+                    totalMinor={donut.totalMinor}
+                    // A ceiling per class of viewport; `Donut` fits whatever box it gets.
+                    size={shouldUseCompactChart(contentWidth) ? 152 : shouldUseLargeDonut(contentWidth) ? 300 : 236}
+                  />
+                ) : (
+                  <ChartFrame>
+                    {(chartWidth) => (
+                      <Bars
+                        width={chartWidth}
+                        groups={[{ label: monthName(data.month), values: [incomeMinor, distribution.expenseTotalMinor, distribution.transferTotalMinor] }]}
+                        series={[
+                          { label: tr.cashflow.income, color: palette.positive },
+                          { label: tr.cashflow.expense, color: palette.negative },
+                          { label: tr.cashflow.transfer, color: palette.secondary },
+                        ]}
+                      />
+                    )}
+                  </ChartFrame>
+                )}
+              </View>
+            </>
+          ) : (
+            <Body muted style={{ marginTop: spacing.md }}>{tr.analysis.noResults}</Body>
+          )}
+        </View>
+      </Card>
+    </>
+  );
+}
+
+/** A compact calendar picture gives an otherwise empty equal-height desktop panel weight without inventing a payment. */
+function UpcomingEmpty({ fill }: { fill: boolean }) {
+  const router = useRouter();
+  const { palette } = useTheme();
+  const dots = (size: number) => (
+    <View style={{ flexDirection: "row", gap: 4 }}>
+      {[palette.surfaceStrong, palette.surfaceStrong, palette.primary].map((color, index) => (
+        <View key={index} style={{ width: size, height: size, borderRadius: circle(size), backgroundColor: color }} />
+      ))}
+    </View>
+  );
+  return (
+    <Card style={fill ? { flex: 1 } : undefined}>
+      <View style={fill ? { flex: 1, justifyContent: "center", alignItems: "center", gap: spacing.sm } : { alignItems: "center", gap: spacing.sm }}>
+        <View
+          accessible={false}
+          style={{
+            width: fill ? "76%" : 84,
+            maxWidth: 300,
+            height: fill ? 170 : 68,
+            overflow: "hidden",
+            alignItems: "center",
+            justifyContent: "center",
+            borderRadius: radius.md,
+            borderWidth: 1,
+            borderColor: palette.border + "70",
+            backgroundColor: palette.surfaceAlt,
+          }}
+        >
+          <View style={{ position: "absolute", left: 0, right: 0, top: 0, height: fill ? 8 : 6, backgroundColor: palette.primary }} />
+          {fill ? (
+            <View style={{ alignSelf: "stretch", flex: 1, padding: spacing.lg, paddingTop: spacing.xl }}>
+              <Spread style={{ marginBottom: spacing.md }}>
+                <CalendarClock size={22} color={palette.accentText} strokeWidth={1.8} />
+                {dots(6)}
+              </Spread>
+              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
+                {Array.from({ length: 20 }, (_, index) => (
+                  <View
+                    key={index}
+                    style={{
+                      flexBasis: "16%",
+                      flexGrow: 1,
+                      height: 15,
+                      borderRadius: 3,
+                      backgroundColor: index === 17 ? palette.primarySoft : palette.surface,
+                      borderWidth: StyleSheet.hairlineWidth,
+                      borderColor: index === 17 ? palette.primary + "70" : palette.border + "50",
+                    }}
+                  />
+                ))}
+              </View>
+            </View>
+          ) : (
+            <>
+              <CalendarClock size={25} color={palette.accentText} strokeWidth={1.8} />
+              <View style={{ position: "absolute", bottom: spacing.sm }}>{dots(5)}</View>
+            </>
+          )}
+        </View>
+        <Body muted style={{ textAlign: "center" }}>{tr.dashboard.noUpcoming}</Body>
+      </View>
+      <View style={{ marginTop: spacing.xs }}>
+        <Button label={tr.dashboard.allUpcoming} variant="ghost" size="sm" onPress={() => router.push("/upcoming" as Href)} />
+      </View>
+    </Card>
+  );
+}
+
+const TIMELINE_TYPE_LABELS = {
+  recurring_income: () => tr.dashboard.expectedIncome,
+  subscription: () => tr.subs.title,
+  scheduled_transaction: () => tr.dashboard.scheduledTx,
+  card_statement: () => tr.dashboard.cardStatement,
+};
+
+function UpcomingPanel({ data, actions, fill }: { data: DashboardData; actions: ReturnType<typeof useExpectedActions>; fill: boolean }) {
+  const router = useRouter();
+  const { palette } = useTheme();
+  const { model, upcoming, today, expected } = data;
+  const status = data.live.status;
+  // One rule for how an estimated amount reads, shared with the catch-up and upcoming screens.
+  const amountFragment = (item: { amountMinor: number; currency: string; amountIsEstimated?: boolean }) => occurrenceAmountText(item, formatMinorCompact, AMOUNT_LABELS);
+  const late = model.lateItems.slice(0, 5);
+  const coming = upcoming.slice(0, Math.max(0, 5 - late.length));
+  const payButton = (id: string, direction: string, entry: boolean, onPress: () => void) => (
+    <View style={{ width: STATUS_W }}>
+      <Button
+        size="sm"
+        label={entry ? tr.subs.enterAmount : direction === "in" ? tr.dashboard.received : tr.dashboard.markPaid}
+        variant="secondary"
+        tone={direction === "in" ? "positive" : "primary"}
+        loading={actions.confirmingId === id}
+        disabled={actions.confirmingId != null}
+        onPress={onPress}
+      />
+    </View>
+  );
+  if (status === "error") return null;
+  if (status === "loading") {
+    return (
+      /* The panel keeps its shape instead of leaving a gap the real card later
+         pushes open; three rows is what an ordinary account shows. */
+      <Card style={fill ? { flex: 1 } : undefined}>
+        {[0, 1, 2].map((row) => (
+          <Row key={row} gap={spacing.md} style={{ alignItems: "center", paddingVertical: spacing.md - 2 }}>
+            <Skeleton width={24} height={24} radius={radius.sm} />
+            <View style={{ flex: 1, gap: 6 }}>
+              <Skeleton width="60%" height={type.body.fontSize} />
+              <Skeleton width="40%" height={type.small.fontSize} />
+            </View>
+            <Skeleton width={STATUS_W} height={controlSize.minimumTarget} radius={radius.md} />
+          </Row>
+        ))}
+      </Card>
+    );
+  }
+  if ((model.lateItems.length === 0 && upcoming.length === 0) || !data.selfPersonId) return <UpcomingEmpty fill={fill} />;
+  return (
+    <Card rows style={fill ? { flex: 1 } : undefined}>
+      <View style={fill ? { flexGrow: 1 } : undefined}>
+        {late.map((e) => (
+          <ListRow
+            key={e.id}
+            icon={e.direction === "in" ? ArrowDownLeft : ArrowUpRight}
+            iconColor={palette.error}
+            title={data.nameOf(e)}
+            subtitle={`${tr.dashboard.late} · ${dateLabel(e.dueDate)} · ${amountFragment(e)}`}
+            right={payButton(e.id, e.direction, actions.needsAmountEntry(e), () => actions.open(e))}
+          />
+        ))}
+        {coming.map((u) => {
+          const expectedItem = u.kind === "expected" ? expected.find((item) => item.id === u.expectedId) : undefined;
+          return (
+            <ListRow
+              key={u.key}
+              icon={u.direction === "in" ? ArrowDownLeft : CalendarClock}
+              iconColor={u.direction === "in" ? palette.positive : undefined}
+              title={u.name ?? u.categoryName ?? tr.common.paymentFallback}
+              subtitle={`${TIMELINE_TYPE_LABELS[u.sourceType]()} · ${tr.dashboard.inDays(daysBetweenISO(today, u.date))} · ${amountFragment(u)}${u.paidMinor ? ` · ${tr.dashboard.cardStatementPaid(formatMinorCompact(u.paidMinor))}` : ""}`}
+              // A card statement is a due date derived from the card's charges, not
+              // a payment to confirm, so it opens that statement — at a ROOT-level
+              // route, since a screen pushed into the Mali Tablo tab's stack stayed
+              // there until restart (see `src/app/installments.tsx`).
+              onPress={u.kind === "card_statement"
+                ? () => router.push({ pathname: "/card-statement", params: { card: u.refId, ...(u.statementId ? { statement: u.statementId } : {}) } })
+                : undefined}
+              chevron={u.kind === "card_statement"}
+              right={u.kind === "expected" && u.expectedId
+                ? payButton(u.expectedId, u.direction, Boolean(u.amountIsEstimated), () => {
+                    if (expectedItem) actions.open(expectedItem);
+                  })
+                : undefined}
+            />
+          );
+        })}
+      </View>
+      {/* The trailing link action is `sm`, like every other one: a regular
+          button's height left the card's top and bottom gaps uneven. */}
+      <Row gap={spacing.sm}>
+        <View style={{ flex: 1 }}>
+          <Button label={tr.dashboard.allUpcoming} variant="ghost" size="sm" onPress={() => router.push("/upcoming" as Href)} />
+        </View>
+        {/* The inbox is the actionable half of the same data: what waits for a decision. */}
+        <View style={{ flex: 1 }}>
+          <Button testID="dashboard-attention-link" label={tr.attention.title} variant="ghost" size="sm" onPress={() => router.push("/attention" as Href)} />
+        </View>
+      </Row>
+    </Card>
+  );
+}
+
+export default function DashboardScreen() {
+  // The ledger is the tab this app exists for and the most expensive one to
+  // create. Built while the navigator is fading between two scenes it drops
+  // frames once, on the first arrival; built here, in idle, it drops none.
+  useWarmRoute("cash-flow");
+  useHourTick();
+  const previousLoginAt = useSession((state) => state.previousLoginAt);
+  const router = useRouter();
+  const { palette } = useTheme();
+  const contentWidth = useContentWidth();
+  const data = useDashboardData();
+  const actions = useExpectedActions(data);
+  const [showForecast, setShowForecast] = React.useState(false);
+  const late = data.model.lateItems;
+  const paired = shouldPairDashboardPanels(contentWidth);
+  return (
+    <Screen
+      title={greeting()}
+      subtitle={dateLabel(data.today)}
+      // The rail carries the mark at desktop widths; phones have no rail, so the greeting keeps it.
+      leading={<BrandMark size={40} />}
+      width="workspace"
+    >
+      <FirstRunTour />
+      <DataStateNotice status={data.live.status} retry={data.live.retry} />
+      {previousLoginAt ? (
+        <View style={{ marginBottom: spacing.sm, alignSelf: "flex-start" }}>
+          <Badge icon={ShieldCheck} text={tr.dashboard.lastLogin(dateTimeLabel(previousLoginAt))} />
+        </View>
+      ) : null}
+      {actions.sheets}
+      {/* Shown only while payments are actually overdue, derived from live data,
+          so it clears itself the moment the last item is confirmed. */}
       {late.length > 0 ? (
         <Card tone="warning" onPress={() => router.push("/reconciliation")}>
           <Row>
@@ -763,449 +1070,25 @@ export default function DashboardScreen() {
           </Row>
         </Card>
       ) : null}
-
-      {bundle ? (
-        <HeroCard>
-          <View style={wideDashboard ? { flexDirection: "row", alignItems: "stretch" } : undefined}>
-            <View style={wideDashboard ? { flex: 1, paddingRight: spacing.xl, justifyContent: "center" } : undefined}>
-              <Row gap={spacing.sm} style={{ alignItems: "center" }}>
-                <Eyebrow color={heroInk}>{tr.dashboard.actualBalance}</Eyebrow>
-                {/* The ledger has moved away from the last figure the user
-                    confirmed against a real account. The mark is the way to the
-                    screen that can say by how much and put it right. */}
-                {balanceDrift != null ? (
-                  // The painted pill stays compact — it sits beside a label
-                  // in a hero — but the PRESSABLE is the platform minimum.
-                  // It used to be the pill: 2pt of vertical padding around a
-                  // 10pt label measured about 18pt tall, on a control that
-                  // navigates. `hitSlop` would not have rescued it either;
-                  // react-native-web does not implement it, which is the same
-                  // trap `IconButton` documents.
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel={tr.settings.balanceDriftTitle}
-                    onPress={() => router.push("/opening-balance")}
-                    style={{ minHeight: controlSize.minimumTarget, justifyContent: "center" }}
-                  >
-                    {(state) => (
-                      <View
-                        style={{
-                          flexDirection: "row",
-                          alignItems: "center",
-                          gap: 4,
-                          paddingHorizontal: spacing.sm,
-                          paddingVertical: spacing.xs,
-                          borderRadius: radius.full,
-                          backgroundColor: palette.warning + "1C",
-                          ...interactionSurface(palette, state, { base: palette.warning + "1C" }),
-                          borderWidth: StyleSheet.hairlineWidth,
-                          borderColor: palette.warning + "80",
-                        }}
-                      >
-                        <TriangleAlert accessible={false} size={iconSize.compact} color={palette.warningText} strokeWidth={2.4} />
-                        <Text style={[type.small, { color: palette.warningText, fontFamily: font.semibold }]}>
-                          {tr.settings.balanceDriftShort}
-                        </Text>
-                      </View>
-                    )}
-                  </Pressable>
-                ) : null}
-              </Row>
-              <Amount
-                testID="dashboard-current-balance"
-                minor={bundle.actualBalanceMinor}
-                hero
-                count
-                colorized={false}
-                color={heroInk}
-                style={{ marginTop: spacing.xs, textAlign: "left" }}
-              />
-              {projected != null ? (
-                <Pressable
-                  testID="dashboard-forecast-toggle"
-                  accessibilityRole="button"
-                  accessibilityLabel={`${tr.dashboard.forecastToggle} ${
-                    projectedDelta != null && projectedDelta >= 0 ? tr.dashboard.forecastRising : tr.dashboard.forecastFalling
-                  }`}
-                  aria-expanded={showForecast}
-                  accessibilityState={{ expanded: showForecast }}
-                  onPress={() => setShowForecast((v) => !v)}
-                  style={(state) => ({
-                    flexDirection: "row",
-                    alignItems: "center",
-                    gap: spacing.sm,
-                    marginTop: spacing.md,
-                    borderTopWidth: StyleSheet.hairlineWidth,
-                    borderTopColor: palette.border,
-                    // The row reaches the rule below it and stops there.
-                    //
-                    // Phone only. The wide layout draws that rule as a vertical
-                    // divider beside this column, so there is nothing under the
-                    // row to reach and its trailing space is left alone.
-                    //
-                    // The space is PADDING, not a cancelled margin. Pulling the
-                    // rule up by exactly the padding it was supposed to sit
-                    // below put the line through the middle of the lit band and
-                    // left the amount resting on it — measured 0px from text to
-                    // rule and the fill 12px past it. A control's painted box
-                    // and its layout box have to be the same box, so the room
-                    // under the amount is the row's own padding and the fill
-                    // covers all of it.
-                    // The padding stays SYMMETRIC. `resilience.spec.ts` requires
-                    // it and is right to: this is one control, and a box whose
-                    // label sits nearer its top border than its bottom edge
-                    // reads as a mistake. So the phone grows both sides rather
-                    // than only the one that had to reach the rule.
-                    ...(wideDashboard
-                      ? { paddingVertical: spacing.md, marginBottom: -spacing.md }
-                      : { paddingVertical: spacing.lg }),
-                    ...interactionSurface(palette, state),
-                  })}
-                >
-                  {/* Direction is carried by the glyph, never by colour. The
-                      arrow used to be painted from `projectedDelta` while the
-                      amount beside it was painted from its own sign, so a
-                      forecast that fell but stayed positive rendered a red
-                      arrow next to a green number — two contradictory readings
-                      of the same row, in the one vocabulary this app reserves
-                      for the sign of money. */}
-                  {projectedDelta != null && projectedDelta >= 0 ? (
-                    <TrendingUp accessible={false} size={iconSize.accessory} color={palette.textSecondary} />
-                  ) : (
-                    <TrendingDown accessible={false} size={iconSize.accessory} color={palette.textSecondary} />
-                  )}
-                  <View style={{ flex: 1, gap: 2, minWidth: 0 }}>
-                    <Text style={[type.label, { color: palette.textSecondary }]}>{tr.dashboard.forecastToggle}</Text>
-                    <Amount
-                      minor={projected}
-                      colorized={false}
-                      color={projected >= 0 ? palette.positiveText : palette.negativeText}
-                      style={{ textAlign: "left" }}
-                    />
-                  </View>
-                  <DisclosureChevron open={showForecast} size={18} color={palette.accentText} />
-                </Pressable>
-              ) : null}
-            </View>
-
-            <View
-              accessible={false}
-              style={wideDashboard
-                ? { width: StyleSheet.hairlineWidth, backgroundColor: palette.border, marginHorizontal: spacing.xl }
-                : {
-                    height: StyleSheet.hairlineWidth,
-                    backgroundColor: palette.border,
-                    // Nothing between the forecast row and this line: the row
-                    // owns the space down to it, so its hover fill ends ON the
-                    // rule rather than a gap short of it. The full gap returns
-                    // when that row is absent and there is nothing to touch.
-                    marginTop: projected != null ? 0 : spacing.lg,
-                    marginBottom: spacing.lg,
-                  }}
-            />
-
-            <View style={wideDashboard ? { flex: 1, paddingLeft: spacing.xl, justifyContent: "space-between" } : undefined}>
-              <View>
-                <Eyebrow>{monthName(month)}</Eyebrow>
-                <MetricStrip
-                  testID="dashboard-month-metrics"
-                  style={{ marginTop: spacing.md }}
-                  items={[
-                    // The three figures share one line and shorten together:
-                    // the strip uses the shared compact scale, e.g. ₺1.2 Mn,
-                    // rather than dropping "Net değişim" onto a second row.
-                    { label: tr.cashflow.income, minor: monthIncomeMinor, color: palette.positiveText },
-                    { label: tr.dashboard.outflow, minor: -monthOutflowMinor, color: palette.negativeText },
-                    { label: tr.dashboard.netChange, minor: monthNetMinor },
-                  ]}
-                />
-              </View>
-              {/* One door per destination. The warning card directly above this
-                  hero already opens reconciliation, is the more visible of the
-                  two and carries the count; a second button 800px down the same
-                  screen only made the hero's primary action share its row. */}
-              <Row style={{ marginTop: spacing.lg }}>
-                <View style={{ flex: 1 }}>
-                  <Button icon={Plus} label={tr.cashflow.addTransaction} onPress={() => router.push("/transaction")} />
-                </View>
-              </Row>
-            </View>
-          </View>
-        </HeroCard>
-      ) : (
-        <HeroCard>
-          {/* Same label and amount line heights as the loaded state, so the
-              hero does not change height when the figures arrive. These used
-              to be flat blocks of `border` — a colour that reads as a rule,
-              not as content — and they did not move, so they looked like a
-              layout that had failed rather than one that was loading. */}
-          <Skeleton width={120} height={type.label.fontSize} />
-          <Skeleton width={208} height={type.amountLg.fontSize} style={{ marginTop: spacing.xs }} />
-        </HeroCard>
-      )}
-
-      {/* Collapses rather than blinking: the toggle that opens it sits directly
-          above, so the panel has to be seen to come out of it. */}
-      <Collapse open={Boolean(bundle) && showForecast && projected != null}>
-        {bundle && projected != null ? (
-        <Card style={{ marginBottom: 0 }}>
-          {/* One sentence: what the figure is, and that today's balance is not
-              it. Two stacked notices read as fine print nobody finishes. */}
-          <Body muted style={{ fontSize: type.small.fontSize, marginBottom: spacing.sm }}>{tr.dashboard.forecastHint}</Body>
-          <Spread style={{ marginBottom: spacing.xs }}>
-            <Body muted>{tr.dashboard.forecastCurrent}</Body>
-            <Amount minor={bundle.actualBalanceMinor} />
-          </Spread>
-          {incomingMinor > 0 ? (
-            <Spread style={{ marginBottom: spacing.xs }}>
-              <Body style={{ color: palette.positiveText }}>{tr.dashboard.forecastIncoming}</Body>
-              <Amount minor={incomingMinor} colorized={false} color={palette.positiveText} />
-            </Spread>
-          ) : null}
-          {remainingFixedMinor > 0 ? (
-            <Spread style={{ marginBottom: spacing.xs }}>
-              <Body style={{ color: palette.negativeText }}>{tr.dashboard.forecastOutgoing}</Body>
-              <Amount minor={-remainingFixedMinor} colorized={false} color={palette.negativeText} />
-            </Spread>
-          ) : null}
-          <Divider />
-          <Spread>
-            <Body style={{ fontFamily: font.semibold }}>{tr.dashboard.forecastResult}</Body>
-            <Amount
-              minor={projected}
-              colorized={false}
-              color={projected >= 0 ? palette.positiveText : palette.negativeText}
-            />
-          </Spread>
-          {/* The figure above sums what is KNOWN, and stays that. This is the
-              other end of the same month: what it looks like once the spending
-              no rule predicts is expected to happen too. It sits below the
-              result rather than inside the arithmetic because it is measured
-              from history, not recorded — and a reader has to be able to tell
-              which of the two numbers is which. */}
-          {model.expectedVariableMinor != null && model.expectedVariableMinor > 0 ? (
-            <>
-              <Spread style={{ marginTop: spacing.xs }}>
-                <Body muted>{tr.dashboard.forecastTypical}</Body>
-                <Amount
-                  minor={projected - model.expectedVariableMinor}
-                  colorized={false}
-                  color={palette.textSecondary}
-                />
-              </Spread>
-              <Body muted style={{ fontSize: type.small.fontSize, marginTop: spacing.xs }}>
-                {tr.dashboard.forecastTypicalHint(formatMinorCompact(model.expectedVariableMinor))}
-              </Body>
-            </>
-          ) : null}
-        </Card>
-        ) : null}
+      <BalanceHero data={data} wide={shouldSplitDashboardHero(contentWidth)} showForecast={showForecast} onToggleForecast={() => setShowForecast((v) => !v)} />
+      {/* Collapses rather than blinking: the toggle that opens it sits directly above. */}
+      <Collapse open={Boolean(data.bundle) && showForecast && data.model.projectedMinor != null}>
+        <ForecastPanel data={data} />
       </Collapse>
-
-      {/* The month owns its own row, the two panels share the one under it.
-          The distribution is the screen's one piece of analysis and it reads
-          across: a ring on the left and its legend on the right, using the
-          whole column rather than centring 650px of content inside 1180 and
-          leaving a dead margin either side. Below it the payments to act on and
-          the ambient market strip are peers in width but not in weight, so the
-          task takes the larger share — and the pair keeps the page short enough
-          that a desktop does not have to scroll for either. */}
-      {analysisSection}
-
-      {/* Equal columns, equal heights. The two panels answer different
-          questions but they are the page's footer row, and a row whose two
-          cards end at different heights reads as one of them having failed to
-          load. `stretch` plus `flex: 1` on the cards is what makes both bottoms
-          land on the same line. */}
-      <View style={pairedDashboard ? { flexDirection: "row", alignItems: "stretch", gap: spacing.lg } : undefined}>
-        <View style={pairedDashboard ? { flex: 1, minWidth: 0 } : undefined}>
-          {/* Upcoming payments */}
+      {/* The month owns its own row, reading across; the two panels share the one
+          under it, the task taking the larger share of attention. */}
+      <MonthInsightCard data={data} />
+      {/* Equal columns, equal heights: a row whose two cards end at different
+          heights reads as one of them having failed to load. */}
+      <View style={paired ? { flexDirection: "row", alignItems: "stretch", gap: spacing.lg } : undefined}>
+        <View style={paired ? { flex: 1, minWidth: 0 } : undefined}>
           <SectionHeader>{tr.dashboard.upcoming}</SectionHeader>
-      {dataStatus === "error" ? null : dataStatus === "loading" ? (
-        /* The panel keeps its shape instead of leaving a gap that the real
-           card later pushes open. Three rows is what an ordinary account
-           shows, so the page settles rather than jumps. */
-        <Card style={pairedDashboard ? { flex: 1 } : undefined}>
-          {[0, 1, 2].map((row) => (
-            <Row key={row} gap={spacing.md} style={{ alignItems: "center", paddingVertical: spacing.md - 2 }}>
-              <Skeleton width={24} height={24} radius={radius.sm} />
-              <View style={{ flex: 1, gap: 6 }}>
-                <Skeleton width="60%" height={type.body.fontSize} />
-                <Skeleton width="40%" height={type.small.fontSize} />
-              </View>
-              <Skeleton width={STATUS_W} height={controlSize.minimumTarget} radius={radius.md} />
-            </Row>
-          ))}
-        </Card>
-      ) : (late.length > 0 || upcoming.length > 0) && selfPersonId ? (
-        <Card rows style={pairedDashboard ? { flex: 1 } : undefined}>
-          <View style={pairedDashboard ? { flexGrow: 1 } : undefined}>
-            {dashboardLate.map((e) => (
-              <ListRow
-                key={e.id}
-                icon={e.direction === "in" ? ArrowDownLeft : ArrowUpRight}
-                iconColor={palette.error}
-                title={nameOf(e)}
-                subtitle={`${tr.dashboard.late} · ${dateLabel(e.dueDate)} · ${amountFragment(e)}`}
-                right={(
-                  <View style={{ width: STATUS_W }}>
-                    <Button
-                      size="sm"
-                      label={needsAmountEntry(e) ? tr.subs.enterAmount : e.direction === "in" ? tr.dashboard.received : tr.dashboard.markPaid}
-                      variant="secondary"
-                      tone={e.direction === "in" ? "positive" : "primary"}
-                      loading={confirmingId === e.id}
-                      disabled={confirmingId != null}
-                      onPress={() => needsAmountEntry(e) ? setAmountEditing(e) : setPaying(e)}
-                    />
-                  </View>
-                )}
-              />
-            ))}
-            {dashboardUpcoming.map((u) => (
-              <ListRow
-                key={u.key}
-                icon={u.direction === "in" ? ArrowDownLeft : CalendarClock}
-                iconColor={u.direction === "in" ? palette.positive : undefined}
-                title={u.name ?? u.categoryName ?? tr.common.paymentFallback}
-                subtitle={`${timelineTypeLabel(u.sourceType)} · ${tr.dashboard.inDays(daysBetweenISO(today, u.date))} · ${amountFragment(u)}${u.paidMinor ? ` · ${tr.dashboard.cardStatementPaid(formatMinorCompact(u.paidMinor))}` : ""}`}
-                // A card statement is not an expected payment you confirm — it
-                // is a due date derived from the transactions on the card — so
-                // it has no button. It used to have nothing at all: half the
-                // rows in this list were actionable and half were inert, drawn
-                // identically, and the largest amount on screen was always one
-                // of the inert ones.
-                //
-                // It opens that statement, at a ROOT-level route: a screen
-                // pushed into the Mali Tablo tab's own stack became that stack's
-                // only screen, and the tab showed it until the app restarted.
-                // See `src/app/installments.tsx`. Uncast, so a wrong path here
-                // is a type error rather than a screen nobody asked for.
-                onPress={u.kind === "card_statement"
-                  ? () => router.push({ pathname: "/card-statement", params: { card: u.refId, ...(u.statementId ? { statement: u.statementId } : {}) } })
-                  : undefined}
-                chevron={u.kind === "card_statement"}
-                right={u.kind === "expected" && u.expectedId ? (
-                  <View style={{ width: STATUS_W }}>
-                    <Button
-                      size="sm"
-                      label={u.amountIsEstimated ? tr.subs.enterAmount : u.direction === "in" ? tr.dashboard.received : tr.dashboard.markPaid}
-                      variant="secondary"
-                      tone={u.direction === "in" ? "positive" : "primary"}
-                      loading={confirmingId === u.expectedId}
-                      disabled={confirmingId != null}
-                      onPress={() => {
-                        const expectedItem = expected.find((item) => item.id === u.expectedId);
-                        if (expectedItem) {
-                          if (needsAmountEntry(expectedItem)) setAmountEditing(expectedItem);
-                          else setPaying(expectedItem);
-                        }
-                      }}
-                    />
-                  </View>
-                ) : undefined}
-              />
-            ))}
-          </View>
-          {/* A card's trailing link action is `sm`, like every other one in the
-              app. A regular button's 48pt minimum height centres its label
-              14.5pt from the card's padding while a ListRow insets its text by
-              10 — which is exactly the uneven top/bottom gap this card had. */}
-          <Row gap={spacing.sm}>
-            <View style={{ flex: 1 }}>
-              <Button label={tr.dashboard.allUpcoming} variant="ghost" size="sm" onPress={() => router.push("/upcoming" as Href)} />
-            </View>
-            {/* The inbox is the actionable half of the same data: what is
-                waiting for a decision, rather than the whole calendar. */}
-            <View style={{ flex: 1 }}>
-              <Button
-                testID="dashboard-attention-link"
-                label={tr.attention.title}
-                variant="ghost"
-                size="sm"
-                onPress={() => router.push("/attention" as Href)}
-              />
-            </View>
-          </Row>
-        </Card>
-      ) : (
-        /* A compact calendar picture gives an otherwise empty equal-height
-           desktop panel visual weight without inventing any future payment. */
-        <Card style={pairedDashboard ? { flex: 1 } : undefined}>
-          <View style={pairedDashboard ? { flex: 1, justifyContent: "center", alignItems: "center", gap: spacing.sm } : { alignItems: "center", gap: spacing.sm }}>
-            <View
-              accessible={false}
-              style={{
-                width: pairedDashboard ? "76%" : 84,
-                maxWidth: 300,
-                height: pairedDashboard ? 170 : 68,
-                overflow: "hidden",
-                alignItems: "center",
-                justifyContent: "center",
-                borderRadius: radius.md,
-                borderWidth: 1,
-                borderColor: palette.border + "70",
-                backgroundColor: palette.surfaceAlt,
-              }}
-            >
-              <View style={{ position: "absolute", left: 0, right: 0, top: 0, height: pairedDashboard ? 8 : 6, backgroundColor: palette.primary }} />
-              {pairedDashboard ? (
-                <View style={{ alignSelf: "stretch", flex: 1, padding: spacing.lg, paddingTop: spacing.xl }}>
-                  <Spread style={{ marginBottom: spacing.md }}>
-                    <CalendarClock size={22} color={palette.accentText} strokeWidth={1.8} />
-                    <View style={{ flexDirection: "row", gap: 4 }}>
-                      <View style={{ width: 6, height: 6, borderRadius: circle(6), backgroundColor: palette.surfaceStrong }} />
-                      <View style={{ width: 6, height: 6, borderRadius: circle(6), backgroundColor: palette.surfaceStrong }} />
-                      <View style={{ width: 6, height: 6, borderRadius: circle(6), backgroundColor: palette.primary }} />
-                    </View>
-                  </Spread>
-                  <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
-                    {Array.from({ length: 20 }, (_, index) => (
-                      <View
-                        key={index}
-                        style={{
-                          flexBasis: "16%",
-                          flexGrow: 1,
-                          height: 15,
-                          borderRadius: 3,
-                          backgroundColor: index === 17 ? palette.primarySoft : palette.surface,
-                          borderWidth: StyleSheet.hairlineWidth,
-                          borderColor: index === 17 ? palette.primary + "70" : palette.border + "50",
-                        }}
-                      />
-                    ))}
-                  </View>
-                </View>
-              ) : (
-                <>
-                  <CalendarClock size={25} color={palette.accentText} strokeWidth={1.8} />
-                  <View style={{ position: "absolute", bottom: spacing.sm, flexDirection: "row", gap: 4 }}>
-                    <View style={{ width: 5, height: 5, borderRadius: circle(5), backgroundColor: palette.surfaceStrong }} />
-                    <View style={{ width: 5, height: 5, borderRadius: circle(5), backgroundColor: palette.surfaceStrong }} />
-                    <View style={{ width: 5, height: 5, borderRadius: circle(5), backgroundColor: palette.primary }} />
-                  </View>
-                </>
-              )}
-            </View>
-            <Body muted style={{ textAlign: "center" }}>{tr.dashboard.noUpcoming}</Body>
-          </View>
-          <View style={{ marginTop: spacing.xs }}>
-            <Button
-              label={tr.dashboard.allUpcoming}
-              variant="ghost"
-              size="sm"
-              onPress={() => router.push("/upcoming" as Href)}
-            />
-          </View>
-        </Card>
-      )}
+          <UpcomingPanel data={data} actions={actions} fill={paired} />
         </View>
-
-        <View style={pairedDashboard ? { flex: 1, minWidth: 0 } : undefined}>
-          <MarketsCard fill={pairedDashboard} desktopColumns={marketDesktopColumns} />
+        <View style={paired ? { flex: 1, minWidth: 0 } : undefined}>
+          <MarketsCard fill={paired} desktopColumns={late.length + data.upcoming.length <= 3 ? 3 : 2} />
         </View>
       </View>
-
     </Screen>
   );
 }

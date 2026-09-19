@@ -32,7 +32,7 @@ vi.mock("../src/sync/engine", () => ({ scheduleSync: vi.fn() }));
 
 import { importSheets, importWorkbookRecords, openingBalanceFromSheets, planWorkbookRecords } from "../src/data/repo/imports";
 import type { InvestmentRecord, SubscriptionRecord } from "../src/domain/workbook-format";
-import { closeInstallmentPlan, reopenInstallmentPlan } from "../src/data/repo/installments";
+import { closeInstallmentPlan, createInstallmentPlan, reopenInstallmentPlan } from "../src/data/repo/installments";
 import { seedWorkspace, setOpeningBalance } from "../src/data/repo/onboarding";
 import type { CellData, ParsedSheet } from "../src/services/spreadsheet-import";
 import type { TxLike } from "../src/domain/types";
@@ -200,6 +200,33 @@ describe("importing the same workbook twice", () => {
     expect(setting("start_month")).toBe("2026-01");
   });
 
+  it("imports nothing for a year the owner did not select", async () => {
+    await importSheets(USER, { ...request("replace"), selectedYears: [2025] });
+    expect(liveRows()).toEqual([]);
+    expect(setting("start_month")).toBeNull();
+  });
+
+  it("files an investment column as a transfer, even under an expense category the workspace already has", async () => {
+    harness.db!.prepare(
+      `INSERT INTO categories (id, user_id, created_at, updated_at, deleted_at, tombstone_version, name, kind, sort_order, is_column, is_transfer)
+       VALUES ('fund', ?, ?, ?, NULL, 0, 'Fon', 'expense', 0, 1, 0)`,
+    ).run(USER, NOW, NOW);
+    const withFund = sheet();
+    withFund.columns.push({ label: "Fon", kindGuess: "expense", isInvestment: true, balanceLike: false, dueDay: null });
+    withFund.cells.forEach((cells) => cells.push(money(300_00)));
+    await importSheets(USER, { ...request("replace"), sheets: [withFund] });
+    expect(harness.db!.prepare(`SELECT is_transfer FROM categories WHERE id = 'fund'`).get()).toEqual({ is_transfer: 1 });
+    expect(liveRows().filter((row) => row.category_id === "fund").map((row) => row.type)).toEqual(["transfer", "transfer"]);
+  });
+
+  it("counts an income column into the month", async () => {
+    const plain = sheet();
+    plain.columns = [plain.columns[0]!, { label: "Maaş", kindGuess: "income", isInvestment: false, balanceLike: false, dueDay: null }];
+    plain.cells = plain.cells.map(([market]) => [market!, money(10_000_00)]);
+    await importSheets(USER, { sheets: [{ ...plain, skippedColumns: [], openingColumn: null, openingCandidates: [] }], excludedLabels: [], selfId: "person-self", mode: "replace" });
+    expect(monthTotal("2026-01")).toBe(10_000_00 - 1_500_00);
+  });
+
   it("marks every imported row with its origin so review can tell it apart", async () => {
     await importSheets(USER, request("replace"));
     expect(liveRows().every((row) => row.origin === "spreadsheet")).toBe(true);
@@ -295,6 +322,13 @@ describe("importing the same workbook twice", () => {
       expect(liveRows()).toEqual([]);
       // The anchor is part of the same transaction, so a refusal leaves it too.
       expect(setting("opening_balance_minor")).toBeNull();
+    });
+
+    it("names every year it cannot read, oldest first", async () => {
+      corrupt(2026, "{ not json");
+      corrupt(2025, "{ not json");
+      const twoYears = { ...request("replace"), sheets: [sheet(), { ...sheet(), sheetName: "2025", year: 2025, months: ["2025-01", "2025-02"] as MonthKey[] }] };
+      await expect(importSheets(USER, twoYears)).rejects.toMatchObject({ years: [2025, 2026] });
     });
 
     it("still imports a year whose own record is readable", async () => {
@@ -517,6 +551,62 @@ describe("importing the same workbook twice", () => {
     });
 
     /**
+     * A batch recorded before plans were listed in it. A replace with a workbook
+     * that no longer lists the purchase finds the plan that import made by its
+     * deterministic id and takes it back with every instalment — and leaves the
+     * plans the owner made, whose ids are not derived, where they are.
+     */
+    it("takes back a plan an import made before batches listed plans, and only that plan", async () => {
+      await importSheets(USER, planRequest({ [CARD]: { statementDay: 25, dueDay: 10 } }));
+      const imported = harness.db!.prepare(`SELECT id FROM installment_plans WHERE user_id = ?`).get(USER) as { id: string };
+      const loan = (overrides: Record<string, unknown>) => createInstallmentPlan(USER, {
+        title: "Kredi", kind: "loan", totalAmountMinor: null, monthlyAmountMinor: 1_000_00, installmentCount: 2, currency: "TRY", fxRate: null,
+        startMonth: "2026-01", dueDay: null, paymentSourceId: null, personId: "person-self", personIsSelf: true, categoryId: null, note: null, tryFactor: 1,
+        ...overrides,
+      });
+      const own = [await loan({}), await loan({ title: "Telefon", totalAmountMinor: 3_000_00, monthlyAmountMinor: null })];
+      const cellRows = liveRows().filter((row) => row.is_aggregate === 1).map((row) => row.id);
+      harness.db!.prepare(`UPDATE settings SET value = ? WHERE user_id = ? AND key = 'import_batch:2026'`).run(JSON.stringify({ transactions: cellRows, cellNotes: ["note-from-then", 7] }), USER);
+      harness.db!.prepare(
+        `INSERT INTO settings (id, user_id, created_at, updated_at, deleted_at, tombstone_version, key, value)
+         VALUES ('batch-2024', ?, ?, ?, NULL, 0, 'import_batch:2024', ?), ('batch-junk', ?, ?, ?, NULL, 0, 'import_batch:eski', '{}')`,
+      ).run(USER, NOW, NOW, JSON.stringify({ transactions: [], cellNotes: [] }), USER, NOW, NOW);
+
+      await importSheets(USER, request("replace"));
+
+      const livePlans = harness.db!.prepare(`SELECT id FROM installment_plans WHERE user_id = ? AND deleted_at IS NULL`).all(USER).map((row) => (row as { id: string }).id);
+      expect(livePlans.sort()).toEqual([...own].sort());
+      const liveInstalments = (planId: string) => liveRows().filter((row) => (row as unknown as { installment_plan_id: string | null }).installment_plan_id === planId);
+      expect(liveInstalments(imported.id)).toEqual([]);
+      expect(own.map((planId) => liveInstalments(planId).length)).toEqual([2, 2]);
+    });
+
+    it("gives a card the workspace holds without a cycle the one the owner supplied", async () => {
+      harness.db!.prepare(
+        `INSERT INTO payment_sources (id, user_id, created_at, updated_at, deleted_at, tombstone_version, name, type, person_id, logo_source, is_active)
+         VALUES ('card-a', ?, ?, ?, NULL, 0, ?, 'credit_card', 'person-self', 'initials', 1)`,
+      ).run(USER, NOW, NOW, CARD);
+      await importSheets(USER, planRequest({ [CARD]: { statementDay: 25, dueDay: 10 } }));
+      expect(harness.db!.prepare(`SELECT id, statement_day, due_day FROM payment_sources WHERE user_id = ? AND deleted_at IS NULL`).all(USER))
+        .toEqual([{ id: "card-a", statement_day: 25, due_day: 10 }]);
+    });
+
+    it("puts a plan the owner holds without a card on the card the workbook names", async () => {
+      const own = await createInstallmentPlan(USER, {
+        title: "Süpürge", kind: "loan", totalAmountMinor: null, monthlyAmountMinor: 2_777_67, installmentCount: 9,
+        currency: "TRY", fxRate: null, startMonth: "2025-12", dueDay: null, paymentSourceId: null,
+        personId: "person-self", personIsSelf: true, categoryId: null, note: null, tryFactor: 1,
+      });
+      // The month the owner's plan lacks is the one the workbook adds.
+      harness.db!.prepare(`UPDATE transactions SET deleted_at = ?, tombstone_version = 1 WHERE installment_plan_id = ? AND installment_no = 5`).run(NOW, own);
+      await importSheets(USER, planRequest());
+      const card = harness.db!.prepare(`SELECT id FROM payment_sources WHERE user_id = ? AND name = ?`).get(USER, CARD) as { id: string };
+      const rows = harness.db!.prepare(`SELECT installment_no, payment_source_id FROM transactions WHERE user_id = ? AND installment_plan_id IS NOT NULL AND deleted_at IS NULL AND payment_source_id IS NOT NULL`).all(USER);
+      expect(harness.db!.prepare(`SELECT title FROM installment_plans WHERE user_id = ? AND deleted_at IS NULL`).all(USER)).toEqual([{ title: "Süpürge" }]);
+      expect(rows).toEqual([{ installment_no: 5, payment_source_id: card.id }]);
+    });
+
+    /**
      * The plan is structure, so a repeated replace must not leave two of it.
      * The batch record carries plan ids for exactly this reason.
      */
@@ -529,6 +619,35 @@ describe("importing the same workbook twice", () => {
         .prepare(`SELECT COUNT(*) AS n FROM installment_plans WHERE user_id = ? AND deleted_at IS NULL`)
         .get(USER) as { n: number };
       expect(plans.n).toBe(1);
+    });
+
+    /**
+     * One purchase entered two ways is one plan. The owner entered it by hand
+     * (or a statement opened it) under another name; the workbook's comment
+     * names it again. The workbook's months go into that plan, and a replace
+     * that removes what the workbook wrote leaves the owner's plan standing.
+     */
+    it("writes its instalments into the plan the owner already has instead of opening a rival one", async () => {
+      harness.db!.prepare(
+        `INSERT INTO payment_sources (id, user_id, created_at, updated_at, deleted_at, tombstone_version,
+           name, type, person_id, due_day, statement_day, color, logo_source, logo_ref, is_active)
+         VALUES ('card-a', ?, ?, ?, NULL, 0, ?, 'credit_card', 'person-self', 10, 25, NULL, 'initials', NULL, 1)`,
+      ).run(USER, NOW, NOW, CARD);
+      await createInstallmentPlan(USER, {
+        title: "Süpürge", kind: "card_installment", totalAmountMinor: null, monthlyAmountMinor: 2_777_67, installmentCount: 9,
+        currency: "TRY", fxRate: null, startMonth: "2025-12", dueDay: null, paymentSourceId: "card-a",
+        personId: "person-self", personIsSelf: true, categoryId: null, note: null, tryFactor: 1,
+      });
+      await importSheets(USER, planRequest());
+
+      const plans = harness.db!.prepare(`SELECT title FROM installment_plans WHERE user_id = ? AND deleted_at IS NULL`).all(USER);
+      expect(plans).toEqual([{ title: "Süpürge" }]);
+      expect(liveRows().filter((row) => row.id && (row as unknown as { installment_plan_id: string | null }).installment_plan_id)).toHaveLength(9);
+      expect(monthTotal("2026-01")).toBe(-(1_500_00 + 2_777_67));
+
+      await importSheets(USER, planRequest());
+      expect(harness.db!.prepare(`SELECT title FROM installment_plans WHERE user_id = ? AND deleted_at IS NULL`).all(USER)).toEqual([{ title: "Süpürge" }]);
+      expect(monthTotal("2026-01")).toBe(-(1_500_00 + 2_777_67));
     });
 
     /**
@@ -700,6 +819,30 @@ describe("importing the same workbook twice", () => {
     // Replacing the import takes the rows it wrote and leaves the owner's figure.
     await importSheets(USER, { ...request("replace"), sheets: [noOpeningColumn()], excludedLabels: [] });
     expect(kept()).toEqual([{ date: "2026-05-31", amount_minor: 50_000_00 + 1_500_00 + 2_500_00, declared_minor: 50_000_00, deleted_at: null }]);
+  });
+
+  /**
+   * A second import has to reckon with the owner's own declarations too. It
+   * used to run the file's arithmetic as if the kept balance were not there,
+   * found nothing to restate after it, and dropped the restatement the first
+   * import wrote — leaving the month after the typed one off the file.
+   */
+  it("keeps restating the file after a typed balance on every import", async () => {
+    const threeMonths = (): ParsedSheet => ({
+      ...sheet(),
+      months: ["2026-01", "2026-02", "2026-03"],
+      cells: [[money(1_500_00), money(OPENING_MINOR)], [money(2_500_00), money(null)], [money(1_000_00), money(OPENING_MINOR - 4_000_00)]],
+    });
+    const declarations = () => harness.db!
+      .prepare(`SELECT date, declared_minor FROM balance_adjustments WHERE user_id = ? AND declared_minor IS NOT NULL AND deleted_at IS NULL ORDER BY date`)
+      .all(USER);
+    await setOpeningBalance(USER, "2026-02", 50_000_00);
+    await importSheets(USER, { ...request("replace"), sheets: [threeMonths()] });
+    const first = declarations();
+    expect(first).toEqual([{ date: "2026-01-31", declared_minor: 50_000_00 }, { date: "2026-02-28", declared_minor: OPENING_MINOR - 4_000_00 }]);
+
+    await importSheets(USER, { ...request("replace"), sheets: [threeMonths()] });
+    expect(declarations()).toEqual(first);
   });
 
   it("keeps no typed balance where there was none: a zero, or an anchor an earlier import wrote", async () => {
@@ -884,6 +1027,13 @@ describe("bringing the record sheets back", () => {
     ]);
   });
 
+  it("reads a subscription with no card and no site, and plans it unchanged once it is in", async () => {
+    const plain = records([subscription({ source: "", websiteDomain: "" })]);
+    await importWorkbookRecords(USER, plain);
+    expect(await planWorkbookRecords(USER, plain)).toMatchObject({ subscriptions: counts(0, 0, 1) });
+    expect(liveSubscriptions()).toEqual([{ name: "Netflix", cycle: "monthly", amount_minor: 22999, note: null, payment_source_id: null }]);
+  });
+
   it("names a row whose person or card this workspace does not have, and one the app refuses to save", async () => {
     const sheet = records([
       subscription({ row: 2, person: "Ayşe" }),
@@ -916,9 +1066,14 @@ describe("bringing the record sheets back", () => {
     const first = await importWorkbookRecords(USER, records([], [sale, operation()]));
     expect(first).toMatchObject({ investments: counts(1, 0, 0), problems: [{ sheet: "Yatırımlar", row: 3, column: null }], walletMissing: false });
 
+    expect((await planWorkbookRecords(USER, records([], [operation({ product: "Gümüş" })]))).investments, "a product not yet held").toEqual(counts(1, 0, 0));
     expect((await planWorkbookRecords(USER, records([], [operation()]))).investments).toEqual(counts(0, 0, 1));
+    expect((await importWorkbookRecords(USER, records([], [operation()]))).investments).toEqual(counts(0, 0, 1));
+    const contribution = operation({ row: 4, product: "BES", assetType: "pension", kind: "contribution", operationDate: "2026-02-02", quantity: null, unitPriceMinor: null, totalMinor: 100000 });
+    expect((await importWorkbookRecords(USER, records([], [contribution]))).investments, "an amount with no quantity").toEqual(counts(1, 0, 0));
+    expect((await planWorkbookRecords(USER, records([], [contribution]))).investments).toEqual(counts(0, 0, 1));
     expect((await importWorkbookRecords(USER, records([], [operation({ note: "düğün hediyesi" })]))).investments).toEqual(counts(0, 1, 0));
-    expect(harness.db!.prepare(`SELECT p.name, o.kind, o.quantity, o.note FROM investment_operations o JOIN investment_products p ON p.id = o.product_id WHERE o.deleted_at IS NULL`).all())
+    expect(harness.db!.prepare(`SELECT p.name, o.kind, o.quantity, o.note FROM investment_operations o JOIN investment_products p ON p.id = o.product_id WHERE o.deleted_at IS NULL AND o.kind = 'buy'`).all())
       .toEqual([{ name: "Gram Altın", kind: "buy", quantity: "2", note: "düğün hediyesi" }]);
   });
 });

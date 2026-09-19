@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { Redirect, Stack, useLocalSearchParams, useRouter } from "expo-router";
 import ArrowDownToLine from "lucide-react-native/icons/arrow-down-to-line";
@@ -78,17 +78,43 @@ function holdingQuantities(
   return quantities;
 }
 
-export default function InvestmentOperationScreen() {
+/** Where an operation moves money, drawn in one colour and one icon wherever it is shown. */
+function impactOf(kind: InvestmentOperationKind, palette: ReturnType<typeof useTheme>["palette"]) {
+  if (kind === "sell") return { color: palette.positiveText, Icon: ArrowUpFromLine };
+  return kind === "existing" ? { color: palette.secondaryText, Icon: Landmark } : { color: palette.primaryText, Icon: ArrowDownToLine };
+}
+
+/**
+ * The quantity, unit price and total as typed, and the quote they settle on.
+ * `calculated` ignores the typed total, so the total field can suggest what the
+ * other two make; `quote` holds all three to agreeing.
+ */
+function draftQuote(quantity: string, unitMinor: number | null, totalMinor: number | null, amountOnly: boolean) {
+  const typed = quantity.trim() !== "";
+  let quantityError: string | null = null;
+  let atoms: bigint | null = null;
+  try {
+    atoms = typed ? parseInvestmentQuantity(quantity).atoms : null;
+  } catch {
+    quantityError = tr.investments.invalidQuantity;
+  }
+  if (amountOnly || !typed || unitMinor == null) return { atoms, quantityError, calculated: null, quote: null, totalError: null };
+  const attempt = (withTotal: boolean) => {
+    try {
+      return { quote: resolveInvestmentQuote({ quantity, unitPriceMinor: unitMinor, ...(withTotal ? { totalMinor } : {}) }), error: null };
+    } catch (error) {
+      return { quote: null, error: errorText(error) };
+    }
+  };
+  const full = attempt(true);
+  return { atoms, quantityError, calculated: attempt(false).quote, quote: full.quote, totalError: totalMinor != null ? full.error : null };
+}
+
+function useOperationDraft() {
   const params = useLocalSearchParams<{ kind?: string; productId?: string; id?: string }>();
-  const requestedKind: InvestmentOperationKind = VALID_KINDS.has(params.kind as InvestmentOperationKind)
-    ? params.kind as InvestmentOperationKind
-    : "buy";
+  const requestedKind: InvestmentOperationKind = VALID_KINDS.has(params.kind as InvestmentOperationKind) ? params.kind as InvestmentOperationKind : "buy";
   const router = useRouter();
   const userId = useUserId();
-  const { palette } = useTheme();
-  // The impact chip only shares the heading row where a chip-sized column can
-  // still hold the sentence; below that it takes its own row.
-  const wideSummary = shouldPairOperationSummary(useContentWidth());
   const productsState = useInvestmentProductsState();
   const operationsState = useInvestmentOperationsState();
   const profilesState = useInvestmentProfilesState();
@@ -99,26 +125,17 @@ export default function InvestmentOperationScreen() {
     [productsState.data, operationsState.data, editing?.id],
   );
   const products = productsState.data.filter((product) =>
-    baseKind === "contribution"
-      ? product.assetType === "pension"
-      : baseKind === "sell"
-        ? (holdings.get(product.id) ?? 0n) > 0n
-        : true,
+    baseKind === "contribution" ? product.assetType === "pension" : baseKind !== "sell" || (holdings.get(product.id) ?? 0n) > 0n,
   );
   const [productId, setProductId] = useState<string | null>(params.productId ?? null);
   const [date, setDate] = useState(todayISO());
   const [quantity, setQuantity] = useState("");
-  const [unitRaw, setUnitRaw] = useState("");
-  const [unitMinor, setUnitMinor] = useState<number | null>(null);
-  const [totalRaw, setTotalRaw] = useState("");
-  const [totalMinor, setTotalMinor] = useState<number | null>(null);
+  const [unit, setUnit] = useState<{ raw: string; minor: number | null }>({ raw: "", minor: null });
+  const [total, setTotal] = useState<{ raw: string; minor: number | null }>({ raw: "", minor: null });
   const [note, setNote] = useState("");
   const [contributionMode, setContributionMode] = useState<ContributionMode>("units");
   const [busy, setBusy] = useState(false);
   const hydratedEdit = useRef<string | null>(null);
-  const quantityPlaceholder = useRotatingPlaceholder(placeholderPools.investmentQuantity, { prefix: false, active: quantity.length === 0 });
-  const unitPlaceholder = useRotatingPlaceholder(placeholderPools.investmentUnitPrice, { prefix: false, active: unitRaw.length === 0 || totalRaw.length === 0 });
-  const notePlaceholder = useRotatingPlaceholder(placeholderPools.investmentNote, { active: note.length === 0 });
 
   useEffect(() => {
     if (!editing || hydratedEdit.current === editing.id) return;
@@ -126,10 +143,8 @@ export default function InvestmentOperationScreen() {
     setProductId(editing.productId);
     setDate(editing.operationDate);
     setQuantity(editing.quantity ?? "");
-    setUnitMinor(editing.unitPriceMinor);
-    setUnitRaw(editing.unitPriceMinor == null ? "" : formatMinorInput(editing.unitPriceMinor));
-    setTotalMinor(editing.totalMinor);
-    setTotalRaw(formatMinorInput(editing.totalMinor));
+    setUnit({ minor: editing.unitPriceMinor, raw: editing.unitPriceMinor == null ? "" : formatMinorInput(editing.unitPriceMinor) });
+    setTotal({ minor: editing.totalMinor, raw: formatMinorInput(editing.totalMinor) });
     setContributionMode(editing.kind === "contribution" && editing.quantity == null ? "amount" : "units");
     setNote(editing.note ?? "");
   }, [editing]);
@@ -139,52 +154,15 @@ export default function InvestmentOperationScreen() {
   }, [productId, products]);
 
   const selected = products.find((product) => product.id === productId);
-  const kind: InvestmentOperationKind = !editing && baseKind === "buy" && selected?.assetType === "pension"
-    ? "contribution"
-    : baseKind;
-  const amountOnlyContribution = kind === "contribution" && contributionMode === "amount";
-  const parsedQuantity = useMemo(() => {
-    if (!quantity.trim()) return { atoms: null, error: null };
-    try {
-      return { atoms: parseInvestmentQuantity(quantity).atoms, error: null };
-    } catch {
-      return { atoms: null, error: tr.investments.invalidQuantity };
-    }
-  }, [quantity]);
+  // A new purchase of a pension product is a contribution.
+  const kind: InvestmentOperationKind = !editing && baseKind === "buy" && selected?.assetType === "pension" ? "contribution" : baseKind;
+  const amountOnly = kind === "contribution" && contributionMode === "amount";
+  const quoted = useMemo(() => draftQuote(quantity, unit.minor, total.minor, amountOnly), [quantity, unit.minor, total.minor, amountOnly]);
   const heldAtoms = productId ? holdings.get(productId) ?? null : null;
-  const oversellError = kind === "sell" && parsedQuantity.atoms != null && heldAtoms != null && parsedQuantity.atoms > heldAtoms
+  const oversellError = kind === "sell" && quoted.atoms != null && heldAtoms != null && quoted.atoms > heldAtoms
     ? tr.investments.oversoldWithHolding(formatInvestmentQuantityAtoms(heldAtoms))
     : null;
-  const calculatedQuote = useMemo(() => {
-    if (amountOnlyContribution || !quantity.trim() || unitMinor == null) return null;
-    try {
-      return resolveInvestmentQuote({ quantity, unitPriceMinor: unitMinor });
-    } catch {
-      return null;
-    }
-  }, [amountOnlyContribution, quantity, unitMinor]);
-  const quoteResult = useMemo(() => {
-    if (amountOnlyContribution) return { quote: null, error: null };
-    if (!quantity.trim() || unitMinor == null) return { quote: null, error: null };
-    try {
-      return {
-        quote: resolveInvestmentQuote({ quantity, unitPriceMinor: unitMinor, totalMinor }),
-        error: null,
-      };
-    } catch (error) {
-      return { quote: null, error: errorText(error) };
-    }
-  }, [amountOnlyContribution, quantity, unitMinor, totalMinor]);
-  const quote = quoteResult.quote;
-  const totalError = totalMinor != null ? quoteResult.error : null;
-  const calculationTotal = amountOnlyContribution ? totalMinor : quote?.totalMinor ?? calculatedQuote?.totalMinor ?? null;
-  const canSave = productId != null
-    && !busy
-    && !oversellError
-    && !parsedQuantity.error
-    && (amountOnlyContribution
-      ? totalMinor != null
-      : quantity.trim() !== "" && unitMinor != null && quote != null);
+  const canSave = productId != null && !busy && !oversellError && !quoted.quantityError && (amountOnly ? total.minor != null : quoted.quote != null);
 
   const save = async () => {
     if (!productId || !canSave) return;
@@ -194,9 +172,9 @@ export default function InvestmentOperationScreen() {
         productId,
         kind,
         operationDate: date,
-        quantity: amountOnlyContribution ? null : quote!.quantity,
-        unitPriceMinor: amountOnlyContribution ? null : quote!.unitPriceMinor,
-        totalMinor: amountOnlyContribution ? totalMinor! : quote!.totalMinor,
+        quantity: amountOnly ? null : quoted.quote!.quantity,
+        unitPriceMinor: amountOnly ? null : quoted.quote!.unitPriceMinor,
+        totalMinor: amountOnly ? total.minor! : quoted.quote!.totalMinor,
         note,
       };
       if (editing) await updateInvestmentOperation(userId, editing.id, input);
@@ -210,240 +188,239 @@ export default function InvestmentOperationScreen() {
     }
   };
 
+  return {
+    profilesState, editing, baseKind, kind, products, selected, productId, setProductId, date, setDate, quantity, setQuantity, unit, setUnit, total, setTotal,
+    note, setNote, contributionMode, setContributionMode, amountOnly, quoted, heldAtoms, oversellError, canSave, busy, save,
+    title: editing ? tr.investments.editOperation : tr.investments.operationTitle[kind],
+    calculationTotal: amountOnly ? total.minor : quoted.quote?.totalMinor ?? quoted.calculated?.totalMinor ?? null,
+  };
+}
+
+type OperationDraft = ReturnType<typeof useOperationDraft>;
+
+/** One labelled figure in the summary. */
+function SummaryTile({ label, minWidth, children }: { label: string; minWidth: number; children: React.ReactNode }) {
+  const { palette } = useTheme();
+  return (
+    <View style={{ flex: 1, minWidth, padding: spacing.sm, borderRadius: radius.md, backgroundColor: palette.surface, borderWidth: StyleSheet.hairlineWidth, borderColor: palette.border }}>
+      <Text style={[type.small, { color: palette.textSecondary }]}>{label}</Text>
+      {children}
+    </View>
+  );
+}
+
+function OperationSummary({ draft }: { draft: OperationDraft }) {
+  const { palette } = useTheme();
+  // The impact chip only shares the heading row where a chip-sized column can
+  // still hold the sentence; below that it takes its own row.
+  const wideSummary = shouldPairOperationSummary(useContentWidth());
+  const { kind, selected, date, title, calculationTotal: totalMinor, unit } = draft;
+  const { color, Icon } = impactOf(kind, palette);
+  const impact = tr.investments.operationImpact[kind];
+  const dash = (style: object) => <Text style={[style, { color: palette.textStrong, marginTop: 2 }]}>—</Text>;
+  return (
+    <FadeIn style={{ marginBottom: spacing.lg }}>
+      <View
+        testID="investment-operation-summary"
+        accessible
+        accessibilityRole="image"
+        accessibilityLabel={`${title}. ${selected?.name ?? tr.investments.product}. ${date}. ${totalMinor == null ? "—" : formatMinorCompact(totalMinor)}. ${impact}`}
+        // A card as the app paints one — `surface` under a hairline — with the
+        // operation's colour as the same top accent a hero card uses.
+        style={{
+          borderTopWidth: 3,
+          borderTopColor: color,
+          borderWidth: StyleSheet.hairlineWidth,
+          borderColor: palette.border,
+          padding: spacing.lg,
+          borderRadius: radius.lg,
+          backgroundColor: palette.surface,
+        }}
+      >
+        <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.md }}>
+          <View style={{ width: 44, height: 44, borderRadius: radius.md, alignItems: "center", justifyContent: "center", backgroundColor: color + "16", borderWidth: StyleSheet.hairlineWidth, borderColor: color + "70" }}>
+            <Icon accessible={false} size={21} color={color} strokeWidth={2.2} />
+          </View>
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Eyebrow>{tr.investments.calculationSummary}</Eyebrow>
+            <Text style={[type.heading, { color: palette.textStrong, marginTop: 2 }]}>{title}</Text>
+            <Text style={[type.small, { color: palette.textSecondary, marginTop: 2 }]}>
+              {selected ? `${selected.name} · ${tr.investments.types[selected.assetType]}` : tr.investments.product}
+            </Text>
+          </View>
+          {/* "Serbest bakiyeye eklenir" tells the user where their money goes; a
+              34%-wide column broke it across three lines on a phone, so it
+              shares the row only when there is room. */}
+          {wideSummary ? (
+            <View style={{ maxWidth: "38%", paddingHorizontal: spacing.md, paddingVertical: spacing.xs + 1, borderRadius: radius.full, backgroundColor: color + "18", borderWidth: StyleSheet.hairlineWidth, borderColor: color + "70" }}>
+              <Text style={[type.small, { color, fontFamily: font.semibold, textAlign: "center" }]}>{impact}</Text>
+            </View>
+          ) : null}
+        </View>
+        {!wideSummary ? (
+          <View style={{ marginTop: spacing.md, flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, borderRadius: radius.md, backgroundColor: color + "14", borderWidth: StyleSheet.hairlineWidth, borderColor: color + "60" }}>
+            <Icon accessible={false} size={15} color={color} strokeWidth={2.2} />
+            <Text style={[type.small, { color, fontFamily: font.semibold, flex: 1, minWidth: 0 }]}>{impact}</Text>
+          </View>
+        ) : null}
+        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.sm, marginTop: spacing.lg }}>
+          <SummaryTile label={tr.investments.operationDate} minWidth={110}>
+            <Text style={[type.label, { color: palette.textStrong, marginTop: 2 }]}>{date}</Text>
+          </SummaryTile>
+          <SummaryTile label={tr.investments.operationImpactLabel} minWidth={110}>
+            <Text style={[type.label, { color, marginTop: 2 }]}>{impact}</Text>
+          </SummaryTile>
+        </View>
+        {!draft.amountOnly ? (
+          <View style={{ flexDirection: "row", gap: spacing.sm, marginTop: spacing.sm }}>
+            <SummaryTile label={tr.investments.quantity} minWidth={0}>
+              <Text style={[type.amountSm, { color: palette.textStrong, marginTop: 2 }]}>{draft.quantity || "—"}</Text>
+            </SummaryTile>
+            <SummaryTile label={tr.investments.unitPrice} minWidth={0}>
+              {unit.minor == null
+                ? dash(type.amountSm)
+                : <Amount minor={unit.minor} colorized={false} accessibilityLabel={formatMinorCompact(unit.minor)} style={[type.amountSm, { color: palette.textStrong, marginTop: 2, textAlign: "left" }]} />}
+            </SummaryTile>
+          </View>
+        ) : null}
+        <View style={{ height: StyleSheet.hairlineWidth, backgroundColor: palette.border, marginVertical: spacing.lg }} />
+        <View style={{ flexDirection: "row", alignItems: "flex-end", justifyContent: "space-between", gap: spacing.md }}>
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text style={[type.small, { color: palette.textSecondary }]}>{tr.investments.calculatedTotal}</Text>
+            <Text style={[type.small, { color: palette.textSecondary, marginTop: 2 }]}>{tr.investments.operationHint[kind]}</Text>
+          </View>
+          {totalMinor == null
+            ? <Text style={[type.amount, { color: palette.textSecondary, textAlign: "right" }]}>—</Text>
+            : <Amount minor={totalMinor} colorized={false} color={color} accessibilityLabel={formatMinorCompact(totalMinor)} style={{ textAlign: "right" }} />}
+        </View>
+      </View>
+    </FadeIn>
+  );
+}
+
+/** Beside the quantity of a sale, how much of the product is held. */
+function HeldQuantity({ atoms }: { atoms: bigint }) {
+  const { palette } = useTheme();
+  return (
+    <View
+      accessible
+      accessibilityLabel={tr.investments.availableQuantityShort(formatInvestmentQuantityAtoms(atoms))}
+      style={{
+        width: "34%",
+        maxWidth: 148,
+        minWidth: 96,
+        minHeight: controlSize.regular,
+        justifyContent: "center",
+        paddingHorizontal: spacing.sm,
+        paddingVertical: spacing.xs,
+        borderRadius: radius.sm,
+        borderWidth: StyleSheet.hairlineWidth,
+        borderColor: palette.primary + "80",
+        backgroundColor: palette.primarySoft,
+      }}
+    >
+      <Text style={[type.small, { color: palette.textSecondary }]}>{tr.investments.availableQuantity}</Text>
+      <Text style={[type.amountSm, { color: palette.primaryText, fontFamily: font.semibold, marginTop: 1 }]}>{formatInvestmentQuantityAtoms(atoms)}</Text>
+    </View>
+  );
+}
+
+function QuoteFields({ draft }: { draft: OperationDraft }) {
+  const { quantity, unit, total, quoted } = draft;
+  const quantityPlaceholder = useRotatingPlaceholder(placeholderPools.investmentQuantity, { prefix: false, active: quantity.length === 0 });
+  const unitPlaceholder = useRotatingPlaceholder(placeholderPools.investmentUnitPrice, { prefix: false, active: unit.raw.length === 0 || total.raw.length === 0 });
+  const onTotal = (raw: string, minor: number | null) => draft.setTotal({ raw, minor });
+  if (draft.amountOnly) return <MoneyField label={tr.investments.requiredTotal} value={total.raw} placeholder={unitPlaceholder} onChangeMinor={onTotal} />;
+  return (
+    <>
+      <View style={{ marginBottom: spacing.md }}>
+        <Label>{tr.investments.requiredQuantity}</Label>
+        <View style={{ flexDirection: "row", alignItems: "stretch", gap: spacing.xs }}>
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Field
+              testID="investment-quantity"
+              accessibilityLabel={tr.investments.requiredQuantity}
+              noMargin
+              value={quantity}
+              error={quoted.quantityError ?? draft.oversellError}
+              onChangeText={(raw) => draft.setQuantity(raw.replace(/[^\d.,]/g, "").slice(0, 30))}
+              keyboardType="decimal-pad"
+              inputMode="decimal"
+              placeholder={quantityPlaceholder}
+            />
+          </View>
+          {draft.kind === "sell" && draft.selected && draft.heldAtoms != null ? <HeldQuantity atoms={draft.heldAtoms} /> : null}
+        </View>
+      </View>
+      <MoneyField
+        testID="investment-unit-price"
+        label={tr.investments.requiredUnitPrice}
+        value={unit.raw}
+        placeholder={unitPlaceholder}
+        onChangeMinor={(raw, minor) => draft.setUnit({ raw, minor })}
+      />
+      <MoneyField
+        label={tr.investments.optionalTotal}
+        value={total.raw}
+        error={quoted.totalError}
+        placeholder={quoted.calculated ? formatMinorInput(quoted.calculated.totalMinor) : tr.common.optionalHint}
+        onChangeMinor={onTotal}
+      />
+    </>
+  );
+}
+
+function OperationFields({ draft }: { draft: OperationDraft }) {
+  const router = useRouter();
+  const { palette } = useTheme();
+  const { baseKind, products } = draft;
+  const notePlaceholder = useRotatingPlaceholder(placeholderPools.investmentNote, { active: draft.note.length === 0 });
+  const addProduct = () => router.push({ pathname: "/investments/product", params: { next: baseKind } });
+  return (
+    <Card style={{ marginBottom: spacing.lg }}>
+      <PanelHeader icon={impactOf(draft.kind, palette).Icon} title={draft.title} />
+      <Select
+        label={tr.investments.product}
+        options={products.map((product) => ({ value: product.id, label: `${product.name} · ${tr.investments.types[product.assetType]}` }))}
+        value={draft.productId}
+        onChange={draft.setProductId}
+        placeholder={tr.investments.product}
+        onCreate={baseKind === "sell" ? undefined : { label: tr.investments.addProduct, run: addProduct }}
+      />
+      {products.length === 0 && baseKind !== "sell" ? (
+        <View style={{ marginBottom: spacing.md }}>
+          <Button icon={Plus} label={tr.investments.addProduct} onPress={addProduct} />
+        </View>
+      ) : null}
+      <DateField label={tr.investments.operationDate} value={draft.date} onChange={draft.setDate} max={todayISO()} />
+      {draft.kind === "contribution" ? (
+        <Segmented
+          value={draft.contributionMode}
+          onChange={draft.setContributionMode}
+          options={[{ value: "units", label: tr.investments.contributionWithUnits }, { value: "amount", label: tr.investments.contributionAmountOnly }]}
+        />
+      ) : null}
+      <QuoteFields draft={draft} />
+      <Field label={tr.common.note} value={draft.note} onChangeText={draft.setNote} multiline placeholder={notePlaceholder} />
+    </Card>
+  );
+}
+
+export default function InvestmentOperationScreen() {
+  const router = useRouter();
+  const { palette } = useTheme();
+  const draft = useOperationDraft();
+  const { profilesState, editing } = draft;
   if (profilesState.updatedAt == null) {
     return <Screen><DataStateNotice status={profilesState.status} retry={profilesState.retry} /></Screen>;
   }
   if (profilesState.data.length === 0) return <Redirect href="/investments/setup" />;
-
-  const pageTitle = editing ? tr.investments.editOperation : tr.investments.operationTitle[kind];
-  const impactColor = kind === "sell" ? palette.positiveText : kind === "existing" ? palette.secondaryText : palette.primaryText;
-  const ImpactIcon = kind === "sell" ? ArrowUpFromLine : kind === "existing" ? Landmark : ArrowDownToLine;
-
   return (
     <Screen width="form">
-      <Stack.Screen options={{ title: pageTitle }} />
-      <FadeIn style={{ marginBottom: spacing.lg }}>
-        <View
-          testID="investment-operation-summary"
-          accessible
-          accessibilityRole="image"
-          accessibilityLabel={`${pageTitle}. ${selected?.name ?? tr.investments.product}. ${date}. ${calculationTotal == null ? "—" : formatMinorCompact(calculationTotal)}. ${tr.investments.operationImpact[kind]}`}
-          // The app paints a card as `surface` under a hairline; this one was
-          // `surfaceAlt` under a 4px bar with `surface` tiles inside it — the
-          // surface order inverted, so the one screen that explains a money
-          // movement looked like it came from another product. It carries the
-          // operation's colour as the same top accent a hero card uses.
-          style={{
-            borderTopWidth: 3,
-            borderTopColor: impactColor,
-            borderWidth: StyleSheet.hairlineWidth,
-            borderColor: palette.border,
-            padding: spacing.lg,
-            borderRadius: radius.lg,
-            backgroundColor: palette.surface,
-          }}
-        >
-          <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.md }}>
-            <View style={{ width: 44, height: 44, borderRadius: radius.md, alignItems: "center", justifyContent: "center", backgroundColor: impactColor + "16", borderWidth: StyleSheet.hairlineWidth, borderColor: impactColor + "70" }}>
-              <ImpactIcon accessible={false} size={21} color={impactColor} strokeWidth={2.2} />
-            </View>
-            <View style={{ flex: 1, minWidth: 0 }}>
-              <Eyebrow>{tr.investments.calculationSummary}</Eyebrow>
-              <Text style={[type.heading, { color: palette.textStrong, marginTop: 2 }]}>{pageTitle}</Text>
-              <Text style={[type.small, { color: palette.textSecondary, marginTop: 2 }]}>
-                {selected ? `${selected.name} · ${tr.investments.types[selected.assetType]}` : tr.investments.product}
-              </Text>
-            </View>
-            {/* "Serbest bakiyeye eklenir" is the sentence that tells the user
-                where their money goes, and a 34%-wide column beside a heading
-                broke it across three lines on a phone. It gets the full width
-                below instead, and only shares the row when there is room. */}
-            {wideSummary ? (
-              <View style={{ maxWidth: "38%", paddingHorizontal: spacing.md, paddingVertical: spacing.xs + 1, borderRadius: radius.full, backgroundColor: impactColor + "18", borderWidth: StyleSheet.hairlineWidth, borderColor: impactColor + "70" }}>
-                <Text style={[type.small, { color: impactColor, fontFamily: font.semibold, textAlign: "center" }]}>{tr.investments.operationImpact[kind]}</Text>
-              </View>
-            ) : null}
-          </View>
-          {!wideSummary ? (
-            <View style={{ marginTop: spacing.md, flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, borderRadius: radius.md, backgroundColor: impactColor + "14", borderWidth: StyleSheet.hairlineWidth, borderColor: impactColor + "60" }}>
-              <ImpactIcon accessible={false} size={15} color={impactColor} strokeWidth={2.2} />
-              <Text style={[type.small, { color: impactColor, fontFamily: font.semibold, flex: 1, minWidth: 0 }]}>{tr.investments.operationImpact[kind]}</Text>
-            </View>
-          ) : null}
-          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.sm, marginTop: spacing.lg }}>
-            <View style={{ flex: 1, minWidth: 110, padding: spacing.sm, borderRadius: radius.md, backgroundColor: palette.surface, borderWidth: StyleSheet.hairlineWidth, borderColor: palette.border }}>
-              <Text style={[type.small, { color: palette.textSecondary }]}>{tr.investments.operationDate}</Text>
-              <Text style={[type.label, { color: palette.textStrong, marginTop: 2 }]}>{date}</Text>
-            </View>
-            <View style={{ flex: 1, minWidth: 110, padding: spacing.sm, borderRadius: radius.md, backgroundColor: palette.surface, borderWidth: StyleSheet.hairlineWidth, borderColor: palette.border }}>
-              <Text style={[type.small, { color: palette.textSecondary }]}>{tr.investments.operationImpactLabel}</Text>
-              <Text style={[type.label, { color: impactColor, marginTop: 2 }]}>{tr.investments.operationImpact[kind]}</Text>
-            </View>
-          </View>
-          {!amountOnlyContribution ? (
-            <View style={{ flexDirection: "row", gap: spacing.sm, marginTop: spacing.sm }}>
-              <View style={{ flex: 1, minWidth: 0, padding: spacing.sm, borderRadius: radius.md, backgroundColor: palette.surface, borderWidth: StyleSheet.hairlineWidth, borderColor: palette.border }}>
-                <Text style={[type.small, { color: palette.textSecondary }]}>{tr.investments.quantity}</Text>
-                <Text style={[type.amountSm, { color: palette.textStrong, marginTop: 2 }]}>{quantity || "—"}</Text>
-              </View>
-              <View style={{ flex: 1, minWidth: 0, padding: spacing.sm, borderRadius: radius.md, backgroundColor: palette.surface, borderWidth: StyleSheet.hairlineWidth, borderColor: palette.border }}>
-                <Text style={[type.small, { color: palette.textSecondary }]}>{tr.investments.unitPrice}</Text>
-                {unitMinor == null ? (
-                  <Text style={[type.amountSm, { color: palette.textStrong, marginTop: 2 }]}>—</Text>
-                ) : (
-                  <Amount
-                    minor={unitMinor}
-                    colorized={false}
-                    accessibilityLabel={formatMinorCompact(unitMinor)}
-                    style={[type.amountSm, { color: palette.textStrong, marginTop: 2, textAlign: "left" }]}
-                  />
-                )}
-              </View>
-            </View>
-          ) : null}
-          <View style={{ height: StyleSheet.hairlineWidth, backgroundColor: palette.border, marginVertical: spacing.lg }} />
-          <View style={{ flexDirection: "row", alignItems: "flex-end", justifyContent: "space-between", gap: spacing.md }}>
-            <View style={{ flex: 1, minWidth: 0 }}>
-              <Text style={[type.small, { color: palette.textSecondary }]}>{tr.investments.calculatedTotal}</Text>
-              <Text style={[type.small, { color: palette.textSecondary, marginTop: 2 }]}>{tr.investments.operationHint[kind]}</Text>
-            </View>
-            {calculationTotal == null ? (
-              <Text style={[type.amount, { color: palette.textSecondary, textAlign: "right" }]}>—</Text>
-            ) : (
-              <Amount
-                minor={calculationTotal}
-                colorized={false}
-                color={impactColor}
-                accessibilityLabel={formatMinorCompact(calculationTotal)}
-                style={{ textAlign: "right" }}
-              />
-            )}
-          </View>
-        </View>
-      </FadeIn>
-
-      <Card style={{ marginBottom: spacing.lg }}>
-        <PanelHeader
-          icon={kind === "sell" ? ArrowUpFromLine : kind === "existing" ? Landmark : ArrowDownToLine}
-          title={pageTitle}
-        />
-        <Select
-          label={tr.investments.product}
-          options={products.map((product) => ({ value: product.id, label: `${product.name} · ${tr.investments.types[product.assetType]}` }))}
-          value={productId}
-          onChange={setProductId}
-          placeholder={tr.investments.product}
-          onCreate={baseKind === "sell" ? undefined : {
-            label: tr.investments.addProduct,
-            run: () => router.push({ pathname: "/investments/product", params: { next: baseKind } }),
-          }}
-        />
-        {products.length === 0 && baseKind !== "sell" ? (
-          <View style={{ marginBottom: spacing.md }}>
-            <Button
-              icon={Plus}
-              label={tr.investments.addProduct}
-              onPress={() => router.push({ pathname: "/investments/product", params: { next: baseKind } })}
-            />
-          </View>
-        ) : null}
-        <DateField label={tr.investments.operationDate} value={date} onChange={setDate} max={todayISO()} />
-        {kind === "contribution" ? (
-          <Segmented
-            value={contributionMode}
-            onChange={setContributionMode}
-            options={[
-              { value: "units", label: tr.investments.contributionWithUnits },
-              { value: "amount", label: tr.investments.contributionAmountOnly },
-            ]}
-          />
-        ) : null}
-        {amountOnlyContribution ? (
-          <MoneyField
-            label={tr.investments.requiredTotal}
-            value={totalRaw}
-            placeholder={unitPlaceholder}
-            onChangeMinor={(raw, minor) => {
-              setTotalRaw(raw);
-              setTotalMinor(minor);
-            }}
-          />
-        ) : (
-          <>
-            <View style={{ marginBottom: spacing.md }}>
-              <Label>{tr.investments.requiredQuantity}</Label>
-              <View style={{ flexDirection: "row", alignItems: "stretch", gap: spacing.xs }}>
-                <View style={{ flex: 1, minWidth: 0 }}>
-                  <Field
-                    testID="investment-quantity"
-                    accessibilityLabel={tr.investments.requiredQuantity}
-                    noMargin
-                    value={quantity}
-                    error={parsedQuantity.error ?? oversellError}
-                    onChangeText={(raw) => setQuantity(raw.replace(/[^\d.,]/g, "").slice(0, 30))}
-                    keyboardType="decimal-pad"
-                    inputMode="decimal"
-                    placeholder={quantityPlaceholder}
-                  />
-                </View>
-                {kind === "sell" && selected && heldAtoms != null ? (
-                  <View
-                    accessible
-                    accessibilityLabel={tr.investments.availableQuantityShort(formatInvestmentQuantityAtoms(heldAtoms))}
-                    style={{
-                      width: "34%",
-                      maxWidth: 148,
-                      minWidth: 96,
-                      minHeight: controlSize.regular,
-                      justifyContent: "center",
-                      paddingHorizontal: spacing.sm,
-                      paddingVertical: spacing.xs,
-                      borderRadius: radius.sm,
-                      borderWidth: StyleSheet.hairlineWidth,
-                      borderColor: palette.primary + "80",
-                      backgroundColor: palette.primarySoft,
-                    }}
-                  >
-                    <Text style={[type.small, { color: palette.textSecondary }]}>{tr.investments.availableQuantity}</Text>
-                    <Text style={[type.amountSm, { color: palette.primaryText, fontFamily: font.semibold, marginTop: 1 }]}>
-                      {formatInvestmentQuantityAtoms(heldAtoms)}
-                    </Text>
-                  </View>
-                ) : null}
-              </View>
-            </View>
-            <MoneyField
-              testID="investment-unit-price"
-              label={tr.investments.requiredUnitPrice}
-              value={unitRaw}
-              placeholder={unitPlaceholder}
-              onChangeMinor={(raw, minor) => {
-                setUnitRaw(raw);
-                setUnitMinor(minor);
-              }}
-            />
-            <MoneyField
-              label={tr.investments.optionalTotal}
-              value={totalRaw}
-              error={totalError}
-              placeholder={calculatedQuote ? formatMinorInput(calculatedQuote.totalMinor) : tr.common.optionalHint}
-              onChangeMinor={(raw, minor) => {
-                setTotalRaw(raw);
-                setTotalMinor(minor);
-              }}
-            />
-          </>
-        )}
-        <Field label={tr.common.note} value={note} onChangeText={setNote} multiline placeholder={notePlaceholder} />
-      </Card>
-
-      <Button
-        testID="investment-operation-save"
-        label={pageTitle}
-        loading={busy}
-        disabled={!canSave}
-        onPress={() => void save()}
-      />
+      <Stack.Screen options={{ title: draft.title }} />
+      <OperationSummary draft={draft} />
+      <OperationFields draft={draft} />
+      <Button testID="investment-operation-save" label={draft.title} loading={draft.busy} disabled={!draft.canSave} onPress={() => void draft.save()} />
       {editing ? (
         <View
           testID="investment-history-removal-row"
@@ -460,9 +437,7 @@ export default function InvestmentOperationScreen() {
             gap: spacing.md,
           }}
         >
-          <Text style={[type.small, { color: palette.textSecondary, flex: 1, minWidth: 0, flexShrink: 1 }]}>
-            {tr.investments.removeProductHistoryHint}
-          </Text>
+          <Text style={[type.small, { color: palette.textSecondary, flex: 1, minWidth: 0, flexShrink: 1 }]}>{tr.investments.removeProductHistoryHint}</Text>
           <IconButton
             icon={Trash}
             tone="danger"

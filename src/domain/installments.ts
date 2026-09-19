@@ -10,11 +10,14 @@ import {
   addMonthsToKey,
   clampDayToMonth,
   isMonthDay,
+  monthDiff,
+  monthKeyOf,
   monthOf,
   yearOf,
   type ISODate,
   type MonthKey,
 } from "./dates";
+import { firstInstallmentMonth, isValidCardCycle, sameCard } from "./card-statements";
 import { splitIntoInstallments, type Minor } from "./money";
 import type { InstallmentPlanLike, TransactionStatus } from "./types";
 
@@ -114,6 +117,134 @@ export function deriveStartMonth(
   // next unpaid one belongs to next month; otherwise it is this month's.
   const nextUnpaidMonth = today != null && refDue <= today ? addMonthsToKey(referenceMonth, 1) : referenceMonth;
   return addMonthsToKey(nextUnpaidMonth, -paidCount);
+}
+
+/**
+ * What another source says about one plan: a month it bills, what it bills
+ * then, the month it ends, the month it began when that source prints a
+ * position, and the card.
+ */
+export interface PlanSighting {
+  month: MonthKey;
+  amountMinor: Minor;
+  endMonth: MonthKey;
+  /** Null when the source prints only how many payments remain. */
+  startMonth: MonthKey | null;
+  paymentSourceId: string | null;
+}
+
+type SightablePlan = Pick<InstallmentPlanLike, "id" | "startMonth" | "installmentCount" | "totalAmountMinor" | "monthlyAmountMinor" | "currency">
+  & {
+    paymentSourceId: string | null;
+    /** A foreign-currency plan's instalment for the sighted month, in lira. */
+    billedTryMinor?: Minor | null;
+  };
+
+/**
+ * The live plan a sighting is, and what that plan bills in the sighted month.
+ *
+ * A plan is known by its schedule and never by its name: the owner names the
+ * purchase, a statement prints the merchant, a workbook renames both. A lira
+ * plan may miss by fewer kuruş than its count, the most a nearest-kuruş split
+ * moves one instalment. A bank fixes a foreign purchase's lira at posting while
+ * the plan restates it with the rate, so a foreign plan needs both sides to name
+ * its card and may miss by a quarter. `claimed` holds plans an earlier line of
+ * the same source took, so two identical purchases stay two plans.
+ */
+export function planForSighting<P extends SightablePlan>(
+  sighting: PlanSighting,
+  plans: readonly P[],
+  claimed: ReadonlySet<string> = new Set(),
+): { plan: P; shareMinor: Minor } | null {
+  for (const plan of plans) {
+    const shareMinor = claimed.has(plan.id) ? undefined : sightedShare(plan, sighting);
+    const tolerance = plan.currency === "TRY" ? plan.installmentCount - 1 : Math.abs(shareMinor ?? 0) / 4;
+    if (shareMinor != null && Math.abs(shareMinor - sighting.amountMinor) <= tolerance) return { plan, shareMinor };
+  }
+  return null;
+}
+
+/** What `plan` bills in the sighted month, when the sighting's schedule and card are the plan's. */
+function sightedShare(plan: SightablePlan, sighting: PlanSighting): Minor | undefined {
+  const foreign = plan.currency !== "TRY";
+  if (foreign ? plan.paymentSourceId == null || plan.paymentSourceId !== sighting.paymentSourceId : !sameCard(plan.paymentSourceId, sighting.paymentSourceId)) return undefined;
+  if (!isValidInstallmentCount(plan.installmentCount) || (plan.totalAmountMinor ?? plan.monthlyAmountMinor) == null) return undefined;
+  if ((sighting.startMonth ?? plan.startMonth) !== plan.startMonth) return undefined;
+  if (addMonthsToKey(plan.startMonth, plan.installmentCount - 1) !== sighting.endMonth) return undefined;
+  const position = monthDiff(plan.startMonth, sighting.month);
+  if (foreign) return position >= 0 && position < plan.installmentCount ? plan.billedTryMinor ?? undefined : undefined;
+  return planAmounts(plan)[position];
+}
+
+export interface PlanDraftInput {
+  kind: "card_installment" | "loan";
+  title: string;
+  amountMinor: Minor | null;
+  countText: string;
+  /** What the owner typed for "already paid", or null while untouched. */
+  paidText: string | null;
+  /** How many the plan's own rows say were paid; 0 for a new plan. */
+  storedPaid: number;
+  startChoice: MonthKey | null;
+  /** Null for a new plan. */
+  existingStartMonth: MonthKey | null;
+  card: { type: string; statementDay: number | null; dueDay: number | null } | null;
+  dueDayText: string;
+  today: ISODate;
+}
+
+/** A loan's own payment day, falling back to its account's; a card plan takes the card's. */
+function draftDueDay(input: PlanDraftInput) {
+  const typed = input.kind === "loan" && input.dueDayText.trim() !== "" ? Number(input.dueDayText) : null;
+  return { dueDay: typed ?? input.card?.dueDay ?? null, dueDayValid: typed == null || isMonthDay(typed) };
+}
+
+/** A card plan needs a card with both days; until the owner picks a month it starts on the statement a purchase made today joins. */
+function draftStart(input: PlanDraftInput) {
+  const { card, kind, today } = input;
+  const cycle = { statementDay: card?.statementDay ?? null, dueDay: card?.dueDay ?? null };
+  const onCard = kind === "card_installment";
+  return {
+    cardSourceValid: !onCard || (card?.type === "credit_card" && isValidCardCycle(cycle)),
+    startMonth: input.startChoice ?? (onCard && isValidCardCycle(cycle) ? firstInstallmentMonth(today, cycle) : monthKeyOf(today)),
+  };
+}
+
+/** What was already paid, and whether the owner said so: on an edit only a corrected count moves the schedule. */
+function draftPaid(input: PlanDraftInput, count: number) {
+  const paid = Number(input.paidText ?? String(input.storedPaid));
+  const isEdit = input.existingStartMonth != null;
+  return {
+    paid,
+    paidChanged: isEdit ? paid !== input.storedPaid : paid > 0,
+    paidValid: Number.isInteger(paid) && paid >= 0 && paid <= count,
+  };
+}
+
+/**
+ * What the plan form can save, and where the plan it saves starts. Starting a
+ * card plan in the current month dated its first instalment on a due day already
+ * past, which counted it as paid; "already paid N" places the start instead.
+ */
+export function planDraft(input: PlanDraftInput) {
+  const count = Number(input.countText);
+  const { cardSourceValid, startMonth } = draftStart(input);
+  const { paid, paidChanged, paidValid } = draftPaid(input, count);
+  const { dueDay, dueDayValid } = draftDueDay(input);
+  const resolvedStart = paidChanged ? deriveStartMonth(paid, monthKeyOf(input.today), dueDay, input.today) : startMonth;
+  const described = input.title.trim() !== "" && (input.amountMinor ?? 0) > 0;
+  return {
+    count,
+    paid,
+    startMonth,
+    resolvedStart,
+    paidChanged,
+    reschedule: input.existingStartMonth != null && resolvedStart !== input.existingStartMonth,
+    dueDay,
+    dueDayValid,
+    cardSourceValid,
+    valid: described && isValidInstallmentCount(count) && paidValid && cardSourceValid && dueDayValid,
+  };
 }
 
 interface PlanProgress {

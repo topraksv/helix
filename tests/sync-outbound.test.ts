@@ -174,7 +174,6 @@ describe("outbound row conversion", () => {
       ...common,
       started_on: "2026-07-01",
       opening_cash_minor: 1_000,
-      setup_completed: true,
     };
     const profilePolicy = {
       allowedColumns: new Set(Object.keys(profile)),

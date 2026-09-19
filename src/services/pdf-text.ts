@@ -234,6 +234,8 @@ interface PdfStreams {
   cmaps: string[];
   /** The same CMaps by the object number a font names them with. */
   cmapByObject: Map<number, string>;
+  /** Type3 glyph drawings by object number. */
+  glyphs: Map<number, string>;
   /**
    * Object streams. PDF 1.5 packs font and page dictionaries into them, where a
    * search of the file's bytes cannot see them — and a Type0 font nobody can see
@@ -242,9 +244,22 @@ interface PdfStreams {
   packed: { dictionary: string; text: string }[];
 }
 
+/**
+ * Only what this can decode. An LZW stream or an unfiltered binary blob is
+ * skipped rather than guessed at, and so is an image, by its subtype, because
+ * it is deflated exactly as page content is.
+ */
+function notText(dictionary: string, isFlate: boolean): boolean {
+  const hasOtherFilter = /\/Filter\s*(?:\[\s*)?\/(?!FlateDecode)[A-Za-z]/.test(dictionary);
+  return (hasOtherFilter && !isFlate) || /\/Subtype\s*\/Image\b/.test(dictionary);
+}
+
+/** A Type3 glyph's drawing opens with `d0` or `d1`, and is no more page text than an image is. */
+const GLYPH_DRAWING = /^\s*(?:-?[\d.]+\s+){2}d0\b|^\s*(?:-?[\d.]+\s+){6}d1\b/;
+
 function contentStreams(bytes: Uint8Array, Unzlib: UnzlibCtor): PdfStreams {
   const haystack = bytesToLatin1(bytes);
-  const found: PdfStreams = { content: [], cmaps: [], cmapByObject: new Map(), packed: [] };
+  const found: PdfStreams = { content: [], cmaps: [], cmapByObject: new Map(), glyphs: new Map(), packed: [] };
   let total = 0;
   const budget = { left: MAX_INFLATED_BYTES };
   const opener = />>\s*stream\r?\n?/g;
@@ -264,11 +279,8 @@ function contentStreams(bytes: Uint8Array, Unzlib: UnzlibCtor): PdfStreams {
     const dictionary = opensAt === -1 ? before : before.slice(opensAt);
     const dictionaryStart = opensAt === -1 ? -1 : match.index - before.length + opensAt;
 
-    // Only what this can decode. An image, an LZW stream or an unfiltered
-    // binary blob is skipped rather than guessed at.
     const isFlate = /\/Filter\s*(?:\[\s*)?\/FlateDecode/.test(dictionary);
-    const hasOtherFilter = /\/Filter\s*(?:\[\s*)?\/(?!FlateDecode)[A-Za-z]/.test(dictionary);
-    if (hasOtherFilter && !isFlate) continue;
+    if (notText(dictionary, isFlate)) continue;
 
     const declared = declaredLength(dictionary);
     const end = declared != null && start + declared <= close ? start + declared : close;
@@ -278,14 +290,16 @@ function contentStreams(bytes: Uint8Array, Unzlib: UnzlibCtor): PdfStreams {
     const text = bytesToLatin1(decoded);
     total += text.length;
     if (total > MAX_TEXT_LENGTH) break;
+    const owner = Number(/(\d+)\s+\d+\s+obj\s*$/.exec(haystack.slice(Math.max(0, dictionaryStart - 32), Math.max(0, dictionaryStart)))?.[1]);
     if (/\/Type\s*\/ObjStm\b/.test(dictionary)) {
       found.packed.push({ dictionary, text });
+    } else if (GLYPH_DRAWING.test(text)) {
+      found.glyphs.set(owner, text);
     } else if (text.includes("begincmap")) {
       // A CMap is not page content and must never be scanned for text: its own
       // body is full of hex that would otherwise be read as words.
       found.cmaps.push(text);
-      const owner = /(\d+)\s+\d+\s+obj\s*$/.exec(haystack.slice(Math.max(0, dictionaryStart - 32), Math.max(0, dictionaryStart)));
-      if (owner) found.cmapByObject.set(Number(owner[1]), text);
+      found.cmapByObject.set(owner, text);
     } else {
       found.content.push(text);
     }
@@ -357,6 +371,157 @@ interface FontDecoder {
   /** Two-byte glyph ids (a Type0 font, or an Identity encoding) rather than one byte a character. */
   cid: boolean;
   toUnicode: ToUnicodeMap | null;
+  /**
+   * A Type3 font with no map. Its glyphs are drawings its producer numbers at
+   * will: a statement printed through a mainframe's page format sets each
+   * letter at that system's own code, a different code for the same Turkish
+   * letter in two fonts of one page, and read as bytes came back "ok" as
+   * three thousand lines of accented noise.
+   */
+  unnamed?: boolean;
+  /** Advance per code at size 1, for a font whose text is placed by position. */
+  widths?: Map<number, number>;
+}
+
+/** EBCDIC code page 037, the codes a mainframe page format (AFP) sets Latin text in. */
+const EBCDIC_037 = "\uFFFD".repeat(64) + "  âäàáãåçñ¢.<(+|&éêëèíîïìß!$*);¬-/ÂÄÀÁÃÅÇÑ¦,%_>?øÉÊËÈÍÎÏÌ`:#@'=\"Øabcdefghi«»ðýþ±°jklmnopqrªºæ¸Æ¤µ~stuvwxyz¡¿ÐÝÞ®^£¥·©§¶¼½¾[]¯¨´×{ABCDEFGHI\u00ADôöòóõ}JKLMNOPQR¹ûüùúÿ\\÷STUVWXYZ²ÔÖÒÓÕ0123456789³ÛÜÙÚ\uFFFD";
+
+/** A Turkish letter drawn as a Latin letter's body with marks: base letter, marks above, marks below. */
+const MARKED_LETTERS: Readonly<Record<string, string>> = {
+  i00: "ı", I10: "İ", g10: "ğ", G10: "Ğ", s01: "ş", S01: "Ş", c01: "ç", C01: "Ç", o20: "ö", O20: "Ö", u20: "ü", U20: "Ü",
+};
+
+const MAX_GLYPH_PIXELS = 65_536;
+
+/** A 1-bit glyph drawing's largest connected part, and how many separate marks sit above and below it. */
+interface GlyphShape {
+  body: string;
+  above: number;
+  below: number;
+}
+
+function glyphShape(drawing: string | undefined): GlyphShape | null {
+  const image = drawing && /BI\s*\/W\s+(\d+)\s*\/H\s+(\d+)\s*\/BPC\s+1\s*\/IM\s+true\s*(\/D\s*\[\s*1\s+0\s*\])?\s*ID\s/.exec(drawing);
+  if (!image) return null;
+  const width = Number(image[1]);
+  const height = Number(image[2]);
+  if (width * height > MAX_GLYPH_PIXELS) return null;
+  const data = drawing.slice(image.index + image[0].length);
+  const ink = image[3] ? 1 : 0;
+  const stride = Math.ceil(width / 8);
+  const pixels = new Set<number>();
+  for (let row = 0; row < height; row += 1) {
+    for (let column = 0; column < width; column += 1) {
+      const byte = data.charCodeAt(row * stride + (column >> 3));
+      if (((byte >> (7 - (column & 7))) & 1) === ink) pixels.add((height - 1 - row) * width + column);
+    }
+  }
+  const [body, ...marks] = connectedParts(pixels, width).sort((a, b) => b.length - a.length);
+  if (!body) return null;
+  const ys = (part: number[]) => part.map((pixel) => Math.floor(pixel / width));
+  const top = Math.max(...ys(body));
+  const bottom = Math.min(...ys(body));
+  const left = Math.min(...body.map((pixel) => pixel % width));
+  return {
+    body: body.map((pixel) => `${(pixel % width) - left},${Math.floor(pixel / width) - bottom}`).sort().join(" "),
+    above: marks.filter((mark) => Math.min(...ys(mark)) > top).length,
+    below: marks.filter((mark) => Math.max(...ys(mark)) < bottom).length,
+  };
+}
+
+function connectedParts(pixels: Set<number>, width: number): number[][] {
+  const parts: number[][] = [];
+  const unvisited = new Set(pixels);
+  for (const start of pixels) {
+    if (!unvisited.delete(start)) continue;
+    const part = [start];
+    for (let index = 0; index < part.length; index += 1) {
+      const pixel = part[index]!;
+      const column = pixel % width;
+      for (const dy of [-width, 0, width]) {
+        for (const dx of [-1, 0, 1]) {
+          const neighbour = pixel + dy + dx;
+          if (column + dx >= 0 && column + dx < width && unvisited.delete(neighbour)) part.push(neighbour);
+        }
+      }
+    }
+    parts.push(part);
+  }
+  return parts;
+}
+
+/** A dictionary entry's value: the object it references, or the value written in place. */
+function entryValue(body: string, key: string, bodies: Map<number, string>): string {
+  const reference = new RegExp(`/${key}\\s+(\\d+)\\s+\\d+\\s+R`).exec(body);
+  if (reference) return bodies.get(Number(reference[1])) ?? "";
+  return new RegExp(`/${key}\\s*(<<[^>]*>>|\\[[^\\]]*\\])`).exec(body)?.[1] ?? "";
+}
+
+interface AfpFont {
+  /** Glyph drawing object by code. */
+  glyphs: Map<number, number>;
+  widths: Map<number, number>;
+}
+
+/**
+ * A Type3 font converted from a mainframe page format: every glyph is named
+ * `C` and its own code in hex, and no map says which letter it draws.
+ */
+/** An encoding's glyph drawings by code, when every glyph is named `C` and its own code in hex. */
+function glyphsNamedForCodes(differences: string, drawings: Map<string, number>): Map<number, number> | null {
+  const glyphs = new Map<number, number>();
+  let code = 0;
+  for (const token of differences.match(/\d+|\/[^\s/]+/g) ?? []) {
+    if (!token.startsWith("/")) {
+      code = Number(token);
+      continue;
+    }
+    const drawing = drawings.get(token.slice(1));
+    if (drawing == null || !/^\/C[0-9A-Fa-f]{1,2}$/.test(token) || Number.parseInt(token.slice(2), 16) !== code) return null;
+    glyphs.set(code, drawing);
+    code += 1;
+  }
+  return glyphs.size > 0 ? glyphs : null;
+}
+
+function afpFont(body: string, bodies: Map<number, string>): AfpFont | null {
+  if (!/\/Subtype\s*\/Type3\b/.test(body) || /\/ToUnicode\b/.test(body)) return null;
+  const drawings = new Map([...entryValue(body, "CharProcs", bodies).matchAll(/\/(\S+?)\s+(\d+)\s+\d+\s+R/g)].map((m) => [m[1]!, Number(m[2])]));
+  const glyphs = glyphsNamedForCodes(/\/Differences\s*\[([^\]]*)\]/.exec(entryValue(body, "Encoding", bodies))?.[1] ?? "", drawings);
+  if (!glyphs) return null;
+  const first = Number(/\/FirstChar\s+(\d+)/.exec(body)?.[1] ?? 0);
+  const scale = Number(/\/FontMatrix\s*\[\s*([-\d.]+)/.exec(body)?.[1] ?? 1);
+  const advances = entryValue(body, "Widths", bodies).match(/-?\d*\.?\d+/g) ?? [];
+  return { glyphs, widths: new Map(advances.map((advance, index) => [first + index, Number(advance) * scale])) };
+}
+
+/**
+ * Letters for page-format fonts. Latin text is EBCDIC 037; the letters that
+ * code page lacks are drawn from a supplement font, recognised by shape: a
+ * glyph whose body is exactly a base letter's body elsewhere in the document,
+ * with the marks that make it Turkish. Measured on the owner's Akbank
+ * statement, one such font held every `ı ş İ Ş` at several sizes.
+ */
+function afpDecoders(fonts: AfpFont[], drawings: Map<number, string>): FontDecoder[] {
+  const shapes = fonts.map((font) => new Map([...font.glyphs].map(([code, object]) => [code, glyphShape(drawings.get(object))])));
+  const bases = new Map<string, string>();
+  for (const glyphs of shapes) {
+    for (const [code, shape] of glyphs) {
+      const letter = EBCDIC_037[code]!;
+      if (shape && "iIsScCgGoOuU".includes(letter) && shape.above === Number(letter === "i") && shape.below === 0) bases.set(shape.body, letter);
+    }
+  }
+  return fonts.map((font, index) => {
+    const inked = [...shapes[index]!].filter(([, shape]) => shape != null);
+    const turkish = new Map(inked.flatMap(([code, shape]) => {
+      const letter = MARKED_LETTERS[`${bases.get(shape!.body)}${shape!.above}${shape!.below}`];
+      return letter ? [[code, letter] as const] : [];
+    }));
+    // A font drawn mostly as marked letters is the supplement; what it draws unrecognised is not guessed.
+    const supplement = turkish.size > 0 && turkish.size * 2 >= inked.length;
+    const letterOf = (code: number) => supplement ? turkish.get(code) ?? (shapes[index]!.get(code) ? "\uFFFD" : "") : EBCDIC_037[code]!;
+    return { cid: false, toUnicode: new Map([...font.glyphs.keys()].map((code) => [code, letterOf(code)])), widths: font.widths };
+  });
 }
 
 /**
@@ -392,11 +557,16 @@ function fontObjectsByName(bodies: Map<number, string>): Map<string, number> | n
  * refuses. A font is read once however many names select it, and a CMap once
  * however many fonts share it: 4_000 names for one megabyte took 463 ms.
  */
-function resolveFonts(bodies: Map<number, string>, cmapByObject: Map<number, string>): Map<string, FontDecoder> | null {
+function resolveFonts(bodies: Map<number, string>, streams: PdfStreams): Map<string, FontDecoder> | null {
   const fontByName = fontObjectsByName(bodies);
   if (!fontByName) return null;
   const parsed = new Map<number, ToUnicodeMap>();
   const decoders = new Map<number, FontDecoder>();
+  const afp = [...new Set(fontByName.values())].flatMap((object) => {
+    const font = afpFont(bodies.get(object) ?? "", bodies);
+    return font ? [[object, font] as const] : [];
+  });
+  afpDecoders(afp.map(([, font]) => font), streams.glyphs).forEach((decoder, index) => decoders.set(afp[index]![0], decoder));
   const fonts = new Map<string, FontDecoder>();
   for (const [name, object] of fontByName) {
     let decoder = decoders.get(object);
@@ -404,11 +574,13 @@ function resolveFonts(bodies: Map<number, string>, cmapByObject: Map<number, str
       const body = bodies.get(object) ?? "";
       const reference = /\/ToUnicode\s+(\d+)\s+\d+\s+R/.exec(body);
       const cmapObject = reference ? Number(reference[1]) : -1;
-      const cmap = cmapByObject.get(cmapObject);
+      const cmap = streams.cmapByObject.get(cmapObject);
       if (cmap != null && !parsed.has(cmapObject)) parsed.set(cmapObject, parseToUnicode(cmap));
+      const toUnicode = parsed.get(cmapObject) ?? null;
       decoder = {
         cid: /\/Subtype\s*\/Type0\b/.test(body) || /\/Encoding\s*\/Identity-[HV]\b/.test(body),
-        toUnicode: parsed.get(cmapObject) ?? null,
+        toUnicode,
+        unnamed: toUnicode == null && /\/Subtype\s*\/Type3\b/.test(body),
       };
       decoders.set(object, decoder);
     }
@@ -483,46 +655,39 @@ const MAX_CMAP_ENTRIES = 65_536;
 function parseToUnicode(text: string): ToUnicodeMap {
   const map: ToUnicodeMap = new Map();
   const add = (code: number, value: string) => {
-    if (map.size >= MAX_CMAP_ENTRIES || value === "") return;
-    map.set(code, value);
+    if (map.size < MAX_CMAP_ENTRIES && value !== "") map.set(code, value);
   };
-
+  const full = () => map.size >= MAX_CMAP_ENTRIES;
   for (const section of text.match(/beginbfchar([\s\S]*?)endbfchar/g) ?? []) {
-    if (map.size >= MAX_CMAP_ENTRIES) break;
     for (const pair of section.match(/<[0-9A-Fa-f\s]+>\s*<[0-9A-Fa-f\s]*>/g) ?? []) {
-      if (map.size >= MAX_CMAP_ENTRIES) break;
-      const [source, destination] = pair.match(/<[0-9A-Fa-f\s]*>/g) ?? [];
-      const code = source ? hexValue(source) : null;
-      if (code == null || destination == null) continue;
-      add(code, hexToString(destination));
+      if (full()) return map;
+      const [source, destination] = pair.match(/<[0-9A-Fa-f\s]*>/g)!;
+      const code = hexValue(source!);
+      if (code != null) add(code, hexToString(destination!));
     }
   }
-
   for (const section of text.match(/beginbfrange([\s\S]*?)endbfrange/g) ?? []) {
-    if (map.size >= MAX_CMAP_ENTRIES) break;
-    const body = section.replace(/^beginbfrange/, "").replace(/endbfrange$/, "");
-    const entry = /<([0-9A-Fa-f\s]+)>\s*<([0-9A-Fa-f\s]+)>\s*(\[[\s\S]*?\]|<[0-9A-Fa-f\s]*>)/g;
-    let match: RegExpExecArray | null;
-    while ((match = entry.exec(body)) !== null) {
-      if (map.size >= MAX_CMAP_ENTRIES) break;
-      const low = hexValue(match[1]!);
-      const high = hexValue(match[2]!);
-      if (low == null || high == null || high < low || high - low > MAX_CMAP_ENTRIES) continue;
-      const destination = match[3]!;
-      if (destination.startsWith("[")) {
-        const values = destination.match(/<[0-9A-Fa-f\s]*>/g) ?? [];
-        values.forEach((value, offset) => add(low + offset, hexToString(value)));
-        continue;
-      }
-      const base = hexToString(destination);
-      if (base.length !== 1) continue;
-      const start = base.charCodeAt(0);
-      for (let code = low; code <= high && map.size < MAX_CMAP_ENTRIES; code += 1) {
-        add(code, String.fromCharCode(start + (code - low)));
-      }
+    for (const entry of section.matchAll(/<([0-9A-Fa-f\s]+)>\s*<([0-9A-Fa-f\s]+)>\s*(\[[\s\S]*?\]|<[0-9A-Fa-f\s]*>)/g)) {
+      if (full()) return map;
+      addRange(entry, add, full);
     }
   }
   return map;
+}
+
+/** One `bfrange` entry: an array of destinations, or one destination counted up across the range. */
+function addRange(entry: RegExpMatchArray, add: (code: number, value: string) => void, full: () => boolean): void {
+  const low = hexValue(entry[1]!);
+  const high = hexValue(entry[2]!);
+  if (low == null || high == null || high < low || high - low > MAX_CMAP_ENTRIES) return;
+  const destination = entry[3]!;
+  if (destination.startsWith("[")) {
+    (destination.match(/<[0-9A-Fa-f\s]*>/g) ?? []).forEach((value, offset) => add(low + offset, hexToString(value)));
+    return;
+  }
+  const base = hexToString(destination);
+  if (base.length !== 1) return;
+  for (let code = low; code <= high && !full(); code += 1) add(code, String.fromCharCode(base.charCodeAt(0) + code - low));
 }
 
 /** Two-byte big-endian glyph ids, mapped through the document's own CMap. */
@@ -562,7 +727,7 @@ function unescapeLiteral(body: string): string {
  * is not a character anyone printed.
  */
 function decodeShown(raw: string, font: FontDecoder | null, fromHex: boolean): string | null {
-  if (font == null) return null;
+  if (font == null || font.unnamed) return null;
   if (font.cid) return font.toUnicode != null && font.toUnicode.size > 0 ? decodeCids(raw, font.toUnicode) : null;
   let out = "";
   for (let index = 0; index < raw.length; index += 1) {
@@ -584,73 +749,115 @@ function hexBytes(hex: string): string {
   return out;
 }
 
+/** A string, a name, an array bracket, a number (group 1) or a text operator (group 2). */
+const TEXT_TOKEN = /\((?:\\.|[^\\()])*\)|<[0-9A-Fa-f\s]*>|\/[^\s/[\]()<>{}%]+|\[|\]|(-?\d*\.?\d+)|(T[JjdDfmz*]|ET|'|")/g;
+
+interface TextOperation {
+  operator: string;
+  /** The numbers, last name and strings written since the previous operator. */
+  numbers: number[];
+  name: string;
+  strings: { raw: string; hex: boolean }[];
+}
+
+/** A content stream's text operators in order; strings after the last one come with an empty operator. */
+function* textOperations(stream: string): Generator<TextOperation> {
+  let operation: TextOperation = { operator: "", numbers: [], name: "", strings: [] };
+  for (const match of stream.matchAll(TEXT_TOKEN)) {
+    const token = match[0];
+    if (token.startsWith("(")) operation.strings.push({ raw: unescapeLiteral(token.slice(1, -1)), hex: false });
+    else if (token.startsWith("<")) operation.strings.push({ raw: hexBytes(token.slice(1, -1)), hex: true });
+    else if (token.startsWith("/")) operation.name = token.slice(1);
+    else if (match[1] !== undefined) operation.numbers.push(Number(match[1]));
+    else if (match[2] !== undefined) {
+      yield { ...operation, operator: match[2] };
+      operation = { operator: "", numbers: [], name: operation.name, strings: [] };
+    }
+  }
+  if (operation.strings.length > 0) yield operation;
+}
+
+/** The strings an operation shows, decoded, and their advance at `scale`; null in a font it cannot name. */
+function shownText(strings: TextOperation["strings"], font: FontDecoder | null, scale: number): { text: string; advance: number } | null {
+  let text = "";
+  let advance = 0;
+  for (const { raw, hex } of strings) {
+    const shown = decodeShown(raw, font, hex);
+    if (shown == null) return null;
+    text += shown;
+    for (const character of raw) advance += (font?.widths?.get(character.charCodeAt(0)) ?? 0) * scale;
+  }
+  return { text, advance };
+}
+
 /**
- * Pull the shown strings out of one content stream, in reading order, or null
- * when a string is shown in a font whose glyphs cannot be named.
- *
- * Only `Tj`, `TJ`, `'` and `"` show text. `Td`/`TD`/`T*`/`ET` move the cursor,
- * and a vertical move is treated as a line break so a table's rows stay
+ * The strings of one content stream in reading order, or null when a string is
+ * shown in a font whose glyphs cannot be named. `Tf` selects the font; a
+ * vertical `Td` and `T*`, `ET`, `'`, `"` break the line, so a table's rows stay
  * separate lines — which is what makes a statement line parseable at all.
- * `Tf` selects the font the following strings are decoded with.
  */
 function showText(stream: string, fonts: Map<string, FontDecoder> | null, documentDefault: FontDecoder | null): string | null {
   let out = "";
-  const operator = /\((?:\\.|[^\\()])*\)|<[0-9A-Fa-f\s]*>|\/[^\s/[\]()<>{}%]+|\[|\]|(-?\d*\.?\d+)|(T[JjdDf*]|ET|'|")/g;
-  let pendingNumbers: number[] = [];
-  let pendingName = "";
   let font = documentDefault;
-  let match: RegExpExecArray | null;
-  let buffer = "";
-  while ((match = operator.exec(stream)) !== null) {
-    const token = match[0];
-    const isLiteral = token.startsWith("(");
-    if (isLiteral || token.startsWith("<")) {
-      const raw = isLiteral ? unescapeLiteral(token.slice(1, -1)) : hexBytes(token.slice(1, -1));
-      const shown = decodeShown(raw, font, !isLiteral);
-      if (shown == null) return null;
-      buffer += shown;
-      continue;
-    }
-    if (token.startsWith("/")) {
-      pendingName = token.slice(1);
-      continue;
-    }
-    if (match[1] !== undefined) {
-      pendingNumbers.push(Number(match[1]));
-      continue;
-    }
-    const op = match[2];
-    if (op === "Tf") {
-      font = fonts?.get(pendingName) ?? documentDefault;
-      pendingNumbers = [];
-      continue;
-    }
-    if (op === "Tj" || op === "TJ" || op === "'" || op === '"') {
-      out += buffer;
-      buffer = "";
-      if (op === "'" || op === '"') out += "\n";
-      pendingNumbers = [];
-      continue;
-    }
-    if (op === "Td" || op === "TD") {
-      out += buffer;
-      buffer = "";
-      // A negative vertical move is a new line of the document.
-      const vertical = pendingNumbers.at(-1) ?? 0;
-      if (vertical !== 0) out += "\n";
-      else out += " ";
-      pendingNumbers = [];
-      continue;
-    }
-    if (op === "T*" || op === "ET") {
-      out += buffer;
-      buffer = "";
-      out += "\n";
-      pendingNumbers = [];
-      continue;
-    }
+  for (const { operator, numbers, name, strings } of textOperations(stream)) {
+    const shown = shownText(strings, font, 0);
+    if (!shown) return null;
+    out += shown.text;
+    if (operator === "Tf") font = fonts?.get(name) ?? documentDefault;
+    else if (operator === "Td" || operator === "TD") out += numbers.at(-1) ? "\n" : " ";
+    else if (["T*", "ET", "'", '"'].includes(operator)) out += "\n";
   }
-  return out + buffer;
+  return out;
+}
+
+/**
+ * Runs this close in height share a row; a wider gap between runs is a space.
+ * Points. On the owner's Akbank statement gaps between runs were ~0 or ≥ 6.
+ */
+const ROW_TOLERANCE = 3;
+const WORD_GAP = 3;
+
+interface TextRun {
+  x: number;
+  y: number;
+  end: number;
+  text: string;
+}
+
+/**
+ * A page that sets each glyph group at an absolute position (`Tm` then `Td`),
+ * read back as rows: by height, then left to right. Stream order says nothing
+ * about reading order there.
+ */
+function positionedText(stream: string, fonts: Map<string, FontDecoder>): string | null {
+  const runs: TextRun[] = [];
+  let font: FontDecoder | null = null;
+  let size = 0;
+  let scale = 1;
+  let [x, y] = [0, 0];
+  for (const { operator, numbers, name, strings } of textOperations(stream)) {
+    const shown = shownText(strings, font, size * scale);
+    if (!shown) return null;
+    if (shown.text) runs.push({ x, y, end: x + shown.advance, text: shown.text });
+    const [last = 0, beforeLast = 0] = numbers.slice(-2).reverse();
+    if (operator === "Tf") [font, size] = [fonts.get(name) ?? null, last];
+    else if (operator === "Tz") scale = last / 100;
+    else if (operator === "Tm") [x, y] = [beforeLast, last];
+    else if (operator === "Td" || operator === "TD") [x, y] = [x + beforeLast, y + last];
+  }
+  return rowsOf(runs);
+}
+
+function rowsOf(runs: TextRun[]): string {
+  const rows: TextRun[][] = [];
+  for (const run of runs.sort((a, b) => b.y - a.y || a.x - b.x)) {
+    const row = rows.at(-1);
+    if (row && row[0]!.y - run.y <= ROW_TOLERANCE) row.push(run);
+    else rows.push([run]);
+  }
+  return rows
+    .map((row) => row.sort((a, b) => a.x - b.x).map((run, index) => (index > 0 && run.x - row[index - 1]!.end > WORD_GAP ? " " : "") + run.text).join(""))
+    .join("\n");
 }
 
 /**
@@ -718,11 +925,12 @@ export async function extractPdfText(bytes: Uint8Array): Promise<PdfTextResult> 
    * text, and that is reported as its own reason.
    */
   const usesGlyphIds = /\/Encoding\s*\/Identity-[HV]/.test(document) || /\/Subtype\s*\/Type0/.test(document);
-  const fonts = resolveFonts(objectBodies(raw, streams.packed), streams.cmapByObject);
+  const fonts = resolveFonts(objectBodies(raw, streams.packed), streams);
   // Once rather than per stream: four hundred streams sharing one full CMap
   // took 962 ms when each parsed it again.
   const fallback = documentFont(usesGlyphIds, streams.cmaps);
-  const shown = streams.content.map((stream) => showText(stream, fonts, fallback));
+  const positioned = (stream: string) => [...stream.matchAll(/\/([^\s/[\]()<>{}%]+)\s+[-\d.]+\s+Tf/g)].some((m) => fonts?.get(m[1]!)?.widths);
+  const shown = streams.content.map((stream) => positioned(stream) ? positionedText(stream, fonts!) : showText(stream, fonts, fallback));
   if (shown.some((stream) => stream == null)) return { ok: false, reason: "unmapped_font" };
 
   const text = shown

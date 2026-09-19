@@ -779,7 +779,6 @@ export type Database = {
           deleted_at: string | null
           id: string
           opening_cash_minor: number
-          setup_completed: boolean
           started_on: string
           tombstone_version: number
           updated_at: string
@@ -790,7 +789,6 @@ export type Database = {
           deleted_at?: string | null
           id: string
           opening_cash_minor: number
-          setup_completed?: boolean
           started_on: string
           tombstone_version?: number
           updated_at?: string
@@ -801,7 +799,6 @@ export type Database = {
           deleted_at?: string | null
           id?: string
           opening_cash_minor?: number
-          setup_completed?: boolean
           started_on?: string
           tombstone_version?: number
           updated_at?: string

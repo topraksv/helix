@@ -94,7 +94,7 @@ describe("account-scoped state and redaction wiring", () => {
     const session = readFileSync(join(process.cwd(), "src/auth/session.ts"), "utf8");
     const form = readFileSync(join(process.cwd(), "src/app/transaction.tsx"), "utf8");
     // The writer's key shape, resolved for every financial type the form emits.
-    expect(form).toContain("kv.set(`helix.last.${entryType}`");
+    expect(form).toContain("kv.set(`helix.last.${entry.entryType}`");
     const declared = session.match(/const ENTRY_DEFAULT_KEYS = \[([^\]]+)\]/)?.[1] ?? "";
     for (const type of ["income", "expense", "transfer"]) {
       expect(declared, `helix.last.${type} must be cleared on sign-out`).toContain(`"helix.last.${type}"`);

@@ -21,9 +21,10 @@
  */
 import { deneutralizeFormula, neutralizeFormula } from "./workbook-format-guard";
 import { normalizedMonthlyLoadMinor } from "./analytics";
-import { isISODate, type ISODate } from "./dates";
+import { groupBy } from "./card-statements";
+import { addMonthsToKey, isISODate, type ISODate, type MonthKey } from "./dates";
 import type { InvestmentAssetType, InvestmentOperationKind } from "./investments";
-import { isSupportedMinorAmount, readTRAmount, type Minor } from "./money";
+import { installmentShareRange, isSupportedMinorAmount, readTRAmount, type Minor } from "./money";
 import { tr } from "../i18n/tr";
 
 export { neutralizeFormula, deneutralizeFormula } from "./workbook-format-guard";
@@ -255,6 +256,62 @@ export interface LedgerTotal {
   minor: number;
 }
 
+/** One instalment of a lira card plan, in the cell its row totals into. */
+export interface LedgerInstalment {
+  planId: string;
+  item: string;
+  month: string;
+  card: string;
+  title: string;
+  instalmentNo: number;
+  count: number;
+  /** What every month bills; a total's rounding kuruş stays in the first month's cell. */
+  monthlyMinor: Minor;
+}
+
+/** A cell note, placed by the grid's row and column. */
+export type LedgerNote = [row: number, column: number, text: string];
+
+const oneLine = (text: string) => text.replace(/\s+/g, " ").trim();
+
+/**
+ * The plans a re-import rebuilds exactly. The importer writes a plan's whole
+ * schedule from one month's note, and what a cell holds beyond its plans comes
+ * back as a remainder that is not spending (spec §3.1e). So a plan is written
+ * only when every instalment is in the ledger, on its schedule, in one column,
+ * over cells holding nothing but written plans give or take their rounding
+ * kuruş. Any other plan stays in its cells' totals, as every plan did before.
+ */
+function wholePlans(instalments: readonly LedgerInstalment[], cellMinor: (item: string, month: string) => number | undefined): LedgerInstalment[] {
+  const startOf = (row: LedgerInstalment) => addMonthsToKey(row.month as MonthKey, 1 - row.instalmentNo);
+  let plans = [...groupBy(instalments, (row) => row.planId).values()].filter((rows) => {
+    const first = rows[0]!;
+    return rows.length === first.count && new Set(rows.map((row) => row.instalmentNo)).size === first.count
+      && rows.every((row) => row.instalmentNo >= 1 && row.instalmentNo <= first.count && row.item === first.item && startOf(row) === startOf(first));
+  });
+  // Dropping a plan leaves its instalment unexplained in cells it shared, so settle until none drops.
+  for (;;) {
+    const byCell = groupBy(plans.flat(), (row) => `${row.month}|${row.item}`);
+    const explained = (row: LedgerInstalment) => {
+      const billed = byCell.get(`${row.month}|${row.item}`)!;
+      const gap = (cellMinor(row.item, row.month) ?? 0) - billed.reduce((sum, other) => sum + other.monthlyMinor, 0);
+      return Math.abs(gap) <= billed.reduce((sum, other) => sum + other.count - 1, 0);
+    };
+    const kept = plans.filter((rows) => rows.every(explained));
+    if (kept.length === plans.length) return kept.flat();
+    plans = kept;
+  }
+}
+
+/** A cell's instalments in the shape the importer reads plans from: a banner per card, then "title  amount  n/m". */
+function instalmentNote(instalments: readonly LedgerInstalment[]): string {
+  const cards = [...new Set(instalments.map((row) => row.card))].sort((a, b) => a.localeCompare(b, "tr"));
+  return cards.flatMap((card) => [
+    `═══ ${oneLine(card)} ═══`,
+    ...instalments.filter((row) => row.card === card).map((row) => `${oneLine(row.title)}  ${writeMoney(row.monthlyMinor)}  ${row.instalmentNo}/${row.count}`),
+  ]).join("\n");
+}
+
 /**
  * Pivot monthly totals into the grid the import wizard reads.
  *
@@ -269,7 +326,7 @@ export interface LedgerTotal {
  * The wizard matches "Ocak 2026" by name, so the month names come from the
  * same table the wizard reads.
  */
-export function buildLedgerGrids(totals: readonly LedgerTotal[]): [year: number, grid: string[][]][] {
+export function buildLedgerGrids(totals: readonly LedgerTotal[], instalments: readonly LedgerInstalment[] = []): [year: number, grid: string[][], notes: LedgerNote[]][] {
   const byYear = new Map<number, { months: Set<string>; items: Map<string, Map<string, number>> }>();
   for (const total of totals) {
     const year = Number(total.month.slice(0, 4));
@@ -284,6 +341,10 @@ export function buildLedgerGrids(totals: readonly LedgerTotal[]): [year: number,
     bucket.items.set(total.item, cells);
     byYear.set(year, bucket);
   }
+  const noted = groupBy(
+    wholePlans(instalments, (item, month) => byYear.get(Number(month.slice(0, 4)))?.items.get(item)?.get(month)),
+    (row) => `${row.month}|${row.item}`,
+  );
   return [...byYear.entries()]
     .sort(([a], [b]) => a - b)
     .map(([year, bucket]) => {
@@ -301,7 +362,11 @@ export function buildLedgerGrids(totals: readonly LedgerTotal[]): [year: number,
           }),
         ]),
       ];
-      return [year, grid] as [number, string[][]];
+      const notes = months.flatMap((month, row) => items.flatMap((item, column) => {
+        const cell = noted.get(`${month}|${item}`);
+        return cell ? [[row + 1, column + 1, instalmentNote(cell)] as LedgerNote] : [];
+      }));
+      return [year, grid, notes] as [number, string[][], LedgerNote[]];
     });
 }
 
@@ -323,6 +388,20 @@ const num = (value: unknown): number => Number(value) || 0;
 
 export function toLedgerTotal(row: Record<string, unknown>, uncategorized: string): LedgerTotal {
   return { item: str(row.item) || uncategorized, month: str(row.month), minor: num(row.total) };
+}
+
+export function toLedgerInstalment(row: Record<string, unknown>, uncategorized: string): LedgerInstalment {
+  const count = num(row.installment_count);
+  return {
+    planId: str(row.plan_id),
+    item: str(row.item) || uncategorized,
+    month: str(row.month),
+    card: str(row.card),
+    title: str(row.title),
+    instalmentNo: num(row.installment_no),
+    count,
+    monthlyMinor: row.monthly_amount_minor == null ? installmentShareRange(num(row.total_amount_minor), count)?.rest ?? 0 : num(row.monthly_amount_minor),
+  };
 }
 
 export function toSubscriptionRow(row: Record<string, unknown>): SubscriptionRow {

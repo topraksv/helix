@@ -16,10 +16,12 @@ import {
   writeDate,
   writeFlag,
   toInvestmentRow,
+  toLedgerInstalment,
   toLedgerTotal,
   toSubscriptionRow,
   writeMoney,
   type InvestmentRow,
+  type LedgerInstalment,
   type SubscriptionRow,
   type WorkbookColumn,
 } from "../src/domain/workbook-format";
@@ -198,6 +200,65 @@ describe("workbook format", () => {
   it("drops a row whose month is not a month rather than inventing a sheet", () => {
     expect(buildLedgerGrids([{ item: "X", month: "kayıp", minor: 1 }])).toEqual([]);
     expect(buildLedgerGrids([{ item: "X", month: "2026-13", minor: 1 }])).toEqual([]);
+  });
+
+  /**
+   * A card plan rides in its cells' notes, which the importer rebuilds plans
+   * from — and it writes a plan's WHOLE schedule from any month's note, so a
+   * plan that is not whole in the ledger stays in its totals.
+   */
+  describe("card plans in cell notes", () => {
+    const instalments = (planId: string, overrides: Partial<LedgerInstalment> = {}): LedgerInstalment[] =>
+      ["2026-01", "2026-02"].map((month, index) => ({
+        planId, item: "Kart", month, card: "Bonus", title: "Telefon", instalmentNo: index + 1, count: 2, monthlyMinor: 150000, ...overrides,
+      }));
+    const cells = (kart: number, february = kart) => [
+      { item: "Kart", month: "2026-01", minor: kart },
+      { item: "Kart", month: "2026-02", minor: february },
+      { item: "Market", month: "2026-01", minor: 100 },
+      { item: "Market", month: "2026-02", minor: 100 },
+    ];
+    const notesOf = (rows: LedgerInstalment[], ledger = cells(150000)) => buildLedgerGrids(ledger, rows)[0]![2];
+    const plan = instalments("a");
+
+    it("writes each month's instalments under their card, cards in order", () => {
+      expect(notesOf([...plan, ...instalments("b", { card: "Axess", title: "Buzdolabı\n  yeni", monthlyMinor: 100000 })], cells(250000))).toEqual([
+        [1, 1, "═══ Axess ═══\nBuzdolabı yeni  1000,00  1/2\n═══ Bonus ═══\nTelefon  1500,00  1/2"],
+        [2, 1, "═══ Axess ═══\nBuzdolabı yeni  1000,00  2/2\n═══ Bonus ═══\nTelefon  1500,00  2/2"],
+      ]);
+    });
+
+    it("leaves out a plan that is not whole in the ledger", () => {
+      expect(notesOf(plan), "the whole plan, for contrast").toHaveLength(2);
+      expect(notesOf(plan.slice(1)), "an instalment missing").toEqual([]);
+      expect(notesOf([...plan, plan[1]!], cells(150000, 300000)), "an instalment twice").toEqual([]);
+      expect(notesOf(plan.map((row) => ({ ...row, instalmentNo: 1, month: "2026-01", monthlyMinor: 75000 }))), "one number for both").toEqual([]);
+      expect(notesOf(plan.map((row) => ({ ...row, instalmentNo: row.instalmentNo + 1 }))), "numbers past its count").toEqual([]);
+      expect(notesOf(plan.map((row) => ({ ...row, instalmentNo: row.instalmentNo - 1 }))), "numbers before its first").toEqual([]);
+      expect(notesOf(plan.map((row, index) => ({ ...row, instalmentNo: 2 - index }))), "off its schedule").toEqual([]);
+      expect(notesOf(plan.map((row, index) => (index === 1 ? { ...row, item: "Market", monthlyMinor: 100 } : row))), "over two columns").toEqual([]);
+      expect(notesOf(plan, cells(150000, 0)), "over a cell netting to zero").toEqual([]);
+      expect(notesOf(plan, cells(150000).filter((cell) => cell.month !== "2026-02" || cell.item !== "Kart")), "over a cell with no figure").toEqual([]);
+    });
+
+    it("leaves out a plan whose cells hold more than plans, and one sharing a cell with a plan left out", () => {
+      expect(notesOf(plan, cells(150100)), "spending beside the plan").toEqual([]);
+      // Plan b misses February, so January's cell holds an instalment nothing explains.
+      expect(notesOf([...plan, ...instalments("b", { monthlyMinor: 100 }).slice(0, 1)], cells(150100, 150000))).toEqual([]);
+    });
+
+    it("keeps a plan whose cells differ from it only by its rounding kuruş", () => {
+      expect(notesOf(plan, cells(150001, 149999))).toHaveLength(2);
+      expect(notesOf(plan, cells(150001, 149998))).toEqual([]);
+    });
+
+    it("reads a plan row, billing a total's later share every month", () => {
+      const row = { plan_id: "p", item: null, month: "2026-01", card: "Bonus", title: "Telefon", installment_no: 1, installment_count: 3 };
+      expect(toLedgerInstalment({ ...row, total_amount_minor: 100000, monthly_amount_minor: null }, "Kalemsiz")).toEqual({
+        planId: "p", item: "Kalemsiz", month: "2026-01", card: "Bonus", title: "Telefon", instalmentNo: 1, count: 3, monthlyMinor: 33333,
+      });
+      expect(toLedgerInstalment({ ...row, total_amount_minor: null, monthly_amount_minor: 25000 }, "Kalemsiz").monthlyMinor).toBe(25000);
+    });
   });
 
   /**

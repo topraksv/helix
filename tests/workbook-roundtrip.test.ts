@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import * as XLSX from "xlsx";
 import { buildTemplateBytes, composeWorkbook } from "../src/services/workbook-export";
-import { parseWorkbookBytes } from "../src/services/spreadsheet-import";
+import { collectInstallmentPlans, parseWorkbookBytes } from "../src/services/spreadsheet-import";
 import {
   buildLedgerGrids,
   WORKBOOK_COLUMNS,
@@ -102,6 +102,21 @@ describe("workbook round trip", () => {
     expect(book.SheetNames.slice(0, 2)).toEqual(["Mali Tablo 2025", "Mali Tablo 2026"]);
     const parsed = await parseWorkbookBytes(bytes);
     expect(parsed.sheets.map((sheet) => sheet.year)).toEqual([2025, 2026]);
+  });
+
+  it("writes a card plan as a hidden note the importer rebuilds the plan from", async () => {
+    const year = buildLedgerGrids(
+      [{ item: "Kart", month: "2026-01", minor: 50000 }, { item: "Kart", month: "2026-02", minor: 50000 }],
+      ["2026-01", "2026-02"].map((month, index) => ({ planId: "p", item: "Kart", month, card: "Bonus", title: "Telefon", instalmentNo: index + 1, count: 2, monthlyMinor: 50000 })),
+    );
+    const bytes = await composeWorkbook({ years: year, subscriptions: [], investments: [] });
+    // Kept the way Excel keeps a note: a marker on the cell, the text on hover.
+    const note = XLSX.read(bytes, { type: "array" }).Sheets["Mali Tablo 2026"]!.B2!.c as XLSX.Comments;
+    expect(note.hidden).toBe(true);
+    expect(note[0]).toMatchObject({ a: "Helix", t: "═══ Bonus ═══\nTelefon  500,00  1/2" });
+    const parsed = await parseWorkbookBytes(bytes);
+    expect(collectInstallmentPlans(parsed.sheets).map((plan) => [plan.card, plan.name, plan.monthlyMinor, plan.total, plan.startMonth]))
+      .toEqual([["Bonus", "Telefon", 50000, 2, "2026-01"]]);
   });
 
   it("produces a template the import wizard accepts", async () => {

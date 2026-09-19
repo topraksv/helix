@@ -101,7 +101,7 @@ export function addMonthsToKey(key: MonthKey, delta: number): MonthKey {
 }
 
 /** Whole months from `a` to `b` (b - a). */
-function monthDiff(a: MonthKey, b: MonthKey): number {
+export function monthDiff(a: MonthKey, b: MonthKey): number {
   return yearOf(b) * 12 + monthOf(b) - (yearOf(a) * 12 + monthOf(a));
 }
 

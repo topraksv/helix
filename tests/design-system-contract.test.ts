@@ -1103,12 +1103,11 @@ describe("a leading mark centres against its own text", () => {
  * arriving somewhere.
  */
 describe("navigation says that it moved", () => {
-  it("crossfades between tabs on the web, and cuts on native while the vendored tab view blanks a tab", () => {
+  it("crossfades between tabs everywhere, on the patched tab view", () => {
     const tabs = readFileSync(join(root, "src/app/(tabs)/_layout.tsx"), "utf8");
     // `fade`, not `shift`: five peers, so nothing should imply a direction.
-    // Native cuts until expo/expo#49778 ships; the reason sits beside the option.
-    expect(tabs).toContain('animation: Platform.OS === "web" ? ("fade" as const) : ("none" as const)');
-    expect(tabs).toContain("expo/expo#49778");
+    expect(tabs).toContain('animation: "fade"');
+    expect(readFileSync(join(root, "scripts/patch-dependencies.mjs"), "utf8")).toContain("expo/expo#49778");
   });
 
   it("slides a pushed page in the direction its back gesture already implies", () => {

@@ -889,8 +889,11 @@ export const tr = {
     emptyHint: "Helix yalnızca tarih, işyeri ve tutarı bir arada içeren satırları okur. Tanımadığı biçimleri tahmin etmez.",
     verdicts: {
       imported: "Bu satır zaten aktarılmış",
-      plan: (title: string) => `${title} taksit planı bu ödemeyi zaten oluşturuyor`,
+      plan: (title: string, difference: string | null) => difference == null
+        ? `${title} taksit planı bu ödemeyi zaten oluşturuyor`
+        : `${title} taksit planı bu ödemeyi zaten oluşturuyor; ekstredeki tutar ${difference} farklı, plan değiştirilmedi`,
       similar: "Yakın tarihte aynı tutarda bir kayıt var",
+      expected: (title: string) => `${title} aboneliğinin beklenen ödemesi olarak kaydedilir`,
     },
     installmentOf: (no: number, count: number) => `${no}/${count}. taksit`,
     refund: "İade",
@@ -1220,6 +1223,10 @@ export const tr = {
     reopenAction: "Kapatmayı Geri Al",
     reopenConfirmTitle: "Kapatma geri alınsın mı?",
     reopenConfirmBody: "Kapama tutarı kaldırılır ve taksitler kaldığı yerden yeniden eklenir.",
+    twinTitle: "Bu plan zaten var olabilir",
+    twinBody: (title: string) =>
+      `${title} planı aynı aylarda aynı taksiti ödüyor. İkisi aynı alışverişse ikinci plan her taksiti iki kez sayar.`,
+    twinConfirm: "Yine de Ekle",
     reopenedNotice: "Kredi yeniden açıldı",
     restructureTitle: "Yeniden Yapılandır",
     restructureHint: "Banka aylık taksiti ya da kalan taksit sayısını değiştirdiyse yenisini gir. Ödenmiş taksitler olduğu gibi kalır; sonraki aylar yeni tutarla güncellenir.",

@@ -92,174 +92,84 @@ function BalanceBridge({
   );
 }
 
-export function OpeningBalanceEditor() {
-  const { palette } = useTheme();
+type Bundle = NonNullable<ReturnType<typeof useLedgerState>["data"]>;
+type Adjustment = ReturnType<typeof useAdjustmentsState>["data"][number];
+
+/**
+ * A money field that shows a stored figure until the owner types over it.
+ * Pristine means mirroring the store, so the field never shows a stale
+ * first-render snapshot of a figure that loads later.
+ */
+function useMirroredAmount(stored: number | null) {
+  const [draft, setDraft] = useState<{ raw: string; minor: number | null } | null>(null);
+  const minor = draft ? draft.minor : stored;
+  return {
+    value: draft?.raw ?? (stored == null ? "" : formatMinorInput(stored)),
+    minor,
+    touched: draft != null,
+    changed: stored != null && minor != null && minor !== stored,
+    onChange: (raw: string, next: number | null) => setDraft({ raw, minor: next }),
+    reset: () => setDraft(null),
+  };
+}
+
+/** The primary tool: type what the account really holds, stored as one adjustment dated today. */
+function useCurrentBalanceForm(computed: number | null) {
   const userId = useUserId();
-  const settingsState = useSettingsMapState();
-  const settings = settingsState.data;
-  const router = useRouter();
-  const ledgerState = useLedgerState(yearOf(todayISO()));
-  const adjustmentsState = useAdjustmentsState();
-  const bundle = ledgerState.data;
-  const adjustments = adjustmentsState.data;
   const undo = useUndo();
-  const computed = bundle?.actualBalanceMinor ?? null;
-  const { status: dataStatus, ready: dataReady, retry: retryData } = combineLiveStates([settingsState, ledgerState, adjustmentsState]);
-
-  // --- primary: set current balance -----------------------------------------
-  // Pristine until the user types (null): mirror the computed balance so the
-  // field shows the real figure without a stale first-render snapshot.
-  const [targetRaw, setTargetRaw] = useState<string | null>(null);
-  const [targetMinor, setTargetMinor] = useState<number | null>(null);
-  const [savingBalance, setSavingBalance] = useState(false);
-  const targetValue = targetRaw ?? (computed == null ? "" : formatMinorInput(computed));
-  const effectiveTarget = targetRaw === null ? computed : targetMinor;
-  const balanceDirty = computed != null && effectiveTarget != null && effectiveTarget !== computed;
-  // What the user last confirmed against a real account, and how far the ledger
-  // has moved since. Every other surface links here when this is set.
-  const declaration = parseBalanceDeclaration(settingValue<unknown>(settings, "balance_declared", null));
-  const declarationDrift = balanceDeclarationDrift(declaration, computed);
-  // Saying how far off the table is leaves the reason to memory. These are the
-  // rows the app can see and a person cannot hold in their head: dated in the
-  // past, still unconfirmed, and pointing the way the drift points.
-  const transactions = useTxLike();
-  const driftRows = declarationDrift == null ? [] : driftCandidates(declarationDrift, transactions, todayISO());
-
-  const saveCurrent = async () => {
-    if (computed == null || effectiveTarget == null || !balanceDirty) return;
-    setSavingBalance(true);
+  const target = useMirroredAmount(computed);
+  const [saving, setSaving] = useState(false);
+  const save = async () => {
+    if (computed == null || target.minor == null || !target.changed) return;
+    setSaving(true);
     try {
       // The note carries what the delta cannot: an adjustment row stores only
       // the difference, so "+₺95.000,00" on its own never said what the balance
       // went from or to.
-      await setCurrentBalance(
-        userId,
-        effectiveTarget,
-        computed,
-        tr.settings.balanceAdjustmentNote(formatMinorCompact(computed), formatMinorCompact(effectiveTarget)),
-      );
+      await setCurrentBalance(userId, target.minor, computed, tr.settings.balanceAdjustmentNote(formatMinorCompact(computed), formatMinorCompact(target.minor)));
       // Remember what was confirmed, not just the delta that made it true. It
       // is the only way a later screen can say "you told me this on that day".
-      await setBalanceDeclaration(userId, effectiveTarget, todayISO());
+      await setBalanceDeclaration(userId, target.minor, todayISO());
       scheduleSync(userId);
       successNotice();
-      // Stays put. Correcting a balance is usually followed by looking at what
-      // it did to the history right below, and closing the screen took that
-      // away. The field re-derives from the new computed balance once the
-      // draft is dropped, so it shows the figure that was just saved.
-      setTargetRaw(null);
-      setTargetMinor(null);
+      // Stays put: correcting a balance is usually followed by looking at what
+      // it did to the history right below. The field re-derives from the new
+      // computed balance once the draft is dropped.
+      target.reset();
       undo.show(tr.settings.balanceAdjustmentSaved, null, "success");
     } catch (e) {
       errorNotice();
       devError("balance.current", e);
       void appAlert(userMessage(e, tr.errors.saveFailed), tr.errors.title);
     } finally {
-      setSavingBalance(false);
+      setSaving(false);
     }
   };
+  return { target, saving, save };
+}
 
-  // Historical anchor: rarely needed, but necessary when the original setup
-  // month/balance was wrong. Keep it separate from today's reconciliation.
-  const currentStart = settingValue<string>(settings, "start_month", monthKeyOf(todayISO()));
-  const currentOpening = settingValue<number>(settings, "opening_balance_minor", 0);
-  const [showHistory, setShowHistory] = useState(false);
-  const [draftStart, setDraftStart] = useState<string | null>(null);
-  const [draftRaw, setDraftRaw] = useState<string | null>(null);
-  const [draftMinor, setDraftMinor] = useState<number | null>(null);
-  const [savingOpening, setSavingOpening] = useState(false);
-  const startMonth = draftStart ?? currentStart;
-  const openingRaw = draftRaw ?? formatMinorInput(currentOpening);
-  const openingMinor = draftRaw === null ? currentOpening : draftMinor;
-  const openingDirty = openingMinor !== currentOpening || startMonth !== currentStart;
-
-  // A month's opening, stated (spec §2.7). Unlike the reconciliation above it
-  // holds: records entered later before that month leave it where it was.
-  const [declarationMonthChoice, setDeclarationMonthChoice] = useState<MonthKey | null>(null);
-  const [declarationRaw, setDeclarationRaw] = useState<string | null>(null);
-  const [declarationMinor, setDeclarationMinor] = useState<number | null>(null);
-  const [savingDeclaration, setSavingDeclaration] = useState(false);
-
-  const close = () => navigateBack(router, "/(tabs)/cash-flow");
-  const { allowExit } = useDirtyExitGuard(
-    (balanceDirty || openingDirty || declarationRaw !== null) && !savingBalance && !savingOpening && !savingDeclaration,
-  );
-
-  const saveOpening = async () => {
-    if (openingMinor == null) return;
-    setSavingOpening(true);
-    try {
-      await setOpeningBalance(userId, startMonth, openingMinor);
-      scheduleSync(userId);
-      allowExit(close);
-    } catch (e) {
-      devError("balance.opening", e);
-      void appAlert(userMessage(e, tr.errors.saveFailed), tr.errors.title);
-    } finally {
-      setSavingOpening(false);
-    }
-  };
-
-  const removeAdjustment = async (id: string) => {
-    try {
-      const snapshot = await deleteBalanceAdjustment(userId, id);
-      if (!snapshot) return;
-      scheduleSync(userId);
-      undo.show(
-        tr.settings.balanceAdjustmentDeleted,
-        () => {
-          return restoreBalanceAdjustment(userId, snapshot).then(() => scheduleSync(userId));
-        },
-        "warning",
-      );
-    } catch {
-      void appAlert(tr.errors.saveFailed, tr.errors.title);
-    }
-  };
-
-  // Never let the async ledger's pre-load fallback masquerade as a real zero
-  // balance; the editor becomes actionable only after its accounting inputs load.
-  //
-  // What is NOT a reason to withhold it: an unset opening balance. This branch
-  // used to synthesise an "error" status from `computed == null` and tell the
-  // owner their finance data could not be read — on the one screen that can set
-  // the anchor whose absence produced the null. Nothing had failed, and the
-  // only way out of the loop was to stop using the app.
-  if (!dataReady || bundle == null) {
-    return (
-      <Screen>
-        <DataStateNotice status={dataStatus} retry={retryData} />
-      </Screen>
-    );
-  }
-  const visibleAdjustments = [...adjustments].sort((a, b) => b.date.localeCompare(a.date));
+/** A month's opening, stated (spec §2.7). Unlike the reconciliation it holds: records entered later before that month leave it where it was. */
+function useDeclarationForm(bundle: Bundle | null, adjustments: Adjustment[]) {
+  const userId = useUserId();
+  const undo = useUndo();
   const currentMonth = monthKeyOf(todayISO());
-  // The start month's opening IS the anchor; the historical section edits it.
-  const firstDeclarable = addMonthsToKey(bundle.startMonth, 1);
-  const canDeclare = firstDeclarable <= currentMonth;
-  const declarationMonth = declarationMonthChoice ?? currentMonth;
-  const declaredMonthOf = (date: string) => addMonthsToKey(monthKeyOf(date), 1);
-  const existingDeclaration = adjustments.find((row) => row.declaredMinor != null && declaredMonthOf(row.date) === declarationMonth);
-  const declarationOpening = bundle.ledger.find((month) => month.month === declarationMonth)?.openingMinor ?? null;
-  const declarationValue = declarationRaw ?? (declarationOpening == null ? "" : formatMinorInput(declarationOpening));
-  const declarationTarget = declarationRaw === null ? declarationOpening : declarationMinor;
-  const declarationDirty = declarationTarget != null && declarationOpening != null && declarationTarget !== declarationOpening;
-
-  const saveDeclaration = async () => {
-    if (!declarationDirty || declarationTarget == null || declarationOpening == null) return;
-    setSavingDeclaration(true);
+  const [monthChoice, setMonthChoice] = useState<MonthKey | null>(null);
+  const month = monthChoice ?? currentMonth;
+  const opening = bundle?.ledger.find((entry) => entry.month === month)?.openingMinor ?? null;
+  const amount = useMirroredAmount(opening);
+  const [saving, setSaving] = useState(false);
+  const save = async () => {
+    if (!bundle || !amount.changed || amount.minor == null || opening == null) return;
+    setSaving(true);
     try {
+      const existing = adjustments.find((row) => row.declaredMinor != null && declaredMonthOf(row.date) === month);
       // What the month opened with before any declaration of its own, which is
       // what the stored difference is measured from.
-      const undeclared = declarationOpening - (existingDeclaration ? bundle.declarationDeltaById.get(existingDeclaration.id) ?? 0 : 0);
-      const before = existingDeclaration
-        ? { declaredMinor: existingDeclaration.declaredMinor!, amountMinor: existingDeclaration.amountMinor }
-        : null;
-      const month = declarationMonth;
-      const id = await declareMonthOpeningBalance(userId, month, declarationTarget, declarationTarget - undeclared);
+      const undeclared = opening - (existing ? bundle.declarationDeltaById.get(existing.id) ?? 0 : 0);
+      const before = existing ? { declaredMinor: existing.declaredMinor!, amountMinor: existing.amountMinor } : null;
+      const id = await declareMonthOpeningBalance(userId, month, amount.minor, amount.minor - undeclared);
       scheduleSync(userId);
-      setDeclarationRaw(null);
-      setDeclarationMinor(null);
+      amount.reset();
       undo.show(tr.settings.declarationSaved, () => (before
         ? declareMonthOpeningBalance(userId, month, before.declaredMinor, before.amountMinor)
         : deleteBalanceAdjustment(userId, id)
@@ -268,225 +178,271 @@ export function OpeningBalanceEditor() {
       devError("balance.declaration", e);
       void appAlert(userMessage(e, tr.errors.saveFailed), tr.errors.title);
     } finally {
-      setSavingDeclaration(false);
+      setSaving(false);
+    }
+  };
+  return {
+    month,
+    currentMonth,
+    amount,
+    saving,
+    save,
+    choose: (next: MonthKey) => {
+      setMonthChoice(next);
+      amount.reset();
+    },
+  };
+}
+
+/** The historical anchor: rarely needed, but necessary when the setup month or balance was wrong. Kept apart from today's reconciliation. */
+function useOpeningForm(settings: ReturnType<typeof useSettingsMapState>["data"]) {
+  const userId = useUserId();
+  const currentStart = settingValue<string>(settings, "start_month", monthKeyOf(todayISO()));
+  const currentOpening = settingValue<number>(settings, "opening_balance_minor", 0);
+  const [startChoice, setStartChoice] = useState<string | null>(null);
+  const opening = useMirroredAmount(currentOpening);
+  const [saving, setSaving] = useState(false);
+  const startMonth = startChoice ?? currentStart;
+  /** Whether the anchor was written; the whole table recomputes from it, so the screen closes after. */
+  const save = async (): Promise<boolean> => {
+    if (opening.minor == null) return false;
+    setSaving(true);
+    try {
+      await setOpeningBalance(userId, startMonth, opening.minor);
+      scheduleSync(userId);
+      return true;
+    } catch (e) {
+      devError("balance.opening", e);
+      void appAlert(userMessage(e, tr.errors.saveFailed), tr.errors.title);
+      return false;
+    } finally {
+      setSaving(false);
+    }
+  };
+  return { startMonth, setStartChoice, opening, saving, save, dirty: opening.minor !== currentOpening || startMonth !== currentStart };
+}
+
+const declaredMonthOf = (date: string) => addMonthsToKey(monthKeyOf(date), 1);
+
+function CurrentBalanceCard({ form, bundle, settings }: { form: ReturnType<typeof useCurrentBalanceForm>; bundle: Bundle; settings: ReturnType<typeof useSettingsMapState>["data"] }) {
+  const { palette } = useTheme();
+  const router = useRouter();
+  const computed = bundle.actualBalanceMinor;
+  const { target } = form;
+  // What the user last confirmed against a real account, and how far the ledger
+  // has moved since. Every other surface links here when this is set.
+  const declaration = parseBalanceDeclaration(settingValue<unknown>(settings, "balance_declared", null));
+  const drift = balanceDeclarationDrift(declaration, computed);
+  // Saying how far off the table is leaves the reason to memory. These are the
+  // rows the app can see and a person cannot hold in their head: dated in the
+  // past, still unconfirmed, and pointing the way the drift points.
+  const transactions = useTxLike();
+  const driftRows = drift == null ? [] : driftCandidates(drift, transactions, todayISO());
+  return (
+    <Card>
+      <PanelHeader
+        icon={Scale}
+        title={tr.settings.realBalance}
+        description={tr.settings.currentBalanceFormHint}
+        right={(
+          <Badge
+            text={target.changed ? tr.settings.balanceChangeReady : drift != null ? tr.settings.balanceDriftShort : tr.settings.balanceMatchesShort}
+            tone={target.changed || drift != null ? "warning" : "success"}
+          />
+        )}
+      />
+      {drift != null && declaration ? (
+        // The whole point of keeping the declaration: say the two numbers out
+        // loud, with the date the user confirmed one of them.
+        <View style={{ marginBottom: spacing.md, padding: spacing.md, borderRadius: radius.md, backgroundColor: palette.warning + "16", borderWidth: StyleSheet.hairlineWidth, borderColor: palette.warning + "70" }}>
+          <Text style={[type.label, { color: palette.warningText }]}>{tr.settings.balanceDriftTitle}</Text>
+          <Body muted style={{ marginTop: spacing.xs }}>
+            {tr.settings.balanceDriftBody(formatMinorCompact(declaration.minor), formatMinorCompact(computed), dateLabel(declaration.at))}
+          </Body>
+        </View>
+      ) : null}
+      {driftRows.length > 0 ? (
+        // In their own card rather than inside the warning: that block states the
+        // problem and this one offers a way in, the pair every other surface makes.
+        <>
+          <SectionHeader>{tr.settings.balanceDriftCandidates}</SectionHeader>
+          <Card>
+            <Body muted style={{ fontSize: type.small.fontSize, marginBottom: spacing.sm }}>{tr.settings.balanceDriftCandidatesHint}</Body>
+            <CardList
+              items={driftRows}
+              keyExtractor={(candidate) => candidate.id}
+              renderItem={(candidate) => (
+                <ListRow
+                  title={dateLabel(candidate.date)}
+                  right={<Amount minor={candidate.effectMinor} />}
+                  chevron
+                  onPress={() => router.push({ pathname: "/transaction", params: { id: candidate.id } })}
+                />
+              )}
+            />
+          </Card>
+        </>
+      ) : null}
+      <MoneyField label={tr.settings.realBalance} value={target.value} onChangeMinor={target.onChange} />
+      <BalanceBridge computedMinor={computed} targetMinor={target.minor ?? computed} />
+      <Row gap={spacing.sm} style={{ alignItems: "flex-start", padding: spacing.md, borderRadius: radius.md, backgroundColor: palette.surfaceAlt, marginBottom: spacing.md }}>
+        <Info accessible={false} size={17} color={palette.primaryText} style={{ marginTop: 2 }} />
+        <View style={{ flex: 1, gap: spacing.xs }}>
+          <Body muted style={{ fontSize: type.small.fontSize }}>{tr.settings.balanceScopeHint}</Body>
+          <Body muted style={{ fontSize: type.small.fontSize }}>{tr.settings.balanceWillMark}</Body>
+        </View>
+      </Row>
+      <Button label={tr.common.save} onPress={() => void form.save()} disabled={!target.changed} loading={form.saving} haptic="none" />
+    </Card>
+  );
+}
+
+function DeclarationCard({ form, bundle }: { form: ReturnType<typeof useDeclarationForm>; bundle: Bundle }) {
+  // The start month's opening IS the anchor; the historical section edits it.
+  const firstDeclarable = addMonthsToKey(bundle.startMonth, 1);
+  return (
+    <>
+      <SectionHeader>{tr.settings.declarationTitle}</SectionHeader>
+      <Card>
+        <Body muted style={{ fontSize: type.small.fontSize, marginBottom: spacing.md }}>{tr.settings.declarationHint}</Body>
+        {firstDeclarable <= form.currentMonth ? (
+          <>
+            <MonthStepper value={form.month} onChange={form.choose} min={firstDeclarable} max={form.currentMonth} />
+            <MoneyField label={tr.settings.declarationAmount(monthLabel(form.month))} value={form.amount.value} onChangeMinor={form.amount.onChange} />
+            <Button label={tr.settings.declarationSave} onPress={() => void form.save()} disabled={!form.amount.changed} loading={form.saving} />
+          </>
+        ) : (
+          <Body muted>{tr.settings.declarationUnavailable}</Body>
+        )}
+      </Card>
+    </>
+  );
+}
+
+function AdjustmentList({ adjustments, bundle }: { adjustments: Adjustment[]; bundle: Bundle }) {
+  const userId = useUserId();
+  const undo = useUndo();
+  const rows = [...adjustments].sort((a, b) => b.date.localeCompare(a.date));
+  const remove = async (id: string) => {
+    try {
+      const snapshot = await deleteBalanceAdjustment(userId, id);
+      if (!snapshot) return;
+      scheduleSync(userId);
+      undo.show(tr.settings.balanceAdjustmentDeleted, () => restoreBalanceAdjustment(userId, snapshot).then(() => scheduleSync(userId)), "warning");
+    } catch {
+      void appAlert(tr.errors.saveFailed, tr.errors.title);
     }
   };
   return (
-    <Screen width="workspace">
-      <DataStateNotice status={dataStatus} retry={retryData} />
-      <WorkspaceSplit
-        testID="balance-workspace"
-        primary={(
-          <Card>
-        <PanelHeader
-          icon={Scale}
-          title={tr.settings.realBalance}
-          description={tr.settings.currentBalanceFormHint}
-          right={(
-            <Badge
-              text={balanceDirty ? tr.settings.balanceChangeReady : declarationDrift != null ? tr.settings.balanceDriftShort : tr.settings.balanceMatchesShort}
-              tone={balanceDirty || declarationDrift != null ? "warning" : "success"}
-            />
-          )}
-        />
-        {declarationDrift != null && declaration ? (
-          // The whole point of keeping the declaration: say the two numbers out
-          // loud, with the date the user confirmed one of them.
-          <View
-            style={{
-              marginBottom: spacing.md,
-              padding: spacing.md,
-              borderRadius: radius.md,
-              backgroundColor: palette.warning + "16",
-              borderWidth: StyleSheet.hairlineWidth,
-              borderColor: palette.warning + "70",
-            }}
-          >
-            <Text style={[type.label, { color: palette.warningText }]}>{tr.settings.balanceDriftTitle}</Text>
-            <Body muted style={{ marginTop: spacing.xs }}>
-              {tr.settings.balanceDriftBody(
-                formatMinorCompact(declaration.minor),
-                formatMinorCompact(computed ?? 0),
-                dateLabel(declaration.at),
-              )}
-            </Body>
-          </View>
-        ) : null}
-        {driftRows.length > 0 ? (
-          // The leads sit in their own card rather than inside the warning
-          // above it: that block states the problem and this one offers a way
-          // in, which is the same pair every other surface in the app makes.
-          <>
-            <SectionHeader>{tr.settings.balanceDriftCandidates}</SectionHeader>
-            <Card>
-              <Body muted style={{ fontSize: type.small.fontSize, marginBottom: spacing.sm }}>
-                {tr.settings.balanceDriftCandidatesHint}
-              </Body>
-              <CardList
-                items={driftRows}
-                keyExtractor={(candidate) => candidate.id}
-                renderItem={(candidate) => (
-                  <ListRow
-                    title={dateLabel(candidate.date)}
-                    right={<Amount minor={candidate.effectMinor} />}
-                    chevron
-                    onPress={() => router.push({ pathname: "/transaction", params: { id: candidate.id } })}
-                  />
-                )}
-              />
-            </Card>
-          </>
-        ) : null}
-        <MoneyField
-          label={tr.settings.realBalance}
-          value={targetValue}
-          onChangeMinor={(raw, minor) => {
-            setTargetRaw(raw);
-            setTargetMinor(minor);
-          }}
-        />
-        <BalanceBridge computedMinor={bundle.actualBalanceMinor} targetMinor={effectiveTarget ?? bundle.actualBalanceMinor} />
-        <Row
-          gap={spacing.sm}
-          style={{
-            alignItems: "flex-start",
-            padding: spacing.md,
-            borderRadius: radius.md,
-            backgroundColor: palette.surfaceAlt,
-            marginBottom: spacing.md,
-          }}
-        >
-          <Info accessible={false} size={17} color={palette.primaryText} style={{ marginTop: 2 }} />
-          <View style={{ flex: 1, gap: spacing.xs }}>
-            <Body muted style={{ fontSize: type.small.fontSize }}>{tr.settings.balanceScopeHint}</Body>
-            <Body muted style={{ fontSize: type.small.fontSize }}>{tr.settings.balanceWillMark}</Body>
-          </View>
-        </Row>
-        <Button label={tr.common.save} onPress={() => void saveCurrent()} disabled={!balanceDirty} loading={savingBalance} haptic="none" />
-          </Card>
-        )}
-        secondary={(
-          <View>
-            <SectionHeader>{tr.settings.declarationTitle}</SectionHeader>
-            <Card>
-              <Body muted style={{ fontSize: type.small.fontSize, marginBottom: spacing.md }}>{tr.settings.declarationHint}</Body>
-              {canDeclare ? (
-                <>
-                  <MonthStepper
-                    value={declarationMonth}
-                    onChange={(month) => {
-                      setDeclarationMonthChoice(month);
-                      setDeclarationRaw(null);
-                      setDeclarationMinor(null);
-                    }}
-                    min={firstDeclarable}
-                    max={currentMonth}
-                  />
-                  <MoneyField
-                    label={tr.settings.declarationAmount(monthLabel(declarationMonth))}
-                    value={declarationValue}
-                    onChangeMinor={(raw, minor) => {
-                      setDeclarationRaw(raw);
-                      setDeclarationMinor(minor);
-                    }}
-                  />
-                  <Button label={tr.settings.declarationSave} onPress={() => void saveDeclaration()} disabled={!declarationDirty} loading={savingDeclaration} />
-                </>
-              ) : (
-                <Body muted>{tr.settings.declarationUnavailable}</Body>
-              )}
-            </Card>
+    <>
+      <SectionHeader>{tr.settings.balanceAdjustmentsTitle}</SectionHeader>
+      <Body muted style={{ fontSize: type.small.fontSize, marginBottom: spacing.md }}>{tr.settings.balanceAdjustmentsHint}</Body>
+      <CardList
+        items={rows}
+        keyExtractor={(adjustment) => adjustment.id}
+        renderItem={(adjustment) => {
+          const declared = adjustment.declaredMinor;
+          return (
+            <Spread>
+              <View style={{ flex: 1, paddingRight: spacing.md }}>
+                <Body>{declared != null ? tr.settings.declarationRow(monthLabel(declaredMonthOf(adjustment.date))) : dateLabel(adjustment.date)}</Body>
+                <Body muted style={{ fontSize: type.small.fontSize }}>
+                  {declared != null
+                    ? [tr.settings.declarationRowHint(formatMinorCompact(declared)), adjustment.note].filter(Boolean).join(" · ")
+                    : adjustment.note ?? tr.settings.balanceAdjustmentFallback}
+                </Body>
+              </View>
+              <Row gap={spacing.sm}>
+                {/* A declaration's stored amount is the difference on the day it
+                    was written; what it corrects now is recomputed. */}
+                <Amount minor={declared != null ? bundle.declarationDeltaById.get(adjustment.id) ?? adjustment.amountMinor : adjustment.amountMinor} />
+                <IconButton icon={Trash} tone="danger" label={`${tr.common.delete} · ${dateLabel(adjustment.date)}`} haptic="none" onPress={() => void remove(adjustment.id)} />
+              </Row>
+            </Spread>
+          );
+        }}
+      />
+      {rows.length === 0 ? <EmptyState icon={History} title={tr.settings.noBalanceAdjustments} hint={tr.settings.noBalanceAdjustmentsHint} /> : null}
+    </>
+  );
+}
 
-            <SectionHeader>{tr.settings.balanceAdjustmentsTitle}</SectionHeader>
-            <Body muted style={{ fontSize: type.small.fontSize, marginBottom: spacing.md }}>
-              {tr.settings.balanceAdjustmentsHint}
-            </Body>
-            <CardList
-              items={visibleAdjustments}
-              keyExtractor={(adjustment) => adjustment.id}
-              renderItem={(adjustment) => (
-                <Spread>
-                  <View style={{ flex: 1, paddingRight: spacing.md }}>
-                    <Body>{adjustment.declaredMinor != null ? tr.settings.declarationRow(monthLabel(declaredMonthOf(adjustment.date))) : dateLabel(adjustment.date)}</Body>
-                    <Body muted style={{ fontSize: type.small.fontSize }}>
-                      {adjustment.declaredMinor != null
-                        ? [tr.settings.declarationRowHint(formatMinorCompact(adjustment.declaredMinor)), adjustment.note].filter(Boolean).join(" · ")
-                        : adjustment.note ?? tr.settings.balanceAdjustmentFallback}
-                    </Body>
-                  </View>
-                  <Row gap={spacing.sm}>
-                    {/* A declaration's stored amount is the difference on the
-                        day it was written; what it corrects now is recomputed. */}
-                    <Amount minor={adjustment.declaredMinor != null ? bundle.declarationDeltaById.get(adjustment.id) ?? adjustment.amountMinor : adjustment.amountMinor} />
-                    <IconButton
-                      icon={Trash}
-                      tone="danger"
-                      label={`${tr.common.delete} · ${dateLabel(adjustment.date)}`}
-                      haptic="none"
-                      onPress={() => void removeAdjustment(adjustment.id)}
-                    />
-                  </Row>
-                </Spread>
-              )}
-            />
-            {visibleAdjustments.length === 0 ? (
-              <EmptyState
-                icon={History}
-                title={tr.settings.noBalanceAdjustments}
-                hint={tr.settings.noBalanceAdjustmentsHint}
-              />
-            ) : null}
-
-            <SectionHeader>{tr.settings.historyOpeningTitle}</SectionHeader>
-            <Card>
-        <Row gap={spacing.md} style={{ alignItems: "flex-start", marginBottom: showHistory ? spacing.lg : spacing.md }}>
-          <View
-            accessible={false}
-            style={{
-              width: 36,
-              height: 36,
-              borderRadius: circle(36),
-              alignItems: "center",
-              justifyContent: "center",
-              backgroundColor: palette.surfaceAlt,
-            }}
-          >
+function HistoricalOpeningCard({ form, onSaved }: { form: ReturnType<typeof useOpeningForm>; onSaved: () => void }) {
+  const { palette } = useTheme();
+  const [open, setOpen] = useState(false);
+  const { startMonth } = form;
+  return (
+    <>
+      <SectionHeader>{tr.settings.historyOpeningTitle}</SectionHeader>
+      <Card>
+        <Row gap={spacing.md} style={{ alignItems: "flex-start", marginBottom: open ? spacing.lg : spacing.md }}>
+          <View accessible={false} style={{ width: 36, height: 36, borderRadius: circle(36), alignItems: "center", justifyContent: "center", backgroundColor: palette.surfaceAlt }}>
             <History accessible={false} size={18} color={palette.textSecondary} />
           </View>
-          <Body muted style={{ flex: 1 }}>{showHistory ? tr.settings.historyOpeningHint : tr.settings.historyOpeningSummary}</Body>
-          {showHistory ? <Button label={tr.common.close} variant="ghost" size="sm" onPress={() => setShowHistory(false)} /> : null}
+          <Body muted style={{ flex: 1 }}>{open ? tr.settings.historyOpeningHint : tr.settings.historyOpeningSummary}</Body>
+          {open ? <Button label={tr.common.close} variant="ghost" size="sm" onPress={() => setOpen(false)} /> : null}
         </Row>
-        {showHistory ? (
+        {open ? (
           <FadeIn>
             <Body muted style={{ marginBottom: spacing.sm }}>{tr.onboarding.startMonth}</Body>
             <Spread style={{ marginBottom: spacing.lg }}>
-              <IconButton icon={ChevronLeft} label={tr.onboarding.startMonth} onPress={() => setDraftStart(addMonthsToKey(startMonth, -1))} />
+              <IconButton icon={ChevronLeft} label={tr.onboarding.startMonth} onPress={() => form.setStartChoice(addMonthsToKey(startMonth, -1))} />
               <Body style={{ fontSize: type.heading.fontSize }}>{monthLabel(startMonth)}</Body>
-              <IconButton
-                icon={ChevronRight}
-                label={tr.onboarding.startMonth}
-                disabled={isCurrentOrFutureMonth(startMonth)}
-                onPress={() => setDraftStart(addMonthsToKey(startMonth, 1))}
-              />
+              <IconButton icon={ChevronRight} label={tr.onboarding.startMonth} disabled={isCurrentOrFutureMonth(startMonth)} onPress={() => form.setStartChoice(addMonthsToKey(startMonth, 1))} />
             </Spread>
-            <MoneyField
-              label={tr.onboarding.openingBalance}
-              value={openingRaw}
-              onChangeMinor={(raw, minor) => {
-                setDraftRaw(raw);
-                setDraftMinor(minor);
-              }}
-            />
-            <Button label={tr.common.save} onPress={() => void saveOpening()} disabled={!openingDirty || openingMinor == null} loading={savingOpening} />
+            <MoneyField label={tr.onboarding.openingBalance} value={form.opening.value} onChangeMinor={form.opening.onChange} />
+            <Button label={tr.common.save} onPress={() => void form.save().then((saved) => saved && onSaved())} disabled={!form.dirty || form.opening.minor == null} loading={form.saving} />
           </FadeIn>
         ) : (
-          <Button label={tr.settings.historyOpeningAction} onPress={() => setShowHistory(true)} />
+          <Button label={tr.settings.historyOpeningAction} onPress={() => setOpen(true)} />
         )}
-            </Card>
+      </Card>
+    </>
+  );
+}
+
+export function OpeningBalanceEditor() {
+  const router = useRouter();
+  const settingsState = useSettingsMapState();
+  const ledgerState = useLedgerState(yearOf(todayISO()));
+  const adjustmentsState = useAdjustmentsState();
+  const bundle = ledgerState.data;
+  const { status, ready, retry } = combineLiveStates([settingsState, ledgerState, adjustmentsState]);
+  const current = useCurrentBalanceForm(bundle?.actualBalanceMinor ?? null);
+  const declaration = useDeclarationForm(bundle, adjustmentsState.data);
+  const opening = useOpeningForm(settingsState.data);
+  const { allowExit } = useDirtyExitGuard(
+    (current.target.changed || opening.dirty || declaration.amount.touched) && !current.saving && !opening.saving && !declaration.saving,
+  );
+
+  // Never let the async ledger's pre-load fallback masquerade as a real zero
+  // balance; the editor becomes actionable only after its accounting inputs load.
+  //
+  // What is NOT a reason to withhold it: an unset opening balance. This branch
+  // used to synthesise an "error" status from a null computed balance and tell
+  // the owner their finance data could not be read — on the one screen that can
+  // set the anchor whose absence produced the null.
+  if (!ready || bundle == null) {
+    return (
+      <Screen>
+        <DataStateNotice status={status} retry={retry} />
+      </Screen>
+    );
+  }
+  return (
+    <Screen width="workspace">
+      <DataStateNotice status={status} retry={retry} />
+      <WorkspaceSplit
+        testID="balance-workspace"
+        primary={<CurrentBalanceCard form={current} bundle={bundle} settings={settingsState.data} />}
+        secondary={(
+          <View>
+            <DeclarationCard form={declaration} bundle={bundle} />
+            <AdjustmentList adjustments={adjustmentsState.data} bundle={bundle} />
+            <HistoricalOpeningCard form={opening} onSaved={() => allowExit(() => navigateBack(router, "/(tabs)/cash-flow"))} />
           </View>
         )}
       />
-
       <View style={{ height: spacing.xl }} />
     </Screen>
   );

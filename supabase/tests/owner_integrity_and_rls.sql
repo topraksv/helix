@@ -1121,11 +1121,11 @@ select is(
 
 select lives_ok(
   $$insert into public.investment_profiles (
-      id, user_id, started_on, opening_cash_minor, setup_completed
+      id, user_id, started_on, opening_cash_minor
     ) values (
       '20000000-0000-4000-8000-000000000041',
       '20000000-0000-4000-8000-000000000002',
-      '2026-07-01', 10000, true
+      '2026-07-01', 10000
     )$$,
   'an owner can initialize one global investment wallet'
 );
@@ -1143,11 +1143,11 @@ select is(
 select is(
   pg_temp.exec_sqlstate($command$
     insert into public.investment_profiles (
-      id, user_id, started_on, opening_cash_minor, setup_completed
+      id, user_id, started_on, opening_cash_minor
     ) values (
       '20000000-0000-4000-8000-000000000040',
       '20000000-0000-4000-8000-000000000002',
-      '2026-07-01', 10000, true
+      '2026-07-01', 10000
     )
   $command$),
   '23505',
