@@ -1,13 +1,29 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createHash } from "node:crypto";
 
 const dependencies = vi.hoisted(() => ({
   getAllAsync: vi.fn(),
   writeRowBatchesAtomically: vi.fn(),
+  platform: { OS: "web" },
+  /** What the native file system was asked to do, in order. */
+  files: [] as string[],
+  existing: new Set<string>(),
 }));
 
-vi.mock("react-native", () => ({ Platform: { OS: "web" } }));
-vi.mock("expo-file-system", () => ({ File: class {}, Paths: { cache: "" } }));
+vi.mock("react-native", () => ({ Platform: dependencies.platform }));
+vi.mock("expo-file-system", () => ({
+  File: class {
+    readonly uri: string;
+    constructor(dir: string, name: string) {
+      this.uri = `${dir}/${name}`;
+    }
+    get exists() { return dependencies.existing.has(this.uri); }
+    delete() { dependencies.files.push(`delete ${this.uri}`); }
+    create() { dependencies.files.push(`create ${this.uri}`); }
+    write(content: unknown) { dependencies.files.push(`write ${this.uri} ${typeof content === "string" ? content : `${(content as Uint8Array).length} bytes`}`); }
+  },
+  Paths: { cache: "cache" },
+}));
 vi.mock("../src/db/client", () => ({
   getSqliteAsync: async () => ({ getAllAsync: dependencies.getAllAsync }),
 }));
@@ -35,7 +51,7 @@ vi.mock("../src/db/ids", () => ({
   }),
 }));
 
-import { importBundle } from "../src/services/export-import";
+import { importBundle, saveBinaryFile, saveTextFile } from "../src/services/export-import";
 
 // A backup restores into the account that wrote it — a bundle from another
 // account is refused outright (see backup-round-trip.test.ts), so these
@@ -193,3 +209,152 @@ describe("backup import result counts", () => {
     expect(dependencies.writeRowBatchesAtomically).not.toHaveBeenCalled();
   });
 });
+
+const setting = (n: number, updatedAt = "2026-07-21T10:00:00.000Z") => ({
+  id: `00000000-0000-4000-8000-${String(1000 + n).padStart(12, "0")}`,
+  user_id: targetUserId, key: `k${n}`, value: JSON.stringify(n),
+  created_at: timestamp, updated_at: updatedAt, deleted_at: null,
+});
+const category = (id: string, fields: Record<string, unknown>) => ({
+  id, user_id: targetUserId, created_at: timestamp, updated_at: timestamp, deleted_at: null, tombstone_version: 0,
+  name: "Market", kind: "expense", icon: null, color: null, sort_order: 0, is_column: 0, ...fields,
+});
+const bundle = (tables: Record<string, unknown[]>) => ({ version: 1, exportedAt: timestamp, tables });
+
+describe("what a restore writes", () => {
+  let batches: Record<string, unknown>[][];
+
+  beforeEach(() => {
+    batches = [];
+    dependencies.writeRowBatchesAtomically.mockImplementation(async (_userId, source: Iterable<{ row: Record<string, unknown> }[]>) => {
+      for (const batch of source) batches.push(batch.map((write) => write.row));
+    });
+  });
+
+  it("writes in batches of 400, as restored rows rather than the user's own entries", async () => {
+    await importBundle(targetUserId, bundle({ settings: Array.from({ length: 401 }, (_, n) => setting(n)) }), {});
+
+    expect(batches.map((batch) => batch.length)).toEqual([400, 1]);
+    expect(dependencies.writeRowBatchesAtomically.mock.calls[0]?.[2]).toBe(false);
+  });
+
+  it("writes no empty batch after a full one", async () => {
+    await importBundle(targetUserId, bundle({ settings: Array.from({ length: 400 }, (_, n) => setting(n)) }));
+    expect(batches.map((batch) => batch.length)).toEqual([400]);
+  });
+
+  it("takes a row newer than the local copy", async () => {
+    dependencies.getAllAsync.mockImplementation(async (sql: string) =>
+      sql.includes("FROM settings") ? [{ id: setting(0).id, updated_at: timestamp }] : []);
+
+    expect(await importBundle(targetUserId, bundle({ settings: [setting(0)] }))).toEqual({ imported: 1, skipped: 0 });
+  });
+
+  it("lets a restored row point at a parent only this device holds", async () => {
+    const localCategory = "00000000-0000-4000-8000-000000000011";
+    dependencies.getAllAsync.mockImplementation(async (sql: string) =>
+      sql.includes("FROM categories") ? [{ id: localCategory, updated_at: timestamp }] : []);
+
+    await expect(importBundle(targetUserId, bundle({
+      category_budgets: [{
+        id: "00000000-0000-4000-8000-000000000020", user_id: targetUserId, created_at: timestamp, updated_at: timestamp,
+        deleted_at: null, tombstone_version: 0, category_id: localCategory, month: "2026-07", amount_minor: 50_000,
+      }],
+    }))).resolves.toEqual({ imported: 1, skipped: 0 });
+  });
+
+  it("rewrites a retired colour name to its current slot", async () => {
+    await importBundle(targetUserId, bundle({
+      matrix_colors: [{
+        id: "00000000-0000-4000-8000-000000000030", user_id: targetUserId, created_at: timestamp, updated_at: timestamp,
+        deleted_at: null, tombstone_version: 0, scope: "column", item_key: null, month: "2026-07", token: "critical",
+      }],
+    }));
+    expect(batches[0]?.[0]).toEqual(expect.objectContaining({ token: "red" }));
+  });
+
+  it("decides the transfer flag of a category written before it existed", async () => {
+    const [moved, invest, income, declared] = [31, 32, 33, 34].map((n) => `00000000-0000-4000-8000-0000000000${n}`);
+    await importBundle(targetUserId, bundle({
+      categories: [
+        category(moved!, { name: "Birikim" }),
+        category(invest!, { name: "YATIRIM hesabı" }),
+        category(income!, { name: "Yatırım geliri", kind: "income" }),
+        category(declared!, { name: "Yatırım", is_transfer: 0 }),
+      ],
+      persons: [{ id: "00000000-0000-4000-8000-000000000040", user_id: targetUserId, created_at: timestamp, updated_at: timestamp,
+        deleted_at: null, tombstone_version: 0, name: "Ben", is_self: 1 }],
+      transactions: [{
+        id: "00000000-0000-4000-8000-000000000041", user_id: targetUserId, created_at: timestamp, updated_at: timestamp,
+        deleted_at: null, tombstone_version: 0, type: "transfer", amount_minor: 1_000, currency: "TRY", fx_rate: null,
+        amount_try_minor: 1_000, entry_date: "2026-07-15", purchase_date: null, effective_date: "2026-07-15",
+        status: "realized", category_id: moved, payment_source_id: null, person_id: "00000000-0000-4000-8000-000000000040",
+        installment_plan_id: null, installment_no: null, card_statement_id: null, subscription_id: null, is_aggregate: 0, note: null,
+      }],
+    }));
+
+    const flags = Object.fromEntries(batches.flat().filter((row) => "kind" in row).map((row) => [row.id, row.isTransfer ?? row.is_transfer]));
+    expect(flags).toEqual({ [moved!]: true, [invest!]: true, [income!]: false, [declared!]: 0 });
+  });
+
+  it("passes on a failure that is not about the investment wallet unchanged", async () => {
+    const failure = new Error("disk full");
+    dependencies.writeRowBatchesAtomically.mockRejectedValue(failure);
+    await expect(importBundle(targetUserId, bundle({ settings: [setting(0)] }))).rejects.toBe(failure);
+  });
+});
+
+describe("handing a file to the platform", () => {
+  const download = () => {
+    const anchor = { href: "", download: "", click: vi.fn() };
+    vi.stubGlobal("document", { createElement: vi.fn(() => anchor) });
+    const created: Blob[] = [];
+    vi.spyOn(URL, "createObjectURL").mockImplementation((blob) => {
+      created.push(blob as Blob);
+      return "blob:helix";
+    });
+    const revoke = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
+    return { anchor, created, revoke };
+  };
+
+  beforeEach(() => {
+    dependencies.platform.OS = "web";
+    dependencies.files.length = 0;
+    dependencies.existing.clear();
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it("downloads text and bytes on the web, typed as asked", async () => {
+    const { anchor, created, revoke } = download();
+
+    expect(await saveTextFile("yedek.json", "{}", "application/json")).toBeNull();
+    expect(await saveBinaryFile("helix.xlsx", new Uint8Array([1, 2, 3]), "application/vnd.ms-excel")).toBeNull();
+
+    expect(await Promise.all(created.map(async (blob) => [blob.type, blob.size]))).toEqual([
+      ["application/json", 2],
+      ["application/vnd.ms-excel", 3],
+    ]);
+    expect(anchor).toEqual(expect.objectContaining({ href: "blob:helix", download: "helix.xlsx" }));
+    expect(anchor.click).toHaveBeenCalledTimes(2);
+    expect(revoke).toHaveBeenCalledWith("blob:helix");
+    expect(dependencies.files).toEqual([]);
+  });
+
+  it("writes a fresh cache file natively, replacing one left from before", async () => {
+    dependencies.platform.OS = "ios";
+    dependencies.existing.add("cache/helix.xlsx");
+
+    expect(await saveTextFile("yedek.json", "{}", "application/json")).toBe("cache/yedek.json");
+    expect(await saveBinaryFile("helix.xlsx", new Uint8Array([1, 2, 3]), "application/vnd.ms-excel")).toBe("cache/helix.xlsx");
+
+    expect(dependencies.files).toEqual([
+      "create cache/yedek.json", "write cache/yedek.json {}",
+      "delete cache/helix.xlsx", "create cache/helix.xlsx", "write cache/helix.xlsx 3 bytes",
+    ]);
+  });
+});
+

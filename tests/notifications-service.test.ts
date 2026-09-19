@@ -24,6 +24,8 @@ const os = vi.hoisted(() => ({
   store: new Map<string, string>(),
   refuseWrites: false,
   db: null as DatabaseSync | null,
+  handler: null as { handleNotification: () => Promise<unknown> } | null,
+  channels: [] as unknown[],
 }));
 
 vi.mock("react-native", () => ({ Platform: os.platform }));
@@ -31,15 +33,18 @@ vi.mock("expo-notifications", () => ({
   IosAuthorizationStatus: { NOT_DETERMINED: 0, DENIED: 1, AUTHORIZED: 2, PROVISIONAL: 3, EPHEMERAL: 4 },
   AndroidImportance: { DEFAULT: 3 },
   SchedulableTriggerInputTypes: { DATE: "date" },
-  setNotificationHandler: () => undefined,
+  setNotificationHandler: (handler: { handleNotification: () => Promise<unknown> }) => {
+    os.handler = handler;
+  },
   getPermissionsAsync: async () => os.permission,
   requestPermissionsAsync: async () => {
     os.calls.push("request");
     os.permission = os.requested;
     return os.requested;
   },
-  setNotificationChannelAsync: async (id: string) => {
+  setNotificationChannelAsync: async (id: string, options: unknown) => {
     os.calls.push(`channel:${id}`);
+    os.channels.push(options);
   },
   cancelAllScheduledNotificationsAsync: async () => {
     os.calls.push("cancel");
@@ -170,6 +175,7 @@ describe("local notification scheduling", () => {
     os.requested = AUTHORIZED;
     os.scheduled.length = 0;
     os.calls.length = 0;
+    os.channels.length = 0;
     os.store.clear();
     os.refuseWrites = false;
     os.db = new DatabaseSync(":memory:");
@@ -286,10 +292,13 @@ describe("local notification scheduling", () => {
   it("schedules on Android through its own channel, reading the plain granted flag", async () => {
     os.platform.OS = "android";
     os.permission = { granted: true };
+    os.requested = { granted: true };
 
     expect(await service.enableNotifications(USER)).toBe(true);
 
     expect(os.calls[0]).toBe("channel:helix-reminders");
+    expect(os.calls).not.toContain("request");
+    expect(os.channels[0]).toEqual({ name: tr.settings.notifications, importance: 3 });
     expect(os.scheduled.length).toBeGreaterThan(0);
     expect(os.scheduled.every((request) => request.trigger.channelId === "helix-reminders")).toBe(true);
   });
@@ -329,5 +338,65 @@ describe("local notification scheduling", () => {
     await expect(service.disableNotifications()).rejects.toThrow("storage refused");
 
     expect(os.calls).toEqual(["cancel", "dismiss"]);
+  });
+
+  it("shows a reminder in the banner and the list, silently and without a badge", async () => {
+    await expect(os.handler!.handleNotification()).resolves.toEqual({
+      shouldShowBanner: true,
+      shouldShowList: true,
+      shouldPlaySound: false,
+      shouldSetBadge: false,
+    });
+  });
+
+  it("reads an iOS permission that carries no iOS status as not granted", async () => {
+    os.store.set(NOTIFICATIONS, "true");
+    os.permission = { granted: true };
+
+    await service.rescheduleAll(USER);
+
+    expect(os.scheduled).toEqual([]);
+  });
+
+  it("keeps the detail choice unless the caller asks to reset it", async () => {
+    os.store.set(DETAILS, "true");
+    await service.clearAccountNotifications();
+    expect(os.store.get(DETAILS)).toBe("true");
+    await service.clearAccountNotifications(true);
+    expect(os.store.get(DETAILS)).toBe("false");
+  });
+
+  it("warns as many days ahead as the owner chose", async () => {
+    os.store.set(NOTIFICATIONS, "true");
+    os.store.set(DETAILS, "true");
+    run(`UPDATE settings SET value = '5' WHERE key = 'reminder_days'`);
+
+    await service.rescheduleAll(USER);
+
+    const upcoming = scheduled().filter(([, title]) => title === tr.notif.upcomingTitle).map(([date]) => date);
+    expect(upcoming).toEqual(["2026-08-25", "2026-09-04"]);
+  });
+
+  it("reminds of today's income, but not ahead of a bill whose warning day is today", async () => {
+    os.store.set(NOTIFICATIONS, "true");
+    os.store.set(DETAILS, "true");
+    expected("salary-today", "in", "salary", "2026-08-10", 4000000);
+    expected("warned-today", "out", "ghost", "2026-08-13", 7000);
+
+    await service.rescheduleAll(USER);
+
+    expect(scheduled()).toContainEqual(["2026-08-10", tr.notif.salaryTitle, tr.notif.salaryBody("Maaş", amount(4000000)), target({ kind: "expected" })]);
+    expect(scheduled().filter(([, , body]) => body === tr.notif.upcoming(tr.common.paymentFallback, dateLabel("2026-08-13"), amount(7000))))
+      .toEqual([]);
+  });
+
+  it("skips a reminder due at this very minute", async () => {
+    os.store.set(NOTIFICATIONS, "true");
+    os.store.set(DETAILS, "true");
+    vi.setSystemTime(new Date(2026, 7, 10, 9, 0, 0, 0));
+
+    await service.rescheduleAll(USER);
+
+    expect(scheduled()).toEqual(DETAILED.slice(1));
   });
 });

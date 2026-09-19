@@ -1,4 +1,4 @@
--- 1.8.1: the second half of local migration 0013.
+-- 1.8.2: the second half of local migration 0013.
 --
 -- `setup_completed` was written once at wallet setup and read by nothing. The
 -- client stopped sending it in 0013, so no live client writes it, and dropping it

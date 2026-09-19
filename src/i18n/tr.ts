@@ -719,7 +719,6 @@ export const tr = {
   },
   sync: {
     errRls: "Eşitlemede geçici bir uyum sorunu oluştu; birazdan otomatik olarak yeniden denenecek.",
-    errAuth: "Oturum yenileniyor; verilerin birazdan otomatik eşitlenecek.",
     errReauth: "Eşitleme için tekrar giriş yapman gerekiyor. Verilerin cihazında korunuyor.",
     errNetwork: "İnternet bağlantısı yok. Bağlanınca verilerin otomatik eşitlenecek.",
     errGeneric: "Şu an eşitleme yapılamadı; birazdan otomatik olarak tekrar denenecek.",

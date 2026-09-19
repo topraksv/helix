@@ -40,7 +40,6 @@ const isAuthError = (raw: string) => /jwt|token|401|unauthorized|not authenticat
 /** Map a raw PostgREST/network error to a short, friendly Turkish message. */
 function friendlySyncError(raw: string): string {
   if (/row-level security|violates row-level|permission denied/i.test(raw)) return tr.sync.errRls;
-  if (isAuthError(raw)) return tr.sync.errAuth;
   if (/network|fetch|failed to fetch|timeout|offline/i.test(raw)) return tr.sync.errNetwork;
   return tr.sync.errGeneric;
 }

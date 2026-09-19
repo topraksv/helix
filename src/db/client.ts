@@ -15,7 +15,6 @@ import { deleteDatabaseAsync, openDatabaseAsync, type SQLiteBindParams, type SQL
 import { drizzle } from "drizzle-orm/sqlite-proxy";
 import { Platform } from "react-native";
 import { Directory, File, Paths } from "expo-file-system";
-import * as schema from "./schema";
 
 const DB_NAME = "helix.db";
 const RECOVERY_MARKER_NAME = "helix.database-recovery.json";
@@ -232,7 +231,7 @@ async function exec(
   }
 }
 
-const database = drizzle(exec, { schema });
+const database = drizzle(exec);
 
 export function getDb() {
   return database;

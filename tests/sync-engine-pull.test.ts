@@ -28,7 +28,8 @@ let db: DatabaseSync | null = null;
 vi.mock("react-native", () => ({ Platform: { OS: "web" } }));
 vi.mock("expo-constants", () => ({ default: { expoConfig: { version: "1.1.0" } } }));
 vi.mock("../src/db/client", () => sqliteClientMock(() => db!));
-vi.mock("../src/services/logger", () => ({ devWarning: vi.fn(), devError: vi.fn() }));
+const logger = vi.hoisted(() => ({ devWarning: vi.fn(), devError: vi.fn() }));
+vi.mock("../src/services/logger", () => logger);
 vi.mock("../src/services/diagnostics", () => ({ uploadDiagnostics: vi.fn(async () => {}) }));
 vi.mock("../src/sync/attachment-mirror", () => ({
   reconcileAttachments: vi.fn(async () => {}),
@@ -42,16 +43,54 @@ let heads: { table_name: string; max_updated_at: string | null; max_id: string |
 let headsError: { code?: string; message: string } | null = null;
 let rpcCalls: string[] = [];
 
-/** A builder that records the read and returns no rows, so a pull is visible
- *  without also exercising the merge that `multi-client-sync` already covers. */
+/** Rows the fake server holds, per table. Empty unless a case puts some there. */
+let server: Record<string, Record<string, unknown>[]> = {};
+let pullError: { message: string } | null = null;
+/** Every builder call of every read, so a case can check what was asked. */
+let reads: { table: string; calls: unknown[][] }[] = [];
+
+const KEYSET = /^updated_at\.gt\.(.+),and\(updated_at\.eq\.(.+),id\.gt\.(.+)\)$/;
+// A row whose timestamp cannot be read is always served: it is what the
+// refusal cases hand the engine, and a real filter could not rank it either.
+const at = (row: Record<string, unknown>) => Date.parse(String(row.updated_at));
+const unranked = (row: Record<string, unknown>) => !Number.isFinite(at(row));
+
+/**
+ * A builder that answers the way PostgREST does for the calls it was given:
+ * the keyset filter, `(updated_at, id)` order and page limit are applied as
+ * asked, so a wrong argument yields a wrong page rather than passing unseen.
+ */
 function pullBuilder(table: string) {
+  const calls: unknown[][] = [];
+  reads.push({ table, calls });
   const builder: Record<string, unknown> = {};
   for (const method of ["select", "order", "limit", "or", "gte"]) {
-    builder[method] = () => builder;
+    builder[method] = (...args: unknown[]) => {
+      calls.push([method, ...args]);
+      return builder;
+    };
   }
   builder.abortSignal = async () => {
     pulled.push(table);
-    return { data: [], error: null };
+    if (pullError) return { data: null, error: pullError };
+    let rows = [...(server[table] ?? [])];
+    for (const [method, ...args] of calls) {
+      if (method === "gte") rows = rows.filter((row) => unranked(row) || at(row) >= Date.parse(String(args[1])));
+      if (method === "or") {
+        const keyset = KEYSET.exec(String(args[0]));
+        if (!keyset) throw new Error(`unreadable filter ${String(args[0])}`);
+        const [, gt, eq, id] = keyset;
+        rows = rows.filter((row) => unranked(row)
+          || at(row) > Date.parse(gt!) || (at(row) === Date.parse(eq!) && String(row.id) > id!));
+      }
+    }
+    const ordered = calls.filter(([method]) => method === "order").map(([, column, options]) =>
+      `${String(column)}:${(options as { ascending?: boolean } | undefined)?.ascending}`);
+    if (ordered.join(",") === "updated_at:true,id:true") {
+      rows.sort((a, b) => at(a) - at(b) || String(a.id).localeCompare(String(b.id)));
+    }
+    const limit = calls.find(([method]) => method === "limit")?.[1];
+    return { data: rows.slice(0, Number(limit)), error: null };
   };
   return builder;
 }
@@ -73,10 +112,14 @@ const client = {
 };
 vi.mock("../src/sync/supabase", () => ({ getSupabase: () => client }));
 
+
 /** A fresh engine per test: it holds the epoch and the probe flag in module state. */
 async function engine() {
   vi.resetModules();
-  return import("../src/sync/engine");
+  const module = await import("../src/sync/engine");
+  // The status store the fresh engine reports to, not a copy from before the reset.
+  const { useSyncStatus } = await import("../src/sync/status");
+  return { ...module, useSyncStatus };
 }
 
 /** Put a table's cursor where a device that has already pulled would have it. */
@@ -98,6 +141,10 @@ beforeEach(() => {
   rpcCalls = [];
   heads = [];
   headsError = null;
+  server = {};
+  pullError = null;
+  reads = [];
+  logger.devError.mockClear();
 });
 
 afterEach(() => {
@@ -229,5 +276,216 @@ describe("when the probe cannot be trusted", () => {
 
     expect(await syncNow(USER, false)).toBe(false);
     expect(pulled).toHaveLength(0);
+    expect(logger.devError).toHaveBeenCalledWith("sync", "pull probe: JWT expired");
   });
 });
+
+/** A category exactly as PostgREST returns it: real booleans, offset timestamps. */
+function serverCategory(id: string, updatedAt: string, fields: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    id, user_id: USER, created_at: "2026-09-01T10:00:00+00:00", updated_at: updatedAt, deleted_at: null,
+    tombstone_version: 0, name: "Market", kind: "expense", icon: null, color: null,
+    sort_order: 0, is_column: true, is_transfer: false, ...fields,
+  };
+}
+
+function localCategory(id: string, updatedAt: string, fields: Record<string, unknown> = {}): void {
+  const row = {
+    id, user_id: USER, created_at: "2026-09-01T10:00:00.000Z", updated_at: updatedAt, deleted_at: null,
+    tombstone_version: 0, name: "Yerel", kind: "expense", icon: null, color: null,
+    sort_order: 0, is_column: 0, is_transfer: 0, ...fields,
+  };
+  const columns = Object.keys(row);
+  db!.prepare(`INSERT INTO categories (${columns.join(", ")}) VALUES (${columns.map(() => "?").join(", ")})`)
+    .run(...(Object.values(row) as never[]));
+}
+
+const category = (id: string) =>
+  db!.prepare("SELECT * FROM categories WHERE id = ?").get(id) as Record<string, unknown> | undefined;
+const cursorOf = (table: string) =>
+  (db!.prepare("SELECT last_pulled_at FROM sync_state WHERE table_name = ?").get(table) as { last_pulled_at: string } | undefined)
+    ?.last_pulled_at;
+const uuid = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
+
+describe("what a pulled page writes", () => {
+  it("stores a server row in this device's shapes and advances the keyset cursor", async () => {
+    server.categories = [serverCategory(ID, "2026-09-03T10:00:00+00:00", {
+      deleted_at: "2026-09-03T09:00:00+00:00",
+      tombstone_version: 1,
+      a_column_this_client_lacks: "ignored",
+    })];
+    server.fx_rates = [{
+      id: OTHER_ID, user_id: USER, created_at: TS, updated_at: TS, deleted_at: null, tombstone_version: 0,
+      currency: "USD", rate_date: "2026-09-03", rate_try: 40.5,
+    }];
+    server.computed_columns = [
+      { id: uuid(1), user_id: USER, created_at: TS, updated_at: TS, deleted_at: null, tombstone_version: 0,
+        name: "Net", definition: { op: "income_minus_expense" }, sort_order: 0 },
+      { id: uuid(2), user_id: USER, created_at: TS, updated_at: TS, deleted_at: null, tombstone_version: 0,
+        name: "Net 2", definition: "{\"op\":\"income_minus_expense\"}", sort_order: 1 },
+    ];
+    const { startSyncSession, syncNow } = await engine();
+    startSyncSession(USER);
+
+    expect(await syncNow(USER, false)).toBe(true);
+
+    expect(category(ID)).toEqual(expect.objectContaining({
+      created_at: "2026-09-01T10:00:00.000Z",
+      updated_at: "2026-09-03T10:00:00.000Z",
+      deleted_at: "2026-09-03T09:00:00.000Z",
+      is_column: 1,
+      is_transfer: 0,
+      tombstone_version: 1,
+    }));
+    expect(db!.prepare("SELECT rate_try FROM fx_rates").get()).toEqual({ rate_try: "40.5" });
+    expect(db!.prepare("SELECT definition FROM computed_columns ORDER BY sort_order").all()).toEqual([
+      { definition: "{\"op\":\"income_minus_expense\"}" },
+      { definition: "{\"op\":\"income_minus_expense\"}" },
+    ]);
+    expect(cursorOf("categories")).toBe(`2026-09-03T10:00:00.000Z|${ID}`);
+    expect(reads.find((read) => read.table === "categories")?.calls).toEqual([
+      ["select", "*"],
+      ["order", "updated_at", { ascending: true }],
+      ["order", "id", { ascending: true }],
+      ["limit", 1000],
+      ["gte", "updated_at", "1970-01-01T00:00:00.000Z"],
+    ]);
+  });
+
+  it("resumes after the cursor, and replays a legacy cursor's own timestamp once", async () => {
+    setCursor("categories", TS, ID);
+    db!.prepare("INSERT INTO sync_state (table_name, last_pulled_at) VALUES (?, ?)").run("persons", TS);
+    server.categories = [serverCategory(ID, TS), serverCategory(OTHER_ID, TS)];
+    const { startSyncSession, syncNow } = await engine();
+    startSyncSession(USER);
+
+    await syncNow(USER, false);
+
+    expect(reads.find((read) => read.table === "categories")?.calls).toContainEqual(
+      ["or", `updated_at.gt.${TS},and(updated_at.eq.${TS},id.gt.${ID})`],
+    );
+    expect(reads.find((read) => read.table === "persons")?.calls).toContainEqual(["gte", "updated_at", TS]);
+    expect(category(ID), "the row the cursor already names is not fetched again").toBeUndefined();
+    expect(category(OTHER_ID)).toBeDefined();
+  });
+
+  it("keeps a column the server did not send", async () => {
+    localCategory(ID, "2026-09-02T10:00:00.000Z", { is_transfer: 1 });
+    const sent = serverCategory(ID, TS, { name: "Sunucu" });
+    delete sent.is_transfer;
+    server.categories = [sent];
+    const { startSyncSession, syncNow } = await engine();
+    startSyncSession(USER);
+
+    await syncNow(USER, false);
+
+    expect(category(ID)).toEqual(expect.objectContaining({ name: "Sunucu", is_transfer: 1 }));
+  });
+
+  it("pages through a table a thousand rows at a time, never trusting a partial local snapshot", async () => {
+    // The last row of the first page is newer here than on the server: a merge
+    // that lost part of the page's local state would overwrite it.
+    localCategory(uuid(999), "2026-09-05T00:00:00.000Z");
+    server.categories = Array.from({ length: 1001 }, (_, n) =>
+      serverCategory(uuid(n), `2026-09-03T10:00:${String(Math.floor(n / 100)).padStart(2, "0")}+00:00`, { sort_order: n }));
+    const { startSyncSession, syncNow } = await engine();
+    startSyncSession(USER);
+
+    expect(await syncNow(USER, false)).toBe(true);
+
+    expect(reads.filter((read) => read.table === "categories")).toHaveLength(2);
+    expect(db!.prepare("SELECT COUNT(*) AS n FROM categories").get()).toEqual({ n: 1001 });
+    expect(category(uuid(999))?.name).toBe("Yerel");
+    expect(cursorOf("categories")).toBe(`2026-09-03T10:00:10.000Z|${uuid(1000)}`);
+  });
+
+  it("stops after a short page", async () => {
+    server.categories = Array.from({ length: 999 }, (_, n) => serverCategory(uuid(n), TS));
+    const { startSyncSession, syncNow } = await engine();
+    startSyncSession(USER);
+
+    await syncNow(USER, false);
+
+    expect(reads.filter((read) => read.table === "categories")).toHaveLength(1);
+  });
+});
+
+describe("which pulled rows win", () => {
+  it("replaces an older local row and says so, but not a newer one or a later delete generation", async () => {
+    localCategory(ID, "2026-09-02T10:00:00.000Z");
+    localCategory(OTHER_ID, "2026-09-05T10:00:00.000Z");
+    localCategory(uuid(3), "2026-09-01T10:00:00.000Z", { deleted_at: "2026-09-01T10:00:00.000Z", tombstone_version: 2 });
+    server.categories = [
+      serverCategory(ID, TS, { name: "Sunucu" }),
+      serverCategory(OTHER_ID, TS, { name: "Eski" }),
+      serverCategory(uuid(3), TS, { name: "Diriltilmiş", deleted_at: "2026-09-01T00:00:00+00:00", tombstone_version: 1 }),
+    ];
+    const { startSyncSession, syncNow, useSyncStatus } = await engine();
+    startSyncSession(USER);
+
+    await syncNow(USER, false);
+
+    expect(category(ID)?.name).toBe("Sunucu");
+    expect(category(OTHER_ID)?.name).toBe("Yerel");
+    expect(category(uuid(3))).toEqual(expect.objectContaining({ name: "Yerel", tombstone_version: 2 }));
+    expect(useSyncStatus.getState().remoteChangeAt).not.toBeNull();
+  });
+
+  it("announces nothing when a pull only adds rows this device never had", async () => {
+    server.categories = [serverCategory(ID, TS)];
+    const { startSyncSession, syncNow, useSyncStatus } = await engine();
+    startSyncSession(USER);
+
+    await syncNow(USER, false);
+
+    expect(category(ID)).toBeDefined();
+    expect(useSyncStatus.getState().remoteChangeAt).toBeNull();
+  });
+});
+
+describe("a page the device refuses", () => {
+  const refusals: [string, Record<string, unknown>, string][] = [
+    ["an id that is not a UUID", { id: "row-1" }, "invalid server row"],
+    ["another account's row", { user_id: "22222222-2222-4222-8222-222222222222" }, "invalid server row"],
+    ["a timestamp that is not text", { updated_at: 1_788_000_000_000 }, "invalid server row"],
+    ["a timestamp nobody can read", { updated_at: "soon" }, "invalid server row"],
+    ["a fractional delete generation", { tombstone_version: 1.5 }, "invalid server row"],
+    ["a negative delete generation", { tombstone_version: -1 }, "invalid server row"],
+    ["an unreadable creation time", { created_at: "garbage" }, "invalid server data"],
+    ["a row the schema forbids", { kind: "income", is_transfer: true }, "invalid server data"],
+  ];
+
+  for (const [label, fields, reason] of refusals) {
+    it(`fails the sync on ${label}, merging nothing and keeping the cursor`, async () => {
+      server.categories = [serverCategory(OTHER_ID, TS), serverCategory(ID, TS, fields)];
+      const { startSyncSession, syncNow } = await engine();
+      startSyncSession(USER);
+
+      expect(await syncNow(USER, false)).toBe(false);
+
+      expect(logger.devError).toHaveBeenCalledWith("sync", `pull categories: ${reason}`);
+      expect(category(OTHER_ID)).toBeUndefined();
+      expect(cursorOf("categories")).toBeUndefined();
+    });
+  }
+
+  it("refuses to overwrite a local row another account owns", async () => {
+    localCategory(ID, "2026-09-01T10:00:00.000Z", { user_id: "22222222-2222-4222-8222-222222222222" });
+    server.categories = [serverCategory(ID, TS)];
+    const { startSyncSession, syncNow } = await engine();
+    startSyncSession(USER);
+
+    expect(await syncNow(USER, false)).toBe(false);
+    expect(logger.devError).toHaveBeenCalledWith("sync", "pull categories: local ownership conflict");
+  });
+
+  it("fails the sync when the server refuses a read", async () => {
+    pullError = { message: "permission denied for table categories" };
+    const { startSyncSession, syncNow } = await engine();
+    startSyncSession(USER);
+
+    expect(await syncNow(USER, false)).toBe(false);
+    expect(logger.devError).toHaveBeenCalledWith("sync", "pull persons: permission denied for table categories");
+  });
+});
+

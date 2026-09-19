@@ -46,13 +46,13 @@
       "measuredDate": "2026-08-20"
     },
     "src/auth/session.ts": {
-      "score": 51.64,
-      "killed": 252,
+      "score": 95.7,
+      "killed": 467,
       "timeout": 0,
-      "survived": 127,
-      "noCoverage": 109,
-      "measuredOn": "ceef54830870fe3bb73a22b1f1fb9d3599e4dbcd",
-      "measuredDate": "2026-09-15"
+      "survived": 21,
+      "noCoverage": 0,
+      "measuredOn": "d3be2e3cda6fbbdc1db1928fd1f94e3bd3247ed7",
+      "measuredDate": "2026-09-19"
     },
     "src/auth/sign-out.ts": {
       "score": 100,
@@ -271,13 +271,13 @@
       "measuredDate": "2026-08-21"
     },
     "src/db/client.ts": {
-      "score": 28.18,
-      "killed": 51,
-      "timeout": 0,
-      "survived": 54,
-      "noCoverage": 76,
-      "measuredOn": "58570d5bfc79c0eec180fcac4978c97dd5bc66c1",
-      "measuredDate": "2026-09-03"
+      "score": 96.65,
+      "killed": 171,
+      "timeout": 2,
+      "survived": 6,
+      "noCoverage": 0,
+      "measuredOn": "d3be2e3cda6fbbdc1db1928fd1f94e3bd3247ed7",
+      "measuredDate": "2026-09-19"
     },
     "src/db/ids.ts": {
       "score": 90.32,
@@ -838,13 +838,13 @@
       "measuredDate": "2026-09-02"
     },
     "src/services/export-import.ts": {
-      "score": 34.39,
-      "killed": 54,
+      "score": 88.89,
+      "killed": 144,
       "timeout": 0,
-      "survived": 41,
-      "noCoverage": 62,
-      "measuredOn": "0e98c3e3dbf7cc6efa6fe02b183fffeb3a9357c9",
-      "measuredDate": "2026-09-07"
+      "survived": 16,
+      "noCoverage": 2,
+      "measuredOn": "d3be2e3cda6fbbdc1db1928fd1f94e3bd3247ed7",
+      "measuredDate": "2026-09-19"
     },
     "src/services/feedback.ts": {
       "score": 100,
@@ -856,13 +856,13 @@
       "measuredDate": "2026-09-04"
     },
     "src/services/fx-fetch.ts": {
-      "score": 12.33,
-      "killed": 18,
+      "score": 87.67,
+      "killed": 128,
       "timeout": 0,
-      "survived": 26,
-      "noCoverage": 102,
-      "measuredOn": "bac1cd3f15e43c32916b994140dcd6c3ddb11e97",
-      "measuredDate": "2026-09-09"
+      "survived": 16,
+      "noCoverage": 2,
+      "measuredOn": "d3be2e3cda6fbbdc1db1928fd1f94e3bd3247ed7",
+      "measuredDate": "2026-09-19"
     },
     "src/services/kv.ts": {
       "score": 88.89,
@@ -892,13 +892,13 @@
       "measuredDate": "2026-08-31"
     },
     "src/services/notifications.ts": {
-      "score": 0,
-      "killed": 0,
+      "score": 98.15,
+      "killed": 159,
       "timeout": 0,
-      "survived": 0,
-      "noCoverage": 162,
-      "measuredOn": "bac1cd3f15e43c32916b994140dcd6c3ddb11e97",
-      "measuredDate": "2026-09-09"
+      "survived": 3,
+      "noCoverage": 0,
+      "measuredOn": "d3be2e3cda6fbbdc1db1928fd1f94e3bd3247ed7",
+      "measuredDate": "2026-09-19"
     },
     "src/services/pdf-text.ts": {
       "score": 57.6,
@@ -946,13 +946,13 @@
       "measuredDate": "2026-09-02"
     },
     "src/sync/engine.ts": {
-      "score": 37.55,
-      "killed": 178,
-      "timeout": 6,
-      "survived": 201,
-      "noCoverage": 105,
-      "measuredOn": "dc9686a35190aef09ea7be5161bfa5bc3a118575",
-      "measuredDate": "2026-09-04"
+      "score": 84.22,
+      "killed": 402,
+      "timeout": 9,
+      "survived": 71,
+      "noCoverage": 6,
+      "measuredOn": "d3be2e3cda6fbbdc1db1928fd1f94e3bd3247ed7",
+      "measuredDate": "2026-09-19"
     },
     "src/sync/merge-policy.ts": {
       "score": 77.3,
@@ -1000,13 +1000,13 @@
       "measuredDate": "2026-09-09"
     },
     "src/sync/supabase.ts": {
-      "score": 51.39,
-      "killed": 37,
+      "score": 100,
+      "killed": 72,
       "timeout": 0,
-      "survived": 30,
-      "noCoverage": 5,
-      "measuredOn": "ceef54830870fe3bb73a22b1f1fb9d3599e4dbcd",
-      "measuredDate": "2026-09-15"
+      "survived": 0,
+      "noCoverage": 0,
+      "measuredOn": "d3be2e3cda6fbbdc1db1928fd1f94e3bd3247ed7",
+      "measuredDate": "2026-09-19"
     },
     "src/sync/tombstone-policy.ts": {
       "score": 91.67,
