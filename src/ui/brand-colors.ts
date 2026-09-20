@@ -2,7 +2,7 @@
  * Brand chip colours and the ink drawn on them.
  *
  * Pure data plus one pure decision, so the whole table can be asserted in
- * `tests/theme-contrast.test.ts` — `src/ui/logo.tsx` imports react-native and
+ * `tests/ui/theme-contrast.test.ts` — `src/ui/logo.tsx` imports react-native and
  * cannot be loaded by vitest.
  */
 
@@ -188,7 +188,7 @@ export const BRAND: Record<string, { color: string; mark?: string }> = {
  * A brand colour belongs to the brand, so instead of tinting it the mark now
  * sits on a NEUTRAL PLATE inside the tile. Contrast then stops depending on the
  * brand at all: it is the theme's own text-on-surface pair, which
- * `tests/theme-contrast.test.ts` already guarantees. The plate itself is chosen
+ * `tests/ui/theme-contrast.test.ts` already guarantees. The plate itself is chosen
  * by measured contrast against the brand colour so its edge clears the 3:1
  * non-text boundary of WCAG 1.4.11, and the tile keeps the full brand colour
  * around it.

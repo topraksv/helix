@@ -112,7 +112,7 @@ export default function Root({ children }: PropsWithChildren) {
             whose values would differ.
 
             `SITE_URL` is written once here and asserted against the link in
-            `README.md` by `tests/release-config.test.ts`, because a canonical
+            `README.md` by `tests/repo/release-config.test.ts`, because a canonical
             URL that has quietly stopped matching where the app lives is worse
             than none: it tells an index to attribute this page to somewhere
             else. */}

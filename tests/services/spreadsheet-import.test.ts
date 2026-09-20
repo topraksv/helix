@@ -1,0 +1,786 @@
+import { describe, expect, it } from "vitest";
+import {
+  collectInstallmentPlans,
+  extractDueDay,
+  formulaColumnSigns,
+  isBalanceLikeColumn,
+  parseFormulaLiterals,
+  parseInstallmentComment,
+  parseMonthLabel,
+  parseSheet,
+  parseSheetAmount,
+  parseWorkbook,
+  parseWorkbookBytes,
+  planImportCell,
+  type CellData,
+  type ParsedSheet,
+  MAX_WORKBOOK_BYTES,
+  type RawCell,
+  validateWorkbookContainer,
+} from "../../src/services/spreadsheet-import";
+import * as XLSX from "xlsx";
+import { SUBSCRIPTION_HEADERS, WORKBOOK_COLUMNS, WORKBOOK_SHEETS, type SubscriptionRow } from "../../src/domain/workbook-format";
+import { tr } from "../../src/i18n/tr";
+import { required } from "../helpers";
+
+// --- helpers ---------------------------------------------------------------
+const c = (v: unknown, opts?: { f?: string; note?: string }): RawCell => ({
+  v,
+  f: opts?.f,
+  c: opts?.note ? [{ t: opts.note }] : undefined,
+});
+const row = (...vals: (RawCell | unknown)[]): RawCell[] =>
+  vals.map((x) => (x && typeof x === "object" && "v" in (x as object) ? (x as RawCell) : { v: x }));
+
+const asSheet = (r: ReturnType<typeof parseSheet>) => {
+  if (!("year" in r)) throw new Error(`expected parsed sheet, got: ${r.reason}`);
+  return r;
+};
+const sheetCell = (sheet: ParsedSheet, rowIndex: number, columnIndex: number): CellData =>
+  required(required(sheet.cells[rowIndex], `sheet row ${rowIndex}`)[columnIndex], `sheet cell ${rowIndex}:${columnIndex}`);
+
+function fakeZipSizes(compressed: number, uncompressed: number): Uint8Array {
+  const bytes = new Uint8Array(30 + 46 + 22);
+  const view = new DataView(bytes.buffer);
+  view.setUint32(0, 0x04034b50, true); // local header
+  const central = 30;
+  view.setUint32(central, 0x02014b50, true);
+  view.setUint32(central + 20, compressed, true);
+  view.setUint32(central + 24, uncompressed, true);
+  const end = central + 46;
+  view.setUint32(end, 0x06054b50, true);
+  view.setUint16(end + 8, 1, true);
+  view.setUint16(end + 10, 1, true);
+  view.setUint32(end + 12, 46, true);
+  view.setUint32(end + 16, central, true);
+  return bytes;
+}
+
+describe("workbook container preflight", () => {
+  it("rejects a high-ratio ZIP before SheetJS can inflate it", () => {
+    expect(() => validateWorkbookContainer(fakeZipSizes(1, 10_000))).toThrow();
+    expect(() => validateWorkbookContainer(fakeZipSizes(0, 5)), "stored as nothing, claiming bytes").toThrow(tr.importer.workbookTooComplex);
+    expect(() => validateWorkbookContainer(fakeZipSizes(0, 0)), "an empty entry").not.toThrow();
+  });
+
+  /** Each ZIP the reader would walk off the end of, or be told lies about, is refused before SheetJS sees it. */
+  it("refuses a directory that does not describe the file it is in", () => {
+    const edited = (edit: (view: DataView, bytes: Uint8Array) => Uint8Array | void) => {
+      const bytes = fakeZipSizes(1_000, 10_000);
+      return edit(new DataView(bytes.buffer), bytes) ?? bytes;
+    };
+    const refused = [
+      edited((view) => view.setUint32(76, 0, true)), // no end-of-directory record
+      edited((view) => view.setUint16(86, 3_000, true)), // more entries than any workbook
+      edited((view) => view.setUint32(92, 60, true)), // a directory reaching past its own end record
+      edited((view) => view.setUint32(30, 0, true)), // an entry that is not a directory header
+      edited((view) => view.setUint16(30 + 28, 1, true)), // an entry longer than the directory says
+      edited((view) => view.setUint32(30 + 24, 40 * 1024 * 1024, true)), // one entry past the per-entry cap
+    ];
+    for (const [index, bytes] of refused.entries()) {
+      expect(() => validateWorkbookContainer(bytes), `case ${index}`).toThrow(tr.importer.workbookTooComplex);
+    }
+    const commented = new Uint8Array(fakeZipSizes(1_000, 10_000).length + 5);
+    commented.set(fakeZipSizes(1_000, 10_000));
+    expect(() => validateWorkbookContainer(commented), "an archive comment after the end record").not.toThrow();
+  });
+
+  it("refuses a file past the size limit and waves through one too short to be a ZIP", () => {
+    expect(() => validateWorkbookContainer(new Uint8Array(MAX_WORKBOOK_BYTES + 1))).toThrow(tr.importer.fileTooLarge);
+    expect(() => validateWorkbookContainer(new Uint8Array([0x50, 0x4b]))).not.toThrow();
+  });
+
+  it("accepts bounded ZIP metadata and non-ZIP CSV bytes", () => {
+    expect(() => validateWorkbookContainer(fakeZipSizes(1_000, 10_000))).not.toThrow();
+    expect(() => validateWorkbookContainer(new TextEncoder().encode("Ay;Kira\nOcak;100"))).not.toThrow();
+  });
+
+  it("parses current SheetJS bytes without mutating the object prototype", async () => {
+    const marker = "__helix_workbook_probe__";
+    expect((Object.prototype as Record<string, unknown>)[marker]).toBeUndefined();
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(
+      wb,
+      XLSX.utils.aoa_to_sheet([["__proto__", "constructor", "prototype"], ["x", "y", "z"]]),
+      "__proto__",
+    );
+    const bytes = XLSX.write(wb, { type: "array", bookType: "xlsx" });
+
+    await parseWorkbookBytes(new Uint8Array(bytes));
+
+    expect((Object.prototype as Record<string, unknown>)[marker]).toBeUndefined();
+  });
+});
+
+// A vertical 2026-style block: months down column A, balance columns present.
+const sheet2026 = (): RawCell[][] => [
+  row("", "KK Taksitli Harcamalar", "Fatura ve Abonelikler", "Ek Gelirler", "Ay Başında Eldeki Para", "Güncel Bakiye"),
+  row("2026 Ocak", 18822.92, 4424.03, 20480, 2004, 61825.28),
+  row("2026 Şubat", 14050.48, 5907.27, 31091, 61825.28, 3500),
+  row("2026 Mart", 19310.87, 5703.47, 16900, 3500, 1519.3),
+];
+
+describe("parseMonthLabel", () => {
+  it("reads TR names, numeric and Date forms in either order", () => {
+    expect(parseMonthLabel("Ocak 2025")).toBe("2025-01");
+    expect(parseMonthLabel("2026 Aralık")).toBe("2026-12");
+    expect(parseMonthLabel("Oca'25")).toBe("2025-01");
+    expect(parseMonthLabel("2025-03")).toBe("2025-03");
+    expect(parseMonthLabel("01.2024")).toBe("2024-01");
+    expect(parseMonthLabel("2025-13")).toBeNull();
+    expect(parseMonthLabel("00.2025")).toBeNull();
+    expect(parseMonthLabel(new Date(2025, 4, 15))).toBe("2025-05");
+    expect(parseMonthLabel("Güncel Bakiye")).toBeNull();
+    expect(parseMonthLabel("Kira 2025"), "a word beside a year that names no month").toBeNull();
+    expect(parseMonthLabel("")).toBeNull();
+  });
+});
+
+describe("parseSheetAmount", () => {
+  it("parses numbers and TR/EN text incl. negatives", () => {
+    expect(parseSheetAmount(18822.92)).toBe(1882292);
+    expect(parseSheetAmount("1.234,56")).toBe(123456);
+    expect(parseSheetAmount("12.000")).toBe(1200000);
+    expect(parseSheetAmount("-₺43.754,43")).toBe(-4375443);
+    expect(parseSheetAmount("-")).toBeNull();
+    expect(parseSheetAmount(null)).toBeNull();
+    expect(parseSheetAmount(Number.MAX_SAFE_INTEGER)).toBeNull();
+    expect(parseSheetAmount("1.000.000.000.000")).toBeNull(); // 1 trilyon üstü reddedilir
+    expect(parseSheetAmount("1.000.000.000")).toBe(100_000_000_000); // 1 milyar TL artık kabul
+    expect(parseSheetAmount("999.999.999,99")).toBe(99_999_999_999);
+  });
+});
+
+describe("parseFormulaLiterals", () => {
+  it("splits pure literal sums, rejects references and functions", () => {
+    expect(parseFormulaLiterals("=")).toBeNull();
+    expect(parseFormulaLiterals("500+300+700")).toEqual([50000, 30000, 70000]);
+    expect(parseFormulaLiterals("=1200+8480")).toEqual([120000, 848000]);
+    expect(parseFormulaLiterals("1000-250")).toEqual([100000, -25000]);
+    expect(parseFormulaLiterals("6082.59+15840.6-C5")).toBeNull(); // cell ref
+    expect(parseFormulaLiterals("SUM(A1:A3)")).toBeNull();
+    expect(parseFormulaLiterals("1500")).toBeNull(); // single term, nothing to split
+  });
+});
+
+describe("parseSheet — vertical block", () => {
+  /**
+   * Every named column is kept and carries its own classification.
+   *
+   * Balance and total columns used to be DROPPED here, which made the parser's
+   * reading of a heading final and invisible. They are excluded by default —
+   * importing a running total counts the month twice — but they survive into
+   * the sheet so the importer can offer them back.
+   */
+  it("keeps every named column and flags the balance ones", () => {
+    const s = asSheet(parseSheet(sheet2026(), "Gelir-Gider 2026"));
+    expect(s.year).toBe(2026);
+    expect(s.months).toEqual(["2026-01", "2026-02", "2026-03"]);
+    expect(s.columns.map((col) => col.label)).toEqual([
+      "KK Taksitli Harcamalar", "Fatura ve Abonelikler", "Ek Gelirler",
+      "Ay Başında Eldeki Para", "Güncel Bakiye",
+    ]);
+    expect(required(s.columns[2]).kindGuess).toBe("income"); // Ek Gelirler
+    expect(s.columns.filter((col) => col.balanceLike).map((col) => col.label))
+      .toEqual(["Ay Başında Eldeki Para", "Güncel Bakiye"]);
+    expect(s.skippedColumns).toEqual(["Ay Başında Eldeki Para", "Güncel Bakiye"]);
+    expect(sheetCell(s, 0, 0).valueMinor).toBe(1882292);
+  });
+
+  it("names the column it reads as the month-opening balance", () => {
+    const s = asSheet(parseSheet(sheet2026(), "2026"));
+    expect(s.openingColumn).toBe("Ay Başında Eldeki Para");
+  });
+});
+
+/**
+ * The sheet's own balance line, read instead of guessed.
+ *
+ * Headings are the one part of a personal workbook nobody else wrote the rules
+ * for. A column called "Ek" is income, a "Düzenleme Tarihi" is not money, and
+ * neither is knowable from the words. The formula that produces the owner's own
+ * closing balance says which columns it adds, which it subtracts, and which it
+ * leaves out — and reproducing it is the difference between a ledger that
+ * matches the file and one 600.000 TL below it.
+ */
+describe("parseSheet — roles taken from the balance formula", () => {
+  const grid = (closing: string): RawCell[][] => [
+    row("", "Kira", "Maaş", "Ek", "Düzenleme Tarihi", "Kalan"),
+    row("2026 Ocak", 850, 40_000, 5_000, 45_655, c(44_150, { f: closing })),
+    row("2026 Şubat", 850, 40_000, 0, 45_690, c(83_300, { f: closing })),
+  ];
+
+  it("reads income, expense and left-out columns off the formula", () => {
+    const s = asSheet(parseSheet(grid("(C2+D2)-B2"), "2026"));
+    const byLabel = new Map(s.columns.map((column) => [column.label, column]));
+    expect(required(byLabel.get("Maaş")).kindGuess).toBe("income");
+    expect(required(byLabel.get("Ek")).kindGuess).toBe("income");
+    expect(required(byLabel.get("Kira")).kindGuess).toBe("expense");
+    // Left out of the owner's own arithmetic, so left out of the import — and
+    // offered back in the wizard like every other default.
+    expect(required(byLabel.get("Düzenleme Tarihi")).balanceLike).toBe(true);
+    expect(s.skippedColumns).toEqual(["Düzenleme Tarihi", "Kalan"]);
+  });
+
+  it("subtracts a whole parenthesised group, not just its first term", () => {
+    const s = asSheet(parseSheet(grid("C2-(B2+D2)"), "2026"));
+    const byLabel = new Map(s.columns.map((column) => [column.label, column]));
+    expect(required(byLabel.get("Ek")).kindGuess).toBe("expense");
+    expect(required(byLabel.get("Kira")).kindGuess).toBe("expense");
+    expect(required(byLabel.get("Maaş")).kindGuess).toBe("income");
+  });
+
+  it("expands a subtracted range and ignores another sheet's columns", () => {
+    const s = asSheet(parseSheet(grid("='Gelir-Gider 2025'!F13+C2-SUM(B2:B2)+D2"), "2026"));
+    const byLabel = new Map(s.columns.map((column) => [column.label, column]));
+    expect(required(byLabel.get("Kira")).kindGuess).toBe("expense");
+    expect(required(byLabel.get("Ek")).kindGuess).toBe("income");
+    // F is this sheet's "Kalan"; the cross-sheet reference must not classify it.
+    expect(required(byLabel.get("Kalan")).balanceLike).toBe(true);
+  });
+
+  /**
+   * A balance line reading "opening + income − total expenses" names three
+   * columns out of twelve, and treating the nine it does not name as excluded
+   * would throw the whole breakdown away. Below half the named columns the
+   * headings keep their say.
+   */
+  it("leaves the headings alone when the formula speaks for too little", () => {
+    const s = asSheet(parseSheet(grid("C2-B2"), "2026"));
+    const byLabel = new Map(s.columns.map((column) => [column.label, column]));
+    expect(required(byLabel.get("Ek")).kindGuess).toBe("expense"); // heading rule
+    expect(required(byLabel.get("Düzenleme Tarihi")).balanceLike).toBe(false);
+  });
+
+  /**
+   * A workbook kept by hand grows: the file this was measured against starts
+   * its 2022 balance line over fourteen columns and ends it over sixteen.
+   */
+  it("takes the widest formula in the sheet, not the first", () => {
+    const rows = grid("C2-B2");
+    rows[2] = row("2026 Şubat", 850, 40_000, 0, 45_690, c(83_300, { f: "(C3+D3)-B3" }));
+    const byLabel = new Map(asSheet(parseSheet(rows, "2026")).columns.map((column) => [column.label, column]));
+    expect(required(byLabel.get("Ek")).kindGuess).toBe("income");
+  });
+});
+
+describe("formulaColumnSigns", () => {
+  const signs = (formula: string) => Object.fromEntries(formulaColumnSigns(formula));
+
+  it("carries the sign of the group each reference sits in", () => {
+    expect(signs("=(H2+I2+J2)-(B2+C2)")).toEqual({ 7: 1, 8: 1, 9: 1, 1: -1, 2: -1 });
+    expect(signs("=N2-SUM(B2:D2)")).toEqual({ 13: 1, 1: -1, 2: -1, 3: -1 });
+    expect(signs("=-(B2-C2)")).toEqual({ 1: -1, 2: 1 });
+  });
+
+  /**
+   * `IF(ISBLANK(J2),"",…)` names a column in its condition before the
+   * arithmetic does. The arithmetic is what counts, so the last mention wins —
+   * and the empty string in between must not be read as anything at all.
+   */
+  it("lets the arithmetic overrule a condition that named the same column", () => {
+    expect(signs('=IF(ISBLANK(B2),"",((C2)-(B2)))')).toEqual({ 2: 1, 1: -1 });
+  });
+
+  it("finds nothing in a formula that references no cell", () => {
+    expect(signs("=500+300+700")).toEqual({});
+  });
+});
+
+describe("parseSheet — contiguous block", () => {
+  it("stops at a blank row and ignores a trailing summary table", () => {
+    const grid = [
+      ...sheet2026(),
+      row(), // blank separator
+      row("Ay", "Kart A", "Kart B"),
+      row("2026 Nisan", 11801.43, 4202.74),
+      row("2026 Mayıs", 13897.22, 4202.74),
+    ];
+    const s = asSheet(parseSheet(grid, "2026"));
+    expect(s.months).toEqual(["2026-01", "2026-02", "2026-03"]); // summary table excluded
+    expect(s.columns.some((col) => col.label === "Kart A")).toBe(false);
+  });
+});
+
+describe("parseSheet — horizontal layout", () => {
+  it("transposes months-as-columns into months-as-rows", () => {
+    const grid = [
+      row("", "Ocak 2025", "Şubat 2025"),
+      row("KK Taksitli Harcamalar", 13501, 13235.2),
+      row("Maaş", 82732, 83031.03),
+    ];
+    const s = asSheet(parseSheet(grid, "Gelir-Gider 2025"));
+    expect(s.months).toEqual(["2025-01", "2025-02"]);
+    expect(s.columns.map((col) => col.label)).toEqual(["KK Taksitli Harcamalar", "Maaş"]);
+    expect(sheetCell(s, 0, 0).valueMinor).toBe(1350100);
+  });
+});
+
+describe("parseSheet — formula + comment breakdown", () => {
+  it("splits a literal formula and pairs comment labels", () => {
+    const grid = [
+      row("", "Ek Gelirler"),
+      row("2026 Ocak", c(20480, { f: "12000+8480", note: "Ocak Kira Geliri 12.000\nSigorta Gözlük Parası 8.480" })),
+    ];
+    const cell = sheetCell(asSheet(parseSheet(grid, "2026")), 0, 0);
+    expect(cell.valueMinor).toBe(2048000);
+    expect(cell.formulaParts).toEqual([1200000, 848000]);
+    expect(cell.commentParts).toEqual([
+      { label: "Ocak Kira Geliri", amountMinor: 1200000 },
+      { label: "Sigorta Gözlük Parası", amountMinor: 848000 },
+    ]);
+  });
+
+  it("keeps a plain comment as free text when it has no amounts", () => {
+    const grid = [
+      row("", "Ek Giderler"),
+      row("2026 Ocak", c(2216.76, { note: "beklenmedik masraf" })),
+    ];
+    const cell = sheetCell(asSheet(parseSheet(grid, "2026")), 0, 0);
+    expect(cell.comment).toBe("beklenmedik masraf");
+    expect(cell.commentParts).toEqual([{ label: "beklenmedik masraf", amountMinor: null }]);
+  });
+});
+
+describe("parseSheet — negatives", () => {
+  it("keeps negative cell values", () => {
+    const grid = [row("", "Güncel Fark"), row("2026 Temmuz", -43754.43)];
+    const s = asSheet(parseSheet(grid, "2026"));
+    expect(sheetCell(s, 0, 0).valueMinor).toBe(-4375443);
+  });
+});
+
+describe("parseSheet — failures", () => {
+  it("reports sheets with no month axis", () => {
+    const r = parseSheet([row("A", "B"), row("x", 1)], "Yatırım");
+    expect("reason" in r).toBe(true);
+  });
+
+  it("names why a sheet with no body or no headings is refused", () => {
+    expect(parseSheet([row("Ocak 2026", 1)], "Tek")).toEqual({ sheetName: "Tek", reason: tr.importer.reasonTooSmall });
+    expect(parseSheet([row("", ""), row("Ocak 2026", 1)], "Başlıksız")).toEqual({ sheetName: "Başlıksız", reason: tr.importer.reasonNoColumns });
+  });
+
+  it("reads a ragged horizontal sheet, and a comment holding only spaces as none", () => {
+    const sheet = asSheet(parseSheet([row("", "Ocak 2026", "Şubat 2026"), row("Kira", c(100, { note: "   " })), row("Market", 5, 6)], "Yatay"));
+    expect(sheet.months).toEqual(["2026-01", "2026-02"]);
+    expect(sheetCell(sheet, 0, 0)).toMatchObject({ valueMinor: 10000, comment: null });
+    expect(sheetCell(sheet, 1, 0).valueMinor, "the short row's missing cell").toBeNull();
+  });
+});
+
+describe("planImportCell", () => {
+  const cd = (over: Partial<CellData>): CellData => ({
+    valueMinor: null,
+    formulaParts: null,
+    comment: null,
+    commentParts: null,
+    ...over,
+  });
+
+  it("skips empty and zero cells", () => {
+    expect(planImportCell(cd({ valueMinor: null }))).toBeNull();
+    expect(planImportCell(cd({ valueMinor: 0 }))).toBeNull();
+  });
+
+  it("splits a literal formula and labels parts from the comment", () => {
+    const plan = planImportCell(
+      cd({
+        valueMinor: 2048000,
+        formulaParts: [1200000, 848000],
+        comment: "Kira 12.000\nGözlük 8.480",
+        commentParts: [
+          { label: "Kira", amountMinor: 1200000 },
+          { label: "Gözlük", amountMinor: 848000 },
+        ],
+      }),
+    );
+    expect(plan).toEqual({
+      items: [
+        { amountMinor: 1200000, note: "Kira", isAggregate: false },
+        { amountMinor: 848000, note: "Gözlük", isAggregate: false },
+      ],
+      cellNote: null,
+    });
+  });
+
+  it("itemizes a formula without a comment, keeping any comment as a note", () => {
+    const plan = planImportCell(cd({ valueMinor: 120000, formulaParts: [50000, 70000] }));
+    expect(plan!.items.map((i) => i.amountMinor)).toEqual([50000, 70000]);
+    expect(plan!.items.every((i) => i.note === null && !i.isAggregate)).toBe(true);
+  });
+
+  it("keeps the cell total when formula parts do not reconcile", () => {
+    const plan = planImportCell(
+      cd({
+        valueMinor: 120000,
+        formulaParts: [50000, 60000],
+        comment: "kaydedilmiş toplam",
+      }),
+    );
+    expect(plan).toEqual({
+      items: [{ amountMinor: 120000, note: null, isAggregate: true }],
+      cellNote: "kaydedilmiş toplam",
+    });
+  });
+
+  it("itemizes labeled comment amounts that reconcile to the value", () => {
+    const plan = planImportCell(
+      cd({ valueMinor: 30000, commentParts: [{ label: "A", amountMinor: 10000 }, { label: "B", amountMinor: 20000 }] }),
+    );
+    expect(plan!.items).toEqual([
+      { amountMinor: 10000, note: "A", isAggregate: false },
+      { amountMinor: 20000, note: "B", isAggregate: false },
+    ]);
+  });
+
+  it("falls back to one aggregate row and parks a plain comment on the cell", () => {
+    const plan = planImportCell(cd({ valueMinor: 221676, comment: "beklenmedik masraf" }));
+    expect(plan).toEqual({
+      items: [{ amountMinor: 221676, note: null, isAggregate: true }],
+      cellNote: "beklenmedik masraf",
+    });
+  });
+});
+
+describe("parseWorkbook — what a file may not make the reader do", () => {
+  const book = (sheets: Record<string, XLSX.WorkSheet>): XLSX.WorkBook => ({ SheetNames: Object.keys(sheets), Sheets: sheets });
+  const tooComplex = tr.importer.workbookTooComplex;
+
+  it("refuses too many sheets, a named sheet that is not there, and a grid past its limits", () => {
+    expect(() => parseWorkbook(book(Object.fromEntries(Array.from({ length: 101 }, (_, i) => [`S${i}`, {}]))), XLSX)).toThrow(tooComplex);
+    expect(() => parseWorkbook({ SheetNames: ["Kayıp"], Sheets: {} }, XLSX)).toThrow(tooComplex);
+    expect(() => parseWorkbook(book({ Uzun: { "!ref": "A1:A20001" } }), XLSX), "rows").toThrow(tooComplex);
+    expect(() => parseWorkbook(book({ Geniş: { "!ref": "A1:SH1" } }), XLSX), "columns").toThrow(tooComplex);
+    expect(() => parseWorkbook(book({ A: { "!ref": "A1:KN2000" }, B: { "!ref": "A1:KN2000" } }), XLSX), "cells across sheets").toThrow(tooComplex);
+  });
+
+  it("refuses a cell whose text, formula or comment is too long to read safely", () => {
+    const long = "x".repeat(20_001);
+    for (const cell of [{ v: long, t: "s" }, { v: 1, t: "n", f: long }, { v: 1, t: "n", c: [{ t: long }] }]) {
+      expect(() => parseWorkbook(book({ S: { "!ref": "A1", A1: cell } as XLSX.WorkSheet }), XLSX)).toThrow(tooComplex);
+    }
+  });
+
+  it("reports an empty sheet, reads a sparse one, and collects the cards marked informational", () => {
+    const sparse: XLSX.WorkSheet = { "!ref": "A1:C3", B1: { t: "s", v: "Kira" }, C1: { t: "s", v: "ℹ️" }, A2: { t: "s", v: "Ocak 2026" }, B2: { t: "n", v: 100 }, A3: { t: "s", v: "ℹ️ Axess" } };
+    const parsed = parseWorkbook(book({ Boş: {}, Seyrek: sparse }), XLSX);
+    expect(parsed.unparsed).toEqual([{ sheetName: "Boş", reason: tr.importer.reasonTooSmall }]);
+    expect(parsed.sheets.map((sheet) => sheet.months)).toEqual([["2026-01"]]);
+    expect(parsed.informationalCards, "a bare marker names no card").toEqual(["Axess"]);
+  });
+
+  it("reads a record sheet's own dates as days, and a record-named sheet it does not recognise as a ledger", () => {
+    const columns = WORKBOOK_COLUMNS.subscriptions;
+    const netflix: SubscriptionRow = {
+      name: "Netflix", amountMinor: 22999, currency: "TRY", amountMode: "fixed", cycle: "monthly", intervalMonths: 1, billingDay: 12,
+      nextDueDate: "", trialEndDate: "", category: "", source: "", person: "", autoPay: false, isActive: true, websiteDomain: "", monthlyLoadMinor: 22999,
+    };
+    const cells: unknown[] = columns.map((column) => column.write(netflix));
+    cells[columns.findIndex((column) => column.header === SUBSCRIPTION_HEADERS.nextDue)] = new Date(2026, 3, 12);
+    const subscriptions = XLSX.utils.aoa_to_sheet([columns.map((column) => column.header), cells], { cellDates: true });
+    const parsed = parseWorkbook(book({ [WORKBOOK_SHEETS.subscriptions]: subscriptions }), XLSX);
+    expect(parsed.records.subscriptions.map((record) => [record.name, record.nextDueDate])).toEqual([["Netflix", "2026-04-12"]]);
+    const stranger = parseWorkbook(book({ [WORKBOOK_SHEETS.subscriptions]: XLSX.utils.aoa_to_sheet([["Ad"], ["x"]]) }), XLSX);
+    expect(stranger.records.subscriptions).toEqual([]);
+    expect(stranger.unparsed.map((sheet) => sheet.sheetName)).toEqual([WORKBOOK_SHEETS.subscriptions]);
+  });
+});
+
+describe("parseWorkbook — multi-sheet, different columns per year", () => {
+  it("parses each budget sheet and reports unparseable ones", () => {
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(
+      wb,
+      XLSX.utils.aoa_to_sheet([
+        ["", "KK Taksitli Harcamalar", "Fatura ve Abonelikler", "Maaş"],
+        ["2026 Ocak", 18822.92, 4424.03, 136167],
+      ]),
+      "Gelir-Gider 2026",
+    );
+    XLSX.utils.book_append_sheet(
+      wb,
+      XLSX.utils.aoa_to_sheet([
+        ["Portföy", "Adet", "Değer"],
+        ["Altın", 10, 50000],
+      ]),
+      "Yatırım",
+    );
+    XLSX.utils.book_append_sheet(
+      wb,
+      XLSX.utils.aoa_to_sheet([
+        ["", "İnternet Abonelikleri", "Dijital Abonelikler", "Maaş"],
+        ["2025 Ocak", 2128.1, 329.89, 82732],
+      ]),
+      "Gelir-Gider 2025",
+    );
+
+    const parsed = parseWorkbook(wb, XLSX);
+    expect(parsed.sheets.map((s) => s.sheetName)).toEqual(["Gelir-Gider 2026", "Gelir-Gider 2025"]);
+    expect(parsed.unparsed.map((s) => s.sheetName)).toEqual(["Yatırım"]);
+
+    const y2026 = parsed.sheets.find((s) => s.year === 2026)!;
+    const y2025 = parsed.sheets.find((s) => s.year === 2025)!;
+    // 2026 has no "İnternet Abonelikleri"; 2025 does — columns differ per year.
+    expect(y2026.columns.some((col) => col.label === "İnternet Abonelikleri")).toBe(false);
+    expect(y2025.columns.map((col) => col.label)).toContain("İnternet Abonelikleri");
+  });
+});
+
+// --- installment comment parsing (item 8) ----------------------------------
+// Fictional template data — mirrors the comment SHAPE only, no real records.
+describe("parseInstallmentComment", () => {
+  it("splits a ═-banner card comment into per-item installments", () => {
+    const comment = [
+      "══════ Kart A ══════",
+      "Robot Süpürge           2.777,67  3/9",
+      "Spor Ayakkabı              828,36   1/3",
+      "Gözlük                   1.766,67   1/6",
+      "",
+      "══════ Kart B ══════",
+      "Lambader                   299,00   7/7",
+      "Kışlık Mont              139,33   2/6",
+      "",
+      "══════ Kart C ══════",
+      "Dizüstü Bilgisayar    16.000,00   3/3",
+    ].join("\n");
+    const notes = parseInstallmentComment(comment);
+    expect(notes).toHaveLength(6);
+    expect(notes[0]).toEqual({ card: "Kart A", name: "Robot Süpürge", monthlyMinor: 277767, paidNo: 3, total: 9 });
+    expect(notes[4]).toEqual({ card: "Kart B", name: "Kışlık Mont", monthlyMinor: 13933, paidNo: 2, total: 6 });
+    expect(notes[5]).toEqual({ card: "Kart C", name: "Dizüstü Bilgisayar", monthlyMinor: 1600000, paidNo: 3, total: 3 });
+  });
+
+  it("handles parenthesised counts and the dashed-banner (bank) style", () => {
+    const comment = [
+      "-------Banka X-----------",
+      "Spor Mont              2.000,00   (5/9)",
+      "Tişört                   192,50   (5/6)",
+    ].join("\n");
+    const notes = parseInstallmentComment(comment);
+    expect(notes).toHaveLength(2);
+    expect(notes[0]).toEqual({ card: "Banka X", name: "Spor Mont", monthlyMinor: 200000, paidNo: 5, total: 9 });
+  });
+
+  it("skips junk amounts, negatives, and non-installment lines", () => {
+    const comment = [
+      "══════ Kart A ══════",
+      "Çeşitli   1324-66-81-172   1/6", // unparseable amount → skip
+      "İade Çanta     -2.024,99   (2/2)", // negative → skip
+      "Oyuncak               410,50   2/3", // valid
+    ].join("\n");
+    const notes = parseInstallmentComment(comment);
+    expect(notes).toHaveLength(1);
+    expect(notes[0]).toEqual({ card: "Kart A", name: "Oyuncak", monthlyMinor: 41050, paidNo: 2, total: 3 });
+  });
+
+  it("returns nothing for a plain bill breakdown (no N/M lines)", () => {
+    const comment = [
+      "══════ Faturalar ══════",
+      "Elektrik                                436,30",
+      "Doğalgaz                           2.218,00",
+      "  ├ Abonelik 1 (799,99)",
+      "  └ Abonelik 2 (99,99)",
+    ].join("\n");
+    expect(parseInstallmentComment(comment)).toEqual([]);
+  });
+
+  it("strips the ℹ️ marker from an informational card banner", () => {
+    const comment = ["══════ Aile Kartı ℹ️ ══════", "Spor Mont          2.000,00   (5/9)"].join("\n");
+    expect(required(parseInstallmentComment(comment)[0]).card).toBe("Aile Kartı");
+  });
+
+  it("rejects a long malformed banner without regex backtracking", () => {
+    const startedAt = performance.now();
+    expect(parseInstallmentComment(`${"=".repeat(2_000)}x`)).toEqual([]);
+    expect(performance.now() - startedAt).toBeLessThan(100);
+  });
+
+  it("rejects a long malformed installment tail in linear time", () => {
+    const startedAt = performance.now();
+    expect(parseInstallmentComment(`x${" ".repeat(19_998)}y`)).toEqual([]);
+    expect(performance.now() - startedAt).toBeLessThan(100);
+  });
+});
+
+// --- due-day extraction from column headers (item 7) -----------------------
+describe("extractDueDay", () => {
+  it("pulls a trailing day off a bill column", () => {
+    expect(extractDueDay("Elektrik 06")).toEqual({ label: "Elektrik", dueDay: 6 });
+    expect(extractDueDay("Kira 11")).toEqual({ label: "Kira", dueDay: 11 });
+    expect(extractDueDay("İnternet 22")).toEqual({ label: "İnternet", dueDay: 22 });
+  });
+
+  it("uses the later day of a range as the deadline", () => {
+    expect(extractDueDay("KK Taksit 05-15")).toEqual({ label: "KK Taksit", dueDay: 15 });
+    expect(extractDueDay("Youtube/Amazon/Spotify (15-20)")).toEqual({ label: "Youtube/Amazon/Spotify", dueDay: 20 });
+  });
+
+  it("leaves labels without a day (or an out-of-range number) untouched", () => {
+    expect(extractDueDay("Ev Kredisi")).toEqual({ label: "Ev Kredisi", dueDay: null });
+    expect(extractDueDay("Araba/ Ulaşım")).toEqual({ label: "Araba/ Ulaşım", dueDay: null });
+    expect(extractDueDay("2024 Bütçe")).toEqual({ label: "2024 Bütçe", dueDay: null }); // 2024 > 31
+  });
+});
+
+// --- installment plan collection across a workbook (item 8 wiring) ----------
+// Fictional template data; asserts the dedup / start-month / merge rules that a
+// real one-shot migration depends on.
+const col = (label: string) => ({ label, kindGuess: "expense" as const, isInvestment: false, balanceLike: false, dueDay: null });
+const cell = (comment: string | null): CellData => ({ valueMinor: 100, formulaParts: null, comment, commentParts: null });
+/** One-taksit-column sheet: [month, comment] rows. */
+const taksitSheet = (name: string, rows: [string, string | null][], label = "KK Taksitli Harcamalar"): ParsedSheet => ({
+  sheetName: name,
+  year: Number(required(required(rows[0])[0]).slice(0, 4)),
+  months: rows.map((r) => r[0]),
+  columns: [col(label)],
+  cells: rows.map((r) => [cell(r[1])]),
+  skippedColumns: [],
+  openingColumn: null,
+  openingCandidates: [],
+});
+
+describe("collectInstallmentPlans", () => {
+  it("dedupes a plan seen in every active month to ONE, with an invariant start", () => {
+    const sheet = taksitSheet("2026", [
+      ["2026-01", "══ Kart A ══\nRobot Süpürge  2.777,67  3/9"],
+      ["2026-02", "══ Kart A ══\nRobot Süpürge  2.777,67  4/9"],
+      ["2026-03", "══ Kart A ══\nRobot Süpürge  2.777,67  5/9"],
+    ]);
+    const plans = collectInstallmentPlans([sheet]);
+    expect(plans).toHaveLength(1);
+    expect(required(plans[0])).toEqual({
+      card: "Kart A",
+      name: "Robot Süpürge",
+      monthlyMinor: 277767,
+      total: 9,
+      startMonth: "2025-11", // 2026-01 minus (3-1)
+      columnLabel: "KK Taksitli Harcamalar",
+    });
+  });
+
+  it("merges the same purchase tracked under a renamed card (first card wins)", () => {
+    const older = taksitSheet("2025", [["2025-12", "-- Kart Eski --\nDizüstü  2.000,00  1/6"]]);
+    const newer = taksitSheet("2026", [["2026-01", "══ Kart Yeni ══\nDizüstü  2.000,00  2/6"]]);
+    // processed in workbook order → 2026 sheet first here
+    const plans = collectInstallmentPlans([newer, older]);
+    expect(plans).toHaveLength(1);
+    expect(required(plans[0]).card).toBe("Kart Yeni"); // first mention wins
+    expect(required(plans[0]).startMonth).toBe("2025-12");
+  });
+
+  it("keeps genuinely different purchases (name/amount/count/start) separate", () => {
+    const sheet = taksitSheet("2026", [
+      ["2026-01", "══ Kart A ══\nMobilya  500,00  1/3\nMobilya  900,00  1/3"], // same name, different amount
+    ]);
+    expect(collectInstallmentPlans([sheet])).toHaveLength(2);
+  });
+
+  it("excludes cards flagged informational", () => {
+    const sheet = taksitSheet("2026", [
+      ["2026-01", "══ Kart A ══\nÜrün  100,00  1/3\n══ Aile Kartı ══\nHediye  200,00  1/3"],
+    ]);
+    const plans = collectInstallmentPlans([sheet], { informationalCards: ["Aile Kartı"] });
+    expect(plans).toHaveLength(1);
+    expect(required(plans[0]).card).toBe("Kart A");
+  });
+
+  it("skips excluded columns and non-selected years", () => {
+    const sheet = taksitSheet("2026", [
+      ["2025-06", "══ Kart A ══\nEski  100,00  1/3"],
+      ["2026-06", "══ Kart A ══\nYeni  200,00  1/3"],
+    ]);
+    expect(collectInstallmentPlans([sheet], { excludedLabels: ["KK Taksitli Harcamalar"] })).toHaveLength(0);
+    const only2026 = collectInstallmentPlans([sheet], { yearAllowed: (y) => y === 2026 });
+    expect(only2026.map((p) => p.name)).toEqual(["Yeni"]);
+  });
+
+  /**
+   * The heading decides nothing. Requiring "taksit" in it assumed a workbook
+   * keeps single charges and instalments in separate columns; one "Kredi
+   * Kartı" column holding both produced no plans at all, however many `3/9`
+   * lines its comments carried. What proves a plan is the comment.
+   */
+  it("reads a plan out of a column whose heading never says taksit", () => {
+    const sheet: ParsedSheet = {
+      ...taksitSheet("2026", [["2026-01", "══ Kart A ══\nFatura  100,00  1/3"]]),
+      columns: [col("Kredi Kartı")],
+    };
+    expect(collectInstallmentPlans([sheet]).map((plan) => plan.name)).toEqual(["Fatura"]);
+  });
+
+  /**
+   * The reported failure: one home loan written "Ev Kredisi" in the 2026 sheet
+   * and "Kredi" in the 2025 one became two plans over the same 24 months, and
+   * every month from the start carried 23.672,13 twice — the 46.000 the owner
+   * saw. A plan is its schedule; the words around it are what a person retypes.
+   */
+  it("collapses one schedule written under two names, keeping the fuller one", () => {
+    const plans = collectInstallmentPlans([
+      taksitSheet("2026", [["2026-01", "══ Garanti ══\nEv Kredisi  23.672,13  16/24"]]),
+      taksitSheet("2025", [["2025-01", "══ Garanti ══\nKredi  23672,13  4/24"]]),
+    ]);
+    expect(plans).toHaveLength(1);
+    expect(required(plans[0])).toMatchObject({ name: "Ev Kredisi", total: 24, startMonth: "2024-10" });
+    expect(collectInstallmentPlans([
+      taksitSheet("2025", [["2025-01", "══ Garanti ══\nKredi  23672,13  4/24"]]),
+      taksitSheet("2026", [["2026-01", "══ Garanti ══\nEv Kredisi  23.672,13  16/24"]]),
+    ]).map((plan) => plan.name), "whichever sheet comes first").toEqual(["Ev Kredisi"]);
+  });
+
+  it("still ignores a comment that is not an instalment list", () => {
+    const sheet: ParsedSheet = {
+      ...taksitSheet("2026", [["2026-01", "Elektrik faturası geldi"]]),
+      columns: [col("Faturalar")],
+    };
+    expect(collectInstallmentPlans([sheet])).toHaveLength(0);
+  });
+});
+
+/**
+ * A heading that names where money came from is not a balance column.
+ *
+ * `BALANCE_HINTS` ran before the income check and swallowed the whole heading.
+ * The one that matters is "Net Maaş" — the commonest payroll heading in a
+ * Turkish household sheet — which `\bnet\b` read as a balance column. Every
+ * month's salary was dropped from the import and the chained balance ran
+ * further into the red with each month, which is exactly what the owner saw.
+ */
+describe("which headings are balances and which are money arriving", () => {
+  it("rescues a concrete income source from the balance filter", () => {
+    for (const label of ["Net Maaş", "Net Ücret", "Maaş", "Ek Gelirler", "Kira Geliri", "Prim", "İkramiye", "Mesai Ücreti"]) {
+      expect(isBalanceLikeColumn(label), label).toBe(false);
+    }
+  });
+
+  it("still refuses a sum of the columns beside it", () => {
+    // These are derived from the columns already being imported. Taking them
+    // as well counts the month twice, which is the defect the filter exists
+    // for and the reason it cannot simply be relaxed.
+    for (const label of ["Toplam Gelir", "Toplam Gider", "Genel Toplam", "Net Bakiye", "Kalan Bakiye", "Devir", "Birikim", "Ay Başında Eldeki Para"]) {
+      expect(isBalanceLikeColumn(label), label).toBe(true);
+    }
+  });
+
+  it("leaves ordinary item columns alone, including the one that looks like a total", () => {
+    // "İnternet" contains "net" and is a subscription, not a balance.
+    for (const label of ["Market", "Kira", "İnternet", "Netflix", "Ulaşım", "Yatırım"]) {
+      expect(isBalanceLikeColumn(label), label).toBe(false);
+    }
+  });
+
+  it("carries the flag onto the parsed column, so the importer can offer it back", () => {
+    const grid = [
+      [{ v: "Ay" }, { v: "Net Maaş" }, { v: "Market" }, { v: "Toplam Gider" }],
+      [{ v: "Ocak 2026" }, { v: 50000 }, { v: 4000 }, { v: 4000 }],
+      [{ v: "Şubat 2026" }, { v: 50000 }, { v: 4200 }, { v: 4200 }],
+    ];
+    const sheet = asSheet(parseSheet(grid, "2026"));
+    expect(sheet.columns.map((col) => [col.label, col.balanceLike, col.kindGuess])).toEqual([
+      ["Net Maaş", false, "income"],
+      ["Market", false, "expense"],
+      ["Toplam Gider", true, "expense"],
+    ]);
+    expect(sheet.skippedColumns).toEqual(["Toplam Gider"]);
+  });
+});

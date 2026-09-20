@@ -9,7 +9,7 @@
  * a hard `slice(0, 60)`, so the better implementation was the unused one.
  *
  * Its own file, with no Deno global in it, so the behaviour below is asserted
- * by `tests/feedback.test.ts` rather than by reading this text back.
+ * by `tests/domain/feedback.test.ts` rather than by reading this text back.
  *
  * Collapsing whitespace is doing two jobs at once and both matter: it is what
  * keeps a subject on one line, and it is what stops a CR or LF in a person's

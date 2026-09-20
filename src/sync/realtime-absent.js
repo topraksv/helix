@@ -11,7 +11,7 @@
  * Helix is offline-first and pulls on its own schedule: `sync/engine.ts` runs
  * a cursor-driven pass, and nothing anywhere calls `.channel()`. That is the
  * whole premise of this substitution, and it is checked rather than
- * remembered — `tests/release-config.test.ts` fails if a subscription appears.
+ * remembered — `tests/repo/release-config.test.ts` fails if a subscription appears.
  *
  * `setAuth` is the only method supabase-js calls by itself: once on
  * construction and again on every token change, with the result discarded. It

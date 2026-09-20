@@ -80,7 +80,7 @@ export const tr = {
    * and everything else is written the way it would be explained out loud.
    *
    * `controllerName` and `contactEmail` are the single source for who is
-   * answerable. `tests/legal-notice.test.ts` asserts the feedback function's
+   * answerable. `tests/ui/legal-notice.test.ts` asserts the feedback function's
    * own recipient matches `contactEmail`, so the address a person is told to
    * write to is the address that is actually read.
    *

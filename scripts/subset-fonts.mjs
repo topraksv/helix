@@ -17,7 +17,7 @@
  * that can disagree. One file, one set of metrics, identical rendering on
  * mobile web, desktop web, desktop-mode mobile web and the installed app.
  *
- * What must not change, and is asserted by `tests/font-coverage.test.ts`:
+ * What must not change, and is asserted by `tests/repo/font-coverage.test.ts`:
  * every character the app renders survives, advance widths are untouched, and
  * the digit spread stays exactly what was measured — Inter at
  * 37% (proportional, and every ledger width is calibrated against it), IBM
@@ -90,4 +90,4 @@ for (const [pkg, name] of [["@expo-google-fonts/inter", "Inter-OFL.txt"], ["@exp
 }
 
 console.log(`\ntotal ${before} -> ${after} (${(100 - (after / before) * 100).toFixed(1)}% smaller)`);
-console.log("Run `npx vitest run tests/font-coverage.test.ts` to check nothing the app renders was dropped.");
+console.log("Run `npx vitest run tests/repo/font-coverage.test.ts` to check nothing the app renders was dropped.");

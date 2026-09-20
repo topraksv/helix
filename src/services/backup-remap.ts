@@ -26,7 +26,7 @@
  * inductively — never gained an entry either), so `targetHash !== id` is
  * false for every row, every table, every call. The remap is therefore the
  * empty map by construction, not by a special case. See
- * `tests/backup-round-trip.test.ts` for the executable proof.
+ * `tests/services/backup-round-trip.test.ts` for the executable proof.
  */
 
 import { deterministicId, naturalKeys } from "../db/ids";

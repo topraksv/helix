@@ -48,7 +48,7 @@ export function convertOutboundRow(
   // that is not 0, 1 or a boolean, and `booleanColumnsOf` derives this set from
   // the same `getTableColumns` source. The old rejection branch was therefore
   // unreachable, which is exactly why no test ever covered it; the property
-  // that makes removing it safe is pinned in `tests/sync-outbound.test.ts`.
+  // that makes removing it safe is pinned in `tests/sync/sync-outbound.test.ts`.
   for (const column of policy.booleanColumns) {
     if (column in out && out[column] !== null) out[column] = Boolean(out[column]);
   }

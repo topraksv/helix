@@ -1,7 +1,7 @@
 /**
  * Rendered accessibility semantics.
  *
- * These properties used to be "verified" by `tests/accessibility-contract.test.ts`,
+ * These properties used to be "verified" by `tests/ui/accessibility-contract.test.ts`,
  * which read `src/ui/components.tsx` as TEXT and asserted `toContain(...)` on the
  * prop names. That passes when the string sits in a comment and fails when a prop
  * is renamed, and it never proves the attribute reached an element — the whole

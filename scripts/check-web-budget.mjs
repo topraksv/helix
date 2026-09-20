@@ -45,7 +45,7 @@ const root = process.argv[2] ?? "dist";
 // cuts them to the Latin scripts plus the punctuation, currency, arrow, math
 // and symbol blocks the UI draws, measured 791_272 and total export 8_037_750
 // -> 7_269_039. Advance widths, OpenType features and the measured digit
-// spreads are unchanged; `tests/font-coverage.test.ts` holds all three.
+// spreads are unchanged; `tests/repo/font-coverage.test.ts` holds all three.
 //
 // Then variable-amount subscriptions shipped: a per-occurrence invoice entry
 // sheet shared by the dashboard, upcoming list and reconciliation screens, a
@@ -156,7 +156,7 @@ const root = process.argv[2] ?? "dist";
 // pixel byte-identical, resolution untouched at 606x789), the export measured
 // 7_606_608 -> 7_478_730 and the mark finally fills the box it is given.
 //
-// The saving is a side effect and is not the reason. `tests/brand-domains.test.ts`
+// The saving is a side effect and is not the reason. `tests/domain/brand-domains.test.ts`
 // holds the property that matters: the ink must touch all four edges, because
 // re-exporting a logo from a design tool is exactly how the padding comes back.
 //
@@ -221,7 +221,7 @@ const root = process.argv[2] ?? "dist";
 // `icons/trash-2` stopped existing and sixteen imports moved to `icons/trash`.
 // The drawn glyph is unchanged, and that was checked rather than assumed:
 // 1.39's `trash-2.mjs` and 1.42's `trash.mjs` carry the same five paths with
-// the same keys. `tests/design-system-contract.test.ts` caught the dead
+// the same keys. `tests/ui/design-system-contract.test.ts` caught the dead
 // specifier before the export did, which is exactly the job it was added for.
 //
 // Both JavaScript ceilings move to measured plus the usual ~1%. Total export
@@ -232,7 +232,7 @@ const root = process.argv[2] ?? "dist";
 // taken there. `metro.config.js` now resolves `@supabase/realtime-js` to
 // `src/sync/realtime-absent.js`, because `createClient` builds a socket client
 // whether or not anything subscribes and nothing in this app ever calls
-// `.channel()` — checked in `tests/release-config.test.ts` rather than
+// `.channel()` — checked in `tests/repo/release-config.test.ts` rather than
 // remembered. Measured entry 3_268_575 -> 3_202_806, total JavaScript
 // 3_898_238 -> 3_832_469, export 7_637_899 -> 7_572_130: 65_769 bytes off all
 // three, against the 65_134 the source map attributed to realtime-js and

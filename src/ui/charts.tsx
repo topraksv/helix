@@ -194,7 +194,7 @@ export function distributionDonutData(
  * So cash takes a measured ramp entry, and it takes the LAST one: asset types
  * fill the ramp from the front, so cash keeps its colour when a seventh type is
  * added rather than sliding to whichever slot is left over.
- * `tests/theme-contrast.test.ts` owns both halves of that rule.
+ * `tests/ui/theme-contrast.test.ts` owns both halves of that rule.
  */
 export function walletDonutSlices(input: {
   cashLabel: string;
@@ -389,7 +389,7 @@ export function Donut({
 
               `border` is the token for a structural line meant to be seen on
               whichever surface it lands on, which is what an empty track is.
-              `tests/theme-contrast.test.ts` holds it against both. */}
+              `tests/ui/theme-contrast.test.ts` holds it against both. */}
           <Circle
             cx={cx}
             cy={cy}

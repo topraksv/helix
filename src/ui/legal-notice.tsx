@@ -15,7 +15,7 @@
  * and a measured line length, because these are long sentences and nobody
  * reads a 120-character legal paragraph.
  *
- * `tests/legal-notice.test.ts` asserts that every touchpoint links here, that
+ * `tests/ui/legal-notice.test.ts` asserts that every touchpoint links here, that
  * the address the notice names is the one the feedback function delivers to,
  * and that the iOS privacy manifest declares the same collection this
  * describes.

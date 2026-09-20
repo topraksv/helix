@@ -12,7 +12,7 @@
  * No credential, password, access token or refresh token belongs in this store:
  * supabase-js owns session material and its own storage. On web the backing
  * store is `localStorage`, which is readable by any script on the origin, so
- * putting a token here would genuinely expose it — `tests/privacy.test.ts`
+ * putting a token here would genuinely expose it — `tests/domain/privacy.test.ts`
  * enforces that boundary rather than leaving it to review.
  *
  * Every method is BEST-EFFORT on web, and that is a contract callers rely on

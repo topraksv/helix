@@ -533,7 +533,7 @@ export const chart = {
  * and surfaceAlt the app paints them on. Purple and magenta stay out of the
  * ramp entirely, as everywhere else in this app.
  *
- * `tests/theme-contrast.test.ts` re-measures all of it from these values.
+ * `tests/ui/theme-contrast.test.ts` re-measures all of it from these values.
  */
 const chartSeries = {
   light: ["#9c3548", "#008a99", "#997026", "#005fa4", "#535f06", "#006853", "#007ec4", "#a56758"],
@@ -555,7 +555,7 @@ const chartSeries = {
    * raised in lightness for a dark surface. Measured across all three shipped
    * dark palettes — minimum pairwise ΔE2000 16.2 (was 16.5, floor 10), 10.2
    * under deuteranopia (floor 9), minimum contrast 4.83 against every surface
-   * and surfaceAlt (floor 3). `tests/theme-contrast.test.ts` re-measures all of
+   * and surfaceAlt (floor 3). `tests/ui/theme-contrast.test.ts` re-measures all of
    * it, including the hue pairing.
    */
   dark: ["#dd6f7d", "#60c4d3", "#d8a95d", "#5f98e3", "#8d9741", "#50a58d", "#c7dffe", "#eaa594"],

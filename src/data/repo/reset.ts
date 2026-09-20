@@ -528,7 +528,7 @@ async function countRows(userId: string, table: SyncedTableName, where: string, 
  *
  * Rows only — the counts the screen shows come from `previewDataReset`, which
  * asks the database to count rather than loading them. No deduplication:
- * `selectorsFor` keeps the scopes disjoint, and `tests/data-reset.test.ts`
+ * `selectorsFor` keeps the scopes disjoint, and `tests/db/data-reset.test.ts`
  * holds them to it by checking that the preview total is exactly what the write
  * then reports.
  */

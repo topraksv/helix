@@ -76,7 +76,7 @@ import {
 // — the same TTF on every platform, so mobile web, desktop web, desktop-mode
 // mobile web and the installed app all measure and render identically. The
 // upstream faces carry 2_849 codepoints each for a Turkish product; see the
-// script for what is kept and `tests/font-coverage.test.ts` for what may not
+// script for what is kept and `tests/repo/font-coverage.test.ts` for what may not
 // be dropped.
 const Inter_400Regular = require("../../assets/fonts/Inter_400Regular.ttf");
 const Inter_500Medium = require("../../assets/fonts/Inter_500Medium.ttf");

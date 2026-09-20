@@ -2069,7 +2069,7 @@ test("lifecycle confirmations carry the operation context after the action", asy
   await expect(page.getByTestId("operation-dialog-header")).toHaveCount(0);
 
   // A CLOUD account ends on Account Security, beside the reversible version of
-  // the same decision — asserted in `tests/operation-guard.test.ts`, because
+  // the same decision — asserted in `tests/ui/operation-guard.test.ts`, because
   // this export runs local-only and that screen redirects away. What a
   // local-only workspace has is this one row, here, and the dialog it opens is
   // the same one.

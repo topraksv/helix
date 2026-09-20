@@ -56,7 +56,7 @@ function attachmentIcon(mimeType: string) {
  *
  * The number is duplicated rather than shared because the two screens are
  * agreeing on a look, not depending on each other; a change to one is a
- * decision about that screen, and `tests/design-system-contract.test.ts` is
+ * decision about that screen, and `tests/ui/design-system-contract.test.ts` is
  * what keeps them from drifting apart by accident.
  */
 const THUMBNAIL = 84;

@@ -419,7 +419,7 @@ test("multi-entry settings screens return to whoever opened them", async ({ page
   // journey, not that it does so from every entry point. The other entries
   // need their own fixtures (a credit card with no statement cycle, an income
   // rule due soon) and would test those fixtures more than this rule;
-  // `tests/navigation.test.ts` covers the mechanism for all of them by
+  // `tests/ui/navigation.test.ts` covers the mechanism for all of them by
   // asserting the root routes exist and that nothing pushes with an anchor.
 
   // A direct link has no history at all, and a hostile query string must not

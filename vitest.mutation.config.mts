@@ -6,12 +6,12 @@ export default defineConfig({
     exclude: [
       // Mutating process workers do not reliably apply mid-test TZ changes.
       // Calendar behavior remains covered by deterministic date test inputs.
-      "tests/locale-timezone.test.ts",
+      "tests/domain/locale-timezone.test.ts",
       // Instrumenting the full 59-file scope turns the 100k-row release-budget
       // suite into an instrumentation benchmark and can exhaust Vitest's 5s
       // test timeout. Functional equivalents remain in analytics and mutation
       // contract tests; the real performance suite remains in the normal gate.
-      "tests/performance.test.ts",
+      "tests/domain/performance.test.ts",
       // Asserts the exact SOURCE TEXT of `services/notifications.ts` and
       // `auth/session.ts` — that the redaction and teardown calls are really
       // wired, which no behavioural test can see. Stryker runs against an
@@ -25,7 +25,7 @@ export default defineConfig({
       // as "nothing guards this" when the truth was that its guards were
       // excluded by association. Measured 2026-09-09: 12 mutants, every one of
       // them NoCoverage.
-      "tests/privacy-wiring.test.ts",
+      "tests/repo/privacy-wiring.test.ts",
     ],
     environment: "node",
     /**

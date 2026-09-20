@@ -13,9 +13,10 @@
     "**/*.{js,mjs,ts,tsx}"
   ],
   "ignore": [
+    "src/db/expo-sqlite.server.js",
     "src/sync/database.types.ts",
-    "supabase/functions/**",
-    "src/db/expo-sqlite.server.js"
+    "src/sync/realtime-absent.js",
+    "supabase/functions/**"
   ],
   "ignoreDependencies": [
     "@expo-google-fonts/ibm-plex-serif",

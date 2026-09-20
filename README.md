@@ -247,11 +247,14 @@ eklenmesini engellemenin, herkesi bugün durduran bir eşik koymadan tek yolu.
 | `src/services/` | Yan etkili entegrasyonlar: dosya, bildirim, piyasa, PDF, Excel |
 | `src/ui/` | Tasarım sistemi ilkelleri ve tokenlar |
 | `src/i18n/` | Arayüzdeki her metin. Bileşende yazılmış Türkçe bir dize buraya taşınır |
+| `tests/<katman>/` | Birim ve sözleşme testleri, kaynaktaki katmanın adıyla: `domain`, `db`, `data`, `sync`, `services`, `auth`, `ui`, `i18n` |
+| `tests/repo/` | Depoya bakan testler — yapılandırma, workflow, kaynağı metin olarak okuyan sözleşmeler |
+| `tests/fixtures/` | Test verisi. Üretim ağacında yeri olmayan ölçüm kayıtları burada |
 
 Bağımlılık yönü `app → data → db` ve `app → domain`. Rotalar ve UI
 `src/data/repo/*` içine girmez; `src/domain/` React, ağ ve depolama içermez —
 bu yüzden hesap kısmı tarayıcısız, veritabanısız test edilebilir.
-`tests/architecture-contract.test.ts` bunu her çalıştırmada doğrular.
+`tests/repo/architecture-contract.test.ts` bunu her çalıştırmada doğrular.
 
 ---
 

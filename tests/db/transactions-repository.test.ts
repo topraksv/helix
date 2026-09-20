@@ -1,0 +1,924 @@
+import { DatabaseSync } from "node:sqlite";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+const harness = vi.hoisted(() => ({
+  db: null as DatabaseSync | null,
+  nextId: 0,
+  dbAcquisitions: 0,
+}));
+
+vi.mock("../../src/db/client", async () => {
+  const { sqliteClientMock } = await import("../helpers");
+  return sqliteClientMock(() => harness.db!, () => { harness.dbAcquisitions += 1; });
+});
+
+vi.mock("../../src/db/ids", () => ({
+  newId: () => `transaction-${String(++harness.nextId).padStart(2, "0")}`,
+  deterministicId: async (key: string) => `det:${key}`,
+  naturalKeys: new Proxy(
+    {},
+    {
+      get:
+        (_target, property) =>
+        (...parts: unknown[]) =>
+          `${String(property)}|${parts.join("|")}`,
+    },
+  ),
+}));
+
+vi.mock("../../src/services/fx-fetch", () => ({ lookupRate: vi.fn() }));
+vi.mock("../../src/services/markets", () => ({ marketSellRateTry: vi.fn() }));
+vi.mock("../../src/sync/engine", () => ({ scheduleSync: vi.fn() }));
+
+import {
+  addTransaction,
+  assertSignedTransactionAmounts,
+  assertTransactionCategory,
+  bulkMonthEntry,
+  addStatementPayment,
+  declareMonthOpeningBalance,
+  deleteBalanceAdjustment,
+  deleteStatementPayment,
+  deleteTransaction,
+  livePaymentSource,
+  restoreBalanceAdjustment,
+  restoreStatementPayment,
+  restoreTransaction,
+  setCurrentBalance,
+  updateTransaction,
+  type NewTransaction,
+  type TransactionPatch,
+} from "../../src/data/repo/transactions";
+import { CreditCardCycleRequiredError, RefundExceedsExpenseError, StatementPaymentTooLargeError } from "../../src/data/repo/errors";
+import { fromDbShape } from "../../src/db/mutations";
+import { MAX_ABS_AMOUNT_MINOR } from "../../src/domain/money";
+import { migrationStatements } from "../helpers";
+
+const USER = "transaction-user";
+const OTHER_USER = "other-user";
+const NOW = "2026-08-13T09:00:00.000Z";
+
+function seedPerson(
+  id: string,
+  userId = USER,
+  deletedAt: string | null = null,
+): void {
+  harness.db!.prepare(
+    `INSERT INTO persons
+      (id, user_id, created_at, updated_at, deleted_at, tombstone_version, name, is_self)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).run(id, userId, NOW, NOW, deletedAt, deletedAt ? 1 : 0, id, 1);
+}
+
+function seedCategory(
+  id: string,
+  kind: "expense" | "income",
+  isTransfer = false,
+  userId = USER,
+  deletedAt: string | null = null,
+): void {
+  harness.db!.prepare(
+    `INSERT INTO categories
+      (id, user_id, created_at, updated_at, deleted_at, tombstone_version,
+       name, kind, sort_order, is_column, is_transfer)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 1, ?)`,
+  ).run(
+    id,
+    userId,
+    NOW,
+    NOW,
+    deletedAt,
+    deletedAt ? 1 : 0,
+    id,
+    kind,
+    isTransfer ? 1 : 0,
+  );
+}
+
+function seedSource(
+  id: string,
+  type: "cash" | "credit_card",
+  options: {
+    userId?: string;
+    deletedAt?: string | null;
+    statementDay?: number | null;
+    dueDay?: number | null;
+  } = {},
+): void {
+  const userId = options.userId ?? USER;
+  const deletedAt = options.deletedAt ?? null;
+  harness.db!.prepare(
+    `INSERT INTO payment_sources
+      (id, user_id, created_at, updated_at, deleted_at, tombstone_version,
+       name, type, person_id, due_day, statement_day, logo_source, is_active)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'initials', 1)`,
+  ).run(
+    id,
+    userId,
+    NOW,
+    NOW,
+    deletedAt,
+    deletedAt ? 1 : 0,
+    id,
+    type,
+    userId === USER ? "self" : "other-self",
+    options.dueDay === undefined ? (type === "credit_card" ? 5 : null) : options.dueDay,
+    options.statementDay === undefined ? (type === "credit_card" ? 25 : null) : options.statementDay,
+  );
+}
+
+function seedTransaction(id: string, userId = USER): void {
+  harness.db!.prepare(
+    `INSERT INTO transactions
+      (id, user_id, created_at, updated_at, deleted_at, tombstone_version,
+       type, amount_minor, currency, fx_rate, amount_try_minor, entry_date,
+       purchase_date, effective_date, status, category_id, payment_source_id,
+       person_id, installment_plan_id, installment_no, card_statement_id,
+       subscription_id, is_aggregate, note)
+     VALUES (?, ?, ?, ?, NULL, 0, 'expense', 1000, 'TRY', NULL, 1000,
+       '2026-08-13', NULL, '2026-08-13', 'realized', ?, NULL, ?, NULL, NULL,
+       NULL, NULL, 0, NULL)`,
+  ).run(
+    id,
+    userId,
+    NOW,
+    NOW,
+    userId === USER ? "expense" : "other-expense",
+    userId === USER ? "self" : "other-self",
+  );
+}
+
+function transactionInput(
+  overrides: Partial<NewTransaction> = {},
+): NewTransaction {
+  return {
+    type: "expense",
+    amountMinor: 12_345,
+    currency: "TRY",
+    fxRate: null,
+    amountTryMinor: 12_345,
+    effectiveDate: "2026-08-12",
+    categoryId: "expense",
+    paymentSourceId: "cash",
+    personId: "self",
+    note: "Market",
+    ...overrides,
+  };
+}
+
+function rawTransaction(id: string): Record<string, unknown> {
+  return harness.db!.prepare("SELECT * FROM transactions WHERE id = ?").get(id) as Record<string, unknown>;
+}
+
+function outbox(table: string): Record<string, unknown>[] {
+  return harness.db!.prepare(
+    "SELECT row_id, payload FROM outbox WHERE table_name = ? ORDER BY created_at, row_id",
+  ).all(table) as Record<string, unknown>[];
+}
+
+function clearOutbox(): void {
+  harness.db!.exec("DELETE FROM outbox");
+}
+
+describe("transaction repository persistence", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(NOW));
+    harness.nextId = 0;
+    harness.dbAcquisitions = 0;
+    harness.db = new DatabaseSync(":memory:");
+    for (const statement of migrationStatements) harness.db.exec(statement);
+    seedPerson("self");
+    seedPerson("other-self", OTHER_USER);
+    seedPerson("deleted-self", USER, "2026-08-12T00:00:00.000Z");
+    seedCategory("expense", "expense");
+    seedCategory("income", "income");
+    seedCategory("transfer", "expense", true);
+    seedCategory("other-expense", "expense", false, OTHER_USER);
+    seedCategory("deleted-expense", "expense", false, USER, "2026-08-12T00:00:00.000Z");
+    seedSource("cash", "cash");
+    seedSource("card", "credit_card");
+    seedSource("broken-card", "credit_card", { statementDay: null });
+    seedSource("other-cash", "cash", { userId: OTHER_USER });
+    seedSource("deleted-cash", "cash", { deletedAt: "2026-08-12T00:00:00.000Z" });
+  });
+
+  afterEach(() => {
+    harness.db?.close();
+    harness.db = null;
+    vi.useRealTimers();
+  });
+
+  it("persists cash, aggregate and signed transfer branches with exact ledger and outbox fields", async () => {
+    const expenseId = await addTransaction(USER, transactionInput());
+    const aggregateId = await addTransaction(USER, transactionInput({
+      amountMinor: 22_000,
+      amountTryMinor: 22_000,
+      paymentSourceId: null,
+      effectiveDate: "2026-08-14",
+      isAggregate: true,
+      subscriptionId: "subscription-1",
+      note: null,
+    }));
+    const transferId = await addTransaction(USER, transactionInput({
+      type: "transfer",
+      amountMinor: -5_000,
+      amountTryMinor: -5_000,
+      categoryId: "transfer",
+      paymentSourceId: null,
+      note: "Yatırım",
+    }));
+    const todayId = await addTransaction(USER, transactionInput({
+      type: "income",
+      categoryId: "income",
+      paymentSourceId: null,
+      effectiveDate: "2026-08-13",
+    }));
+
+    expect(rawTransaction(expenseId)).toMatchObject({
+      id: "transaction-01",
+      user_id: USER,
+      type: "expense",
+      amount_minor: 12_345,
+      currency: "TRY",
+      fx_rate: null,
+      amount_try_minor: 12_345,
+      entry_date: "2026-08-13",
+      purchase_date: null,
+      effective_date: "2026-08-12",
+      status: "realized",
+      category_id: "expense",
+      payment_source_id: "cash",
+      person_id: "self",
+      installment_plan_id: null,
+      installment_no: null,
+      card_statement_id: null,
+      subscription_id: null,
+      is_aggregate: 0,
+      note: "Market",
+      deleted_at: null,
+    });
+    expect(rawTransaction(aggregateId)).toMatchObject({
+      status: "pending",
+      is_aggregate: 1,
+      subscription_id: "subscription-1",
+      purchase_date: null,
+      card_statement_id: null,
+    });
+    expect(rawTransaction(transferId)).toMatchObject({
+      type: "transfer",
+      amount_minor: -5_000,
+      amount_try_minor: -5_000,
+      category_id: "transfer",
+      status: "realized",
+    });
+    expect(rawTransaction(todayId)).toMatchObject({
+      type: "income",
+      effective_date: "2026-08-13",
+      status: "realized",
+    });
+    expect(outbox("transactions").map((row) => row.row_id)).toEqual([
+      expenseId,
+      aggregateId,
+      transferId,
+      todayId,
+    ]);
+    expect(JSON.parse(String(outbox("transactions")[0]!.payload))).toMatchObject({
+      id: expenseId,
+      user_id: USER,
+      amount_minor: 12_345,
+      purchase_date: null,
+      effective_date: "2026-08-12",
+      status: "realized",
+      is_aggregate: false,
+      deleted_at: null,
+    });
+  });
+
+  it("creates and reuses one immutable card statement and moves purchases to its due date", async () => {
+    const firstId = await addTransaction(USER, transactionInput({
+      effectiveDate: "2026-08-26",
+      paymentSourceId: "card",
+    }));
+    const statementBefore = harness.db!.prepare(
+      "SELECT * FROM credit_card_statements",
+    ).get() as Record<string, unknown>;
+    expect(statementBefore).toMatchObject({
+      user_id: USER,
+      payment_source_id: "card",
+      period_month: "2026-09",
+      statement_date: "2026-09-25",
+      due_date: "2026-10-05",
+      created_at: NOW,
+      deleted_at: null,
+    });
+    expect(rawTransaction(firstId)).toMatchObject({
+      purchase_date: "2026-08-26",
+      effective_date: "2026-10-05",
+      status: "pending",
+      card_statement_id: statementBefore.id,
+    });
+
+    vi.setSystemTime(new Date("2026-08-13T09:01:00.000Z"));
+    const secondId = await addTransaction(USER, transactionInput({
+      effectiveDate: "2026-08-27",
+      paymentSourceId: "card",
+    }));
+    const statements = harness.db!.prepare(
+      "SELECT * FROM credit_card_statements",
+    ).all() as Record<string, unknown>[];
+    expect(statements).toHaveLength(1);
+    expect(statements[0]).toMatchObject({
+      id: statementBefore.id,
+      created_at: NOW,
+      updated_at: "2026-08-13T09:01:00.000Z",
+    });
+    expect(rawTransaction(secondId)).toMatchObject({
+      purchase_date: "2026-08-27",
+      effective_date: "2026-10-05",
+      card_statement_id: statementBefore.id,
+    });
+    expect(outbox("credit_card_statements")).toHaveLength(2);
+    expect(JSON.parse(String(outbox("credit_card_statements")[1]!.payload))).toMatchObject({
+      id: statementBefore.id,
+      created_at: NOW,
+      updated_at: "2026-08-13T09:01:00.000Z",
+    });
+    expect(outbox("transactions")).toHaveLength(2);
+  });
+
+  it("puts a month-only card charge on that month's statement, dated by its closing day", async () => {
+    const id = await addTransaction(USER, transactionInput({
+      paymentSourceId: "card",
+      isAggregate: true,
+      effectiveDate: "2026-08-01",
+    }));
+    const statement = harness.db!.prepare(
+      "SELECT id, period_month, statement_date, due_date FROM credit_card_statements",
+    ).get() as Record<string, unknown>;
+    expect(statement).toMatchObject({ period_month: "2026-08", statement_date: "2026-08-25", due_date: "2026-09-05" });
+    expect(rawTransaction(id)).toMatchObject({
+      purchase_date: "2026-08-25",
+      effective_date: "2026-09-05",
+      status: "pending",
+      is_aggregate: 1,
+      card_statement_id: statement.id,
+    });
+  });
+
+  it("refuses a card expense whose card has no cycle, and leaves other flows undated by it", async () => {
+    await expect(addTransaction(USER, transactionInput({
+      paymentSourceId: "broken-card",
+      isAggregate: true,
+    }))).rejects.toBeInstanceOf(CreditCardCycleRequiredError);
+    await expect(addTransaction(USER, transactionInput({
+      paymentSourceId: "broken-card",
+    }))).rejects.toBeInstanceOf(CreditCardCycleRequiredError);
+
+    const incomeId = await addTransaction(USER, transactionInput({
+      type: "income",
+      categoryId: "income",
+      paymentSourceId: "broken-card",
+    }));
+    expect(rawTransaction(incomeId)).toMatchObject({
+      type: "income",
+      purchase_date: null,
+      effective_date: "2026-08-12",
+      card_statement_id: null,
+    });
+    expect(harness.db!.prepare("SELECT COUNT(*) AS n FROM credit_card_statements").get()).toEqual({ n: 0 });
+    expect(outbox("transactions")).toHaveLength(1);
+  });
+
+  it("rejects invalid dates, currencies, signed amounts and notes without a domain or outbox write", async () => {
+    const invalidInputs: [Partial<NewTransaction>, string][] = [
+      [{ effectiveDate: "2026-02-29" }, "Invalid transaction date"],
+      [{ currency: "BTC" }, "Invalid transaction currency"],
+      [{ amountMinor: 0 }, "Invalid signed transaction amount"],
+      [{ amountTryMinor: 0 }, "Invalid signed transaction amount"],
+      [{ amountMinor: 0, amountTryMinor: 0 }, "Invalid signed transaction amount"],
+      [{ amountMinor: 1.5 }, "Invalid signed transaction amount"],
+      [{ amountTryMinor: MAX_ABS_AMOUNT_MINOR + 1 }, "Invalid signed transaction amount"],
+      [{ amountMinor: -1_000, amountTryMinor: 1_000 }, "Invalid signed transaction amount"],
+      [{ note: "x".repeat(1_001) }, "note input exceeds its maximum length"],
+      [{ categoryId: "" }, "Transaction category is required"],
+    ];
+    for (const [overrides, message] of invalidInputs) {
+      await expect(addTransaction(USER, transactionInput(overrides))).rejects.toThrow(message);
+    }
+    expect(() => assertSignedTransactionAmounts(-1_000, -2_000)).not.toThrow();
+    expect(harness.db!.prepare("SELECT COUNT(*) AS n FROM transactions").get()).toEqual({ n: 0 });
+    expect(harness.db!.prepare("SELECT COUNT(*) AS n FROM outbox").get()).toEqual({ n: 0 });
+  });
+
+  it("enforces live owned people, categories and sources plus transfer classification", async () => {
+    await expect(addTransaction(USER, transactionInput({ personId: "other-self" })))
+      .rejects.toThrow("Transaction person does not exist");
+    await expect(addTransaction(USER, transactionInput({ personId: "deleted-self" })))
+      .rejects.toThrow("Transaction person does not exist");
+    await expect(addTransaction(USER, transactionInput({ categoryId: "other-expense" })))
+      .rejects.toThrow("Transaction type and category do not match");
+    await expect(addTransaction(USER, transactionInput({ categoryId: "deleted-expense" })))
+      .rejects.toThrow("Transaction type and category do not match");
+    await expect(addTransaction(USER, transactionInput({ type: "income" })))
+      .rejects.toThrow("Transaction type and category do not match");
+    await expect(addTransaction(USER, transactionInput({ type: "transfer" })))
+      .rejects.toThrow("Transaction type and category do not match");
+    await expect(addTransaction(USER, transactionInput({ paymentSourceId: "other-cash" })))
+      .rejects.toThrow("Transaction payment source does not exist");
+    await expect(addTransaction(USER, transactionInput({ paymentSourceId: "deleted-cash" })))
+      .rejects.toThrow("Transaction payment source does not exist");
+    await expect(assertTransactionCategory(USER, "expense", null, false)).resolves.toBeUndefined();
+    await expect(assertTransactionCategory(USER, "expense", null, true))
+      .rejects.toThrow("Transaction category is required");
+    const beforeNullSource = harness.dbAcquisitions;
+    await expect(livePaymentSource(USER, null)).resolves.toBeNull();
+    expect(harness.dbAcquisitions).toBe(beforeNullSource);
+    await expect(livePaymentSource(USER, "cash")).resolves.toMatchObject({ id: "cash", type: "cash" });
+    await expect(livePaymentSource(USER, "other-cash")).resolves.toBeNull();
+    expect(harness.db!.prepare("SELECT COUNT(*) AS n FROM transactions").get()).toEqual({ n: 0 });
+    expect(harness.db!.prepare("SELECT COUNT(*) AS n FROM outbox").get()).toEqual({ n: 0 });
+  });
+
+  it("updates only a live owned row while preserving creation and installment linkage", async () => {
+    const id = await addTransaction(USER, transactionInput());
+    harness.db!.prepare(
+      "UPDATE transactions SET installment_plan_id = 'plan-1', installment_no = 2 WHERE id = ?",
+    ).run(id);
+    const existing = fromDbShape("transactions", rawTransaction(id));
+    clearOutbox();
+    vi.setSystemTime(new Date("2026-08-13T09:02:00.000Z"));
+    const patch: TransactionPatch = {
+      type: "income",
+      amountMinor: 50_000,
+      currency: "USD",
+      fxRate: "34.25",
+      amountTryMinor: 1_712_500,
+      effectiveDate: "2026-08-14",
+      categoryId: "income",
+      paymentSourceId: null,
+      personId: "self",
+      note: "Prim",
+    };
+    await updateTransaction(USER, existing, patch);
+
+    expect(rawTransaction(id)).toMatchObject({
+      user_id: USER,
+      created_at: NOW,
+      updated_at: "2026-08-13T09:02:00.000Z",
+      type: "income",
+      amount_minor: 50_000,
+      currency: "USD",
+      fx_rate: "34.25",
+      amount_try_minor: 1_712_500,
+      purchase_date: null,
+      effective_date: "2026-08-14",
+      status: "pending",
+      category_id: "income",
+      payment_source_id: null,
+      installment_plan_id: "plan-1",
+      installment_no: 2,
+      is_aggregate: 0,
+      note: "Prim",
+    });
+    expect(outbox("transactions")).toHaveLength(1);
+    expect(JSON.parse(String(outbox("transactions")[0]!.payload))).toMatchObject({
+      id,
+      installment_plan_id: "plan-1",
+      installment_no: 2,
+      status: "pending",
+    });
+
+    vi.setSystemTime(new Date("2026-08-13T09:03:00.000Z"));
+    await updateTransaction(
+      USER,
+      fromDbShape("transactions", rawTransaction(id)),
+      { ...patch, effectiveDate: "2026-08-12" },
+    );
+    expect(rawTransaction(id)).toMatchObject({ effective_date: "2026-08-12", status: "realized" });
+    vi.setSystemTime(new Date("2026-08-13T09:04:00.000Z"));
+    await updateTransaction(
+      USER,
+      fromDbShape("transactions", rawTransaction(id)),
+      { ...patch, effectiveDate: "2026-08-13" },
+    );
+    expect(rawTransaction(id)).toMatchObject({ effective_date: "2026-08-13", status: "realized" });
+  });
+
+  it("updates a cash transaction and its card statement in one real batch", async () => {
+    const id = await addTransaction(USER, transactionInput());
+    clearOutbox();
+    await updateTransaction(
+      USER,
+      fromDbShape("transactions", rawTransaction(id)),
+      transactionInput({ effectiveDate: "2026-08-26", paymentSourceId: "card" }),
+    );
+
+    const statement = harness.db!.prepare("SELECT * FROM credit_card_statements").get() as Record<string, unknown>;
+    expect(statement).toMatchObject({
+      payment_source_id: "card",
+      period_month: "2026-09",
+      statement_date: "2026-09-25",
+      due_date: "2026-10-05",
+    });
+    expect(rawTransaction(id)).toMatchObject({
+      purchase_date: "2026-08-26",
+      effective_date: "2026-10-05",
+      card_statement_id: statement.id,
+      status: "pending",
+    });
+    expect(outbox("credit_card_statements")).toHaveLength(1);
+    expect(outbox("transactions")).toHaveLength(1);
+  });
+
+  it("rejects invalid or stale updates atomically", async () => {
+    seedTransaction("foreign-transaction", OTHER_USER);
+    seedTransaction("deleted-transaction");
+    harness.db!.prepare(
+      "UPDATE transactions SET deleted_at = ?, tombstone_version = 1 WHERE id = ?",
+    ).run("2026-08-12T00:00:00.000Z", "deleted-transaction");
+    const liveExisting = fromDbShape("transactions", {
+      ...rawTransaction("deleted-transaction"),
+      id: "missing-transaction",
+      deleted_at: null,
+    });
+    const patch = transactionInput({ paymentSourceId: null }) as TransactionPatch;
+    const invalidPatches: [Partial<TransactionPatch>, string][] = [
+      [{ effectiveDate: "2026-13-01" }, "Invalid transaction date"],
+      [{ currency: "BTC" }, "Invalid transaction currency"],
+      [{ amountMinor: 0 }, "Invalid signed transaction amount"],
+      [{ amountMinor: -1_000, amountTryMinor: 1_000 }, "Invalid signed transaction amount"],
+      [{ note: "x".repeat(1_001) }, "note input exceeds its maximum length"],
+      [{ categoryId: "" }, "Transaction category is required"],
+    ];
+    for (const [overrides, message] of invalidPatches) {
+      await expect(updateTransaction(USER, liveExisting, { ...patch, ...overrides }))
+        .rejects.toThrow(message);
+    }
+    await expect(updateTransaction(
+      USER,
+      fromDbShape("transactions", rawTransaction("foreign-transaction")),
+      patch,
+    )).rejects.toThrow("Cannot edit missing transactions row");
+    await expect(updateTransaction(
+      USER,
+      fromDbShape("transactions", rawTransaction("deleted-transaction")),
+      patch,
+    )).rejects.toThrow("Cannot edit missing transactions row");
+    expect(rawTransaction("foreign-transaction")).toMatchObject({ user_id: OTHER_USER, amount_minor: 1_000 });
+    expect(rawTransaction("deleted-transaction")).toMatchObject({ deleted_at: "2026-08-12T00:00:00.000Z" });
+    expect(harness.db!.prepare("SELECT COUNT(*) AS n FROM outbox").get()).toEqual({ n: 0 });
+  });
+
+  it("rolls back a card statement and every outbox row when a new id collides with another owner", async () => {
+    seedTransaction("transaction-01", OTHER_USER);
+    await expect(addTransaction(USER, transactionInput({
+      effectiveDate: "2026-08-26",
+      paymentSourceId: "card",
+    }))).rejects.toThrow("Write ownership conflict in transactions");
+
+    expect(rawTransaction("transaction-01")).toMatchObject({
+      user_id: OTHER_USER,
+      amount_minor: 1_000,
+      deleted_at: null,
+    });
+    expect(harness.db!.prepare("SELECT COUNT(*) AS n FROM credit_card_statements").get()).toEqual({ n: 0 });
+    expect(harness.db!.prepare("SELECT COUNT(*) AS n FROM outbox").get()).toEqual({ n: 0 });
+    expect(harness.db!.prepare("SELECT COUNT(*) AS n FROM settings").get()).toEqual({ n: 0 });
+  });
+
+  it("tombstones and restores raw transaction snapshots without allowing stale or foreign undo", async () => {
+    const id = await addTransaction(USER, transactionInput());
+    const original = rawTransaction(id);
+    clearOutbox();
+    vi.setSystemTime(new Date("2026-08-13T09:03:00.000Z"));
+    const snapshot = await deleteTransaction(USER, id);
+    expect(snapshot).toEqual(original);
+    expect(rawTransaction(id)).toMatchObject({
+      created_at: NOW,
+      deleted_at: "2026-08-13T09:03:00.000Z",
+      tombstone_version: 1,
+    });
+    expect(JSON.parse(String(outbox("transactions")[0]!.payload))).toMatchObject({
+      id,
+      deleted_at: "2026-08-13T09:03:00.000Z",
+      tombstone_version: 1,
+    });
+
+    clearOutbox();
+    await expect(deleteTransaction(USER, id)).resolves.toBeNull();
+    expect(harness.db!.prepare("SELECT COUNT(*) AS n FROM outbox").get()).toEqual({ n: 0 });
+    seedTransaction("foreign-delete", OTHER_USER);
+    await expect(deleteTransaction(USER, "foreign-delete")).resolves.toBeNull();
+    expect(rawTransaction("foreign-delete")).toMatchObject({
+      user_id: OTHER_USER,
+      deleted_at: null,
+      tombstone_version: 0,
+    });
+    expect(harness.db!.prepare("SELECT COUNT(*) AS n FROM outbox").get()).toEqual({ n: 0 });
+    vi.setSystemTime(new Date("2026-08-13T09:04:00.000Z"));
+    await restoreTransaction(USER, snapshot!);
+    expect(rawTransaction(id)).toMatchObject({
+      created_at: NOW,
+      updated_at: "2026-08-13T09:04:00.000Z",
+      deleted_at: null,
+      tombstone_version: 1,
+      amount_minor: 12_345,
+    });
+    expect(outbox("transactions").map((row) => row.row_id)).toEqual([id]);
+    expect(JSON.parse(String(outbox("transactions")[0]!.payload))).toMatchObject({
+      id,
+      deleted_at: null,
+      tombstone_version: 1,
+    });
+
+    clearOutbox();
+    await expect(restoreTransaction(USER, snapshot!))
+      .rejects.toThrow("Cannot restore transactions row without its tombstone");
+    await expect(restoreTransaction(USER, { ...snapshot, id: "missing" }))
+      .rejects.toThrow("Cannot restore transactions row without its tombstone");
+    await deleteTransaction(USER, id);
+    clearOutbox();
+    await expect(restoreTransaction(USER, { ...snapshot, user_id: OTHER_USER }))
+      .rejects.toThrow("Cannot restore transactions row from another account");
+    expect(rawTransaction(id).deleted_at).toEqual(expect.any(String));
+    expect(harness.db!.prepare("SELECT COUNT(*) AS n FROM outbox").get()).toEqual({ n: 0 });
+  });
+
+  it("creates, rewrites and zero-tombstones one daily balance adjustment without changing created_at", async () => {
+    const id = "det:balanceAdjustment|transaction-user|2026-08-13";
+    await setCurrentBalance(USER, 1_000, 800, "İlk sayım");
+    expect(harness.db!.prepare("SELECT * FROM balance_adjustments WHERE id = ?").get(id)).toMatchObject({
+      id,
+      user_id: USER,
+      date: "2026-08-13",
+      amount_minor: 200,
+      note: "İlk sayım",
+      created_at: NOW,
+      deleted_at: null,
+      tombstone_version: 0,
+    });
+
+    vi.setSystemTime(new Date("2026-08-13T09:05:00.000Z"));
+    await setCurrentBalance(USER, 1_500, 1_000, "İkinci sayım");
+    expect(harness.db!.prepare("SELECT * FROM balance_adjustments WHERE id = ?").get(id)).toMatchObject({
+      amount_minor: 700,
+      note: "İkinci sayım",
+      created_at: NOW,
+      updated_at: "2026-08-13T09:05:00.000Z",
+      deleted_at: null,
+    });
+
+    vi.setSystemTime(new Date("2026-08-13T09:06:00.000Z"));
+    await setCurrentBalance(USER, 800, 1_500);
+    const tombstone = harness.db!.prepare("SELECT * FROM balance_adjustments WHERE id = ?").get(id) as Record<string, unknown>;
+    expect(tombstone).toMatchObject({
+      amount_minor: 0,
+      note: null,
+      created_at: NOW,
+      deleted_at: "2026-08-13T09:06:00.000Z",
+      tombstone_version: 1,
+    });
+    expect(outbox("balance_adjustments")).toHaveLength(3);
+    expect(JSON.parse(String(outbox("balance_adjustments")[2]!.payload))).toMatchObject({
+      amount_minor: 0,
+      deleted_at: "2026-08-13T09:06:00.000Z",
+      tombstone_version: 1,
+    });
+  });
+
+  it("validates balance adjustments and exposes their shared tombstone restore wrappers", async () => {
+    await expect(setCurrentBalance(USER, MAX_ABS_AMOUNT_MINOR + 1, 0))
+      .rejects.toThrow("Amount is outside the supported range");
+    await expect(setCurrentBalance(USER, 100, 0, "x".repeat(1_001)))
+      .rejects.toThrow("note input exceeds its maximum length");
+    await expect(setCurrentBalance(USER, MAX_ABS_AMOUNT_MINOR, -MAX_ABS_AMOUNT_MINOR))
+      .rejects.toThrow("Amount is outside the supported range");
+    expect(harness.db!.prepare("SELECT COUNT(*) AS n FROM balance_adjustments").get()).toEqual({ n: 0 });
+    expect(harness.db!.prepare("SELECT COUNT(*) AS n FROM outbox").get()).toEqual({ n: 0 });
+
+    await setCurrentBalance(USER, 1_000, 900);
+    const id = "det:balanceAdjustment|transaction-user|2026-08-13";
+    const snapshot = harness.db!.prepare("SELECT * FROM balance_adjustments WHERE id = ?").get(id) as Record<string, unknown>;
+    clearOutbox();
+    await deleteBalanceAdjustment(USER, id);
+    expect(harness.db!.prepare("SELECT deleted_at, tombstone_version FROM balance_adjustments WHERE id = ?").get(id))
+      .toMatchObject({ deleted_at: NOW, tombstone_version: 1 });
+    await restoreBalanceAdjustment(USER, snapshot);
+    expect(harness.db!.prepare("SELECT amount_minor, deleted_at, tombstone_version FROM balance_adjustments WHERE id = ?").get(id))
+      .toEqual({ amount_minor: 100, deleted_at: null, tombstone_version: 1 });
+    expect(outbox("balance_adjustments").map((row) => row.row_id)).toEqual([id]);
+    expect(JSON.parse(String(outbox("balance_adjustments")[0]!.payload))).toMatchObject({
+      id,
+      deleted_at: null,
+      tombstone_version: 1,
+    });
+    await expect(deleteBalanceAdjustment(OTHER_USER, id)).resolves.toBeNull();
+  });
+
+  it("keeps where an entry came from", async () => {
+    const id = await addTransaction(USER, transactionInput({ origin: "statement", importKey: "stmt:card:2026-08:0001" }));
+    expect(rawTransaction(id)).toMatchObject({ origin: "statement", import_key: "stmt:card:2026-08:0001" });
+  });
+
+  it("persists past-month aggregates and rejects invalid, current and future batches atomically", async () => {
+    await expect(bulkMonthEntry(USER, "2026-7" as never, "self", []))
+      .rejects.toThrow("Invalid bulk entry month");
+    await expect(bulkMonthEntry(USER, "2026-08", "self", []))
+      .rejects.toThrow("Bulk history accepts past months only");
+    await expect(bulkMonthEntry(USER, "2026-09", "self", []))
+      .rejects.toThrow("Bulk history accepts past months only");
+    await expect(bulkMonthEntry(USER, "2026-07", "self", [
+      { categoryId: "expense", type: "expense", amountMinor: 0 },
+    ])).rejects.toThrow("Amount is outside the supported range");
+    await expect(bulkMonthEntry(USER, "2026-07", "other-self", [
+      { categoryId: "expense", type: "expense", amountMinor: 1_000 },
+    ])).rejects.toThrow("Transaction person does not exist");
+    await expect(bulkMonthEntry(USER, "2026-07", "self", [
+      { categoryId: "expense", type: "expense", amountMinor: 1_000 },
+      { categoryId: "other-expense", type: "expense", amountMinor: 2_000 },
+    ])).rejects.toThrow("Transaction type and category do not match");
+    await expect(bulkMonthEntry(USER, "2026-07", "self", [
+      { categoryId: "", type: "expense", amountMinor: 1_000 },
+    ])).rejects.toThrow("Transaction category is required");
+    expect(harness.db!.prepare("SELECT COUNT(*) AS n FROM transactions").get()).toEqual({ n: 0 });
+    expect(harness.db!.prepare("SELECT COUNT(*) AS n FROM outbox").get()).toEqual({ n: 0 });
+
+    await bulkMonthEntry(USER, "2026-07", "self", [
+      { categoryId: "expense", type: "expense", amountMinor: 11_000 },
+      { categoryId: "income", type: "income", amountMinor: 22_000 },
+      { categoryId: "transfer", type: "transfer", amountMinor: -3_000 },
+    ]);
+    const rows = harness.db!.prepare(
+      `SELECT type, amount_minor, currency, fx_rate, amount_try_minor, entry_date,
+              purchase_date, effective_date, status, category_id, payment_source_id,
+              person_id, installment_plan_id, installment_no, card_statement_id,
+              subscription_id, is_aggregate, note, deleted_at
+       FROM transactions ORDER BY id`,
+    ).all() as Record<string, unknown>[];
+    expect(rows).toEqual([
+      {
+        type: "expense", amount_minor: 11_000, currency: "TRY", fx_rate: null,
+        amount_try_minor: 11_000, entry_date: "2026-08-13", purchase_date: null,
+        effective_date: "2026-07-01", status: "realized", category_id: "expense",
+        payment_source_id: null, person_id: "self", installment_plan_id: null,
+        installment_no: null, card_statement_id: null, subscription_id: null,
+        is_aggregate: 1, note: null, deleted_at: null,
+      },
+      {
+        type: "income", amount_minor: 22_000, currency: "TRY", fx_rate: null,
+        amount_try_minor: 22_000, entry_date: "2026-08-13", purchase_date: null,
+        effective_date: "2026-07-01", status: "realized", category_id: "income",
+        payment_source_id: null, person_id: "self", installment_plan_id: null,
+        installment_no: null, card_statement_id: null, subscription_id: null,
+        is_aggregate: 1, note: null, deleted_at: null,
+      },
+      {
+        type: "transfer", amount_minor: -3_000, currency: "TRY", fx_rate: null,
+        amount_try_minor: -3_000, entry_date: "2026-08-13", purchase_date: null,
+        effective_date: "2026-07-01", status: "realized", category_id: "transfer",
+        payment_source_id: null, person_id: "self", installment_plan_id: null,
+        installment_no: null, card_statement_id: null, subscription_id: null,
+        is_aggregate: 1, note: null, deleted_at: null,
+      },
+    ]);
+    expect(outbox("transactions")).toHaveLength(3);
+    expect(outbox("transactions").map((row) => JSON.parse(String(row.payload)))).toEqual(
+      rows.map((row) => expect.objectContaining({
+        type: row.type,
+        amount_minor: row.amount_minor,
+        effective_date: "2026-07-01",
+        status: "realized",
+        is_aggregate: true,
+        // Typed by hand, so it says so; it was written with no origin at all.
+        origin: "manual",
+        deleted_at: null,
+      })),
+    );
+  });
+
+  /**
+   * A payment against a statement (spec §3.1f), a declared opening balance
+   * (§2.7), and a refund linked to the expense it returns. Each one refuses
+   * the figure that would read as a typo: more than is owed, more than is left.
+   */
+  describe("statement payments, declarations and refund links", () => {
+    async function cardStatementWithCharge(amountMinor: number): Promise<string> {
+      await addTransaction(USER, transactionInput({ paymentSourceId: "card", amountMinor, amountTryMinor: amountMinor }));
+      const statement = harness.db!.prepare("SELECT id FROM credit_card_statements").get() as { id: string };
+      return statement.id;
+    }
+
+    it("records a payment against the owner's statement and refuses more than is still owed", async () => {
+      const statementId = await cardStatementWithCharge(1_000_00);
+      const id = await addStatementPayment(USER, { statementId, paidOn: "2026-08-13", amountMinor: 400_00, kind: "partial", note: "Mobil" });
+      expect(harness.db!.prepare("SELECT statement_id, paid_on, amount_minor, kind, note, deleted_at FROM card_statement_payments WHERE id = ?").get(id))
+        .toEqual({ statement_id: statementId, paid_on: "2026-08-13", amount_minor: 400_00, kind: "partial", note: "Mobil", deleted_at: null });
+      expect(outbox("card_statement_payments")).toHaveLength(1);
+
+      const refused = addStatementPayment(USER, { statementId, paidOn: "2026-08-13", amountMinor: 600_01, kind: "full", note: null });
+      await expect(refused).rejects.toBeInstanceOf(StatementPaymentTooLargeError);
+      await expect(refused).rejects.toMatchObject({ remainingMinor: 600_00 });
+      await addStatementPayment(USER, { statementId, paidOn: "2026-08-12", amountMinor: 600_00, kind: "full", note: null });
+      await expect(addStatementPayment(USER, { statementId, paidOn: "2026-08-13", amountMinor: 1, kind: "full", note: null }))
+        .rejects.toMatchObject({ remainingMinor: 0 });
+    });
+
+    it("refuses a payment dated after today, of an unknown kind, of nothing, or against a statement that is not the owner's", async () => {
+      const statementId = await cardStatementWithCharge(1_000_00);
+      await expect(addStatementPayment(USER, { statementId, paidOn: "2026-08-14", amountMinor: 1_00, kind: "full", note: null }))
+        .rejects.toThrow("Invalid statement payment date");
+      await expect(addStatementPayment(USER, { statementId, paidOn: "2026-8-13" as never, amountMinor: 1_00, kind: "full", note: null }))
+        .rejects.toThrow("Invalid statement payment date");
+      await expect(addStatementPayment(USER, { statementId, paidOn: "2026-08-13", amountMinor: 1_00, kind: "late" as never, note: null }))
+        .rejects.toThrow("Invalid statement payment kind");
+      await expect(addStatementPayment(USER, { statementId, paidOn: "2026-08-13", amountMinor: 0, kind: "full", note: null }))
+        .rejects.toThrow("Statement payment must be positive");
+      await expect(addStatementPayment(USER, { statementId, paidOn: "2026-08-13", amountMinor: -1_00, kind: "full", note: null }))
+        .rejects.toThrow("Statement payment must be positive");
+      await expect(addStatementPayment(OTHER_USER, { statementId, paidOn: "2026-08-13", amountMinor: 1_00, kind: "full", note: null }))
+        .rejects.toThrow("Statement does not belong to the owner's card");
+      harness.db!.prepare("UPDATE persons SET is_self = 0 WHERE id = 'self'").run();
+      await expect(addStatementPayment(USER, { statementId, paidOn: "2026-08-13", amountMinor: 1_00, kind: "full", note: null }))
+        .rejects.toThrow("Statement does not belong to the owner's card");
+      expect(outbox("card_statement_payments")).toHaveLength(0);
+    });
+
+    it("tombstones a payment and brings it back on undo", async () => {
+      const statementId = await cardStatementWithCharge(1_000_00);
+      const id = await addStatementPayment(USER, { statementId, paidOn: "2026-08-13", amountMinor: 100_00, kind: "minimum", note: null });
+      const snapshot = await deleteStatementPayment(USER, id);
+      expect(harness.db!.prepare("SELECT deleted_at FROM card_statement_payments WHERE id = ?").get(id)).not.toEqual({ deleted_at: null });
+      await restoreStatementPayment(USER, snapshot!);
+      expect(harness.db!.prepare("SELECT deleted_at FROM card_statement_payments WHERE id = ?").get(id)).toEqual({ deleted_at: null });
+    });
+
+    it("declares a month's opening balance on the day before it, once per month", async () => {
+      await declareMonthOpeningBalance(USER, "2026-08", 5_000_00, 1_250_00);
+      vi.setSystemTime(new Date("2026-08-13T09:05:00.000Z"));
+      expect(await declareMonthOpeningBalance(USER, "2026-08", 6_000_00, 2_250_00)).toBe(`det:monthOpeningDeclaration|${USER}|2026-08`);
+      // What goes to the cloud still says when the month was first declared.
+      expect(JSON.parse(String(outbox("balance_adjustments").at(-1)!.payload))).toMatchObject({ declared_minor: 6_000_00, created_at: NOW });
+      expect(harness.db!.prepare("SELECT id, date, amount_minor, declared_minor, deleted_at FROM balance_adjustments").all()).toEqual([
+        { id: `det:monthOpeningDeclaration|${USER}|2026-08`, date: "2026-07-31", amount_minor: 2_250_00, declared_minor: 6_000_00, deleted_at: null },
+      ]);
+      await expect(declareMonthOpeningBalance(USER, "2026-09", 1_00, 0)).rejects.toThrow("Invalid declaration month");
+      await expect(declareMonthOpeningBalance(USER, "2026-8" as never, 1_00, 0)).rejects.toThrow("Invalid declaration month");
+    });
+
+    it("links a refund to its expense and refuses more than is left of it", async () => {
+      const expenseId = await addTransaction(USER, transactionInput({ amountMinor: 1_000_00, amountTryMinor: 1_000_00 }));
+      const refund = (amountMinor: number, overrides: Partial<NewTransaction> = {}) =>
+        transactionInput({ amountMinor: -amountMinor, amountTryMinor: -amountMinor, refundOfTransactionId: expenseId, ...overrides });
+      const firstId = await addTransaction(USER, refund(300_00));
+      expect(rawTransaction(firstId)).toMatchObject({ refund_of_transaction_id: expenseId, amount_minor: -300_00 });
+
+      const tooMuch = addTransaction(USER, refund(700_01));
+      await expect(tooMuch).rejects.toBeInstanceOf(RefundExceedsExpenseError);
+      await expect(tooMuch).rejects.toMatchObject({ remainingMinor: 700_00 });
+      await expect(addTransaction(USER, refund(100_00, { currency: "USD", fxRate: "40", amountTryMinor: -4_000_00 })))
+        .rejects.toThrow("Refund must be linked to a live single expense in its currency");
+      await expect(addTransaction(USER, refund(-100_00)))
+        .rejects.toThrow("Refund must be linked to a live single expense in its currency");
+      await expect(addTransaction(USER, refund(100_00, { refundOfTransactionId: firstId })))
+        .rejects.toThrow("Refund must be linked to a live single expense in its currency");
+      await expect(addTransaction(USER, refund(100_00, { refundOfTransactionId: "missing" })))
+        .rejects.toThrow("Refund must be linked to a live single expense in its currency");
+    });
+
+    it("checks an edited refund against the rest of its expense, and ends the link when it stops being a refund", async () => {
+      const expenseId = await addTransaction(USER, transactionInput({ amountMinor: 1_000_00, amountTryMinor: 1_000_00 }));
+      const refundId = await addTransaction(USER, transactionInput({ amountMinor: -600_00, amountTryMinor: -600_00, refundOfTransactionId: expenseId }));
+      const existing = fromDbShape("transactions", rawTransaction(refundId));
+      const patch = (amountMinor: number): TransactionPatch => ({
+        type: "expense", amountMinor, currency: "TRY", fxRate: null, amountTryMinor: amountMinor,
+        effectiveDate: "2026-08-12", categoryId: "expense", paymentSourceId: null, personId: "self", note: null,
+      });
+      // Its own 600 does not count against it.
+      await updateTransaction(USER, existing, patch(-1_000_00));
+      expect(rawTransaction(refundId)).toMatchObject({ amount_minor: -1_000_00, refund_of_transaction_id: expenseId });
+      await expect(updateTransaction(USER, existing, patch(-1_000_01))).rejects.toMatchObject({ remainingMinor: 1_000_00 });
+      await updateTransaction(USER, existing, patch(50_00));
+      expect(rawTransaction(refundId)).toMatchObject({ amount_minor: 50_00, refund_of_transaction_id: null });
+    });
+
+    it("links a refund only to a live positive single expense, however that row came to be", async () => {
+      const refusal = "Refund must be linked to a live single expense in its currency";
+      const refundOf = (refundOfTransactionId: string, overrides: Partial<NewTransaction> = {}) =>
+        transactionInput({ amountMinor: -100_00, amountTryMinor: -100_00, refundOfTransactionId, ...overrides });
+      const expense = await addTransaction(USER, transactionInput({ amountMinor: 1_000_00, amountTryMinor: 1_000_00 }));
+      const income = await addTransaction(USER, transactionInput({ type: "income", categoryId: "income" }));
+      const unlinkedRefund = await addTransaction(USER, transactionInput({ amountMinor: -500_00, amountTryMinor: -500_00 }));
+      const instalment = await addTransaction(USER, transactionInput({ amountMinor: 1_000_00, amountTryMinor: 1_000_00 }));
+      harness.db!.prepare("UPDATE transactions SET installment_plan_id = 'plan' WHERE id = ?").run(instalment);
+      // A client older than the link edits a refund into a charge and leaves the column as it was.
+      const reverted = await addTransaction(USER, refundOf(expense));
+      harness.db!.prepare("UPDATE transactions SET amount_minor = 10000, amount_try_minor = 10000 WHERE id = ?").run(reverted);
+
+      for (const target of [income, unlinkedRefund, instalment, reverted]) {
+        await expect(addTransaction(USER, refundOf(target))).rejects.toThrow(refusal);
+      }
+      await expect(addTransaction(USER, refundOf(expense, { type: "income", categoryId: "income" }))).rejects.toThrow(refusal);
+    });
+  });
+});

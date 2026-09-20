@@ -1,6 +1,6 @@
 /**
  * Ask every favicon service for every domain `src/ui/logo.tsx` names, keep the
- * best REAL mark, and rewrite `src/domain/brand-mark-audit.ts` with the answer.
+ * best REAL mark, and rewrite `tests/fixtures/brand-mark-audit.ts` with the answer.
  *
  * Run it by hand, not in CI: it makes several network requests per domain to
  * third parties, and the app is offline-first — the point of recording the
@@ -35,7 +35,7 @@ import { createHash } from "node:crypto";
 import { readFileSync, writeFileSync } from "node:fs";
 
 const SOURCE = "src/ui/logo.tsx";
-const TARGET = "src/domain/brand-mark-audit.ts";
+const TARGET = "tests/fixtures/brand-mark-audit.ts";
 /** Filled by `learnPlaceholders()` before any real domain is measured. */
 const PLACEHOLDER = new Set();
 

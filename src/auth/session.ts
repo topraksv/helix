@@ -112,7 +112,7 @@ const LOCAL_WIPE_PENDING_OWNER = "__helix_wipe_pending__";
  * category id and a payment-source id, which exist only inside ONE account's
  * workspace. On web the backing store is `localStorage`, so leaving them behind
  * left the previous account's row ids readable on a shared browser after
- * sign-out. `tests/privacy.test.ts` checks this list against the writer so the
+ * sign-out. `tests/domain/privacy.test.ts` checks this list against the writer so the
  * two cannot drift apart.
  */
 const ENTRY_DEFAULT_KEYS = ["helix.last.income", "helix.last.expense", "helix.last.transfer"];

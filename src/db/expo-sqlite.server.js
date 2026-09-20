@@ -22,7 +22,7 @@
  * loudly at the call instead of silently producing a page built from nothing.
  *
  * `metro.config.js` owns the substitution and names the environments it
- * applies to. `tests/release-config.test.ts` holds the pair together.
+ * applies to. `tests/repo/release-config.test.ts` holds the pair together.
  *
  * NOTHING IMPORTS THIS FILE, and nothing ever will: Metro's resolver hands it
  * back in place of a package name, which no static analysis can see. `npm run

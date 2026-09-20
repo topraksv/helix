@@ -17,7 +17,7 @@
  * service for domains that cannot exist, one per letter, and treats anything
  * matching those answers as nothing.
  *
- * `brand-mark-audit.ts` holds all 180 measurements. This file holds only the
+ * `tests/fixtures/brand-mark-audit.ts` holds all 180 measurements. This file holds only the
  * conclusions the app ACTS on, because shipping the record would put 7KB of
  * hashes into a web bundle no screen reads.
  *

@@ -48,7 +48,7 @@ interface DefinitionIssue {
  *
  * `issues` still exists, because it is what makes a refusal debuggable rather
  * than the four-word message `ARCHITECTURE.md` records as a data-loss outcome
- * dressed as validation, and `tests/mutation-survivor-contracts.test.ts` reads
+ * dressed as validation, and `tests/domain/mutation-survivor-contracts.test.ts` reads
  * its shape. A path names a FIELD, never a value, which is the line every
  * other diagnostic here draws.
  */

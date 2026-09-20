@@ -120,7 +120,7 @@ export function buildDashboardModel<TExpected extends ExpectedPaymentLike>(
    *
    * Filled in the same pass as everything else. The date comparison that gates
    * it is two string compares, so the months outside the window cost that and
-   * nothing more — `tests/performance.test.ts` holds this loop to one bounded
+   * nothing more — `tests/domain/performance.test.ts` holds this loop to one bounded
    * pass over the account and a second walk would break it.
    */
   const variableByPastMonth = new Map<string, number>();

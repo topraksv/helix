@@ -223,7 +223,7 @@ jobs:
     # scope, 9,832 mutants, which took 67 minutes on four local workers and ran
     # past this job's 90 minutes on a GitHub runner — the deploy waited behind a
     # gate that had found nothing. Every job keeps its limit
-    # (`tests/release-config.test.ts`); `stryker.ci.config.mjs` deals each shard
+    # (`tests/repo/release-config.test.ts`); `stryker.ci.config.mjs` deals each shard
     # its part of the scope.
     strategy:
       fail-fast: false
@@ -324,7 +324,7 @@ jobs:
   # confined to `src/ui`, `src/app/*.tsx`, `src/i18n`, `tests`, `e2e`,
   # `public`, `assets`, a local script or a workflow other than this one.
   # `scripts/classify-changes.mjs` holds the lists and
-  # `tests/change-classification.test.ts` holds them against the tree. Most
+  # `tests/repo/change-classification.test.ts` holds them against the tree. Most
   # pushes so far have touched `src/domain` or `src/data`, which is money and
   # persistence and always takes the full gate, so this job has been correctly
   # skipped rather than inert — the classify job's summary says which tier a
@@ -591,7 +591,7 @@ jobs:
       # uses the SDK runtime, so there is no binary lookup, build or Apple
       # credential path.
       #
-      # The CLI is not in the lockfile — `tests/release-config.test.ts` records
+      # The CLI is not in the lockfile — `tests/repo/release-config.test.ts` records
       # why — so npx resolves its whole tree, 525 packages, at publish time. Two
       # things keep that tree from choosing what runs beside EXPO_TOKEN:
       # - It is installed HERE, in a step without the token, and the publish

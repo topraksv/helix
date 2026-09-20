@@ -43,7 +43,7 @@ export function classifyRefreshFailure(error: unknown): Exclude<RefreshOutcome, 
  * `lastSyncAt` never advanced, the backoff retried forever, `syncNow` always
  * resolved `false` and account freeze could never complete. It lives beside the
  * state it feeds — and outside `engine.ts`'s React Native imports — so
- * `tests/sync-dead-letters.test.ts` can execute it against the real schema.
+ * `tests/sync/sync-dead-letters.test.ts` can execute it against the real schema.
  */
 export const DEAD_LETTER_COUNT_SQL = "SELECT COUNT(*) AS count FROM sync_dead_letters";
 
