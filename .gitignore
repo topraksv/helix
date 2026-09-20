@@ -19,7 +19,6 @@ node_modules/
 .kotlin/
 /dist/
 /dist-e2e/
-/graphify-out/
 expo-env.d.ts
 *.tsbuildinfo
 
@@ -37,16 +36,6 @@ expo-env.d.ts
 
 # Supabase CLI state
 supabase/.temp/
-
-# Obsidian opens `docs/` as its vault. Track the files that decide how the
-# vault behaves, so a fresh clone opens with the same link format, plugins and
-# graph settings. Everything else Obsidian writes there — `workspace.json`
-# above all — is this machine's window layout and must not follow the repo.
-/docs/.obsidian/*
-!/docs/.obsidian/app.json
-!/docs/.obsidian/appearance.json
-!/docs/.obsidian/core-plugins.json
-!/docs/.obsidian/graph.json
 
 # Editor and OS debris
 .DS_Store
@@ -68,11 +57,6 @@ supabase/.temp/
 # change is reviewable as a diff instead of arriving silently at install time.
 /.claude/*
 
-# The code map graphify exports into the docs vault: ~3,250 generated notes,
-# rebuilt from the AST by `graphify export obsidian --dir docs/graph` and never
-# tracked. Deliberately not an npm script — `package.json` is published and the
-# index is local tooling; see AGENTS.md "The code graph".
-/docs/graph
 
 # TestSprite MCP-flow output: generated Python test scripts and per-run
 # recordings, regenerated fresh whenever that flow runs and never an input to
@@ -97,5 +81,7 @@ supabase/.temp/
 /AGENTS.md
 /CLAUDE.md
 /skills-lock.json
-/.graphifyignore
 /docs/
+
+# The private mirror lives in its own git directory beside this one.
+/.private.git/
