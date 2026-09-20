@@ -27,7 +27,7 @@ build does not fail by design:
 ```sh
 EXPO_PUBLIC_SUPABASE_URL="" EXPO_PUBLIC_SUPABASE_ANON_KEY="" EXPO_NO_DOTENV=1 \
   npx expo run:ios --configuration Release --device "iPhone 16e" --no-bundler
-npm run test:native:local
+npm run test:native:offline
 ```
 
 The app must be installed and a simulator booted. A dev-client build downloads
@@ -99,7 +99,7 @@ which makes "can the user still leave" a real question.
 **`05-text-size.yaml` — native text scaling.**
 Exercises the iOS content-size behavior that React Native Web cannot reproduce.
 
-The separate `e2e/native-local/` suite proves local-only ledger and investment
+The separate `e2e/native-offline/` suite proves local-only ledger and investment
 writes survive a native process restart, and protects the investment-correction
 return path.
 

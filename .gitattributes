@@ -1,0 +1,16 @@
+# Generated files, marked so the tools that read this repository stop treating
+# them as written code. Measured 2026-09-20: 27,480 of the 95,196 lines under
+# `src/` are generated, which is 29% of everything a reader or a search pays
+# for.
+#
+# `linguist-generated` collapses them in GitHub diffs and removes them from the
+# language statistics. `-diff` goes further and suppresses the textual diff
+# entirely, so it is used only where a diff was never going to be read: the
+# schema snapshots, the Supabase type dump and the lockfile. The migration
+# `.sql` files keep their diffs, because a new migration is exactly the thing a
+# reviewer must see.
+src/db/migrations/*.sql linguist-generated=true
+src/db/migrations/migrations.js linguist-generated=true -diff
+src/db/migrations/meta/*.json linguist-generated=true -diff
+src/sync/database.types.ts linguist-generated=true -diff
+package-lock.json linguist-generated=true -diff
