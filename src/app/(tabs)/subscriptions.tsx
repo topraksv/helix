@@ -24,7 +24,7 @@ import { useAllTransactionsState, usePersonsState, usePriceHistoryState, useSubs
 import { combineLiveStates } from "../../data/live-state";
 import { deleteSubscriptionWithExpected, restoreDeletedRule } from "../../data/repo";
 import { scheduleSync } from "../../sync/engine";
-import { Amount, Button, Card, CardList, DataGateScreen, DataStateNotice, EmptyState, FadeIn, PanelHeader, Screen, SectionHeader, Spread } from "../../ui/components";
+import { Amount, Button, Card, CardList, CardListSkeleton, DataGateScreen, DataStateNotice, EmptyState, FadeIn, PanelHeader, Screen, SectionHeader, Spread } from "../../ui/components";
 import { RuleRow, type RuleBadge } from "../../ui/rule-row";
 import { Logo } from "../../ui/logo";
 import { useUndo } from "../../ui/undo";
@@ -443,7 +443,7 @@ export default function SubscriptionsScreen() {
   }, [transactionsState.data]);
 
   if (!dataReady) {
-    return <DataGateScreen status={dataStatus} retry={retryData} title={tr.subs.title} />;
+    return <DataGateScreen status={dataStatus} retry={retryData} title={tr.subs.title} skeleton={<CardListSkeleton />} />;
   }
 
   const activeSubs = subscriptions.filter((s) => s.isActive);

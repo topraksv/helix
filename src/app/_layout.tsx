@@ -7,6 +7,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { Platform, Pressable, Text, useColorScheme, View } from "react-native";
 import { Stack, useRouter, useSegments } from "expo-router";
+import { screenKey } from "../domain/usage";
+import { recordScreenView } from "../services/usage";
 import AppWindow from "lucide-react-native/icons/app-window";
 import DatabaseZap from "lucide-react-native/icons/database-zap";
 import Head from "expo-router/head";
@@ -414,6 +416,14 @@ function RootLayoutInner() {
   const segments = useSegments();
   const router = useRouter();
   const routeArea = classifyRootRoute(segments as string[]);
+  // One counter, at the one place every route already passes through. It is
+  // fire-and-forget by construction (`recordScreenView` never awaits) so a
+  // navigation can never wait on a write, and the key is stripped of every
+  // identifier before it is stored — `src/domain/usage.ts` owns that.
+  useEffect(() => {
+    const key = screenKey(`/${(segments as string[]).join("/")}`);
+    if (key) recordScreenView(key);
+  }, [segments]);
   const inRecovery = routeArea === "recovery";
 
   // On a fresh device an already-onboarded account's `onboarded` flag arrives

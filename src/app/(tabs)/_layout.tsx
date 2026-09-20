@@ -5,11 +5,13 @@ import RefreshCw from "lucide-react-native/icons/refresh-cw";
 import Settings from "lucide-react-native/icons/settings";
 import WalletCards from "lucide-react-native/icons/wallet-cards";
 import { tr } from "../../i18n/tr";
+import { useReducedMotion } from "../../ui/motion";
 import { selectionTapIfChanged } from "../../ui/haptics";
 import { TabBar } from "../../ui/tab-bar";
 import { useTheme } from "../../ui/theme";
 
 export default function TabsLayout() {
+  const reducedMotion = useReducedMotion();
   const { palette } = useTheme();
   return (
     <Tabs
@@ -29,7 +31,11 @@ export default function TabsLayout() {
         // A tab change is a change of place; a hard cut reads as a repaint.
         // `fade`, not `shift`: the tabs are peers, not a sequence. On native it
         // relies on expo/expo#49778, applied by `scripts/patch-dependencies.mjs`.
-        animation: "fade",
+        //
+        // The navigator does not consult `AccessibilityInfo`, so this was the
+        // one motion in the app that Reduce Motion never reached — every other
+        // family short-circuits through `useReducedMotion`. Measured 2026-09-20.
+        animation: reducedMotion ? "none" : "fade",
         // A keyboard is an editing state, not navigation. Hiding the floating
         // bar gives the active field room and avoids a second opaque strip
         // competing with the keyboard on compact devices.

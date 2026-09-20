@@ -55,7 +55,6 @@ import { ExpectedAmountSheet } from "../../ui/expected-amount-sheet";
 import { BrandMark } from "../../ui/brand";
 import { FirstRunTour } from "../../ui/tour";
 import { useUndo } from "../../ui/undo";
-import { errorNotice } from "../../ui/haptics";
 import { marketTileColumns, shouldPairDashboardPanels, shouldSplitDashboardHero, shouldUseCompactChart, shouldUseLargeDonut } from "../../ui/responsive";
 import { useContentWidth, useMeasuredWidth } from "../../ui/viewport";
 import { interactionSurface } from "../../ui/interaction";
@@ -529,11 +528,10 @@ function useExpectedActions(data: DashboardData) {
       scheduleSync(userId);
       undo.show(`${data.nameOf(e)} ✓`, () => revertExpected(userId, e.id));
     } catch (err) {
-      errorNotice();
-      if (err instanceof FxRateUnavailableError) void appAlert(tr.errors.fxUnavailable);
+      if (err instanceof FxRateUnavailableError) void appAlert(tr.errors.fxUnavailable, undefined, { tone: "error" });
       else {
         devError("confirm", err);
-        void appAlert(tr.errors.saveFailed);
+        void appAlert(tr.errors.saveFailed, undefined, { tone: "error" });
       }
     } finally {
       setConfirmingId(null);
@@ -564,7 +562,7 @@ function useExpectedActions(data: DashboardData) {
           onClose={() => setAmountEditing(null)}
           onError={(error) => {
             devError("dashboard.amount", error);
-            void appAlert(tr.errors.saveFailed);
+            void appAlert(tr.errors.saveFailed, undefined, { tone: "error" });
           }}
         />
       ) : null}

@@ -10,7 +10,7 @@
 
 
 
-import React, { useRef, type ComponentProps, type ReactNode } from "react";
+import React, { useMemo, useRef, type ComponentProps, type ReactNode } from "react";
 import {
   Animated,
   Platform,
@@ -42,8 +42,10 @@ import {
   Divider,
   FadeIn,
   Row,
+  Skeleton,
   useLedeAlignment,
 } from "./primitives";
+import { RowMotion } from "./list-motion";
 import { circle, contentWidth, density, font, heroSurface, iconSize, motion, radius, spacing, staggerDelay, type, type ContentWidth, useTheme } from "./theme";
 import { shouldStackListActions, shouldStackPanelAction, shouldUseWideGutter } from "./responsive";
 import { useContentWidth, useNavigationSpace } from "./viewport";
@@ -746,17 +748,28 @@ export function DataGateScreen({
   status,
   retry,
   children,
+  skeleton,
   ...screen
 }: {
   status: LiveQueryStatus;
   retry: () => void;
   /** Chrome this screen needs while loading too — a title, a header block. */
   children?: ReactNode;
+  /**
+   * The shape this screen will have once the data lands.
+   *
+   * Without one the page is blank, then three dots at 350ms, then the whole
+   * content in a single frame — a layout shift the web-vitals budget refuses
+   * and the slowest surface here (web on a phone) shows worst. `CardListSkeleton`
+   * is the shape for anything list-like; a screen passing nothing is asserting
+   * that a blank frame is right for it, and the contract test asks it to say so.
+   */
+  skeleton?: ReactNode;
 } & Omit<ComponentProps<typeof Screen>, "children">) {
   return (
     <Screen {...screen}>
       {children}
-      <DataStateNotice status={status} retry={retry} />
+      {status === "loading" && skeleton ? skeleton : <DataStateNotice status={status} retry={retry} />}
     </Screen>
   );
 }
@@ -895,15 +908,59 @@ export function CardList<T>({
   style?: StyleProp<ViewStyle>;
   padded?: boolean;
 }) {
+  // The cascade belongs to the list's own arrival and to nothing else. Applied
+  // on every render it delayed a NEWLY INSERTED row by up to the whole stagger
+  // budget while everything around it stood still, which is the shape
+  // `theme.ts` warns reads as lag rather than choreography.
+  //
+  // The set is captured once, at mount, and read rather than mutated — a ref
+  // flipped in an effect would be mutable state read during render, which is
+  // what `react-hooks/refs` is for. A row that was here at mount keeps its
+  // place in the cascade; a row that arrives later has no cascade to join and
+  // fades in on its own.
+  const arrived = useMemo(
+    () => new Set(items.map((item, index) => keyExtractor(item, index))),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- the mount's membership is the whole point; recomputing it would restore the bug.
+    [],
+  );
   if (items.length === 0) return null;
   return (
     <Card style={style} padded={padded}>
       {header}
       {items.map((item, i) => (
-        <React.Fragment key={keyExtractor(item, i)}>
+        <RowMotion key={keyExtractor(item, i)}>
           {i > 0 ? <Divider flush /> : null}
-          <FadeIn delay={staggerDelay(i, items.length)}>{renderItem(item, i)}</FadeIn>
-        </React.Fragment>
+          <FadeIn delay={arrived.has(keyExtractor(item, i)) ? staggerDelay(i, items.length) : 0}>{renderItem(item, i)}</FadeIn>
+        </RowMotion>
+      ))}
+    </Card>
+  );
+}
+
+/**
+ * The shape a list keeps while its rows are still being read.
+ *
+ * Lifted from the dashboard, which was the only screen that had one. A gap the
+ * real card later pushes open is the layout shift the web-vitals budget
+ * refuses, and three rows is what an ordinary account shows.
+ */
+export function CardListSkeleton({
+  rows = 3,
+  style,
+}: {
+  rows?: number;
+  style?: StyleProp<ViewStyle>;
+}) {
+  return (
+    <Card style={style}>
+      {Array.from({ length: rows }, (_, row) => (
+        <Row key={row} gap={spacing.md} style={{ alignItems: "center", paddingVertical: spacing.md - 2 }}>
+          <Skeleton width={24} height={24} radius={radius.sm} />
+          <View style={{ flex: 1, gap: 6 }}>
+            <Skeleton width="60%" height={type.body.fontSize} />
+            <Skeleton width="40%" height={type.small.fontSize} />
+          </View>
+        </Row>
       ))}
     </Card>
   );

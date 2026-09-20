@@ -30,7 +30,7 @@ import { formatMinorCompact, formatMinorInput } from "../domain/money";
 import { dateLabel, monthLabel, tr } from "../i18n/tr";
 import { Amount, Badge, Body, Button, Card, CardList, DataStateNotice, EmptyState, FadeIn, IconButton, ListRow, MoneyField, MonthStepper, PanelHeader, Row, Screen, SectionHeader, Spread } from "./components";
 import { appAlert } from "./dialog";
-import { errorNotice, successNotice } from "./haptics";
+import { successNotice } from "./haptics";
 import { userMessage } from "../domain/user-error";
 import { devError } from "../services/logger";
 import { circle, radius, spacing, type, useTheme } from "./theme";
@@ -138,7 +138,6 @@ function useCurrentBalanceForm(computed: number | null) {
       target.reset();
       undo.show(tr.settings.balanceAdjustmentSaved, null, "success");
     } catch (e) {
-      errorNotice();
       devError("balance.current", e);
       void appAlert(userMessage(e, tr.errors.saveFailed), tr.errors.title);
     } finally {

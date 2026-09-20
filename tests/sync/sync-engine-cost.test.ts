@@ -30,6 +30,9 @@ vi.mock("react-native", () => ({ Platform: { OS: "web" } }));
 vi.mock("expo-constants", () => ({ default: { expoConfig: { version: "1.1.0" } } }));
 vi.mock("../../src/services/logger", () => ({ devWarning: vi.fn(), devError: vi.fn() }));
 vi.mock("../../src/services/diagnostics", () => ({ uploadDiagnostics: vi.fn(async () => {}) }));
+// Counting screens is piggybacked on the same success path and is equally
+// irrelevant to what these tests measure.
+vi.mock("../../src/services/usage", () => ({ reportUsage: vi.fn(async () => {}) }));
 vi.mock("../../src/sync/attachment-mirror", () => ({
   reconcileAttachments: vi.fn(async () => {}),
   purgeRemoteAttachments: vi.fn(async () => {}),

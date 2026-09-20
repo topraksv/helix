@@ -53,6 +53,8 @@ vi.mock("../../src/sync/attachment-mirror", () => ({
   reconcileAttachments: harness.reconcileAttachments,
 }));
 vi.mock("../../src/services/diagnostics", () => ({ uploadDiagnostics: harness.uploadDiagnostics }));
+// Screen counts ride the same success path; they are not what this file measures.
+vi.mock("../../src/services/usage", () => ({ reportUsage: vi.fn(async () => {}) }));
 
 /** A PostgREST that answers only what the engine actually asks it. */
 function query(table: string) {

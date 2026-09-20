@@ -1398,6 +1398,7 @@ export type Database = {
       delete_own_account: { Args: never; Returns: undefined }
       purge_expired_diagnostics: { Args: never; Returns: number }
       record_feedback_send: { Args: never; Returns: boolean }
+      record_usage: { Args: { events: Json }; Returns: undefined }
       sync_cursors: {
         Args: never
         Returns: {

@@ -1105,8 +1105,11 @@ describe("a leading mark centres against its own text", () => {
 describe("navigation says that it moved", () => {
   it("crossfades between tabs everywhere, on the patched tab view", () => {
     const tabs = readFileSync(join(root, "src/app/(tabs)/_layout.tsx"), "utf8");
-    // `fade`, not `shift`: five peers, so nothing should imply a direction.
-    expect(tabs).toContain('animation: "fade"');
+    // `fade`, not `shift`: five peers, so nothing should imply a direction —
+    // and gated, because the navigator does not consult `AccessibilityInfo`
+    // itself, which made this the one motion Reduce Motion never reached.
+    expect(tabs).toContain('animation: reducedMotion ? "none" : "fade"');
+    expect(tabs).toContain("useReducedMotion()");
     expect(readFileSync(join(root, "scripts/patch-dependencies.mjs"), "utf8")).toContain("expo/expo#49778");
   });
 
@@ -1616,5 +1619,77 @@ describe("icon imports resolve", () => {
       }
     }
     expect(missing, "an icon Metro cannot resolve").toEqual([]);
+  });
+});
+
+/**
+ * The four rules introduced with 1.8.3's loading and motion work.
+ *
+ * Every one of them was a convention before it was a test, and a convention is
+ * what the next screen forgets. Each assertion names the file that owns the
+ * rule so a failure reads as an instruction rather than a puzzle.
+ */
+describe("loading and motion boundaries", () => {
+  const appFiles = sourceFiles("src/app", { atLeast: 40 });
+  const uiFiles = sourceFiles("src/ui", { atLeast: 50 });
+  const read = (file: string) => readFileSync(join(process.cwd(), file), "utf8");
+
+  /**
+   * Screens that render no skeleton, each because the shape that lands is not
+   * a list and a guessed silhouette would be a worse lie than a blank frame.
+   * Adding a row here is a decision; the reason is the price of it.
+   */
+  const NO_SKELETON = new Map([
+    ["src/app/transaction.tsx", "a form whose fields depend on the record being edited"],
+    ["src/app/installment-new.tsx", "a form, as above"],
+    ["src/app/subscription-form.tsx", "a form, as above"],
+    ["src/app/import-wizard.tsx", "a wizard whose first step is chosen by the file"],
+    ["src/app/bulk-entry.tsx", "an empty grid the owner fills; there is no shape to hold"],
+    ["src/app/workspace-template.tsx", "a one-off picker shown once per workspace"],
+    ["src/app/reconciliation.tsx", "a prompt list that is usually empty"],
+    ["src/app/cell-editor.tsx", "a sheet sized by its own content"],
+    ["src/app/(onboarding)/setup.tsx", "onboarding, where a skeleton would suggest data exists"],
+    ["src/app/(tabs)/cash-flow/analytics.tsx", "charts; a chart skeleton is a different shape again"],
+    ["src/app/(tabs)/cash-flow/item.tsx", "a detail sheet sized by its own content"],
+    ["src/app/(tabs)/cash-flow/[month].tsx", "the matrix draws its own loading grid"],
+  ]);
+
+  it("gives every list-shaped screen a skeleton, or a written reason not to", () => {
+    const missing = appFiles.filter(
+      (file) => read(file).includes("<DataGateScreen") && !read(file).includes("skeleton=") && !NO_SKELETON.has(file),
+    );
+    expect(missing, "pass skeleton={<CardListSkeleton />} or add the file to NO_SKELETON with its reason").toEqual([]);
+  });
+
+  it("keeps the list cascade in the list, not in screen code", () => {
+    // A screen may choreograph its own composite — a diagram's nodes, a row of
+    // stops — with a literal delay. What it may not do is run the LIST
+    // cascade: `staggerDelay` belongs to a list's own arrival, and `CardList`
+    // is what knows whether this render is that arrival. A screen applying it
+    // per row is how a newly inserted row waits 320ms while nothing around it
+    // moves, which `theme.ts` calls lag rather than choreography.
+    const offenders = appFiles.filter((file) => /staggerDelay\(/.test(read(file)));
+    expect(offenders, "let CardList own the cascade").toEqual([]);
+  });
+
+  it("keeps Reanimated out of the web bundle", () => {
+    // `src/ui/list-motion.native.tsx` is the whole surface. Reanimated on web
+    // runs the same animations in JavaScript and would be downloaded by every
+    // visitor for a cosmetic gain; the `.native` split is what prevents it.
+    const offenders = [...appFiles, ...uiFiles].filter(
+      (file) => !file.endsWith(".native.tsx") && /from "react-native-reanimated"/.test(read(file)),
+    );
+    expect(offenders, "put it in a .native.tsx file").toEqual([]);
+  });
+
+  it("fires the error haptic from one place", () => {
+    // `src/ui/dialog.tsx` plays it for every dialog that REPORTS a failure.
+    // `draggable-list.tsx` is the documented exception: a refused reorder
+    // reverts silently and shows no dialog, so the haptic is the only signal.
+    const allowed = new Set(["src/ui/dialog.tsx", "src/ui/haptics.ts", "src/ui/draggable-list.tsx"]);
+    const offenders = [...appFiles, ...uiFiles].filter(
+      (file) => !allowed.has(file) && /\berrorNotice\(/.test(read(file)),
+    );
+    expect(offenders, "let appAlert's tone carry it").toEqual([]);
   });
 });

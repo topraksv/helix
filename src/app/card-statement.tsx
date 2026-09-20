@@ -41,7 +41,7 @@ import {
   Card,
   CardList,
   ChoiceTile,
-  DataGateScreen,
+  CardListSkeleton, DataGateScreen,
   DataStateNotice,
   EmptyState,
   Field,
@@ -334,7 +334,7 @@ export default function CardStatementScreen() {
   const [monthChoice, setMonthChoice] = useState<MonthKey | null>(null);
 
   const title = <Stack.Screen options={{ title: tr.cardStatement.title }} />;
-  if (!ready) return <DataGateScreen status={status} retry={retry}>{title}</DataGateScreen>;
+  if (!ready) return <DataGateScreen status={status} retry={retry} skeleton={<CardListSkeleton />}>{title}</DataGateScreen>;
 
   // Only the owner's own cards: a watched card's charges never reach this
   // balance, so there is nothing a payment of them could change.

@@ -17,6 +17,7 @@ import { create } from "zustand";
 import { Button, FadeIn } from "./components";
 import { circle, font, radius, spacing, themeShadow, type, useTheme } from "./theme";
 import { tr } from "../i18n/tr";
+import { errorNotice } from "./haptics";
 import { INPUT_LIMITS } from "../domain/input";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { shouldPresentOptionsAsSheet } from "./responsive";
@@ -35,6 +36,8 @@ interface DialogRequest {
   /** null = single-button alert. */
   cancelLabel: string | null;
   danger: boolean;
+  /** Whether this dialog REPORTS a failure, as opposed to asking about one. */
+  tone?: "error" | "neutral";
   operation?: OperationFlowKind;
   resolve: (ok: boolean) => void;
 }
@@ -45,13 +48,31 @@ interface DialogRequest {
 const useDialogStore = create<RequestQueue<DialogRequest>>(() => emptyRequestQueue<DialogRequest>());
 
 function enqueueDialog(request: DialogRequest) {
+  // The error half of the rule `haptics.ts` states: notification feedback is
+  // for a completed outcome. It was firing at five scattered call sites while a
+  // hundred other failures were silent, so it lives here now — once, at the one
+  // place every dialog passes through. A destructive CONFIRM stays silent on
+  // purpose: it is a question, and the outcome has not happened yet.
+  if (request.tone === "error") errorNotice();
   useDialogStore.setState(enqueueRequest(useDialogStore.getState(), request));
 }
 
-/** One-button themed alert. Resolves when dismissed. */
-export function appAlert(message: string, title: string = tr.app.name): Promise<void> {
+/**
+ * One-button themed alert. Resolves when dismissed.
+ *
+ * The tone decides whether the device says so as well as the screen. It is
+ * inferred from the title, because `tr.errors.title` is already how this app
+ * marks a failure, and passed explicitly by the handful of failures that carry
+ * a friendlier title.
+ */
+export function appAlert(
+  message: string,
+  title: string = tr.app.name,
+  opts?: { tone?: "error" | "neutral" },
+): Promise<void> {
+  const tone = opts?.tone ?? (title === tr.errors.title ? "error" : "neutral");
   return new Promise((resolve) => {
-    enqueueDialog({ title, message, confirmLabel: tr.common.done, cancelLabel: null, danger: false, resolve: () => resolve() });
+    enqueueDialog({ title, message, confirmLabel: tr.common.done, cancelLabel: null, danger: false, tone, resolve: () => resolve() });
   });
 }
 

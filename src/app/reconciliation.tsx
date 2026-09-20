@@ -25,7 +25,6 @@ import { devError } from "../services/logger";
 import { Badge, Body, Button, Card, DataGateScreen, DataStateNotice, EmptyState, MoneyField, Row, Screen, Spread } from "../ui/components";
 import { appAlert } from "../ui/dialog";
 import { useUndo } from "../ui/undo";
-import { errorNotice } from "../ui/haptics";
 import { spacing } from "../ui/theme";
 import { useOperationGuard } from "../ui/operation-guard";
 import { useDirtyExitGuard } from "../ui/dirty-exit";
@@ -93,11 +92,10 @@ export default function CatchUpScreen() {
         // retry instead of clearing as though it had worked.
         undo.show(`${nameOf(e)} ✓`, () => revertExpected(userId, e.id).then(() => scheduleSync(userId)));
       } catch (err) {
-        errorNotice();
-        if (err instanceof FxRateUnavailableError) void appAlert(tr.errors.fxUnavailable);
+        if (err instanceof FxRateUnavailableError) void appAlert(tr.errors.fxUnavailable, undefined, { tone: "error" });
         else {
           devError("reconcile.confirm", err);
-          void appAlert(tr.errors.saveFailed);
+          void appAlert(tr.errors.saveFailed, undefined, { tone: "error" });
         }
       } finally {
         setConfirmingId(null);
@@ -121,9 +119,8 @@ export default function CatchUpScreen() {
         scheduleSync(userId);
         undo.show(tr.catchup.skipped(nameOf(e)), () => unskipExpected(userId, e.id).then(() => scheduleSync(userId)), "warning");
       } catch (err) {
-        errorNotice();
         devError("reconcile.skip", err);
-        void appAlert(tr.errors.saveFailed);
+        void appAlert(tr.errors.saveFailed, undefined, { tone: "error" });
       } finally {
         setConfirmingId(null);
       }

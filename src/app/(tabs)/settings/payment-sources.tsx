@@ -28,7 +28,7 @@ import ReceiptText from "lucide-react-native/icons/receipt-text";
 import Trash from "lucide-react-native/icons/trash";
 import WalletCards from "lucide-react-native/icons/wallet-cards";
 import type { LucideIcon } from "lucide-react-native";
-import { Amount, Badge, Body, Button, Card, CardList, ChipPicker, ChoiceTile, DataGateScreen, DataStateNotice, EmptyState, Field, IconButton, PanelHeader, Row, Screen, SectionHeader, Spread, useLedeAlignment } from "../../../ui/components";
+import { Amount, Badge, Body, Button, Card, CardList, ChipPicker, ChoiceTile, CardListSkeleton, DataGateScreen, DataStateNotice, EmptyState, Field, IconButton, PanelHeader, Row, Screen, SectionHeader, Spread, useLedeAlignment } from "../../../ui/components";
 import { placeholderPools, useRotatingPlaceholder } from "../../../ui/placeholders";
 import { useUndo } from "../../../ui/undo";
 import { spacing, type, useTheme } from "../../../ui/theme";
@@ -438,7 +438,7 @@ export default function SourcesScreen() {
   const form = useSourceForm(sources, persons, busy);
   const removal = useSourceRemoval(sources, busy);
   const { status, ready, retry } = combineLiveStates([sourcesState, statementsState, transactionsState, personsState]);
-  if (!ready) return <DataGateScreen status={status} retry={retry} />;
+  if (!ready) return <DataGateScreen status={status} retry={retry} skeleton={<CardListSkeleton />} />;
   return (
     <Screen width="workspace">
       <DataStateNotice status={status} retry={retry} />

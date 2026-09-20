@@ -26,7 +26,7 @@ import {
   useAllTransactionsState,
 } from "../../../data/hooks";
 import { combineLiveStates } from "../../../data/live-state";
-import { Amount, Badge, Body, Button, Card, CardList, DataGateScreen, DataStateNotice, EmptyState, Heading, MonthStepper, Screen, SectionHeader, SegmentBar, Segmented, Select } from "../../../ui/components";
+import { Amount, Badge, Body, Button, Card, CardList, CardListSkeleton, DataGateScreen, DataStateNotice, EmptyState, Heading, MonthStepper, Screen, SectionHeader, SegmentBar, Segmented, Select } from "../../../ui/components";
 import { Bars, ChartFrame, Donut, distributionDonutData, useSeriesColors } from "../../../ui/charts";
 import { font, radius, segmentedMaxWidth, spacing, type, useTheme } from "../../../ui/theme";
 import { WorkspaceSplit } from "../../../ui/workspace-layout";
@@ -376,7 +376,7 @@ export default function InstallmentsScreen() {
     />
   );
 
-  if (!dataReady) return <DataGateScreen status={dataStatus} retry={retryData} />;
+  if (!dataReady) return <DataGateScreen status={dataStatus} retry={retryData} skeleton={<CardListSkeleton />} />;
 
   return (
     <Screen width="workspace">

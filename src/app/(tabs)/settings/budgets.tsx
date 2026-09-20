@@ -12,7 +12,7 @@ import { formatMinorCompact, formatMinorInput } from "../../../domain/money";
 import { tr } from "../../../i18n/tr";
 import { scheduleSync } from "../../../sync/engine";
 import { categoryIconComponent } from "../../../ui/category-icon";
-import { Body, Button, Card, CardList, DataGateScreen, DataStateNotice, EmptyState, IconButton, MoneyField, MonthStepper, PanelHeader, Row, Screen, SectionHeader, SegmentBar, Select, Spread } from "../../../ui/components";
+import { Body, Button, Card, CardList, CardListSkeleton, DataGateScreen, DataStateNotice, EmptyState, IconButton, MoneyField, MonthStepper, PanelHeader, Row, Screen, SectionHeader, SegmentBar, Select, Spread } from "../../../ui/components";
 import { useDirtyExitGuard } from "../../../ui/dirty-exit";
 import { useOperationGuard } from "../../../ui/operation-guard";
 import { WorkspaceSplit } from "../../../ui/workspace-layout";
@@ -127,7 +127,7 @@ export default function BudgetsScreen() {
     }
   };
 
-  if (!dataReady) return <DataGateScreen status={dataStatus} retry={retryData} />;
+  if (!dataReady) return <DataGateScreen status={dataStatus} retry={retryData} skeleton={<CardListSkeleton />} />;
 
   return (
     <Screen width="workspace">

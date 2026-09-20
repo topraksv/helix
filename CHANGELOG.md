@@ -6,6 +6,17 @@ defterinde yazılıdır ve bu depoya dahil değildir.
 
 Notlar kısa tutulur: ne değişti, tek cümle. Sebebi ve ölçümü commit'te.
 
+## 1.8.3
+
+### Patch Changes
+
+- Listeler yüklenirken boş sayfa yerine gelecek içeriğin şekli duruyor; sayfa artık veriyle birlikte zıplamıyor.
+- Bir satır silindiğinde liste boşluğu kapatıyor, aniden yukarı atlamıyor (telefonda).
+- Listeye sonradan eklenen satır artık gecikmeli belirmiyor; sıralı giriş yalnız liste ilk açıldığında çalışıyor.
+- Hata bildiren her uyarı artık aynı titreşimi veriyor; bazı hatalar sessiz kalmıyordu.
+- Hareketi azalt açıkken sekmeler arası geçiş de duruyor; tek kaçak oydu.
+- Hangi ekranın ne sıklıkla açıldığı, kişisel hiçbir veri taşımadan kendi projene sayılıyor.
+
 ## 1.8.2
 
 ### Patch Changes

@@ -21,7 +21,7 @@ import { monthKeyOf, todayISO, type MonthKey } from "../domain/dates";
 import { installmentDisplayTitle } from "../domain/installments";
 import { formatMinorCompact, splitIntoInstallments } from "../domain/money";
 import { tr } from "../i18n/tr";
-import { Body, Button, Card, CardList, ChoiceTile, DataGateScreen, DataStateNotice, EmptyState, Field, ListRow, MoneyField, MonthStepper, PanelHeader, Screen } from "../ui/components";
+import { Body, Button, Card, CardList, CardListSkeleton, ChoiceTile, DataGateScreen, DataStateNotice, EmptyState, Field, ListRow, MoneyField, MonthStepper, PanelHeader, Screen } from "../ui/components";
 import { appAlert } from "../ui/dialog";
 import { scheduleSync } from "../sync/engine";
 import { spacing } from "../ui/theme";
@@ -268,7 +268,7 @@ export default function InstallmentRefundScreen() {
   const [planChoice, setPlanChoice] = useState<string | null>(planParam ?? null);
 
   const title = <Stack.Screen options={{ title: tr.installments.refundTitle }} />;
-  if (!ready) return <DataGateScreen status={status} retry={retry}>{title}</DataGateScreen>;
+  if (!ready) return <DataGateScreen status={status} retry={retry} skeleton={<CardListSkeleton />}>{title}</DataGateScreen>;
 
   const sourceName = new Map(sourcesState.data.map((source) => [source.id, source.name]));
   const summaries = summarizePlans(plansState.data, transactionsState.data);

@@ -28,6 +28,7 @@ import {
 } from "./merge-policy";
 import { devError, devWarning } from "../services/logger";
 import { uploadDiagnostics, type DiagnosticUpload, type DiagnosticUploadPort } from "../services/diagnostics";
+import { reportUsage, type UsageUploadPort } from "../services/usage";
 import { prepareOutboundBatch } from "./outbound-validation";
 import { purgeRemoteAttachments, reconcileAttachments } from "./attachment-mirror";
 import { isValidImportRow } from "../services/backup-validation";
@@ -539,6 +540,22 @@ function devicePlatform(): DiagnosticUpload["platform"] {
  * been offline for a week still holds its whole ring, and re-sending it must
  * add nothing rather than fail the batch.
  */
+/**
+ * Screen counts go through one database function rather than a table write,
+ * because deltas have to be ADDED to what is already there. A PostgREST upsert
+ * replaces, which would make the second device of the day erase the first.
+ */
+function usageUploadPort(): UsageUploadPort {
+  return {
+    async record(deltas) {
+      const client = getSupabase();
+      if (!client) throw new Error("unconfigured");
+      const { error } = await client.rpc("record_usage", { events: deltas });
+      if (error) throw new Error(error.message);
+    },
+  };
+}
+
 function diagnosticUploadPort(userId: string): DiagnosticUploadPort {
   return {
     async upload(rows) {
@@ -575,6 +592,9 @@ async function runSync(userId: string, token: SessionEpochToken, allowRefresh: b
     // and the upload must never be the reason either is spent. It reports its
     // own failures nowhere and cannot fail this sync.
     void uploadDiagnostics(diagnosticUploadPort(userId), userId, devicePlatform(), APP_VERSION);
+    // Same piggyback, same contract: it reports nothing, it cannot fail this
+    // sync, and a refused call simply leaves the counts for the next one.
+    void reportUsage(usageUploadPort());
     // The retention window, applied where the app already has a live session.
     // There is no scheduler on this project, so an unenforced policy would be
     // a sentence in a document; this makes it a delete. It can only reach rows
