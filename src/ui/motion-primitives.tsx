@@ -14,9 +14,14 @@
  *    rather than silently falling back.
  * 3. Duration comes from `motion`, never from a screen's private taste.
  *
- * React Native's own `Animated` is the driver. Reanimated, Skia and Gesture
- * Handler would each be a new native dependency, and none of what is here
- * needs one.
+ * React Native's own `Animated` is the driver. Skia and Gesture Handler would
+ * each be a new native dependency and none of what is here needs one;
+ * Reanimated stopped being one on the day `react-native-keyboard-controller`
+ * brought it in as a peer, so it is already in the tree (`package.json`). What
+ * keeps it out of THIS file is the web bundle rather than the install: every
+ * hook here runs on both surfaces, and the `.native` split is where a
+ * Reanimated-only path belongs. Corrected 2026-09-20; the previous wording
+ * argued from an install that had already happened.
  */
 
 import React, { useContext, useEffect, useRef, useState, useSyncExternalStore } from "react";
