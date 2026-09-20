@@ -32,6 +32,8 @@ const harness = vi.hoisted(() => ({
   /** How each upsert was asked for: its conflict target and what it read back. */
   upserts: [] as { options: unknown; select: unknown }[],
   rpcs: [] as string[],
+  rpcArgs: [] as unknown[],
+  kv: new Map<string, string>(),
   configured: true,
   platform: { OS: "ios" },
   refresh: vi.fn(async (): Promise<unknown> => ({ data: { session: { user: { id: "u" } } }, error: null })),
@@ -53,8 +55,16 @@ vi.mock("../../src/sync/attachment-mirror", () => ({
   reconcileAttachments: harness.reconcileAttachments,
 }));
 vi.mock("../../src/services/diagnostics", () => ({ uploadDiagnostics: harness.uploadDiagnostics }));
-// Screen counts ride the same success path; they are not what this file measures.
-vi.mock("../../src/services/usage", () => ({ reportUsage: vi.fn(async () => {}) }));
+// The screen counter is NOT mocked here. It rides the same success path, and
+// the port that carries it lives in the engine — mocking the service left that
+// port unexecuted, which is how 470 mutants arrived with no test behind them.
+vi.mock("../../src/services/kv", () => ({
+  kv: {
+    get: async (key: string) => harness.kv.get(key) ?? null,
+    set: async (key: string, value: string) => void harness.kv.set(key, value),
+    remove: async (key: string) => void harness.kv.delete(key),
+  },
+}));
 
 /** A PostgREST that answers only what the engine actually asks it. */
 function query(table: string) {
@@ -105,8 +115,9 @@ vi.mock("../../src/sync/supabase", () => ({
         from: (table: string) => (table === "diagnostic_events" ? diagnosticEvents : query(table)),
         // The change probe is absent, which the engine is required to degrade past
         // rather than fail on — so these tests exercise the push without a pull.
-        rpc: (name: string) => {
+        rpc: (name: string, args?: unknown) => {
           harness.rpcs.push(name);
+          harness.rpcArgs.push(args);
           const answer = { data: null, error: { message: "missing", code: "PGRST202" } };
           return Object.assign(Promise.resolve(answer), { abortSignal: async () => answer });
         },
@@ -162,6 +173,8 @@ beforeEach(async () => {
   harness.calls = [];
   harness.upserts = [];
   harness.rpcs = [];
+  harness.rpcArgs = [];
+  harness.kv = new Map();
   harness.configured = true;
   harness.platform.OS = "ios";
   harness.refresh.mockReset();
@@ -330,6 +343,36 @@ describe("a completed sync", () => {
     expect(harness.rpcs).toContain("purge_expired_diagnostics");
     expect(harness.uploadDiagnostics).toHaveBeenCalledWith(expect.anything(), USER, "ios", "0");
     expect(harness.reconcileAttachments).toHaveBeenCalledWith(USER, expect.any(AbortSignal));
+  });
+
+  it("reports the screens counted since the last sync, and survives a server that has no such function", async () => {
+    // The counter rides this success path, and the port that carries it lives
+    // in the engine. The stand-in `rpc` answers PGRST202 for everything, which
+    // is exactly the state of a project that has not taken migration 41 yet:
+    // the call must still be made, and the refusal must cost the sync nothing.
+    harness.kv.set("helix.usage_counters.v1", JSON.stringify({ "2026-09-20|tabs.cash-flow": 3 }));
+    startSyncSession(USER);
+
+    expect(await syncNow(USER)).toBe(true);
+    // The report is fire-and-forget by design — the sync must never wait on it —
+    // so the assertion has to.
+    for (let i = 0; i < 6; i += 1) await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(harness.rpcs).toContain("record_usage");
+    expect(harness.rpcArgs[harness.rpcs.indexOf("record_usage")]).toEqual({
+      events: [{ day: "2026-09-20", screen: "tabs.cash-flow", count: 3 }],
+    });
+    // Refused, so nothing is cleared: the next sync sends the same deltas.
+    expect(JSON.parse(harness.kv.get("helix.usage_counters.v1") ?? "{}")).toEqual({ "2026-09-20|tabs.cash-flow": 3 });
+  });
+
+  it("says nothing about screens when nothing was counted", async () => {
+    startSyncSession(USER);
+
+    expect(await syncNow(USER)).toBe(true);
+    for (let i = 0; i < 6; i += 1) await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(harness.rpcs).not.toContain("record_usage");
   });
 
   it("names the platform it ran on", async () => {

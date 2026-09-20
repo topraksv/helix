@@ -38,6 +38,18 @@ describe("screenKey", () => {
     expect(screenKey("/ÇOK-UZUN-BİR-ŞEY")).toMatch(/^[a-z][a-z0-9-]*$/);
   });
 
+  it("drops a segment long enough to be a label rather than a screen", () => {
+    // 24 characters is the line: no route in this app is longer, and anything
+    // that is has a good chance of being a name someone typed.
+    expect(screenKey("/tabs/" + "a".repeat(25))).toBe("tabs");
+    expect(screenKey("/tabs/" + "a".repeat(24))).toBe(`tabs.${"a".repeat(24)}`);
+  });
+
+  it("drops a bare year or number, which is a period or a row and not a place", () => {
+    expect(screenKey("/(tabs)/cash-flow/2026")).toBe("tabs.cash-flow");
+    expect(screenKey("/report/7")).toBe("report");
+  });
+
   it("never returns a key the database would reject", () => {
     const shape = /^[a-z][a-z0-9-]*(\.[a-z0-9-]+)*$/;
     for (const path of [
