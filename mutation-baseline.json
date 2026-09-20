@@ -729,6 +729,15 @@
       "measuredOn": "a4394d5ebe1055ee856167dd23e77c801b72b071",
       "measuredDate": "2026-08-21"
     },
+    "src/domain/usage.ts": {
+      "score": 76.81,
+      "killed": 106,
+      "timeout": 0,
+      "survived": 31,
+      "noCoverage": 1,
+      "measuredOn": "0d9b2db231ba2d1344b544f9ed592ef91ddb5b5e",
+      "measuredDate": "2026-09-20"
+    },
     "src/domain/user-error.ts": {
       "score": 94.44,
       "killed": 17,
@@ -927,6 +936,15 @@
       "measuredOn": "1fb3914c267f805559d51c47fea38a0dff0433c7",
       "measuredDate": "2026-09-12"
     },
+    "src/services/usage.ts": {
+      "score": 74.58,
+      "killed": 44,
+      "timeout": 0,
+      "survived": 14,
+      "noCoverage": 1,
+      "measuredOn": "0d9b2db231ba2d1344b544f9ed592ef91ddb5b5e",
+      "measuredDate": "2026-09-20"
+    },
     "src/services/workbook-export.ts": {
       "score": 75,
       "killed": 67,
@@ -946,13 +964,13 @@
       "measuredDate": "2026-09-02"
     },
     "src/sync/engine.ts": {
-      "score": 84.22,
-      "killed": 402,
+      "score": 83.97,
+      "killed": 410,
       "timeout": 9,
-      "survived": 71,
-      "noCoverage": 6,
-      "measuredOn": "d3be2e3cda6fbbdc1db1928fd1f94e3bd3247ed7",
-      "measuredDate": "2026-09-19"
+      "survived": 73,
+      "noCoverage": 7,
+      "measuredOn": "0d9b2db231ba2d1344b544f9ed592ef91ddb5b5e",
+      "measuredDate": "2026-09-20"
     },
     "src/sync/merge-policy.ts": {
       "score": 77.3,
