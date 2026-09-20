@@ -1349,6 +1349,30 @@ export type Database = {
           },
         ]
       }
+      usage_counters: {
+        Row: {
+          count: number
+          day: string
+          screen: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          count?: number
+          day: string
+          screen: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          count?: number
+          day?: string
+          screen?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       incident_by_release: {
@@ -1397,6 +1421,7 @@ export type Database = {
     Functions: {
       delete_own_account: { Args: never; Returns: undefined }
       purge_expired_diagnostics: { Args: never; Returns: number }
+      purge_usage_counters: { Args: never; Returns: undefined }
       record_feedback_send: { Args: never; Returns: boolean }
       record_usage: { Args: { events: Json }; Returns: undefined }
       sync_cursors: {
