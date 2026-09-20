@@ -236,6 +236,24 @@ eklenmesini engellemenin, herkesi bugün durduran bir eşik koymadan tek yolu.
 
 ### Kod haritası
 
+Kökteki her dosya, bir aracın **adıyla** okuduğu için orada; hiçbiri isteğe bağlı
+değil ve hiçbiri klasöre taşınamaz.
+
+| Kök dosya | Kim okur |
+|---|---|
+| `package.json`, `package-lock.json`, `.npmrc`, `.nvmrc` | npm ve Node sürüm kilidi |
+| `app.json`, `eas.json`, `metro.config.js`, `babel.config.js`, `plugins/` | Expo derleme zinciri |
+| `tsconfig.json`, `eslint.config.js`, `.editorconfig` | Tip ve biçim |
+| `vitest.config.mts`, `vitest.coverage.config.mts`, `vitest.mutation.config.mts` | Üç ayrı koşu: hızlı, eşikli, mutasyon |
+| `stryker.config.mjs`, `stryker.ci.config.mjs` | Yerel ve CI mutasyon kapsamı |
+| `playwright.config.ts` | Tarayıcı süiti |
+| `lint-baseline.json`, `mutation-baseline.json` | Cırcır tabanları — sayı düşebilir, yükselemez |
+| `knip.json`, `.jscpd.json`, `.madgerc` | Ölü kod, kopya, içe aktarma grafiği |
+| `drizzle.config.ts` | SQLite şema üretimi |
+| `.gitattributes` | Üretilmiş dosyaların diff ve dil istatistiği dışında tutulması |
+| `AGENTS.md`, `CLAUDE.md` | Ajan sözleşmesi (Git-ignore'lu) |
+| `README.md`, `CHANGELOG.md`, `LICENSE` | Depoyu açan insan |
+
 | Klasör | Sorumluluk |
 |---|---|
 | `src/app/` | Expo Router rotaları ve ekran orkestrasyonu — ham SQL değil. Yaprak katman: kimse rotaları import etmez |

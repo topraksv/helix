@@ -74,7 +74,6 @@ supabase/.temp/
 # of the published tree. Removing them here does not remove them from the
 # history that already carries them; the repository is public and older commits
 # still hold every one of these files.
-/.ai/
 /.agents/
 /.claude/
 /.codex/
