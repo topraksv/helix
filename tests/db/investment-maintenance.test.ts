@@ -72,10 +72,20 @@ describe("investment-aware maintenance", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     dependencies.committedIds.length = 0;
+    // THE IDS ARE LOAD-BEARING. Realization is ordered by a priority function —
+    // money in, then everything else, then money out — with the id only as a
+    // tiebreak between equals. The previous fixture called these rows
+    // `deposit`, `ordinary` and `refund`, which the tiebreak alone already puts
+    // in exactly the order the priority function wants, so every mutant of that
+    // function passed: measured 2026-09-21, fifteen of them survived on those
+    // three lines. These names sort the OPPOSITE way, so only the priority can
+    // produce the expected sequence, and the two `m-`/`n-` peers still pin the
+    // tiebreak.
     const due = [
-      dueTransaction("refund", "transfer", -8_000),
-      dueTransaction("ordinary", "expense", 500),
-      dueTransaction("deposit", "transfer", 5_000),
+      dueTransaction("a-refund", "transfer", -8_000),
+      dueTransaction("n-ordinary-later", "expense", 300),
+      dueTransaction("m-ordinary", "expense", 500),
+      dueTransaction("z-deposit", "transfer", 5_000),
     ];
     dependencies.getAllAsync.mockImplementation(async (sql: string) => {
       if (sql.includes("FROM persons") && sql.includes("is_self = 1")) return [{ id: "self" }];
@@ -100,10 +110,10 @@ describe("investment-aware maintenance", () => {
     await runMaintenance(USER);
 
     const attemptedIds = dependencies.validatedWrites.mock.calls.map((call) => call[1][0].row.id);
-    expect(attemptedIds).toEqual(["deposit", "ordinary", "refund"]);
-    expect(dependencies.committedIds).toEqual(["deposit", "ordinary"]);
-    expect(dependencies.validatedWrites).toHaveBeenCalledTimes(3);
-    expect(dependencies.assertInvestmentWrites).toHaveBeenCalledTimes(3);
+    expect(attemptedIds).toEqual(["z-deposit", "m-ordinary", "n-ordinary-later", "a-refund"]);
+    expect(dependencies.committedIds).toEqual(["z-deposit", "m-ordinary", "n-ordinary-later"]);
+    expect(dependencies.validatedWrites).toHaveBeenCalledTimes(4);
+    expect(dependencies.assertInvestmentWrites).toHaveBeenCalledTimes(4);
   });
 });
 

@@ -129,6 +129,24 @@ describe("outbound row conversion", () => {
     });
   });
 
+  it("pushes each colour scope, including the row mark whose month is null", () => {
+    // Every scope nulls a different column, and the push gate runs the same
+    // `isValidImportRow` the restore does. A row mark used to fail here, so it
+    // was written to `sync_dead_letters` and came back "unrepairable" — the
+    // mark lived on one device and nowhere else, with the sync status showing
+    // attention and no way for the owner to act on it.
+    const mark = { ...common, scope: "row", item_key: common.user_id, month: null as string | null, token: "red" };
+    const markPolicy = { allowedColumns: new Set(Object.keys(mark)), booleanColumns: new Set<string>() };
+    expect(convertOutboundRow("matrix_colors", mark, markPolicy)).toEqual({ ok: true, row: mark });
+    const column = { ...mark, scope: "column", item_key: null as string | null, month: "2026-07" };
+    expect(convertOutboundRow("matrix_colors", column, markPolicy)).toEqual({ ok: true, row: column });
+    const cell = { ...mark, scope: "cell", month: "2026-07" };
+    expect(convertOutboundRow("matrix_colors", cell, markPolicy)).toEqual({ ok: true, row: cell });
+    // The shape the month check was written for is still refused.
+    expect(convertOutboundRow("matrix_colors", { ...cell, month: "2026-13" }, markPolicy))
+      .toEqual({ ok: false, reason: "invalid_row" });
+  });
+
   it("quarantines unsupported currencies before PostgREST", () => {
     const currencyPolicy = {
       allowedColumns: new Set(Object.keys(transaction)),

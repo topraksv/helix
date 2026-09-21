@@ -64,6 +64,7 @@ interface TransactionRow {
   person_id: string;
   category_id: string | null;
   purchase_date: string | null;
+  fx_rate: string | null;
   installment_plan_id: string | null;
   card_statement_id: string | null;
   subscription_id: string | null;
@@ -80,6 +81,13 @@ function expectedRows(): { id: string; status: string; due_date: string }[] {
   return harness.db!
     .prepare(`SELECT id, status, due_date FROM expected_payments WHERE user_id = ? AND deleted_at IS NULL ORDER BY due_date`)
     .all(USER) as unknown as { id: string; status: string; due_date: string }[];
+}
+
+/** Whether the app confirmed the occurrence itself, or the owner did. */
+function autoConfirmedFlag(): number {
+  return (harness.db!
+    .prepare(`SELECT auto_confirmed FROM expected_payments WHERE user_id = ? AND status = 'paid' AND deleted_at IS NULL`)
+    .get(USER) as { auto_confirmed: number }).auto_confirmed;
 }
 
 /** The balance the dashboard hero shows, over the same realized-only rule. */
@@ -180,6 +188,9 @@ describe("adding a subscription never moves the current balance", () => {
     expect(transactions).toHaveLength(1);
     expect(transactions[0]).toMatchObject({ status: "realized", effective_date: todayISO() });
     expect(balanceNow()).toBe(OPENING_MINOR - baseInput.amountMinor);
+    // Provenance, not decoration: the catch-up list and the undo bar both have
+    // to tell a charge the app made from one the owner confirmed.
+    expect(autoConfirmedFlag()).toBe(1);
   });
 
   it("records exactly one realized expense when the user confirms the occurrence", async () => {
@@ -193,6 +204,8 @@ describe("adding a subscription never moves the current balance", () => {
 
     expect(liveTransactions()).toHaveLength(1);
     expect(balanceNow()).toBe(OPENING_MINOR - baseInput.amountMinor);
+    expect(autoConfirmedFlag(), "the owner confirmed this one").toBe(0);
+    expect(liveTransactions()[0]!.fx_rate, "a lira row converted at no rate carries none").toBeNull();
   });
 
   it("does not touch the balance for a recurring rule whose next charge is in the future", async () => {
@@ -273,6 +286,12 @@ describe("adding a subscription never moves the current balance", () => {
       expect(row!.purchase_date).toBe(pending.due_date);
       // The statement's own due day, not the purchase day.
       expect(row!.effective_date.slice(8)).toBe("10");
+      // And it has NOT left the account yet. A purchase joins a statement that
+      // closes on or after today, and the due date follows that close, so this
+      // date is always ahead of today — which is the one case that separates
+      // `realized` from `pending` in what a confirmation writes.
+      expect(row!.effective_date > todayISO(), "a statement due date is in the future").toBe(true);
+      expect(row!.status).toBe("pending");
       const statements = harness.db!
         .prepare(`SELECT COUNT(*) AS n FROM credit_card_statements WHERE user_id = ? AND deleted_at IS NULL`)
         .get(USER) as { n: number };
@@ -304,6 +323,7 @@ describe("adding a subscription never moves the current balance", () => {
 
         const [row] = liveTransactions();
         expect(row!.amount_try_minor).toBe(baseInput.amountMinor * 40);
+        expect(row!.fx_rate, "the rate it converted at travels with the row").toBe("40");
       } finally {
         vi.mocked(lookupRate).mockReturnValue(null as never);
       }
@@ -466,6 +486,43 @@ describe("adding a subscription never moves the current balance", () => {
         .prepare(`SELECT next_due_date FROM subscriptions WHERE user_id = ? AND deleted_at IS NULL`)
         .get(USER) as { next_due_date: string };
       expect(after.next_due_date).toBe(due);
+    });
+
+    /**
+     * The other half of that rewind, and the half nothing was checking.
+     *
+     * `rewoundSubscriptionWrite` winds the rule back only when its next charge
+     * is still exactly what confirming THIS occurrence set it to. Every other
+     * case has to leave the rule alone: the owner has since moved the charge by
+     * hand, a later occurrence was confirmed on top, or the rule's own cycle
+     * fields are corrupt and the date it would compute is not a date. The
+     * happy-path test above makes every clause of that guard true at once, so
+     * on 2026-09-21 eleven mutants of the conjunction survived — each one a
+     * rewind that would overwrite a charge date the owner had chosen.
+     */
+    const nextCharge = () => (harness.db!
+      .prepare(`SELECT next_due_date FROM subscriptions WHERE user_id = ? AND deleted_at IS NULL`)
+      .get(USER) as { next_due_date: string }).next_due_date;
+
+    it("leaves a charge the owner moved by hand where they put it", async () => {
+      const id = await dueAndConfirmed();
+      harness.db!.prepare(`UPDATE subscriptions SET next_due_date = '2099-06-15' WHERE user_id = ?`).run(USER);
+
+      await revertExpected(USER, id);
+
+      expect(nextCharge(), "an owner's own date is not this undo's to move").toBe("2099-06-15");
+      expect(expectedRows()[0]!.status).toBe("pending");
+    });
+
+    it("leaves the charge alone when the rule's own cycle is corrupt", async () => {
+      const id = await dueAndConfirmed();
+      const advanced = nextCharge();
+      harness.db!.prepare(`UPDATE subscriptions SET billing_day = 0 WHERE user_id = ?`).run(USER);
+
+      await revertExpected(USER, id);
+
+      expect(nextCharge(), "no date can be computed from day 0, so none is written").toBe(advanced);
+      expect(expectedRows()[0]!.status, "the occurrence still comes back").toBe("pending");
     });
   });
 });

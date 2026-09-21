@@ -231,7 +231,13 @@ export function planDraft(input: PlanDraftInput) {
   const { cardSourceValid, startMonth } = draftStart(input);
   const { paid, paidChanged, paidValid } = draftPaid(input, count);
   const { dueDay, dueDayValid } = draftDueDay(input);
-  const resolvedStart = paidChanged ? deriveStartMonth(paid, monthKeyOf(input.today), dueDay, input.today) : startMonth;
+  // Derive only from input this function has already judged sound. `paid` and
+  // `dueDay` are read for validity two lines above and again in `valid` below;
+  // deriving between the two let exactly the values being refused reach
+  // `deriveStartMonth`, which fails closed on them by design. The month the
+  // form shows for a draft it will not save is the one it started from.
+  const derivable = paidChanged && paidValid && dueDayValid;
+  const resolvedStart = derivable ? deriveStartMonth(paid, monthKeyOf(input.today), dueDay, input.today) : startMonth;
   const described = input.title.trim() !== "" && (input.amountMinor ?? 0) > 0;
   return {
     count,

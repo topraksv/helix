@@ -57,6 +57,7 @@ import {
   Select,
 } from "../ui/components";
 import { appAlert } from "../ui/dialog";
+import { useDirtyExitGuard, useDraftDirty } from "../ui/dirty-exit";
 import { useOperationGuard } from "../ui/operation-guard";
 import { useUndo } from "../ui/undo";
 import { spacing, type } from "../ui/theme";
@@ -140,6 +141,10 @@ function StatementDetail({
   const [paidOn, setPaidOn] = useState<ISODate>(today);
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
+  // This form saves in place and clears itself rather than navigating, so it
+  // needs no `allowExit`: the reset below puts the draft back at its baseline,
+  // which is what makes the guard quiet again after a payment.
+  useDirtyExitGuard(useDraftDirty(JSON.stringify({ kind, amountRaw, paidOn, note }), true) && !busy);
   // A full payment is whatever is still owed; asking for the figure would only
   // invite one that is a kuruş off and quietly records a partial payment.
   const payMinor = kind === "full" ? remainingMinor : amountMinor;
@@ -175,6 +180,10 @@ function StatementDetail({
         setAmountRaw("");
         setAmountMinor(null);
         setNote("");
+        // The date belongs to the payment just recorded, not to the next one,
+        // and leaving it behind is also what would keep the exit guard above
+        // warning about a form that no longer holds anything.
+        setPaidOn(today);
         undo.show(tr.cardStatement.saved, () => deleteStatementPayment(userId, id).then(() => scheduleSync(userId)));
       } catch (error) {
         devError("card-statement.pay", error);

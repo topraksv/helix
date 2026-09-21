@@ -517,8 +517,17 @@ function CategoryTable({ rows, monthKeys, currentMonth, compact, selected, onSel
           rowHighlight: selected === category.id,
           cells: [
             ...monthKeys.map((m) => {
-              const v = data.monthly.get(m) ?? 0;
-              return <Amount key={m} minor={v} colorized={false} color={v === 0 ? palette.textSecondary : palette.text} style={[...amountStyle, { fontVariant: ["tabular-nums"] }]} />;
+              const v = data.monthly.get(m) ?? null;
+              // A month with no activity prints nothing, exactly as the ledger's
+              // own cells do (`hasPrintableValue` in `cash-flow/index.tsx`).
+              // This table greyed a ₺0,00 instead, so a category used once in a
+              // twelve-month window drew eleven zeros and read eleven of them
+              // out — the same disagreement between drawn and spoken that
+              // `docs/UI.md` §7 was written after. The Toplam column below
+              // keeps its zero: a year that nets to nothing is an answer, not
+              // an absence, which is the balance-column half of the same rule.
+              if (v === null || v === 0) return null;
+              return <Amount key={m} minor={v} colorized={false} color={palette.text} style={[...amountStyle, { fontVariant: ["tabular-nums"] }]} />;
             }),
             <Amount key="__total" minor={data.ytdMinor} colorized={false} color={palette.text} style={amountStyle} />,
           ],

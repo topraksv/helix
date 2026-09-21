@@ -16,6 +16,7 @@ import { DateField } from "../../../ui/calendar";
 import { Body, Button, Card, DataStateNotice, MoneyField, PanelHeader, Screen } from "../../../ui/components";
 import { appAlert } from "../../../ui/dialog";
 import { navigateBack } from "../../../ui/navigation";
+import { useDirtyExitGuard, useDraftDirty } from "../../../ui/dirty-exit";
 import { placeholderPools, useRotatingPlaceholder } from "../../../ui/placeholders";
 import { circle, radius, spacing, type, useTheme } from "../../../ui/theme";
 
@@ -29,6 +30,7 @@ export default function InvestmentSetupScreen() {
   const [cashRaw, setCashRaw] = useState("");
   const [cashMinor, setCashMinor] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
+  const { allowExit } = useDirtyExitGuard(useDraftDirty(JSON.stringify({ date, cashRaw }), true) && !busy);
   const amountPlaceholder = useRotatingPlaceholder(placeholderPools.amount, { prefix: false });
 
   const save = async () => {
@@ -40,7 +42,7 @@ export default function InvestmentSetupScreen() {
       // One way out, to the wallet, where "Yeni Ürün Tanımla" is the first
       // thing on the screen. A second button that only skipped that one tap
       // read as a second, different action and was not one.
-      navigateBack(router, "/(tabs)/investments");
+      allowExit(() => navigateBack(router, "/(tabs)/investments"));
     } catch (error) {
       void appAlert(userMessage(error, tr.errors.saveFailed), tr.errors.title);
     } finally {

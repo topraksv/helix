@@ -21,7 +21,8 @@ import { Select } from "./components";
 import { SUPPORTED_CURRENCIES, type Currency } from "../services/fx-fetch";
 import { CURRENCY_INFO, currencyLabel } from "../domain/fx-provider";
 import { tr } from "../i18n/tr";
-import { controlSize, font, radius, spacing, stateOpacity, type, useTheme } from "./theme";
+import { interactionSurface } from "./interaction";
+import { controlSize, font, radius, spacing, type, useTheme } from "./theme";
 
 /** Kept in front because together they are almost every entry in this app. */
 const PRIMARY = ["TRY", "USD", "EUR"] as const satisfies readonly Currency[];
@@ -51,7 +52,7 @@ export function CurrencyPicker({
       accessibilityState={{ checked: selected, selected }}
       accessibilityLabel={hint}
       onPress={onPress}
-      style={({ pressed }) => ({
+      style={(state) => ({
         // Four equal columns rather than four intrinsic widths. Picking a
         // currency renames the last chip ("Diğer" → "🇦🇱 ALL"), and at intrinsic
         // width that one extra glyph pushed it onto a second line on a phone —
@@ -63,8 +64,11 @@ export function CurrencyPicker({
         alignItems: "center",
         paddingHorizontal: spacing.sm,
         borderRadius: radius.full,
-        backgroundColor: selected ? palette.primarySoft : palette.surfaceAlt,
-        opacity: pressed ? stateOpacity.pressed : 1,
+        // The chip in `selection-controls.tsx` answers a pointer through this
+        // function and passes its resting fill as the base; this one painted the
+        // fill itself and dimmed on press, so it stayed dark under the cursor
+        // while the chip beside it lit. `docs/UI.md` §3 wants the shared fill.
+        ...interactionSurface(palette, state, { base: selected ? palette.primarySoft : palette.surfaceAlt }),
       })}
     >
       <Text

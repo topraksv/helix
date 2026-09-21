@@ -34,7 +34,6 @@ import {
   radius,
   contentWidth,
   spacing,
-  stateOpacity,
   resolvePaletteId,
   DEFAULT_PALETTE_ID,
   lightPalette,
@@ -51,6 +50,7 @@ import type { OperationFlowKind } from "../ui/operation-flow";
 import { DialogHost, PromptHost } from "../ui/dialog";
 import { ErrorBoundary } from "../ui/error-boundary";
 import { FrozenGate } from "../ui/frozen-gate";
+import { interactionSurface } from "../ui/interaction";
 import { ThemeDissolve } from "../ui/motion-primitives";
 import { applyThemeChange, syncThemeColorMeta } from "../ui/theme-transition";
 import { UndoSnackbar, useUndo } from "../ui/undo";
@@ -291,14 +291,16 @@ export default function RootLayout() {
                   acknowledgeDatabaseRecoveryNotice();
                   setDatabaseRecovery(null);
                 }}
-                style={({ pressed }) => ({
+                style={(state) => ({
                   minHeight: controlSize.minimumTarget,
                   alignItems: "center",
                   justifyContent: "center",
                   borderRadius: radius.md,
-                  backgroundColor: systemScheme === "dark" ? darkPalette.primary : lightPalette.primary,
-                  opacity: pressed ? stateOpacity.pressed : 1,
                   paddingHorizontal: spacing.lg,
+                  // The boot palette is a real palette, so this button answers a
+                  // pointer the way every other one does rather than dimming on
+                  // press alone — which is the whole reason `bootTheme` exists.
+                  ...interactionSurface(bootTheme.palette, state, { base: bootTheme.palette.primary }),
                 })}
               >
                 <Text style={[type.label, { color: primaryForeground, fontFamily: font.semibold }]}>{tr.databaseRecovery.continue}</Text>

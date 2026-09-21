@@ -18,6 +18,18 @@
  * runner, not micro-benchmarks: they exist to catch a change that puts a
  * synchronous derivation on the tap path or reintroduces an unreserved box,
  * not to police 20ms.
+ *
+ * WHAT THIS CANNOT SEE. The workspace here is what `onboard` leaves plus one
+ * expense, and `docs/ARCHITECTURE.md` "How a performance claim is produced"
+ * owns the workspace shape a measurement has to run on, and says anything
+ * under it reports that all is well. This is far under it. Measured
+ * 2026-09-21: the slowest interaction in this run was 24ms against the 400ms
+ * ceiling, so a derivation would have to become sixteen times more expensive
+ * before this test noticed — and on a one-row ledger an O(ledger) derivation
+ * is not expensive at all. Layout shift is the half this shape does prove,
+ * because `Amount`’s font ladder walks on any row. Seeding the real shape is
+ * in `docs/BACKLOG.md`; until it lands, read a green run here as "nothing
+ * unconditional landed on the tap path", not as a performance claim.
  */
 
 import { expect, test } from "@playwright/test";

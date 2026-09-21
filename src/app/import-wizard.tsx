@@ -214,7 +214,7 @@ function TemplateCard() {
     }
   };
   return (
-    <Card style={{ marginTop: spacing.md }}>
+    <Card>
       <SectionHeader>{tr.importer.templateTitle}</SectionHeader>
       <Body muted style={{ marginBottom: spacing.lg }}>{tr.importer.templateLead}</Body>
       <View style={{ gap: spacing.sm, marginBottom: spacing.lg }}>
@@ -700,16 +700,16 @@ export default function ImportWizardModal() {
       <ImportJourney stage={workbook ? 1 : 0} fileIcon={FileSpreadsheet} />
       <OperationStatusNotice state={operation.state} label={workbook ? tr.operation.importing : tr.dataState.loading} onCancel={committing ? undefined : operation.cancel} />
       {error ? (
-        <Card tone="error" style={{ marginTop: spacing.md }}>
+        <Card tone="error">
           <SectionHeader>{tr.importer.errorTitle}</SectionHeader>
           <Body accessibilityRole="alert" accessibilityLiveRegion="assertive" style={{ color: palette.errorText, marginBottom: spacing.sm }}>{error}</Body>
         </Card>
       ) : null}
       {!workbook ? (
-        <View style={{ marginTop: spacing.md }}>
+        <>
           <FormatGuide wide={wide} />
           <TemplateCard />
-        </View>
+        </>
       ) : (
         <>
           {years.length > 0 ? (

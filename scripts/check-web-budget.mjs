@@ -312,6 +312,27 @@ const root = process.argv[2] ?? "dist";
 // 3_415_000, deliberately under the 1% step: putting either on-demand reader
 // back measures 3_422_000 and must trip it. Total moves to measured plus ~1%,
 // the export to measured plus ~1.5%.
+// 2026-09-21, 1.8.4: re-measured because the figure above had stopped
+// describing the tree, not because a ceiling was in danger. Two clean exports
+// of `git archive` copies, same empty Supabase env, against the working tree:
+//
+//   2026-09-17 recorded   entry 3_401_637  total 4_086_391  export 7_767_782
+//   cd2b1f6 (1.8.3)       entry 3_405_954  total 4_090_714  export 7_768_989
+//   this tree (1.8.4)     entry 3_408_265  total 4_093_025  export 7_774_416
+//
+// The first step is 1.8.3 itself (`cb6844f`, twenty-two source files) and cost
+// 4_317 entry bytes that nobody recorded, because the gate stayed green and so
+// nobody had to look. The second is this round: five form screens took the
+// dirty-exit guard and four controls took `interactionSurface`, 2_311 bytes,
+// which is about 460 per guarded screen once the React Compiler has memoised
+// the hook; the shared fill is smaller than the ternaries it replaced, so the
+// four controls gave 57 bytes back.
+//
+// NO CEILING MOVES. Raising entry to measured-plus-1% would be 3_442_000, and
+// that is precisely the number the paragraph above refused: putting either
+// on-demand reader back is +20_477, which from 3_408_265 measures 3_428_742 —
+// under a 1% ceiling and over this one. The 6_735 bytes left are the guard, not
+// slack, and the next thing that wants them has to argue for them.
 const limits = {
   entryJavaScript: 3_415_000,
   totalJavaScript: 4_127_000,

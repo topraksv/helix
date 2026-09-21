@@ -6,6 +6,16 @@ defterinde yazılıdır ve bu depoya dahil değildir.
 
 Notlar kısa tutulur: ne değişti, tek cümle. Sebebi ve ölçümü commit'te.
 
+## 1.8.4
+
+### Patch Changes
+
+- Satır ya da sütuna verdiğin renk yedeği bozuyordu: o dosya geri yüklenmiyor, buluta da gönderilemiyordu. Hücre, sütun ve satır işaretlerinin üçü de artık sorunsuz gidip geliyor.
+- Ekstre incelemesi, yatırım kurulumu, ürün ve işlem formları ile kart ödeme paneli, kaydedilmemiş bir şey varken geri çıkarken artık soruyor.
+- Analiz tablosunda hareketi olmayan ay boş kalıyor; Mali Tablo'daki gibi ₺0,00 yazmıyor.
+- Takvim günü, para birimi seçimi, özet ekranındaki piyasa kartı ve veritabanı kurtarma düğmesi artık imleç üzerine gelince de yanıt veriyor.
+- İçe aktarma sihirbazında kartların arasındaki boşluk iki katına çıkmıyor.
+
 ## 1.8.3
 
 ### Patch Changes

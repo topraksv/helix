@@ -487,6 +487,20 @@ describe("per-table restore rules", () => {
     expect(isValidImportRow("matrix_colors", { ...matrixColour, token: "critical" })).toBe(true);
   });
 
+  it("accepts all three scopes, including the row mark whose month is null", () => {
+    // The fixture above is a CELL mark, so every case built from it carries a
+    // month and the suite never constructed the one shape `matrix_colors.month`
+    // is nullable for. Reproduced 2026-09-21: long-pressing a row label in Mali
+    // Tablo writes `{scope:"row", month:null}`, which the generic month loop
+    // refused — so the mark dead-lettered on push, `requeueSyncDeadLetter` called
+    // it unrepairable, and a backup containing it was refused whole, because one
+    // bad row throws for the entire file. Asserting the valid shapes is what the
+    // refusal list above cannot do: it can only prove that a wrong shape is wrong.
+    expect(isValidImportRow("matrix_colors", { ...matrixColour, scope: "row", item_key: categoryId, month: null })).toBe(true);
+    expect(isValidImportRow("matrix_colors", { ...matrixColour, scope: "column", item_key: null, month: "2026-07" })).toBe(true);
+    expect(isValidImportRow("matrix_colors", matrixColour)).toBe(true);
+  });
+
   it("refuses a negative cost basis, which no replay can produce", () => {
     // The two validators used to disagree here: restore wrote the row and
     // every later push quarantined it, so the holding existed on one device

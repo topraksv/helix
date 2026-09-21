@@ -20,6 +20,7 @@ import { scheduleSync } from "../../../sync/engine";
 import { Body, Button, Card, ChoiceTile, DataStateNotice, Field, PanelHeader, Screen, Select } from "../../../ui/components";
 import { appAlert } from "../../../ui/dialog";
 import { navigateBack } from "../../../ui/navigation";
+import { useDirtyExitGuard, useDraftDirty } from "../../../ui/dirty-exit";
 import { placeholderPools, useRotatingPlaceholder } from "../../../ui/placeholders";
 import { font, radius, spacing, type, useTheme, type Palette } from "../../../ui/theme";
 
@@ -77,6 +78,9 @@ export default function InvestmentProductScreen() {
   const [note, setNote] = useState("");
   /** Whole-percent text; basis points are the stored unit, not the typed one. */
   const [busy, setBusy] = useState(false);
+  // Before the `Redirect` below, because a hook after a conditional return is
+  // not a hook this component always runs.
+  const { allowExit } = useDirtyExitGuard(useDraftDirty(JSON.stringify({ assetType, marketCode, name, note }), true) && !busy);
   const productPlaceholder = useRotatingPlaceholder(placeholderPools.investmentProduct);
   const notePlaceholder = useRotatingPlaceholder(placeholderPools.investmentNote);
   const catalog = INVESTMENT_MARKET_TITLES.filter((item) => item.assetType === assetType);
@@ -105,11 +109,13 @@ export default function InvestmentProductScreen() {
         note,
       });
       scheduleSync(userId);
-      if (nextOperation) {
-        router.replace({ pathname: "/investments/operation", params: { kind: nextOperation, productId: id } });
-      } else {
-        navigateBack(router, "/(tabs)/investments");
-      }
+      allowExit(() => {
+        if (nextOperation) {
+          router.replace({ pathname: "/investments/operation", params: { kind: nextOperation, productId: id } });
+        } else {
+          navigateBack(router, "/(tabs)/investments");
+        }
+      });
     } catch (error) {
       void appAlert(userMessage(error, tr.errors.saveFailed), tr.errors.title);
     } finally {

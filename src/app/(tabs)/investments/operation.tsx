@@ -29,6 +29,7 @@ import { DateField } from "../../../ui/calendar";
 import { Amount, Button, Card, DataStateNotice, Eyebrow, FadeIn, Field, IconButton, Label, MoneyField, PanelHeader, Screen, Segmented, Select } from "../../../ui/components";
 import { appAlert } from "../../../ui/dialog";
 import { navigateBack } from "../../../ui/navigation";
+import { useDirtyExitGuard, useDraftDirty } from "../../../ui/dirty-exit";
 import { placeholderPools, useRotatingPlaceholder } from "../../../ui/placeholders";
 import { controlSize, font, radius, spacing, type, useTheme } from "../../../ui/theme";
 import { shouldPairOperationSummary } from "../../../ui/responsive";
@@ -136,6 +137,17 @@ function useOperationDraft() {
   const [contributionMode, setContributionMode] = useState<ContributionMode>("units");
   const [busy, setBusy] = useState(false);
   const hydratedEdit = useRef<string | null>(null);
+  // `useDraftDirty` reads this only until it captures a baseline, so it has to
+  // be false for exactly the renders between the row arriving and the effect
+  // below hydrating the form — otherwise the baseline is the empty form and
+  // the hydration itself reads as an edit the owner never made. An edit is
+  // opened with `{ id, kind }` and no `productId`, so the form showing this
+  // row's product is what proves the effect has run. A later change flips it
+  // back to false harmlessly: by then the baseline is already taken.
+  const settled = !params.id || (editing != null && productId === editing.productId);
+  const { allowExit } = useDirtyExitGuard(
+    useDraftDirty(JSON.stringify({ productId, date, quantity, unit: unit.raw, total: total.raw, note, contributionMode }), settled) && !busy,
+  );
 
   useEffect(() => {
     if (!editing || hydratedEdit.current === editing.id) return;
@@ -180,7 +192,7 @@ function useOperationDraft() {
       if (editing) await updateInvestmentOperation(userId, editing.id, input);
       else await addInvestmentOperation(userId, input);
       scheduleSync(userId);
-      navigateBack(router, "/(tabs)/investments");
+      allowExit(() => navigateBack(router, "/(tabs)/investments"));
     } catch (error) {
       void appAlert(errorText(error), tr.errors.title);
     } finally {

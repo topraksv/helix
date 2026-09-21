@@ -243,8 +243,17 @@ function hasWellFormedFields(raw: Record<string, unknown>): boolean {
   for (const key of DATE_COLUMNS) {
     if (key in raw && raw[key] != null && !isIsoDate(raw[key])) return false;
   }
+  // `!= null` like the two loops above, and this one had to learn why.
+  // `matrix_colors.month` is the only nullable column among these three names,
+  // and a ROW-scope mark is DEFINED by it being null — `TABLE_RULES.matrix_colors`
+  // and `domain/matrix-colors.ts` both say so. Without the guard this loop
+  // refused the shape those two call valid, so a marked row could not push, came
+  // back "unrepairable" from the dead-letter queue, and made its whole backup
+  // unrestorable, because one refused row throws for the entire file.
+  // Nullability is not this loop's job: `matchesDeclaredColumns` runs first and
+  // refuses a null in any `notNull` column, which the other four all are.
   for (const key of ["start_month", "month", "period_month"]) {
-    if (key in raw && !isMonthKey(raw[key])) return false;
+    if (key in raw && raw[key] != null && !isMonthKey(raw[key])) return false;
   }
   if ("currency" in raw && !isSupportedCurrency(raw.currency)) return false;
   if (

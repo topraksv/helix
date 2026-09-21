@@ -11,7 +11,7 @@ import ChevronRight from "lucide-react-native/icons/chevron-right";
 import { addMonthsToKey, monthKeyOf, monthOf, todayISO, yearOf, type ISODate, type MonthKey } from "../domain/dates";
 import { dateLabel, monthLabel, tr } from "../i18n/tr";
 import { interactionSurface } from "./interaction";
-import { circle, controlSize, radius, spacing, stateOpacity, themeShadow, type, useTheme } from "./theme";
+import { circle, controlSize, radius, spacing, themeShadow, type, useTheme } from "./theme";
 import { Button, FadeIn, IconButton, Label, controlStateStyle } from "./components";
 import { useModalAccessibility } from "./accessibility";
 import { useReducedMotion } from "./motion";
@@ -174,7 +174,7 @@ export function DateField({
         aria-expanded={open}
         accessibilityState={{ expanded: open }}
         onPress={() => setOpen(true)}
-        style={({ pressed }) => [
+        style={(state) => [
           {
             // The same fill and border every other field uses, from the same
             // function — a date is a value being entered, not a read-only chip.
@@ -185,7 +185,11 @@ export function DateField({
             flexDirection: "row",
             alignItems: "center",
             justifyContent: "space-between",
-            opacity: pressed ? stateOpacity.pressed : 1,
+            // The same fill the Select trigger answers a pointer with, from the
+            // same function. A hand-rolled pressed opacity answered a press and
+            // nothing else, so the date field sat inert beside a Select that lit
+            // on hover — `docs/UI.md` §3 asks for this fill, not for an opacity.
+            ...interactionSurface(palette, state, {}),
           },
         ]}
       >

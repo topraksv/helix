@@ -120,7 +120,7 @@ describe("sync change probe coverage", () => {
     // One `union all` branch per table, each reading one relation. Parsed from
     // the relation the branch actually reads rather than from the label it
     // returns, because a copy-paste that updates the label and not the table is
-    // exactly the mistake writing 21 branches out invites.
+    // exactly the mistake writing one branch per table out by hand invites.
     const read = [...sql.matchAll(/from public\.([a-z_]+) h\b/g)].map((match) => match[1]!);
     const labelled = [...sql.matchAll(/select '([a-z_]+)'::text, k\.updated_at/g)].map((match) => match[1]!);
 

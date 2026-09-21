@@ -56,6 +56,7 @@ import {
   upsertSubscription,
 } from "../../src/data/repo";
 import { saveCellNote } from "../../src/data/repo/cell-notes";
+import { setMatrixColor } from "../../src/data/repo/matrix-colors";
 import { deterministicId, naturalKeys } from "../../src/db/ids";
 import { resetLocalWorkspace, writeSetting } from "../../src/db/mutations";
 import { buildIdRemap, isDeterministicId } from "../../src/services/backup-remap";
@@ -82,6 +83,17 @@ async function seedSourceAccount(): Promise<void> {
   });
   await upsertCategoryBudget(SOURCE_USER, { month: "2026-07" as never, categoryId: expenseId, amountMinor: 2_000_00 });
   await saveCellNote(SOURCE_USER, "2026-07" as never, expenseId, "temmuz notu");
+  // All three colour scopes, because each one nulls a different column and the
+  // suite had only ever carried `cell`. The ROW mark is the shape whose `month`
+  // is null, and that null reached the generic month check as "not a month key"
+  // and made this whole file unrestorable — the same failure the subscription
+  // comment below records, arrived at through a different column. The COLUMN
+  // mark nulls `item_key` instead, which is the key `remapRow` has to rewrite
+  // by name because it does not end in `_id`; carrying all three is what makes
+  // the cross-account test below exercise every branch of `resolveMatrixColors`.
+  await setMatrixColor(SOURCE_USER, { scope: "row", itemKey: expenseId, month: null }, "red");
+  await setMatrixColor(SOURCE_USER, { scope: "column", itemKey: null, month: "2026-07" as never }, "green");
+  await setMatrixColor(SOURCE_USER, { scope: "cell", itemKey: expenseId, month: "2026-07" as never }, "orange");
   // A variable-amount subscription: the newest feature, and the one most
   // likely to be missing from a backup written before it existed.
   await upsertSubscription(SOURCE_USER, {
@@ -111,9 +123,11 @@ describe("backup round trip", () => {
       transactions: countFor("transactions", SOURCE_USER),
       category_budgets: countFor("category_budgets", SOURCE_USER),
       cell_notes: countFor("cell_notes", SOURCE_USER),
+      matrix_colors: countFor("matrix_colors", SOURCE_USER),
       subscriptions: countFor("subscriptions", SOURCE_USER),
     };
     expect(before.subscriptions).toBe(1);
+    expect(before.matrix_colors, "the seed must carry one mark of every scope").toBe(3);
 
     // A zero-amount variable subscription used to make the account's OWN
     // backup unreadable: the validator required a positive amount, so the
@@ -173,8 +187,12 @@ describe("backup round trip", () => {
       transactions: countFor("transactions", SOURCE_USER),
       category_budgets: countFor("category_budgets", SOURCE_USER),
       cell_notes: countFor("cell_notes", SOURCE_USER),
+      matrix_colors: countFor("matrix_colors", SOURCE_USER),
       subscriptions: countFor("subscriptions", SOURCE_USER),
     };
+    const sourceRowMark = harness.db!.prepare(
+      `SELECT id, item_key FROM matrix_colors WHERE user_id = ? AND scope = 'row'`,
+    ).get(SOURCE_USER) as { id: string; item_key: string };
     const sourceBudgetId = (harness.db!.prepare(
       `SELECT id FROM category_budgets WHERE user_id = ?`,
     ).get(SOURCE_USER) as { id: string }).id;
@@ -225,6 +243,23 @@ describe("backup round trip", () => {
     // A uuidv7 id is untouched by the remap.
     expect(targetTx?.id, "a uuidv7 transaction id is untouched by the remap").toBe(sourceTxId);
 
+    // Every scope survives the account change with its own nulls intact. The
+    // category here is a plain uuid the remap leaves alone, so the `item_key`
+    // REWRITE is not what this proves — the test below, whose category id is
+    // derived from the account, is where that branch actually fires.
+    const targetRowMark = harness.db!.prepare(
+      `SELECT id, item_key, month, token FROM matrix_colors WHERE user_id = ? AND scope = 'row'`,
+    ).get(TARGET_USER) as { id: string; item_key: string; month: string | null; token: string };
+    expect(targetRowMark.item_key, "the mark still names the same plain-uuid category").toBe(targetCategory.id);
+    expect(targetRowMark.id, "the mark's own derived id is recomputed for the new account").not.toBe(sourceRowMark.id);
+    expect(targetRowMark.month, "a row mark still has no month after a restore").toBeNull();
+    expect(targetRowMark.token).toBe("red");
+    const targetColumnMark = harness.db!.prepare(
+      `SELECT item_key, month FROM matrix_colors WHERE user_id = ? AND scope = 'column'`,
+    ).get(TARGET_USER) as { item_key: string | null; month: string };
+    expect(targetColumnMark.item_key, "a column mark still has no item after a restore").toBeNull();
+    expect(targetColumnMark.month).toBe("2026-07");
+
     // Re-running the SAME import must converge, not duplicate: the remap is a
     // pure function of (bundle, source, target), so a second pass computes
     // the identical target ids and the upsert lands on the same rows.
@@ -254,6 +289,12 @@ describe("backup round trip", () => {
       sortOrder: 0,
     });
     await writeSetting(SOURCE_USER, "column_years", { "2026": [sourceCategoryId] });
+    // `matrix_colors.item_key` is the third place an id hides from the generic
+    // `*_id` rule, and the only one of the three that is a column rather than
+    // JSON. It belongs in this test because the category here is re-derived
+    // under the target account, which is the only condition under which the
+    // rewrite can be observed at all.
+    await setMatrixColor(SOURCE_USER, { scope: "row", itemKey: sourceCategoryId, month: null }, "red");
 
     const bundle = parseExportBundleText(await buildExportText(SOURCE_USER));
     // See the previous test: local SQLite holds one account at a time in the
@@ -278,6 +319,11 @@ describe("backup round trip", () => {
       `SELECT value FROM settings WHERE user_id = ? AND key = 'column_years'`,
     ).get(TARGET_USER) as { value: string };
     expect(JSON.parse(settingsRow.value)).toEqual({ "2026": [targetCategoryId] });
+
+    const markRow = harness.db!.prepare(
+      `SELECT item_key FROM matrix_colors WHERE user_id = ? AND scope = 'row'`,
+    ).get(TARGET_USER) as { item_key: string };
+    expect(markRow.item_key, "the colour follows the category instead of pointing at account A's").toBe(targetCategoryId);
   });
 
   it("accepts a backup written before the variable-amount columns existed", async () => {

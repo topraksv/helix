@@ -22,6 +22,17 @@
  * hook here runs on both surfaces, and the `.native` split is where a
  * Reanimated-only path belongs. Corrected 2026-09-20; the previous wording
  * argued from an install that had already happened.
+ *
+ * Every `Animated.Value` here is held by `useState(() => new Animated.Value(x))`
+ * and not by React Native's own `useRef(new Animated.Value(x)).current`. Two
+ * reasons, and the second is the one a reader will not guess: the documented
+ * idiom reads `.current` during render, which `react-hooks/refs` refuses and
+ * which taints every render-time use of the value it returns; and its argument
+ * is evaluated on every render, so each one constructs an `Animated.Value` that
+ * the ref then discards. A lazy initialiser runs once and is read as a value,
+ * not as a ref. Do not restore the idiom from the React Native docs — seven
+ * other files in `src/ui` still carry it, and they are the next sweep's, not a
+ * precedent for this one.
  */
 
 import React, { useContext, useEffect, useRef, useState, useSyncExternalStore } from "react";
@@ -49,7 +60,7 @@ import { crossFadesNatively, peekThemeTransitionBackground, takeThemeTransitionB
 export function useDrawIn(active = true, duration = motion.draw, token?: string | number): Animated.Value {
   const reducedMotion = useReducedMotion();
   const visit = useScreenVisit();
-  const progress = useRef(new Animated.Value(0)).current;
+  const [progress] = useState(() => new Animated.Value(0));
   const lastVisit = useRef(0);
   useEffect(() => {
     const arriving = visit !== lastVisit.current;
@@ -177,7 +188,7 @@ export function useScreenFocus(): boolean {
  */
 export function useValueFlash(value: number, enabled = true): Animated.Value {
   const reducedMotion = useReducedMotion();
-  const flash = useRef(new Animated.Value(0)).current;
+  const [flash] = useState(() => new Animated.Value(0));
   const previous = useRef(value);
   useEffect(() => {
     const changed = previous.current !== value;
@@ -285,7 +296,7 @@ export function useCountUp(value: number, duration = motion.figure): number {
  */
 export function useShake(): { style: { transform: { translateX: Animated.Value }[] }; shake: () => void } {
   const reducedMotion = useReducedMotion();
-  const offset = useRef(new Animated.Value(0)).current;
+  const [offset] = useState(() => new Animated.Value(0));
   const shake = React.useCallback(() => {
     if (reducedMotion) return;
     offset.setValue(0);
@@ -336,7 +347,7 @@ function MeasuredCollapse({
   // tab order. The content is unmounted once the closing animation has run, so
   // the exit is still animated and the collapsed state is genuinely absent.
   const [mounted, setMounted] = useState(open);
-  const progress = useRef(new Animated.Value(open ? 1 : 0)).current;
+  const [progress] = useState(() => new Animated.Value(open ? 1 : 0));
 
   useEffect(() => {
     if (open) setMounted(true);
@@ -399,7 +410,7 @@ function MeasuredCollapse({
  */
 function useEntranceProgress(): Animated.Value {
   const reducedMotion = useReducedMotion();
-  const progress = useRef(new Animated.Value(reducedMotion ? 1 : 0)).current;
+  const [progress] = useState(() => new Animated.Value(reducedMotion ? 1 : 0));
   useEffect(() => {
     if (reducedMotion) {
       progress.setValue(1);
@@ -436,7 +447,7 @@ function NativeCollapse({
   const reducedMotion = useReducedMotion();
   const [mounted, setMounted] = useState(open);
   const mountedRef = useRef(open);
-  const progress = useRef(new Animated.Value(open ? 1 : 0)).current;
+  const [progress] = useState(() => new Animated.Value(open ? 1 : 0));
 
   useEffect(() => {
     if (open && !mountedRef.current) {
@@ -587,7 +598,7 @@ export function ThemeDissolve() {
   const previous = useRef(identity);
   const previousPalette = useRef(palette.background);
   const browserCrossFades = crossFadesNatively();
-  const progress = useRef(new Animated.Value(0)).current;
+  const [progress] = useState(() => new Animated.Value(0));
   const [transitionFrom, setTransitionFrom] = useState<string | null>(null);
   const [webFade, setWebFade] = useState<"visible" | "fading">("fading");
   const preparedFrom = peekThemeTransitionBackground();

@@ -381,8 +381,8 @@ async function pullAndMerge(userId: string, token: SessionEpochToken): Promise<n
   let superseded = 0;
   const tables = Object.keys(SYNCED_TABLES) as SyncedTableName[];
 
-  // One read for all 21 cursors. `sync_state` holds one small row per table,
-  // and this was 21 separate statements for them.
+  // One read for every cursor. `sync_state` holds one small row per table,
+  // and this was one statement per table before.
   const cursorRows = await sqlite.getAllAsync<{ table_name: string; last_pulled_at: string }>(
     `SELECT table_name, last_pulled_at FROM sync_state`,
     [],

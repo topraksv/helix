@@ -68,6 +68,7 @@ import {
   Screen,
   SectionHeader,
 } from "../ui/components";
+import { useDirtyExitGuard } from "../ui/dirty-exit";
 import { ImportArtwork, ImportJourney } from "../ui/import-journey";
 import { Select } from "../ui/selection-controls";
 import { interactionBleed, interactionSurface } from "../ui/interaction";
@@ -519,6 +520,12 @@ export default function StatementImportScreen() {
   // Seeded from the paper and then the reader's: one statement bills one period on one card.
   const [period, setPeriod] = useState<MonthKey>(monthKeyOf(todayISO()));
   const [cardId, setCardId] = useState<string | null>(null);
+  // A parsed statement under review is the draft here: the rows the owner kept,
+  // removed, re-categorised and re-priced exist only in this component until
+  // `commit` writes them. `import-wizard.tsx` guards the same shape one screen
+  // over; this one did not, so the back control threw the whole review away
+  // without asking.
+  const { allowExit } = useDirtyExitGuard(extracted != null && !busy);
 
   const visibleCandidates = (extracted?.candidates ?? []).filter((candidate) => !removed.has(candidate.importKey));
   const verdicts = extracted ? ledger.review(extracted.candidates, period, cardId) : new Map<string, CandidateVerdict>();
@@ -598,7 +605,7 @@ export default function StatementImportScreen() {
         result.plansWritten > 0 ? tr.statement.plansCommitted(result.plansWritten) : null,
         result.skipped > 0 ? tr.statement.skipped(result.skipped) : null,
       ].filter(Boolean).join(" "));
-      router.back();
+      allowExit(() => router.back());
     } catch (error) {
       devError("statement.commit", error);
       void appAlert(userMessage(error, tr.errors.saveFailed), tr.errors.title);

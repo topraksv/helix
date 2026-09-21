@@ -443,6 +443,31 @@ describe("interaction feedback contracts", () => {
     expect(offenders, "an interaction fill that no other control shares").toEqual([]);
   });
 
+  /**
+   * The same rule, caught the other way round.
+   *
+   * The test above looks for a BACKGROUND chosen by `pressed`, which is what a
+   * hand-rolled fill looks like. A control that dims instead — `opacity:
+   * pressed ? stateOpacity.pressed : 1` — answers a press and says nothing to a
+   * pointer, and six sites drifted past that test doing exactly this: the boot
+   * recovery button among them, which had a real palette available the whole
+   * time. `docs/UI.md` §3 carries the three that stay and why.
+   */
+  it("dims on press only where a shared fill cannot be mixed", () => {
+    const sanctioned = [
+      // Rule 3's delegating inner control: the outer header owns the fill.
+      "src/ui/sticky-table.tsx",
+      // Inverted surface — its background IS `palette.text`.
+      "src/ui/undo.tsx",
+      // The fill under a tab is the travelling selection, not the tab.
+      "src/ui/tab-bar.tsx",
+    ];
+    const offenders = sourceFiles("src", { atLeast: 150 })
+      .filter((path) => /opacity:\s*pressed \? stateOpacity\./.test(readFileSync(path, "utf8")))
+      .sort();
+    expect(offenders).toEqual([...sanctioned].sort());
+  });
+
   it("keeps loading actions visually active while preventing a second press", () => {
     expect(button).toContain("const visuallyDisabled = Boolean(disabled && !loading)");
     expect(button).toContain("disabled={disabled || loading}");
@@ -1567,6 +1592,25 @@ describe("placement contract", () => {
         const matches = [...source.matchAll(/marginTop:\s*-\s*spacing\./g)];
         return matches.map((match) => `${path}:${source.slice(0, match.index!).split("\n").length}`);
       });
+    expect(offenders).toEqual([]);
+  });
+
+  /**
+   * Every `Card` already ends with `marginBottom: spacing.md`, so a card that
+   * also reserves a gap ABOVE itself doubles the one the block before it left.
+   * Four places in the import flow did, and the wizard read as two screens
+   * with a hole between them.
+   *
+   * Only the card's own style is scanned, because that is the half a static
+   * read can prove without guessing what the previous sibling renders.
+   */
+  it("never reserves a gap above a Card", () => {
+    const offenders = placementSources.flatMap((path) => {
+      const source = readFileSync(join(root, path), "utf8");
+      return [...source.matchAll(/<Card\b[^>]*?marginTop:/gs)].map(
+        (match) => `${path}:${source.slice(0, match.index!).split("\n").length}`,
+      );
+    });
     expect(offenders).toEqual([]);
   });
 

@@ -130,10 +130,10 @@ describe("boot migration", () => {
     // data-only migration moves no schema, so drizzle writes no snapshot and
     // the previous one stays current — 0010 and 0012 are both pure `UPDATE`.
     //
-    // This is asserted because the gap reads like a defect: the journal has 13
-    // entries and `meta/` has 11 snapshots, and an audit has already raised
-    // that as a broken folder once. The rule is snapshot-iff-DDL, so state it
-    // where it can fail rather than explaining it again in prose.
+    // This is asserted because the gap reads like a defect: `meta/` holds
+    // fewer snapshots than the journal has entries, and an audit has already
+    // raised that as a broken folder once. The rule is snapshot-iff-DDL, so
+    // state it where it can fail rather than explaining it again in prose.
     for (const entry of journal.entries) {
       const movesSchema = /^\s*(CREATE|ALTER|DROP)\b/im.test(sqlFor(entry.tag));
       const snapshot = join(MIGRATIONS_DIR, "meta", `${String(entry.idx).padStart(4, "0")}_snapshot.json`);

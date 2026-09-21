@@ -246,6 +246,10 @@ export function UndoSnackbar() {
               clear();
               run?.();
             }}
+            // Opacity, not `interactionSurface`: this toast is inverted
+            // (`backgroundColor: palette.text` above), and the shared fill mixes
+            // its tints for a surface the right way up. Laid over the inverse
+            // they land as a wash of the wrong colour.
             style={({ pressed }) => ({
               minHeight: controlSize.minimumTarget,
               justifyContent: "center",
@@ -280,6 +284,10 @@ export function UndoSnackbar() {
               useUndo.getState().show(message, onUndo, "warning");
               void appAlert(tr.errors.undoFailed, tr.errors.title);
             }}
+            // Opacity, not `interactionSurface`: this toast is inverted
+            // (`backgroundColor: palette.text` above), and the shared fill mixes
+            // its tints for a surface the right way up. Laid over the inverse
+            // they land as a wash of the wrong colour.
             style={({ pressed }) => ({
               minHeight: controlSize.minimumTarget,
               justifyContent: "center",

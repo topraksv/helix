@@ -325,6 +325,35 @@ describe("planDraft", () => {
     expect(draft({ dueDayText: "40" })).toMatchObject({ dueDayValid: true, dueDay: 5 });
   });
 
+  /**
+   * A refusal has to BE a refusal. `resolvedStart` derived from `paid` and
+   * `dueDay` before either was read for validity, so the very inputs the two
+   * tests above call invalid were the ones that reached `deriveStartMonth` —
+   * but only on a draft that also moves the start, which is why both of those
+   * tests passed while the form crashed. `planDraft` runs unguarded in the
+   * hook body of `installment-new.tsx`, so the throw replaced the form with
+   * the error boundary instead of showing the refusal it had already computed.
+   *
+   * Reproduced 2026-09-21 before the fix: a loan due day of `0` threw
+   * `Invalid day of month: 0`, `-1` already-paid on an edit threw `paidCount
+   * cannot be negative`, and `1.5` invented the month key `"2026-8.5"` — the
+   * same class of syntactically-invalid string `clampDayToMonth` was hardened
+   * against in `dates.ts`.
+   */
+  it("refuses corrupt input that also moves the start, rather than throwing on it", () => {
+    const edit = { existingStartMonth: "2026-03" as const, startChoice: "2026-03" as const, storedPaid: 5 };
+    for (const dueDayText of ["0", "32", "7.5", "x"]) {
+      expect(draft({ kind: "loan", dueDayText, paidText: "2" }), dueDayText)
+        .toMatchObject({ dueDayValid: false, valid: false, resolvedStart: "2026-08" });
+    }
+    for (const paidText of ["-1", "1.5", "x", "7"]) {
+      expect(draft({ ...edit, paidText }), paidText)
+        .toMatchObject({ valid: false, resolvedStart: "2026-03", reschedule: false });
+    }
+    expect(draft({ countText: "x", paidText: "2" }), "a corrupt count invalidates the paid count that reads it")
+      .toMatchObject({ valid: false, resolvedStart: "2026-09" });
+  });
+
   it("refuses what cannot be saved", () => {
     for (const over of [
       { title: "  " },

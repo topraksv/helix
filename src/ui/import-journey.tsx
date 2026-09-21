@@ -99,7 +99,11 @@ export function ImportJourney({ stage, fileIcon }: { stage: ImportStage; fileIco
       accessible
       accessibilityRole="image"
       accessibilityLabel={steps.map((step) => step.label).join(", ")}
-      style={{ flexDirection: "row", alignItems: "center", marginVertical: spacing.md }}
+      // The block above owns the gap above: every `Card` carries
+      // `marginBottom`, and where this strip comes first on the screen there
+      // is nothing above to separate from. Only the gap BELOW is this
+      // strip's to reserve, because it is not a Card and gets none by default.
+      style={{ flexDirection: "row", alignItems: "center", marginBottom: spacing.md }}
     >
       {steps.map((item, index) => {
         const Icon = item.icon;

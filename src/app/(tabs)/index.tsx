@@ -59,7 +59,7 @@ import { marketTileColumns, shouldPairDashboardPanels, shouldSplitDashboardHero,
 import { useContentWidth, useMeasuredWidth } from "../../ui/viewport";
 import { interactionSurface } from "../../ui/interaction";
 import { useWarmRoute } from "../../ui/route-warmup";
-import { circle, controlSize, density, font, heroSurface, iconSize, radius, spacing, stateOpacity, type, useTheme } from "../../ui/theme";
+import { circle, controlSize, density, font, heroSurface, iconSize, radius, spacing, type, useTheme } from "../../ui/theme";
 import { devError } from "../../services/logger";
 import { useOperationGuard } from "../../ui/operation-guard";
 
@@ -188,8 +188,7 @@ function QuoteTile({
       accessibilityLabel={tr.markets.quote(label, marketRateLabel(price.buyTry), `${marketRateLabel(price.sellTry)}\u00A0₺`, direction)}
       accessibilityHint={tr.markets.openDetail(label)}
       onPress={() => router.push({ pathname: "/market-detail", params: { code } })}
-      style={({ pressed }) => ({
-        opacity: pressed ? stateOpacity.pressed : 1,
+      style={(state) => ({
         flexGrow: 1,
         flexBasis: columns === 3 ? "29%" : columns === 2 ? "46%" : "100%",
         minWidth: 0,
@@ -197,10 +196,13 @@ function QuoteTile({
         justifyContent: "space-between",
         padding: spacing.md,
         borderRadius: radius.md,
-        backgroundColor: palette.surfaceAlt,
         borderWidth: StyleSheet.hairlineWidth,
         borderColor: palette.border + "70",
         overflow: "hidden",
+        // The two other tappable cards in this file already answer a pointer
+        // through the shared fill; this one dimmed on press and did nothing
+        // under a cursor, which is the dead surface `docs/UI.md` §3 names.
+        ...interactionSurface(palette, state, { base: palette.surfaceAlt }),
       })}
     >
       {price.direction !== "" ? (
