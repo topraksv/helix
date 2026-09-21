@@ -1,4 +1,21 @@
 version: 2
+# Dependabot opens nothing. Both ecosystems are capped at zero open pull
+# requests, which is how a version update is switched off, and Dependabot
+# security updates are disabled on the repository itself — together they were
+# the only two things in this project that could create a branch. This tree is
+# delivered by committing to `main`; a dependency moves when someone applies it
+# there, gates it, and pushes, which is also the only way the lockfile is ever
+# recomputed against the tree it will ship with.
+#
+# Nothing is lost by it. `security.yml` audits `package-lock.json` against the
+# advisory database every Monday and on every push that touches it, so a
+# vulnerable version is still reported — with evidence, in a run, instead of in
+# a branch. The rest is routine, and routine belongs in a sweep.
+#
+# Everything below is kept because it is still true: the groups say how an
+# update would be batched, and the `ignore` list is the written record of which
+# packages must not move on their own and why each one broke when it did. Raise
+# a limit and it all applies again, unchanged.
 updates:
   - package-ecosystem: npm
     directory: /
@@ -9,7 +26,7 @@ updates:
       timezone: Europe/Istanbul
     cooldown:
       default-days: 7
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 0
     groups:
       safe-npm-updates:
         update-types: [minor, patch]
@@ -100,7 +117,7 @@ updates:
       timezone: Europe/Istanbul
     cooldown:
       default-days: 7
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 0
     groups:
       github-actions:
         patterns: ["*"]

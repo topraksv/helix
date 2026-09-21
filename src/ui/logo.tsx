@@ -12,7 +12,7 @@
 import { useState } from "react";
 import { Text, View } from "react-native";
 import { Image } from "expo-image";
-import Building2 from "lucide-react-native/icons/building-2";
+import BuildingComplex from "lucide-react-native/icons/building-complex";
 import Car from "lucide-react-native/icons/car";
 import Droplets from "lucide-react-native/icons/droplets";
 import Dumbbell from "lucide-react-native/icons/dumbbell";
@@ -95,7 +95,7 @@ const UTILITY_ICONS: { match: RegExp; icon: LucideIcon; color: string }[] = [
   { match: /dogalgaz|\bgaz\b|igdas|izmirgaz|baskentgaz|bursagaz|aksa gaz|palgaz/, icon: Flame, color: "#eb6834" },
   { match: /internet|fiber|adsl|wifi|superonline|turknet|millenicom|vodafone net|d-smart net/, icon: Wifi, color: "#4a3aa7" },
   { match: /telefon|gsm|\bhat\b|mobil hat|faturali hat/, icon: Phone, color: "#1baf7a" },
-  { match: /aidat|\bsite\b|apartman|yonetim/, icon: Building2, color: "#5d6579" },
+  { match: /aidat|\bsite\b|apartman|yonetim/, icon: BuildingComplex, color: "#5d6579" },
   { match: /sigorta|kasko|dask|bes\b|emeklilik/, icon: Shield, color: "#008300" },
   { match: /okul|kurs|egitim|universite|yurt\b/, icon: GraduationCap, color: "#d55181" },
   { match: /spor|fitness|gym|salon|pilates|yoga/, icon: Dumbbell, color: "#e34948" },
