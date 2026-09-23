@@ -6,6 +6,16 @@ defterinde yazılıdır ve bu depoya dahil değildir.
 
 Notlar kısa tutulur: ne değişti, tek cümle. Sebebi ve ölçümü commit'te.
 
+## 1.8.5
+
+### Patch Changes
+
+- Dövizli taksit planı geçmiş aylara bugünün kurunu yazıyordu; artık her taksit kendi günündeki kurla hesaplanıyor.
+- Ödenmiş taksitlerden sonra kalan aylara yetmeyen bir toplam artık reddediliyor; eskiden tüm tutarı baştan bölüp fazla borç yazıyordu.
+- Yıllık aboneliğin maliyeti artık tam tutarı gösteriyor: ₺1.199'luk plan ₺1.199,04 okunmuyor.
+- Çıkış yapınca ya da hesabı silince cihazdaki belge dosyaları da siliniyor; silinen bir işlemin fişleri de geri alma süresi geçince kaldırılıyor.
+- Yedek dosyası boş tabloları yazmıyor, böylece eski sürüm de açabiliyor; tablo önizlemesi tekrarlanan satırı içe aktarmanın saydığı gibi sayıyor.
+
 ## 1.8.4
 
 ### Patch Changes
