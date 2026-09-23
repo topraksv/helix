@@ -53,13 +53,16 @@ export async function buildExportText(userId: string, signal?: AbortSignal): Pro
       [userId],
     );
     throwIfAborted(signal);
-    builder.addTable(table, rows);
+    // An empty table is left out rather than named: restore merges what is
+    // present, so absent and empty read alike here, while the build before one
+    // that added a table refuses the whole file for a name it does not know.
+    if (rows.length > 0) builder.addTable(table, rows);
   }
   return builder.finish();
 }
 
 /** Write content to a shareable file (native) or trigger a download (web). Returns the file path or null on web. */
-export async function saveTextFile(filename: string, content: string, mime: string): Promise<string | null> {
+export async function saveFile(filename: string, content: string | Uint8Array<ArrayBuffer>, mime: string): Promise<string | null> {
   if (Platform.OS === "web") {
     const blob = new Blob([content], { type: mime });
     const url = URL.createObjectURL(blob);
@@ -301,30 +304,4 @@ export async function buildWorkbookBytes(userId: string, signal?: AbortSignal): 
   ]);
   throwIfAborted(signal);
   return composeWorkbook({ years, subscriptions, investments });
-}
-
-/**
- * Hand bytes to the platform: a download on the web, a shareable file natively.
- *
- * The text sibling in `export-import.ts` cannot be reused — a `Blob` of a
- * string and a `Blob` of bytes are different constructions, and `File.write`
- * takes one or the other. Returns the native path, or null on the web where
- * the browser has already taken the file.
- */
-export async function saveBinaryFile(filename: string, bytes: Uint8Array<ArrayBuffer>, mime: string): Promise<string | null> {
-  if (Platform.OS === "web") {
-    const blob = new Blob([bytes], { type: mime });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = filename;
-    anchor.click();
-    URL.revokeObjectURL(url);
-    return null;
-  }
-  const file = new File(Paths.cache, filename);
-  if (file.exists) file.delete();
-  file.create();
-  file.write(bytes);
-  return file.uri;
 }

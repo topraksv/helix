@@ -26,8 +26,11 @@
 // `@ts-expect-error` here: under Deno the imports resolve fine, and the
 // directive itself became the only error `deno check` reported.
 import { feedbackSubject } from "./subject.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import nodemailer from "npm:nodemailer@^9";
+// Exact versions, the client's own supabase-js among them: nothing locks or
+// audits what Deno fetches here, so a range would be whatever the registry
+// served on the day of the deploy.
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.116.0";
+import nodemailer from "npm:nodemailer@9.1.1";
 
 const OWNER_EMAIL = "topraksavli@hotmail.com";
 

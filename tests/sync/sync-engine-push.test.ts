@@ -341,6 +341,7 @@ describe("a completed sync", () => {
 
     expect(useSyncStatus.getState()).toEqual(expect.objectContaining({ state: "idle", error: null, lastSyncAt: expect.any(String) }));
     expect(harness.rpcs).toContain("purge_expired_diagnostics");
+    expect(harness.rpcs, "the screen counts keep the same 180-day window").toContain("purge_usage_counters");
     expect(harness.uploadDiagnostics).toHaveBeenCalledWith(expect.anything(), USER, "ios", "0");
     expect(harness.reconcileAttachments).toHaveBeenCalledWith(USER, expect.any(AbortSignal));
   });

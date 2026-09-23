@@ -4,6 +4,8 @@
  *
  * The safe error is a slow run: every unrecognised path receives the full
  * gate, while a missing base receives the full gate and both deploy targets.
+ * An empty diff is not a missing one: measured from the last run that
+ * published, it means production already holds this tree.
  *
  * Usage: node scripts/classify-changes.mjs <base-ref> <head-ref>
  *        node scripts/classify-changes.mjs --files a.ts b.ts
@@ -200,8 +202,9 @@ const matches = (path, patterns) => patterns.some((pattern) => pattern.test(path
 
 export { CI_EXECUTED_SCRIPTS };
 
+/** `files` is null when no diff could be taken, and empty when one was. */
 export function classify(files) {
-  if (files.length === 0) {
+  if (files === null) {
     return {
       run_ci: true,
       light_gate: true,
@@ -276,12 +279,12 @@ function main() {
   if (first === "--files") {
     files = rest;
   } else if (!hasBase(first)) {
-    files = [];
+    files = null;
   } else {
     try {
       files = changedFiles(first, rest[0] ?? "HEAD");
     } catch {
-      files = [];
+      files = null;
     }
   }
 

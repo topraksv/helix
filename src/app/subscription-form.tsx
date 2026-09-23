@@ -69,7 +69,11 @@ function SubscriptionFormArtwork({
   const interval = cycle === "monthly" ? 1 : cycle === "yearly" ? 12 : Math.max(1, Math.min(12, intervalMonths || 1));
   // 0 is the "no estimate yet" sentinel for a variable subscription, not a
   // real forecast — treat it the same as unset rather than showing "₺0,00".
-  const monthlyMinor = amountMinor == null || amountMinor === 0 ? null : normalizedMonthlyLoadMinor(amountMinor, interval);
+  const knownMinor = amountMinor == null || amountMinor === 0 ? null : amountMinor;
+  const monthlyMinor = knownMinor == null ? null : normalizedMonthlyLoadMinor(knownMinor, interval);
+  // The year's total divided once, as `subscriptionCostSummary` does: twelve
+  // rounded months put ₺1.199,04 here for a ₺1.199 yearly plan.
+  const annualMinor = knownMinor == null ? null : normalizedMonthlyLoadMinor(knownMinor * 12, interval);
   return (
     <View
       accessible
@@ -162,10 +166,10 @@ function SubscriptionFormArtwork({
           <View style={{ width: StyleSheet.hairlineWidth, backgroundColor: palette.border, marginHorizontal: spacing.sm }} />
           <View style={{ flex: 1, minWidth: 0 }}>
             <Text style={[type.small, { color: palette.textSecondary, fontSize: type.micro.fontSize }]}>{tr.subs.annualEquivalent}</Text>
-            {monthlyMinor == null ? (
+            {annualMinor == null ? (
               <Text style={[type.amountSm, { color: palette.text, marginTop: 2 }]}>—</Text>
             ) : (
-              <Amount minor={monthlyMinor * 12} currency={currency} colorized={false} style={{ fontSize: type.label.fontSize, textAlign: "left", marginTop: 2 }} />
+              <Amount minor={annualMinor} currency={currency} colorized={false} style={{ fontSize: type.label.fontSize, textAlign: "left", marginTop: 2 }} />
             )}
           </View>
         </View>

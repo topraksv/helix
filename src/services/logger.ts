@@ -18,9 +18,9 @@ export function devWarning(scope: string, message: string): void {
 /**
  * Everything that fails outside a `try` and outside a React render.
  *
- * `ErrorBoundary` already records what a render throws, and 43 call sites
- * record what they catch. Between them sits the class of failure nobody was
- * recording at all: a rejected promise with no `.catch`, and a throw from a
+ * `ErrorBoundary` already records what a render throws, and a `catch` hands
+ * what it caught to `devError`. Between them sits the class of failure nobody
+ * was recording at all: a rejected promise with no `.catch`, and a throw from a
  * timer, an event listener or a native callback. Those are the ones that end a
  * session, so the incident log was missing exactly the incidents worth having.
  *

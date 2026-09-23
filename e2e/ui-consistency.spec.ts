@@ -1448,7 +1448,13 @@ test("a mistaken investment journal and its selected ledger refund are removed t
   await page.getByRole("button", { name: "Serbest Bakiyeyi Aktar" }).click();
   await page.getByRole("button", { name: "Mali Tabloya Aktar", exact: true }).click();
 
-  await page.getByRole("button", { name: "Düzenle", exact: true }).first().click();
+  const deleteButtons = page.getByRole("button", { name: /^Hareketi Sil/ });
+  await expect(deleteButtons.first()).toBeVisible();
+  const deletes = await deleteButtons
+    .evaluateAll((buttons) => buttons.map((button) => button.getAttribute("aria-label")));
+  expect(deletes.length).toBeGreaterThan(1);
+  expect(new Set(deletes).size).toBe(deletes.length);
+  await page.getByRole("button", { name: /^Düzenle · Yanlış ürün/ }).first().click();
   const removeProduct = page.getByRole("button", { name: "Yatırım Ürününü Kaldır", exact: true });
   await expect(removeProduct).toBeVisible();
   const removalRow = page.getByTestId("investment-history-removal-row");

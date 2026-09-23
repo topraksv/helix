@@ -13,6 +13,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const rows = vi.fn(async (): Promise<unknown[]> => []);
 const bytesFor = vi.fn(async (_name: string): Promise<Uint8Array | null> => null);
 const written = vi.fn(async (_name: string, _bytes: Uint8Array) => {});
+const pruned = vi.fn(async (_live: ReadonlySet<string>) => 0);
 
 vi.mock("../../src/db/client", () => ({
   getSqliteAsync: async () => ({ getAllAsync: (_sql: string, _params: unknown[]) => rows() }),
@@ -20,6 +21,7 @@ vi.mock("../../src/db/client", () => ({
 vi.mock("../../src/services/attachment-store", () => ({
   readAttachmentBytes: (name: string) => bytesFor(name),
   writeAttachmentBytes: (name: string, bytes: Uint8Array) => written(name, bytes),
+  pruneOrphanAttachmentFiles: (live: ReadonlySet<string>) => pruned(live),
 }));
 vi.mock("../../src/services/logger", () => ({ devWarning: vi.fn(), devError: vi.fn() }));
 
@@ -162,6 +164,15 @@ describe("what the mirror removes", () => {
 
     await purgeRemoteAttachments(USER);
     expect(storage.remove).toHaveBeenCalledWith([`${USER}/${NAME}`, `${USER}/${second}`]);
+  });
+
+  it("erases every document on this device when a session ends, keeping none as live", async () => {
+    const { eraseDeviceAttachments } = await mirror();
+    pruned.mockClear().mockResolvedValue(2);
+
+    await expect(eraseDeviceAttachments()).resolves.toBe(2);
+    expect(pruned).toHaveBeenCalledTimes(1);
+    expect([...pruned.mock.calls[0]![0]]).toEqual([]);
   });
 });
 

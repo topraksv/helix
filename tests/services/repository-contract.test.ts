@@ -2113,6 +2113,7 @@ describe("repository error contract", () => {
       [new repository.InstallmentHistoryConflictError(), "InstallmentHistoryConflictError", "Realized installments cannot be removed or rewritten"],
       [new repository.SubscriptionCategoryRequiredError(), "SubscriptionCategoryRequiredError", "Subscription category is required"],
       [new repository.InstallmentRefundNothingLeftError(), "InstallmentRefundNothingLeftError", "No unpaid instalments left to spread a refund over"],
+      [new repository.InstallmentTotalTooSmallError(), "InstallmentTotalTooSmallError", "A corrected total must leave every unpaid instalment a kuruş"],
     ];
     for (const [error, name, message] of cases) {
       expect(error).toBeInstanceOf(Error);
@@ -2375,23 +2376,55 @@ describe("installment plan lifecycle", () => {
     expect(unpaid.map((write) => [write.row.amountMinor, write.row.amountTryMinor])).toEqual([[33_333, 33_333], [33_334, 33_334]]);
   });
 
-  it("keeps the schedule's own figures when a corrected total is below what was already paid", async () => {
-    const realized = [1, 2].map((no) => ({
-      id: `id:installmentTx|plan-1|${no}`, user_id: "user-1", installment_plan_id: "plan-1", installment_no: no,
-      status: "realized", type: "expense", amount_minor: 500_00, currency: "TRY", amount_try_minor: 500_00,
-      entry_date: "2026-07-05", effective_date: `2026-0${6 + no}-05`, deleted_at: null, person_id: "person-1", is_aggregate: 0,
+  it("divides the purchase over its instalments alone, never a refund or a payoff beside them", async () => {
+    const row = (id: string, no: number | null, amount: number) => ({
+      id, user_id: "user-1", installment_plan_id: "plan-1", installment_no: no, status: "realized", type: "expense",
+      amount_minor: amount, currency: "TRY", amount_try_minor: amount, entry_date: "2026-07-05",
+      effective_date: "2026-07-05", deleted_at: null, person_id: "person-1", is_aggregate: 0,
+    });
+    dependencies.getSqliteAsync.mockResolvedValue(sqliteWith(
+      [row("id:installmentTx|plan-1|1", 1, 100_00), row("refund-1", null, -120_00), row("payoff-1", null, 900_00)],
+      { id: "plan-1", user_id: "user-1", deleted_at: null },
+    ));
+
+    await repository.updateInstallmentPlan("user-1", "plan-1", { ...plan, totalAmountMinor: 300_00, monthlyAmountMinor: null });
+
+    const [, writes] = dependencies.writeRowsValidated.mock.calls[0] as [string, { table: string; row: Record<string, unknown> }[]];
+    const unpaid = writes.filter((write) => write.table === "transactions" && write.row.id !== "id:installmentTx|plan-1|1");
+    expect(unpaid.map((write) => write.row.amountMinor)).toEqual([100_00, 100_00]);
+  });
+
+  it("refuses a corrected total that leaves an unpaid month less than a kuruş", async () => {
+    // Six of twelve paid at 1.000,00. Each total below once fell through with
+    // rows 7..12 still carrying a fresh split of the FULL total -- 6.000,00 paid
+    // plus 3.000,00 pending, about 9.000,00 billed for a purchase of 6.000,05 or
+    // less. A plan with more months left than kuruş left has the wrong COUNT.
+    const realized = Array.from({ length: 6 }, (_unused, index) => ({
+      id: `id:installmentTx|plan-1|${index + 1}`, user_id: "user-1", installment_plan_id: "plan-1",
+      installment_no: index + 1, status: "realized", type: "expense", amount_minor: 1000_00,
+      currency: "TRY", amount_try_minor: 1000_00, entry_date: "2026-07-05",
+      effective_date: `2026-${String(7 + index).padStart(2, "0")}-05`, deleted_at: null,
+      person_id: "person-1", is_aggregate: 0,
     }));
     dependencies.getSqliteAsync.mockResolvedValue(
       sqliteWith(realized, { id: "plan-1", user_id: "user-1", deleted_at: null }),
     );
 
-    await repository.updateInstallmentPlan("user-1", "plan-1", {
-      ...plan, totalAmountMinor: 900_00, monthlyAmountMinor: null,
-    });
+    for (const totalAmountMinor of [6000_05, 6000_00, 5999_99, 900_00]) {
+      await expect(repository.updateInstallmentPlan("user-1", "plan-1", {
+        ...plan, installmentCount: 12, totalAmountMinor, monthlyAmountMinor: null,
+      })).rejects.toBeInstanceOf(repository.InstallmentTotalTooSmallError);
+    }
+    expect(dependencies.writeRowsValidated).not.toHaveBeenCalled();
 
-    const [, writes] = dependencies.writeRowsValidated.mock.calls[0] as [string, { table: string; row: Record<string, unknown> }[]];
-    const third = writes.find((write) => write.table === "transactions" && write.row.id === "id:installmentTx|plan-1|3");
-    expect(third?.row.amountMinor).toBe(300_00);
+    // One kuruş per unpaid month is the boundary the guard now sits at, and it
+    // divides rather than refusing.
+    await repository.updateInstallmentPlan("user-1", "plan-1", {
+      ...plan, installmentCount: 12, totalAmountMinor: 6000_06, monthlyAmountMinor: null,
+    });
+    const [, written] = dependencies.writeRowsValidated.mock.calls[0] as [string, { table: string; row: Record<string, unknown> }[]];
+    const unpaid = written.filter((write) => write.table === "transactions" && Number(write.row.installmentNo) > 6);
+    expect(unpaid.map((write) => write.row.amountMinor)).toEqual([1, 1, 1, 1, 1, 1]);
   });
 
   /**

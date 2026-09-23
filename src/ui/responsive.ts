@@ -482,3 +482,13 @@ export function shouldUseCompactInvestmentHero(heroBoxWidth: number): boolean {
 export function shouldUseDesktopInvestmentHero(heroBoxWidth: number): boolean {
   return heroBoxWidth >= DESKTOP_INVESTMENT_HERO_WIDTH;
 }
+
+/**
+ * A phone on its side, where the calculator's keypad no longer fits under its
+ * display and the popup sets the two beside each other instead.
+ */
+const SHORT_LANDSCAPE_HEIGHT = 480;
+
+export function isShortLandscape(viewportWidth: number, viewportHeight: number): boolean {
+  return viewportWidth > viewportHeight && viewportHeight <= SHORT_LANDSCAPE_HEIGHT;
+}

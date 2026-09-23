@@ -34,7 +34,6 @@ import type { TrackedOperationState } from "./operation-guard";
 import { tr } from "../i18n/tr";
 import type { LiveQueryStatus } from "../data/live-state";
 import { interactionBleed, interactionSurface } from "./interaction";
-import { useReducedMotion } from "./motion";
 import {
   Amount,
   Body,
@@ -46,13 +45,13 @@ import {
   useLedeAlignment,
 } from "./primitives";
 import { RowMotion } from "./list-motion";
-import { circle, contentWidth, density, font, heroSurface, iconSize, motion, radius, spacing, staggerDelay, type, type ContentWidth, useTheme } from "./theme";
+import { circle, contentWidth, density, font, heroSurface, iconSize, radius, spacing, staggerDelay, type, type ContentWidth, useTheme } from "./theme";
 import { shouldStackListActions, shouldStackPanelAction, shouldUseWideGutter } from "./responsive";
 import { useContentWidth, useNavigationSpace } from "./viewport";
 import { OperationFlow, type OperationFlowKind } from "./operation-flow";
 import { KeyboardSafeScrollView } from "./keyboard-safe";
 import { useKeyboardReachableScroller } from "./accessibility";
-import { ScreenVisitContext, useScreenVisitController } from "./motion-primitives";
+import { ScreenVisitContext, useEntranceProgress, useScreenVisitController } from "./motion-primitives";
 
 export {
   Amount,
@@ -111,24 +110,7 @@ export { ChipPicker, ChoiceTile, Segmented, Select, SelectionGrid } from "./sele
  * page, recomputed every frame of every navigation.
  */
 function ScreenEntrance({ children, style }: { children: ReactNode; style?: StyleProp<ViewStyle> }) {
-  const reducedMotion = useReducedMotion();
-  // Starts where it will be drawn, so the first painted frame is already
-  // correct. Seeding at rest and moving it in an effect showed one frame at
-  // the settled position before the offset applied, which is a flicker.
-  const [progress] = React.useState(() => new Animated.Value(reducedMotion ? 1 : 0));
-  React.useEffect(() => {
-    if (reducedMotion) {
-      progress.setValue(1);
-      return;
-    }
-    const animation = Animated.spring(progress, {
-      toValue: 1,
-      useNativeDriver: Platform.OS !== "web",
-      ...motion.spring.entrance,
-    });
-    animation.start();
-    return () => animation.stop();
-  }, [progress, reducedMotion]);
+  const progress = useEntranceProgress();
   return (
     <Animated.View
       testID="screen-entrance"

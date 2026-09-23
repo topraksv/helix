@@ -11,7 +11,7 @@ set local role postgres;
 -- first for the assertion helpers.
 set local search_path = extensions, public, pg_catalog;
 
-select extensions.plan(149);
+select extensions.plan(164);
 
 -- A small invoker-rights helper lets tests assert SQLSTATE without coupling to
 -- PostgreSQL's localized/full error text. The dynamic statement still runs as
@@ -434,6 +434,99 @@ reset role;
 set local role postgres;
 set local search_path = extensions, public, pg_catalog;
 
+-- ---------------------------------------------------------------------------
+-- Screen counts (`usage_counters`)
+--
+-- The caller's grants stop at SELECT, so a count reaches the table only through
+-- `record_usage` and leaves it only through `purge_usage_counters`, and each has
+-- to carry the write itself. Both were once SECURITY INVOKER: every call failed
+-- with 42501, and the client — which swallows a refusal and keeps its deltas
+-- for the next sync — reported nothing wrong. Being DEFINER, they bypass RLS,
+-- which is why the purge is also proven not to reach another account.
+-- ---------------------------------------------------------------------------
+
+insert into public.usage_counters (user_id, day, screen, count)
+values ('10000000-0000-4000-8000-000000000001', current_date - 200, 'settings', 1);
+
+select set_config('request.jwt.claim.sub', '10000000-0000-4000-8000-000000000001', true);
+set local role authenticated;
+
+select is(
+  pg_temp.exec_sqlstate(format(
+    $command$ select public.record_usage(%L::jsonb) $command$,
+    jsonb_build_array(jsonb_build_object('day', current_date, 'screen', 'dashboard', 'count', 3))
+  )),
+  null,
+  'an owner can record screen counts'
+);
+
+select is(
+  pg_temp.exec_sqlstate(format(
+    $command$ select public.record_usage(%L::jsonb) $command$,
+    jsonb_build_array(jsonb_build_object('day', current_date, 'screen', 'dashboard', 'count', 2))
+  )),
+  null,
+  'a second device can record the same screen on the same day'
+);
+
+select is(
+  (select count from public.usage_counters where screen = 'dashboard'),
+  5,
+  'a second device adds to the day rather than replacing it'
+);
+
+select is(
+  pg_temp.exec_sqlstate($command$
+    insert into public.usage_counters (user_id, day, screen, count)
+    values ('10000000-0000-4000-8000-000000000001', current_date, 'dashboard', 1)
+  $command$),
+  '42501',
+  'a count cannot be written except through record_usage'
+);
+
+reset role;
+select set_config('request.jwt.claim.sub', '20000000-0000-4000-8000-000000000002', true);
+set local role authenticated;
+
+select is(
+  (select count(*) from public.usage_counters),
+  0::bigint,
+  'another account sees no screen count of the first'
+);
+
+select is(
+  pg_temp.exec_sqlstate($command$ select public.purge_usage_counters() $command$),
+  null,
+  'another account can run its own purge'
+);
+
+reset role;
+select set_config('request.jwt.claim.sub', '10000000-0000-4000-8000-000000000001', true);
+set local role authenticated;
+
+select is(
+  (select count(*) from public.usage_counters where screen = 'settings'),
+  1::bigint,
+  'another account''s purge leaves the first''s counts alone'
+);
+
+select is(
+  pg_temp.exec_sqlstate($command$ select public.purge_usage_counters() $command$),
+  null,
+  'an owner can purge their own counts'
+);
+
+select is(
+  (select array_agg(screen order by screen) from public.usage_counters),
+  array['dashboard'],
+  'a purge removes what is past retention and keeps the rest'
+);
+
+reset role;
+set local role postgres;
+set local search_path = extensions, public, pg_catalog;
+
+
 select extensions.ok(
   (select prosecdef from pg_proc where oid = 'public.delete_own_account()'::regprocedure),
   'account deletion remains SECURITY DEFINER'
@@ -587,6 +680,72 @@ select extensions.is(
       )),
   4::bigint,
   'the attachment bucket carries an owner policy for every verb'
+);
+
+-- The count above proves the four policies exist, not what they compare: with
+-- the owner clause deleted from the read policy it stayed green. What the
+-- boundary is FOR is below — one account's receipt, and the other account
+-- trying each verb on it. The delete needs Storage's own guard lifted first,
+-- or its 42501 would pass for the policy's.
+insert into storage.objects (bucket_id, name)
+values ('attachments', '20000000-0000-4000-8000-000000000002/receipt.pdf');
+
+select set_config('request.jwt.claim.sub', '10000000-0000-4000-8000-000000000001', true);
+select set_config('storage.allow_delete_query', 'true', true);
+set local role authenticated;
+
+select is(
+  (select count(*) from storage.objects where bucket_id = 'attachments'),
+  0::bigint,
+  'an account cannot read another account''s document'
+);
+
+select is(
+  pg_temp.exec_sqlstate($command$
+    insert into storage.objects (bucket_id, name)
+    values ('attachments', '20000000-0000-4000-8000-000000000002/planted.pdf')
+  $command$),
+  '42501',
+  'an account cannot place a document in another account''s folder'
+);
+
+select is(
+  pg_temp.exec_sqlstate($command$
+    insert into storage.objects (bucket_id, name)
+    values ('attachments', '10000000-0000-4000-8000-000000000001/own.pdf')
+  $command$),
+  null,
+  'an account can store a document in its own folder'
+);
+
+select is(
+  pg_temp.exec_sqlstate($command$
+    update storage.objects set name = '20000000-0000-4000-8000-000000000002/moved.pdf'
+    where name = '10000000-0000-4000-8000-000000000001/own.pdf'
+  $command$),
+  '42501',
+  'an account cannot move its document into another account''s folder'
+);
+
+select is(
+  pg_temp.exec_sqlstate($command$
+    delete from storage.objects where name = '20000000-0000-4000-8000-000000000002/receipt.pdf'
+  $command$),
+  null,
+  'a delete aimed at another account''s document is not an error'
+);
+
+reset role;
+-- Back on, or every later statement — account deletion's own storage sweep
+-- among them — would run without the guard production keeps.
+select set_config('storage.allow_delete_query', 'false', true);
+set local role postgres;
+set local search_path = extensions, public, pg_catalog;
+
+select is(
+  (select count(*) from storage.objects where name = '20000000-0000-4000-8000-000000000002/receipt.pdf'),
+  1::bigint,
+  'and it removes nothing'
 );
 
 select set_config('request.jwt.claim.sub', '10000000-0000-4000-8000-000000000001', true);

@@ -15,6 +15,7 @@ export {
   ImportBatchUnreadableError,
   InstallmentRefundNothingLeftError,
   InstallmentRefundTooLargeError,
+  InstallmentTotalTooSmallError,
   RefundExceedsExpenseError,
   StatementPaymentTooLargeError,
   SubscriptionCategoryRequiredError,

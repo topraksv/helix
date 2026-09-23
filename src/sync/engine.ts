@@ -30,7 +30,7 @@ import { devError, devWarning } from "../services/logger";
 import { uploadDiagnostics, type DiagnosticUpload, type DiagnosticUploadPort } from "../services/diagnostics";
 import { reportUsage, type UsageUploadPort } from "../services/usage";
 import { prepareOutboundBatch } from "./outbound-validation";
-import { purgeRemoteAttachments, reconcileAttachments } from "./attachment-mirror";
+import { eraseDeviceAttachments, purgeRemoteAttachments, reconcileAttachments } from "./attachment-mirror";
 import { isValidImportRow } from "../services/backup-validation";
 import type { Database } from "./database.types";
 
@@ -397,10 +397,11 @@ async function pullAndMerge(userId: string, token: SessionEpochToken): Promise<n
   const heads = tables.some((table) => cursorFor(table).ts !== PULL_EPOCH)
     ? await fetchServerHeads(supabase, token)
     : null;
-  // `filter` keeps the declaration order, which is FK-safe: SQLite runs with
-  // `PRAGMA foreign_keys = ON`, so a child row must never be merged before its
-  // parent exists. That ordering is also why the pending tables are pulled one
-  // after another rather than concurrently.
+  // `filter` keeps the declaration order, parents before children. The local
+  // schema declares no foreign key, so `PRAGMA foreign_keys = ON` enforces
+  // nothing here; what the order buys is that a pull cut short between tables
+  // never leaves a child ahead of its parent. That is why the pending tables
+  // are pulled one after another rather than concurrently.
   const pending = heads
     ? tables.filter((table) =>
         !heads.has(table) || !cursorIsAtServerHead(cursorFor(table), heads.get(table) ?? null))
@@ -606,6 +607,7 @@ async function runSync(userId: string, token: SessionEpochToken, allowRefresh: b
     // rejection — which `installCrashHandlers` would faithfully record as a
     // crash the app did not actually have.
     void getSupabase()?.rpc("purge_expired_diagnostics").then(undefined, () => {});
+    void getSupabase()?.rpc("purge_usage_counters").then(undefined, () => {});
     // Registered as session work rather than fired loose: this one can spend a
     // while sending a 25 MB file, and a sign-out that wiped the database out
     // from under it would be reading a document that no longer has a row.
@@ -713,7 +715,7 @@ export async function syncNow(userId: string, allowRefresh = true): Promise<bool
 }
 
 /**
- * Erase this account's mirrored documents.
+ * Erase this account's documents, from the bucket and from this device.
  *
  * Re-exported here rather than imported from `attachment-mirror` directly,
  * because this module is the whole of what the auth layer knows about sync —
@@ -721,7 +723,7 @@ export async function syncNow(userId: string, allowRefresh = true): Promise<bool
  * it made the sign-out path load the database layer that the auth tests mock
  * this module precisely to avoid, which is the seam telling the truth.
  */
-export { purgeRemoteAttachments };
+export { eraseDeviceAttachments, purgeRemoteAttachments };
 
 /** Debounced trigger for after-write sync (UI never waits on this). */
 export function scheduleSync(userId: string, delayMs = 1500): void {

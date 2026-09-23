@@ -20,7 +20,7 @@ import TableProperties from "lucide-react-native/icons/table-properties";
 import Download from "lucide-react-native/icons/download";
 import Upload from "lucide-react-native/icons/upload";
 import * as Sharing from "expo-sharing";
-import { saveBinaryFile } from "../services/export-import";
+import { saveFile } from "../services/export-import";
 import { buildTemplateBytes, WORKBOOK_MIME } from "../services/workbook-export";
 import { appAlert } from "../ui/dialog";
 import { ImportBatchUnreadableError, importSheets, importedYears, importWorkbookRecords, openingBalanceFromSheets, planWorkbookRecords, type RecordImportPlan } from "../data/repo";
@@ -204,7 +204,7 @@ function TemplateCard() {
   const download = async () => {
     setBusy(true);
     try {
-      const path = await saveBinaryFile("helix-sablon.xlsx", await buildTemplateBytes(), WORKBOOK_MIME);
+      const path = await saveFile("helix-sablon.xlsx", await buildTemplateBytes(), WORKBOOK_MIME);
       if (path && (await Sharing.isAvailableAsync())) await Sharing.shareAsync(path, { mimeType: WORKBOOK_MIME });
     } catch (error) {
       devError("importer.template", error);

@@ -98,6 +98,9 @@ vi.mock("../../src/db/mutations", () => ({
 }));
 vi.mock("../../src/sync/engine", () => ({
   flushOutbox: harness.flushOutbox,
+  eraseDeviceAttachments: async () => {
+    harness.log.push("attachments:erase");
+  },
   purgeRemoteAttachments: async () => {
     harness.log.push("attachments:purge");
   },
@@ -534,7 +537,7 @@ describe("a session the server ends", () => {
     harness.authListeners[0]!("SIGNED_OUT");
     await vi.waitFor(() => expect(harness.log).toContain(`kv:remove:${EMAIL_KEY}`));
 
-    expect(harness.log).toEqual([`stop:${USER_A.id}`, ...LEAVE_ACCOUNT, `kv:remove:${USER_KEY}`, `kv:remove:${EMAIL_KEY}`]);
+    expect(harness.log).toEqual([`stop:${USER_A.id}`, ...LEAVE_ACCOUNT, "attachments:erase", `kv:remove:${USER_KEY}`, `kv:remove:${EMAIL_KEY}`]);
     expect(session.getState()).toMatchObject(SIGNED_OUT);
   });
 
@@ -607,6 +610,7 @@ describe("a session the server ends", () => {
     await vi.waitFor(() => expect(session.getState().userId).toBeNull());
 
     expect(harness.store.get(OWNER_KEY)).toBe("__helix_wipe_pending__");
+    expect(harness.log, "the session is over either way, so its documents go").toContain("attachments:erase");
   });
 
   it("does not erase this workspace for the sign-out that discards another account's session", async () => {
@@ -986,7 +990,7 @@ describe("signOut, step by step", () => {
     expect(await useSession.getState().signOut()).toBeNull();
 
     expect(harness.log).toEqual([
-      `stop:${USER_A.id}`, ...LEAVE_ACCOUNT,
+      `stop:${USER_A.id}`, ...LEAVE_ACCOUNT, "attachments:erase",
       `kv:remove:${OWNER_KEY}`, `kv:remove:${USER_KEY}`, `kv:remove:${EMAIL_KEY}`,
     ]);
     expect(harness.supabase.auth.signOut).toHaveBeenCalledWith({ scope: "local" });
@@ -1001,6 +1005,7 @@ describe("signOut, step by step", () => {
 
     expect(harness.startSyncSession).toHaveBeenCalledWith(USER_A.id);
     expect(harness.log).toEqual(expect.arrayContaining(["markets:on", `fx:load:${USER_A.id}`, `notifications:plan:${USER_A.id}`]));
+    expect(harness.log, "a session that stays keeps its documents").not.toContain("attachments:erase");
     expect(useSession.getState().userId).toBe(USER_A.id);
   });
 
@@ -1055,7 +1060,7 @@ describe("deleteAccount, step by step", () => {
     expect(harness.supabase.rpc).toHaveBeenCalledWith("delete_own_account");
     expect(harness.supabase.auth.signOut).toHaveBeenCalledWith({ scope: "global" });
     expect(harness.log).toEqual([
-      `stop:${USER_A.id}`, "attachments:purge", ...LEAVE_ACCOUNT,
+      `stop:${USER_A.id}`, "attachments:purge", ...LEAVE_ACCOUNT, "attachments:erase",
       `kv:remove:${OWNER_KEY}`, `kv:remove:${USER_KEY}`, `kv:remove:${EMAIL_KEY}`,
     ]);
     expect(useSession.getState()).toMatchObject(SIGNED_OUT);
@@ -1070,6 +1075,7 @@ describe("deleteAccount, step by step", () => {
 
     expect(useSession.getState()).toMatchObject(SIGNED_OUT);
     expect(harness.store.get(OWNER_KEY)).toBe("__helix_wipe_pending__");
+    expect(harness.log).toContain("attachments:erase");
   });
 });
 

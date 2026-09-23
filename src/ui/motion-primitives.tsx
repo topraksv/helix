@@ -404,12 +404,15 @@ function MeasuredCollapse({
 /**
  * 0 → 1 on the shared entrance spring, or straight to 1 under Reduce Motion.
  *
- * `SuccessPop` and `SlideUp` differ only in the transform they map it onto and
- * held a byte-identical copy each, so the spring, the driver choice and the
- * Reduce Motion short-circuit could drift apart. One copy cannot.
+ * `SuccessPop`, `SlideUp` and `ScreenEntrance` differ only in the transform they
+ * map it onto and held a byte-identical copy each, so the spring, the driver
+ * choice and the Reduce Motion short-circuit could drift apart. One copy cannot.
  */
-function useEntranceProgress(): Animated.Value {
+export function useEntranceProgress(): Animated.Value {
   const reducedMotion = useReducedMotion();
+  // Starts where it will be drawn, so the first painted frame is already
+  // correct. Seeding at rest and moving it in an effect showed one frame at
+  // the settled position before the offset applied, which is a flicker.
   const [progress] = useState(() => new Animated.Value(reducedMotion ? 1 : 0));
   useEffect(() => {
     if (reducedMotion) {

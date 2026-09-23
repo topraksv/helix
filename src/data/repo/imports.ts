@@ -1017,30 +1017,9 @@ function sameOperation(row: LiveRow, record: InvestmentRecord): boolean {
     && folded(String(row.note ?? "")) === folded(record.note);
 }
 
-function investmentTarget(record: InvestmentRecord, context: RecordContext): LiveRow | undefined {
-  const productId = context.products.get(recordKey(record.product, record.assetType));
-  return productId == null ? undefined : context.operations.get(operationKey(productId, record.operationDate, record.kind, record.quantity));
-}
-
 /** What the record sheets would add, update and leave alone, without writing anything. */
-export async function planWorkbookRecords(userId: string, records: WorkbookRecords): Promise<RecordImportPlan> {
-  const context = await recordContext(userId);
-  const plan: RecordImportPlan = {
-    subscriptions: noCounts(),
-    investments: noCounts(),
-    problems: [...records.problems],
-    walletMissing: records.investments.length > 0 && !context.hasWallet,
-  };
-  for (const record of records.subscriptions) {
-    const target = subscriptionTarget(record, context);
-    if ("sheet" in target) plan.problems.push(target);
-    else plan.subscriptions[tally(target.existing, (row) => sameSubscription(row, target.input))] += 1;
-  }
-  if (!context.hasWallet) return plan;
-  for (const record of records.investments) {
-    plan.investments[tally(investmentTarget(record, context), (row) => sameOperation(row, record))] += 1;
-  }
-  return plan;
+export function planWorkbookRecords(userId: string, records: WorkbookRecords): Promise<RecordImportPlan> {
+  return walkWorkbookRecords(userId, records, false);
 }
 
 /**
@@ -1053,7 +1032,19 @@ export async function planWorkbookRecords(userId: string, records: WorkbookRecor
  * cycle — is reported by its row and the rest still land. Matching is what
  * makes a second run of the same file converge instead of duplicating.
  */
-export async function importWorkbookRecords(userId: string, records: WorkbookRecords): Promise<RecordImportPlan> {
+export function importWorkbookRecords(userId: string, records: WorkbookRecords): Promise<RecordImportPlan> {
+  return walkWorkbookRecords(userId, records, true);
+}
+
+/**
+ * The preview is the import's matching with its writes left out, not a second
+ * copy of it: a row the sheet repeats has to meet what the row before it
+ * wrote, or would have, or the preview promises two additions where the import
+ * makes one. The checks those writes make are left out with them, so a row the
+ * app would refuse — a sale beyond what is held — is counted here and reported
+ * only by the import.
+ */
+async function walkWorkbookRecords(userId: string, records: WorkbookRecords, write: boolean): Promise<RecordImportPlan> {
   const context = await recordContext(userId);
   const outcome: RecordImportPlan = {
     subscriptions: noCounts(),
@@ -1061,11 +1052,11 @@ export async function importWorkbookRecords(userId: string, records: WorkbookRec
     problems: [...records.problems],
     walletMissing: records.investments.length > 0 && !context.hasWallet,
   };
-  for (const record of records.subscriptions) await importSubscriptionRecord(userId, record, context, outcome);
+  for (const record of records.subscriptions) await importSubscriptionRecord(userId, record, context, outcome, write);
   if (!context.hasWallet) return outcome;
   // Oldest first, so a sale meets the purchase it sells.
   const byDay = [...records.investments].sort((a, b) => a.operationDate.localeCompare(b.operationDate));
-  for (const record of byDay) await importInvestmentRecord(userId, record, context, outcome);
+  for (const record of byDay) await importInvestmentRecord(userId, record, context, outcome, write);
   return outcome;
 }
 
@@ -1074,6 +1065,7 @@ async function importSubscriptionRecord(
   record: SubscriptionRecord,
   context: RecordContext,
   outcome: RecordImportPlan,
+  write: boolean,
 ): Promise<void> {
   const target = subscriptionTarget(record, context);
   if ("sheet" in target) {
@@ -1083,9 +1075,12 @@ async function importSubscriptionRecord(
   const change = tally(target.existing, (row) => sameSubscription(row, target.input));
   try {
     if (change !== "unchanged") {
-      const categoryId = target.input.categoryId || await ensureSubscriptionCategory(userId, target.categoryName);
-      context.expenseCategories.set(folded(target.categoryName), categoryId);
-      const id = await upsertSubscription(userId, { ...target.input, categoryId });
+      let id = target.input.id;
+      if (write) {
+        const categoryId = target.input.categoryId || await ensureSubscriptionCategory(userId, target.categoryName);
+        context.expenseCategories.set(folded(target.categoryName), categoryId);
+        id = await upsertSubscription(userId, { ...target.input, categoryId });
+      }
       // A second row for the same subscription updates this one rather than adding another.
       context.subscriptions.set(recordKey(record.name, record.cycle), { id, note: target.input.note });
     }
@@ -1100,11 +1095,13 @@ async function importInvestmentRecord(
   record: InvestmentRecord,
   context: RecordContext,
   outcome: RecordImportPlan,
+  write: boolean,
 ): Promise<void> {
   try {
     const productKey = recordKey(record.product, record.assetType);
+    // A preview names a product it has not created by its key, which no stored id can equal.
     const productId = context.products.get(productKey)
-      ?? await saveInvestmentProduct(userId, { assetType: record.assetType, name: record.product, marketCode: record.marketCode || null });
+      ?? (write ? await saveInvestmentProduct(userId, { assetType: record.assetType, name: record.product, marketCode: record.marketCode || null }) : productKey);
     context.products.set(productKey, productId);
     const key = operationKey(productId, record.operationDate, record.kind, record.quantity);
     const existing = context.operations.get(key);
@@ -1119,9 +1116,9 @@ async function importInvestmentRecord(
       note: record.note || null,
     };
     if (change === "added") {
-      const id = await addInvestmentOperation(userId, input);
+      const id = write ? await addInvestmentOperation(userId, input) : key;
       context.operations.set(key, { id, unit_price_minor: record.unitPriceMinor, total_minor: record.totalMinor, note: record.note });
-    } else if (change === "updated") {
+    } else if (change === "updated" && write) {
       await updateInvestmentOperation(userId, String(existing!.id), input);
     }
     outcome.investments[change] += 1;

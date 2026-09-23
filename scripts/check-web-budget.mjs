@@ -333,13 +333,26 @@ const root = process.argv[2] ?? "dist";
 // on-demand reader back is +20_477, which from 3_408_265 measures 3_428_742 —
 // under a 1% ceiling and over this one. The 6_735 bytes left are the guard, not
 // slack, and the next thing that wants them has to argue for them.
+// 2026-09-22: `expo-notifications` leaves the web. Every call the app makes
+// into it already returned early there, and `metro.config.js` now resolves it
+// to `src/services/notifications-absent.js` on the web only. Measured on the
+// same tree with and without the substitution: entry 3_409_194 -> 3_348_694,
+// total 4_093_954 -> 4_033_454, export 7_775_345 -> 7_714_845 — 60_500 bytes
+// off each, more than the 44_488 the source map attributed to the package and
+// the two it alone pulled in.
+//
+// ALL THREE COME DOWN, or the package could come back in one import and still
+// clear by 60_500. Entry keeps the guard the paragraph above set rather than
+// the 1% step: measured plus 6_306, that 6_735 rounded down to a thousand, so
+// an on-demand reader coming back (+20_477) still trips it. Total moves to measured plus ~1%, the export to
+// measured plus ~1.5%, the steps each already carried.
 const limits = {
-  entryJavaScript: 3_415_000,
-  totalJavaScript: 4_127_000,
+  entryJavaScript: 3_355_000,
+  totalJavaScript: 4_074_000,
   // Fonts are 1_534_728 of this and the rest is one HTML file per route, so it
   // grows in coarser steps than the JavaScript above it — measured 8_037_112
   // with ~3% of slack rather than the ~1% the JS ceilings carry.
-  totalExport: 7_884_000,
+  totalExport: 7_831_000,
   fontFiles: 6,
   fontBytes: 800_000,
   // Pages is public. Symbolication maps belong only in a private crash service,

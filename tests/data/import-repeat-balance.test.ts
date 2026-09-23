@@ -1006,6 +1006,9 @@ describe("bringing the record sheets back", () => {
   });
   const records = (subscriptions: SubscriptionRecord[], investments: InvestmentRecord[] = []) => ({ subscriptions, investments, problems: [] });
   const counts = (added: number, updated: number, unchanged: number) => ({ added, updated, unchanged });
+  const wallet = () => harness.db!.prepare(
+    `INSERT INTO investment_profiles (id, user_id, created_at, updated_at, started_on, opening_cash_minor) VALUES ('wallet', ?, ?, ?, '2026-01-01', 5000000)`,
+  ).run(USER, NOW, NOW);
   const liveSubscriptions = () => harness.db!
     .prepare(`SELECT name, cycle, amount_minor, note, payment_source_id FROM subscriptions WHERE user_id = ? AND deleted_at IS NULL ORDER BY name, cycle`)
     .all(USER);
@@ -1055,13 +1058,36 @@ describe("bringing the record sheets back", () => {
     expect(liveSubscriptions()).toEqual([{ name: "YouTube", cycle: "monthly", amount_minor: 22999, note: null, payment_source_id: "card" }]);
   });
 
+  it("previews a sheet that repeats a row with the counts the import then reports", async () => {
+    wallet();
+    const repeated = records([subscription(), subscription({ row: 3 })], [operation(), operation({ row: 3 })]);
+
+    const plan = await planWorkbookRecords(USER, repeated);
+    const outcome = await importWorkbookRecords(USER, repeated);
+
+    expect(outcome).toMatchObject({ subscriptions: counts(1, 1, 0), investments: counts(1, 0, 1) });
+    expect(plan).toEqual(outcome);
+    expect(liveSubscriptions()).toHaveLength(1);
+  });
+
+  it("sells what the sheet bought further down, and keeps the problems the reader already found", async () => {
+    wallet();
+    const unreadable = { sheet: "Yatırımlar", row: 9, column: "Tarih" };
+    const sale = operation({ row: 2, kind: "sell", operationDate: "2026-03-01", quantity: "1", unitPriceMinor: 500000, totalMinor: 500000 });
+    const sheet = { ...records([], [sale, operation({ row: 3 })]), problems: [unreadable] };
+
+    const plan = await planWorkbookRecords(USER, sheet);
+    const outcome = await importWorkbookRecords(USER, sheet);
+
+    expect(outcome).toMatchObject({ investments: counts(2, 0, 0), problems: [unreadable] });
+    expect(plan).toEqual(outcome);
+  });
+
   it("waits for the investment wallet, then adds, keeps and updates operations, refusing a sale beyond what is held", async () => {
     const waiting = await importWorkbookRecords(USER, records([], [operation()]));
     expect(waiting).toMatchObject({ investments: counts(0, 0, 0), walletMissing: true, problems: [] });
 
-    harness.db!.prepare(
-      `INSERT INTO investment_profiles (id, user_id, created_at, updated_at, started_on, opening_cash_minor) VALUES ('wallet', ?, ?, ?, '2026-01-01', 5000000)`,
-    ).run(USER, NOW, NOW);
+    wallet();
     const sale = operation({ row: 3, kind: "sell", operationDate: "2026-03-01", quantity: "5", unitPriceMinor: 500000, totalMinor: 2500000 });
     const first = await importWorkbookRecords(USER, records([], [sale, operation()]));
     expect(first).toMatchObject({ investments: counts(1, 0, 0), problems: [{ sheet: "Yatırımlar", row: 3, column: null }], walletMissing: false });

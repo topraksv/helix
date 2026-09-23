@@ -1,6 +1,6 @@
 # Row-level security, asserted.
 #
-# `supabase/tests/owner_integrity_and_rls.sql` is 138 pgTAP assertions and it is
+# `supabase/tests/owner_integrity_and_rls.sql` is the pgTAP suite, and it is
 # the ONLY executable proof that one account cannot read or write another's
 # rows. Client-side ownership checks are defence in depth; RLS is the authority.
 # Until now nothing ran the file, so the authority was unverified between one

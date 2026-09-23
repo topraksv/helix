@@ -164,6 +164,22 @@ describe("backup round trip", () => {
     expect(idMap.size).toBe(0);
   });
 
+  it("names only the tables that hold rows, so an older build refuses only what it would lose", async () => {
+    // A build's validator refuses a whole file for one table name it does not
+    // know. Naming every table meant each new one — `card_statement_payments`
+    // in 1.8 — made every later backup unreadable to the version before it,
+    // including an account that had never written a row there. An absent table
+    // restores exactly as an empty one does: restore merges what is present.
+    await seedSourceAccount();
+    const bundle = parseExportBundleText(await buildExportText(SOURCE_USER));
+
+    const named = Object.keys(bundle.tables);
+    expect(named.length, "the seed must reach more than one table").toBeGreaterThan(1);
+    expect(named.filter((table) => bundle.tables[table as keyof typeof bundle.tables]!.length === 0)).toEqual([]);
+    expect(named).not.toContain("card_statement_payments");
+    await expect(importBundle(SOURCE_USER, bundle)).resolves.toBeTruthy();
+  });
+
   it("maps every deterministic id produced by the real export path", async () => {
     await seedSourceAccount();
     const bundle = parseExportBundleText(await buildExportText(SOURCE_USER));

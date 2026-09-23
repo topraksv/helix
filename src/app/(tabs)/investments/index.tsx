@@ -712,12 +712,11 @@ export default function InvestmentsScreen() {
                   : operation.kind === "contribution"
                     ? { line: palette.warning, text: palette.warningText }
                     : { line: palette.secondary, text: palette.secondaryText };
-              const labels = {
-                existing: tr.investments.operationTitle.existing,
-                buy: tr.investments.operationTitle.buy,
-                sell: tr.investments.operationTitle.sell,
-                contribution: tr.investments.operationTitle.contribution,
-              };
+              const productName = product?.name ?? tr.investments.product;
+              const detail = `${tr.investments.operationTitle[operation.kind]} · ${dateLabel(operation.operationDate)}`;
+              // Every row draws the same two icons, so the name is what tells a listener which record they act on —
+              // everything the row shows, amount included, or two buys on one day read alike.
+              const subject = `${productName} · ${detail} · ${formatMinorCompact(operation.totalMinor)}`;
               return (
                 <View
                   key={operation.id}
@@ -732,8 +731,8 @@ export default function InvestmentsScreen() {
                 >
                   <View style={{ width: 8, height: 36, borderRadius: circle(8), backgroundColor: movementTone.line }} />
                   <View style={{ flex: 1, minWidth: 0 }}>
-                    <Text style={[type.label, { color: palette.text }]}>{product?.name ?? tr.investments.product}</Text>
-                    <Text style={[type.small, { color: palette.textSecondary }]}>{labels[operation.kind]} · {dateLabel(operation.operationDate)}</Text>
+                    <Text style={[type.label, { color: palette.text }]}>{productName}</Text>
+                    <Text style={[type.small, { color: palette.textSecondary }]}>{detail}</Text>
                     {compact ? (
                       <Amount
                         minor={operation.totalMinor}
@@ -754,8 +753,8 @@ export default function InvestmentsScreen() {
                     />
                   ) : null}
                   <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", justifyContent: "flex-end", gap: spacing.xs }}>
-                    <IconButton label={tr.common.edit} icon={Pencil} onPress={() => router.push({ pathname: "/investments/operation", params: { id: operation.id, kind: operation.kind } })} />
-                    <IconButton label={tr.investments.deleteOperation} icon={Trash} tone="danger" onPress={() => void deleteOperation(operation.id)} />
+                    <IconButton label={`${tr.common.edit} · ${subject}`} icon={Pencil} onPress={() => router.push({ pathname: "/investments/operation", params: { id: operation.id, kind: operation.kind } })} />
+                    <IconButton label={`${tr.investments.deleteOperation} · ${subject}`} icon={Trash} tone="danger" onPress={() => void deleteOperation(operation.id)} />
                   </View>
                 </View>
               );

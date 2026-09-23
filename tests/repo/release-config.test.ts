@@ -3,6 +3,12 @@ import { dirname, relative, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 const read = (path: string) => readFileSync(resolve(process.cwd(), path), "utf8");
+const sourceFiles = (directory: string): string[] =>
+  readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+    const path = `${directory}/${entry.name}`;
+    if (entry.isDirectory()) return sourceFiles(path);
+    return /\.tsx?$/.test(entry.name) ? [path] : [];
+  });
 
 const app = JSON.parse(read("app.json"));
 const eas = JSON.parse(read("eas.json"));
@@ -151,17 +157,33 @@ describe("release contract", () => {
     // no-op and four throws have no behaviour a mutant could change.
     expect(stryker).toContain("realtime-absent\\.js");
 
-    const walk = (directory: string): string[] =>
-      readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
-        const path = `${directory}/${entry.name}`;
-        if (entry.isDirectory()) return walk(path);
-        return /\.tsx?$/.test(entry.name) ? [path] : [];
-      });
-    const sources = walk("src");
+    const sources = sourceFiles("src");
     // A floor, because a walker that finds nothing would pass silently.
     expect(sources.length).toBeGreaterThan(100);
     const subscribers = sources.filter((file) => /\.(channel|getChannels|removeChannel|removeAllChannels)\(/.test(readFileSync(file, "utf8")));
     expect(subscribers, "these files subscribe to a transport that is not bundled").toEqual([]);
+  });
+
+  it("keeps local reminders out of the web bundle, and answers every call the app makes", () => {
+    const metro = read("metro.config.js");
+    const stub = read("src/services/notifications-absent.js");
+    const stryker = read("stryker.ci.config.mjs");
+
+    // Web only: the phone schedules through the real module.
+    expect(metro).toContain('moduleName === "expo-notifications" && platform === "web"');
+    expect(metro).toContain("src/services/notifications-absent.js");
+    expect(stryker).toContain("notifications-absent\\.js");
+
+    const importers = sourceFiles("src").map((file) => readFileSync(file, "utf8")).filter((source) => source.includes('from "expo-notifications"'));
+    expect(importers.length).toBeGreaterThan(0);
+    const called = new Set(importers.flatMap((source) => [...source.matchAll(/Notifications\.(\w+)\(/g)].map((match) => match[1]!)));
+    // A floor, because a pattern that matched nothing would pass silently.
+    expect(called.size).toBeGreaterThan(5);
+    for (const name of called) {
+      expect(stub, `${name} must be answered on the web`).toMatch(new RegExp(`export (const|function) ${name}\\b`));
+    }
+    // The one call that runs on the web, at module scope, must not throw there.
+    expect(stub).toMatch(/export function setNotificationHandler\(\) \{\}/);
   });
 
   it("keeps the database out of server rendering", () => {
@@ -353,6 +375,11 @@ describe("release contract", () => {
     expect(classify).not.toContain("BASE_SHA: ${{ github.event.before }}");
     // A dispatch keeps no base, and with it the fail-open full gate.
     expect(classify).toMatch(/if \[ "\$EVENT_NAME" = "push" \]; then\n\s+base="\$BEFORE_SHA"/);
+    // The classifier ships nothing for an empty diff, which is proof only when
+    // the base is a green run: from the fallback, the push before may be the
+    // failed one, so an empty diff there drops the base and fails open.
+    const fallback = classify.slice(classify.indexOf("::warning::no green ci push run"));
+    expect(fallback).toMatch(/^\s+if git diff --quiet "\$BEFORE_SHA" "\$HEAD_SHA"[^\n]*; then base=""; fi$/m);
   });
 
   it("never publishes a commit main has already moved past", () => {
@@ -506,15 +533,34 @@ describe("release contract", () => {
    * The limits are generous multiples of measured durations, so they fire on a
    * hang and never on ordinary variance.
    */
+  const jobSections = Object.entries({ ci, security, nightly, keepalive, database, release: releaseWorkflow })
+    .map(([name, workflow]) => [name, workflow.slice(workflow.indexOf("\njobs:"))] as const);
+
   it("bounds every job so a hang fails instead of occupying a runner for six hours", () => {
-    for (const [name, workflow] of Object.entries({ ci, security, nightly, keepalive, database, release: releaseWorkflow })) {
-      const jobsSection = workflow.slice(workflow.indexOf("\njobs:"));
+    for (const [name, jobsSection] of jobSections) {
       const jobs = [...jobsSection.matchAll(/^  ([a-z0-9-]+):$/gm)].map((match) => match[1]);
       expect(jobs.length, name).toBeGreaterThan(0);
       const limits = [...jobsSection.matchAll(/^    timeout-minutes: (\d+)$/gm)].map((match) => Number(match[1]));
       expect(limits.length, `${name}: ${jobs.length} job(s) but ${limits.length} timeout(s)`).toBe(jobs.length);
       // A limit so large it could never fire is the same as having none.
       for (const limit of limits) expect(limit, name).toBeLessThanOrEqual(90);
+    }
+  });
+
+  /**
+   * `cache: npm` saves ~/.npm after the job under a key derived from the
+   * lockfile alone, which every workflow here shares, and an entry is
+   * immutable per key. The advisory job installs nothing, so it saved an empty
+   * 10 KB cache first, and every `npm ci` after it reported a hit and fetched
+   * every package from the registry for the whole life of that lockfile.
+   */
+  it("caches npm only in a job that installs, so an empty cache cannot claim the shared key", () => {
+    for (const [name, jobsSection] of jobSections) {
+      const jobs = jobsSection.split(/^(?=  [a-z0-9-]+:$)/m).slice(1);
+      for (const job of jobs) {
+        if (!/^\s+cache: npm$/m.test(job)) continue;
+        expect(job, `${name}: ${job.split("\n")[0]}`).toMatch(/^\s+(- )?run: .*\bnpm ci\b/m);
+      }
     }
   });
 
@@ -668,7 +714,7 @@ describe("release contract", () => {
 
 /**
  * Row-level security is the ONLY authority on account isolation — the client
- * checks are defence in depth. Its 138 pgTAP assertions existed for months
+ * checks are defence in depth. Its pgTAP assertions existed for months
  * with nothing running them, so this pins both that they run and how.
  */
 describe("database workflow", () => {
@@ -725,6 +771,19 @@ describe("workflow supply chain", () => {
       }
     }
     expect(floating).toEqual([]);
+  });
+
+  it("pins every remote import of an edge function to one exact version", () => {
+    // Deno resolves these at deploy time with no lockfile and no audit, in the
+    // isolate that holds the mail password: a range there is whatever the
+    // registry serves that day.
+    const functions = resolve(process.cwd(), "supabase/functions");
+    const specifiers = readdirSync(functions, { recursive: true, encoding: "utf8" })
+      .filter((name) => name.endsWith(".ts"))
+      .flatMap((name) => [...read(`supabase/functions/${name}`).matchAll(/from\s+"((?:npm:|jsr:|https?:)[^"]+)"/g)]
+        .map((match) => `${name}: ${match[1]}`));
+    expect(specifiers.length).toBeGreaterThan(0);
+    expect(specifiers.filter((specifier) => !/@\d+\.\d+\.\d+(?:\/[^"]*)?$/.test(specifier))).toEqual([]);
   });
 });
 

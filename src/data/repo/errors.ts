@@ -19,6 +19,14 @@ export class InstallmentHistoryConflictError extends Error {
   }
 }
 
+/** A corrected total too small to leave each unpaid instalment a kuruş. */
+export class InstallmentTotalTooSmallError extends Error {
+  constructor() {
+    super("A corrected total must leave every unpaid instalment a kuruş");
+    this.name = "InstallmentTotalTooSmallError";
+  }
+}
+
 /**
  * A refund larger than what is left of the purchase it is recorded against.
  * Carries that figure, so the screen can say how much IS left.

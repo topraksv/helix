@@ -1,4 +1,5 @@
 import { getSqliteAsync } from "../../db/client";
+import { RELATIONS } from "../../db/relations";
 import { createSerialQueue } from "../../domain/serial-queue";
 import { deterministicId, naturalKeys } from "../../db/ids";
 import { fromDbShape, nowIso, softDelete, writeRows, writeRowsValidated, writeSetting, type RowWrite } from "../../db/mutations";
@@ -11,8 +12,7 @@ import { InvestmentDomainError } from "../../domain/investments";
 import { assertInvestmentWrites } from "./investment-validation";
 import { confirmExpected, type ExpectedRow } from "./expected";
 import { cardStatementWrite, type LivePaymentSource } from "./transactions";
-import { storedRateOnOrBefore } from "./installments";
-import { convertToTryMinor } from "../../domain/fx";
+import { billedInTry } from "./installments";
 
 // ---------------------------------------------------------------------------
 // Daily maintenance: §2.7 date flips, expected generation, late marking, auto-pay
@@ -123,20 +123,56 @@ export async function repairCardStatementLinks(userId: string, today: ISODate): 
 }
 
 /**
- * The TRY figure of a foreign-currency instalment at the rate stored for
- * `rateDate` or before it, or nothing to change: a TRY row, a row outside a
- * plan, no usable rate, or a figure too small to survive conversion.
+ * Rows that exist only for another row, and nothing a delete of that row
+ * reaches: a budget belongs to its category, a document to its transaction.
+ * One place rather than each delete, because the parent's tombstone also
+ * arrives by sync from another device, and older builds left orphans behind —
+ * a transaction or plan delete never took its receipts, so their bytes and
+ * bucket objects outlived every screen that could still reach them.
+ *
+ * A live child is tombstoned only when its parent PROVABLY exists as deleted:
+ * a missing parent may simply not have synced yet on a fresh device, and
+ * cleaning those would destroy data mid-first-pull.
  */
-async function billedInTry(
-  userId: string,
-  row: Record<string, unknown>,
-  rateDate: ISODate,
-): Promise<{ amountTryMinor: number; fxRate: string } | null> {
-  if (row.currency === "TRY" || row.installment_plan_id == null) return null;
-  const rate = await storedRateOnOrBefore(userId, String(row.currency), rateDate);
-  if (rate == null) return null;
-  const amountTryMinor = convertToTryMinor(Number(row.amount_minor), rate);
-  return amountTryMinor === 0 ? null : { amountTryMinor, fxRate: String(rate) };
+const DEPENDENTS = RELATIONS.filter(([table]) => table === "category_budgets" || table === "attachments");
+
+/**
+ * A parent that can still come back is not deleted yet, and a document waits
+ * for it: its bytes are pruned in the same pass, so a receipt swept early is
+ * gone for good. The undo bar restores a transaction seconds after the delete,
+ * and a live plan regenerates any of its instalments under the same id —
+ * reopening a closed loan, raising a count that was lowered. A day outlasts
+ * every undo; deleting the plan, which cannot be undone, is what makes its
+ * rows final.
+ */
+const REVIVABLE_PARENT = `p.deleted_at > ? OR EXISTS (
+  SELECT 1 FROM installment_plans plan
+  WHERE plan.user_id = p.user_id AND plan.id = p.installment_plan_id AND plan.deleted_at IS NULL
+)`;
+const UNDO_OUTLASTED_MS = 24 * 60 * 60 * 1000;
+
+async function tombstoneOrphans(userId: string): Promise<void> {
+  const sqlite = await getSqliteAsync();
+  const undoCutoff = new Date(Date.now() - UNDO_OUTLASTED_MS).toISOString();
+  for (const [table, key, parent] of DEPENDENTS) {
+    const revivable = parent === "transactions";
+    const orphans = await sqlite.getAllAsync<Record<string, unknown>>(
+      `SELECT child.* FROM ${table} child
+       WHERE child.user_id = ? AND child.deleted_at IS NULL
+         AND EXISTS (
+           SELECT 1 FROM ${parent} p
+           WHERE p.user_id = child.user_id AND p.id = child.${key} AND p.deleted_at IS NOT NULL
+             ${revivable ? `AND NOT (${REVIVABLE_PARENT})` : ""}
+         )`,
+      revivable ? [userId, undoCutoff] : [userId],
+    );
+    if (orphans.length === 0) continue;
+    await writeRows(
+      userId,
+      orphans.map((row) => ({ table, row: { ...fromDbShape(table, row), deletedAt: nowIso() } })),
+      false,
+    );
+  }
 }
 
 export async function runMaintenance(userId: string): Promise<void> {
@@ -227,29 +263,8 @@ async function runMaintenanceInner(userId: string): Promise<void> {
   // financial history.
   await repairCardStatementLinks(userId, today);
 
-  // 0e) Budgets cascade with their category; older builds left orphans behind.
-  // Tombstone a live budget only when its category row PROVABLY exists as
-  // deleted — a missing category may simply not have synced yet on a fresh
-  // device, and cleaning those would destroy data mid-first-pull.
-  const orphanBudgets = await sqlite.getAllAsync<Record<string, unknown>>(
-    `SELECT cb.* FROM category_budgets cb
-     WHERE cb.user_id = ? AND cb.deleted_at IS NULL
-       AND EXISTS (
-         SELECT 1 FROM categories c
-         WHERE c.user_id = cb.user_id AND c.id = cb.category_id AND c.deleted_at IS NOT NULL
-       )`,
-    [userId],
-  );
-  if (orphanBudgets.length > 0) {
-    await writeRows(
-      userId,
-      orphanBudgets.map((row) => ({
-        table: "category_budgets" as const,
-        row: { ...fromDbShape("category_budgets", row), deletedAt: nowIso() },
-      })),
-      false,
-    );
-  }
+  // 0e) A dependent goes with the row it belongs to.
+  await tombstoneOrphans(userId);
 
   // 1) §2.7 — pending transactions whose effective date arrived become realized.
   const due = await sqlite.getAllAsync<Record<string, unknown>>(
@@ -264,10 +279,10 @@ async function runMaintenanceInner(userId: string): Promise<void> {
           ? 2
           : 1;
     for (const row of [...due].sort((a, b) => priority(a) - priority(b) || String(a.id).localeCompare(String(b.id)))) {
-      const writes: RowWrite[] = [{
-        table: "transactions",
-        row: { ...fromDbShape("transactions", row), status: "realized", ...(await billedInTry(userId, row, String(row.effective_date))) },
-      }];
+      const billed = row.installment_plan_id == null
+        ? null
+        : await billedInTry(userId, String(row.currency), Number(row.amount_minor), String(row.effective_date) as ISODate);
+      const writes: RowWrite[] = [{ table: "transactions", row: { ...fromDbShape("transactions", row), status: "realized", ...billed } }];
       try {
         await writeRowsValidated(
           userId,
@@ -295,7 +310,7 @@ async function runMaintenanceInner(userId: string): Promise<void> {
   );
   const repriced: RowWrite[] = [];
   for (const row of comingForeign) {
-    const billed = await billedInTry(userId, row, today);
+    const billed = await billedInTry(userId, String(row.currency), Number(row.amount_minor), today);
     if (!billed || (billed.amountTryMinor === Number(row.amount_try_minor) && billed.fxRate === row.fx_rate)) continue;
     repriced.push({ table: "transactions", row: { ...fromDbShape("transactions", row), ...billed } });
   }

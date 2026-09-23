@@ -92,6 +92,10 @@ jobs:
               base="$green"
             else
               echo "::warning::no green ci push run is an ancestor of $HEAD_SHA; measuring from the push's own base, which cannot see an earlier run that published nothing"
+              # The classifier ships nothing for an empty diff, and from here
+              # that proves only that nothing changed since a push that may
+              # itself have failed, so an empty diff runs everything instead.
+              if git diff --quiet "$BEFORE_SHA" "$HEAD_SHA" 2>/dev/null; then base=""; fi
             fi
           fi
           echo "sha=$base" >> "$GITHUB_OUTPUT"

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  isShortLandscape,
   shouldStackListActions,
   shouldUseCompactChart,
   shouldUseNarrowAnalytics,
@@ -28,6 +29,10 @@ describe("phone action layouts", () => {
     expect(shouldUseWideWorkspace(900)).toBe(true);
     expect(shouldUseCompactInstallmentCard(559)).toBe(true);
     expect(shouldUseCompactInstallmentCard(560)).toBe(false);
+    expect(isShortLandscape(844, 390)).toBe(true);
+    expect(isShortLandscape(844, 480)).toBe(true);
+    expect(isShortLandscape(844, 481)).toBe(false);
+    expect(isShortLandscape(390, 844)).toBe(false);
   });
 });
 

@@ -23,6 +23,7 @@ vi.mock("../../src/db/client", async () => {
   return make(() => harness.db!);
 });
 vi.mock("../../src/db/ids", () => ({
+  newId: (() => { let n = 0; return () => `new-${++n}`; })(),
   deterministicId: async (key: string) => `det:${key}`,
   naturalKeys: new Proxy({}, {
     get: (_t, property) => (...parts: unknown[]) => `${String(property)}|${parts.join("|")}`,
@@ -35,7 +36,10 @@ vi.mock("../../src/sync/engine", () => ({ scheduleSync: vi.fn() }));
 vi.mock("../../src/services/fx-fetch", () => ({ lookupRate: vi.fn() }));
 vi.mock("../../src/services/markets", () => ({ marketSellRateTry: vi.fn() }));
 
+import { liveAttachmentNames } from "../../src/data/repo/attachments";
+import { createInstallmentPlan, deletePlan, updateInstallmentPlan } from "../../src/data/repo/installments";
 import { runMaintenance } from "../../src/data/repo/maintenance";
+import { deleteTransaction, restoreTransaction } from "../../src/data/repo/transactions";
 
 const USER = "user-1";
 const NOW = "2026-09-04T09:00:00.000Z";
@@ -95,6 +99,94 @@ describe("the orphan-budget cascade", () => {
     await runMaintenance(USER);
 
     expect(live("category_budgets", "budget-live")).toBe(true);
+  });
+});
+
+describe("the orphan-attachment cascade", () => {
+  const AGED = "2026-01-01T00:00:00.000Z";
+  /** A tombstone old enough that no undo can still reach it. */
+  function agedTombstone(id: string): void {
+    harness.db!.prepare(`UPDATE transactions SET deleted_at = ? WHERE id = ?`).run(AGED, id);
+  }
+
+  /**
+   * A document outlives nothing it documents. Deleting a transaction, or the
+   * plan that generated it, tombstoned the transaction alone, so its receipt
+   * stayed live: the prune kept its bytes, the mirror kept its object, and no
+   * screen could reach it any more. Only the bulk reset cascaded. The rule
+   * lives here rather than in each delete, because a tombstone also arrives by
+   * sync from another device — and older builds left these behind already.
+   */
+  function expense(id: string, planId: string | null = null): Record<string, unknown> {
+    return {
+      ...stamps, id, type: "expense", amount_minor: 10_00, currency: "TRY", fx_rate: null, amount_try_minor: 10_00,
+      entry_date: "2026-09-01", effective_date: "2026-09-01", status: "realized", person_id: "self",
+      installment_plan_id: planId, installment_no: planId ? 1 : null, is_aggregate: 0,
+    };
+  }
+  function receipt(id: string, transactionId: string): Record<string, unknown> {
+    return {
+      ...stamps, id, transaction_id: transactionId, file_name: "fatura.pdf", stored_name: `${id}.pdf`,
+      mime_type: "application/pdf", byte_size: 2048, kind: "receipt",
+    };
+  }
+
+  it("tombstones a receipt whose transaction was deleted, and keeps every other", async () => {
+    insert("transactions", expense("tx-deleted"));
+    insert("transactions", expense("tx-kept"));
+    insert("attachments", receipt("doc-deleted", "tx-deleted"));
+    insert("attachments", receipt("doc-kept", "tx-kept"));
+    insert("attachments", receipt("doc-unsynced", "tx-not-here"));
+
+    await deleteTransaction(USER, "tx-deleted");
+    agedTombstone("tx-deleted");
+    await runMaintenance(USER);
+
+    expect(live("attachments", "doc-deleted")).toBe(false);
+    expect(live("attachments", "doc-kept")).toBe(true);
+    expect(live("attachments", "doc-unsynced"), "a transaction that has not arrived is not a deleted one").toBe(true);
+    expect([...await liveAttachmentNames(USER)].sort()).toEqual(["doc-kept.pdf", "doc-unsynced.pdf"]);
+  });
+
+  it("tombstones the receipts of a deleted plan's instalments", async () => {
+    insert("installment_plans", {
+      ...stamps, id: "plan-gone", title: "Telefon", kind: "loan", total_amount_minor: 10_00, installment_count: 1,
+      currency: "TRY", start_month: "2026-09", person_id: "self",
+    });
+    insert("transactions", expense("tx-instalment", "plan-gone"));
+    insert("attachments", receipt("doc-instalment", "tx-instalment"));
+
+    await deletePlan(USER, "plan-gone");
+    agedTombstone("tx-instalment");
+    await runMaintenance(USER);
+
+    expect(live("attachments", "doc-instalment")).toBe(false);
+  });
+
+  it("keeps the receipt of a transaction the undo bar can still bring back", async () => {
+    insert("transactions", expense("tx-undone"));
+    insert("attachments", receipt("doc-undone", "tx-undone"));
+
+    const snapshot = await deleteTransaction(USER, "tx-undone");
+    await runMaintenance(USER);
+    await restoreTransaction(USER, snapshot!);
+
+    expect(live("attachments", "doc-undone")).toBe(true);
+  });
+
+  it("keeps the receipt of an instalment its live plan can regenerate", async () => {
+    // Closing a loan, or lowering its count, tombstones instalments that
+    // reopening it, or raising the count, brings back under the same id.
+    insert("installment_plans", {
+      ...stamps, id: "plan-live", title: "Kredi", kind: "loan", total_amount_minor: 10_00, installment_count: 1,
+      currency: "TRY", start_month: "2026-09", person_id: "self",
+    });
+    insert("transactions", { ...expense("tx-closed", "plan-live"), deleted_at: AGED });
+    insert("attachments", receipt("doc-closed", "tx-closed"));
+
+    await runMaintenance(USER);
+
+    expect(live("attachments", "doc-closed")).toBe(true);
   });
 });
 
@@ -268,6 +360,10 @@ describe("foreign-currency instalments", () => {
   function transaction(id: string): Record<string, unknown> {
     return harness.db!.prepare(`SELECT status, amount_try_minor, fx_rate FROM transactions WHERE id = ?`).get(id) as Record<string, unknown>;
   }
+  /** Left alone means not written at all: a no-op rewrite uploads every coming instalment on every open. */
+  function rewritten(id: string): boolean {
+    return (harness.db!.prepare(`SELECT updated_at FROM transactions WHERE id = ?`).get(id) as { updated_at: string }).updated_at !== NOW;
+  }
 
   beforeEach(() => {
     insert("installment_plans", {
@@ -282,11 +378,49 @@ describe("foreign-currency instalments", () => {
   it("fixes an instalment whose day has come at the rate stored for that day", async () => {
     insert("transactions", instalmentRow("due", "USD", "2020-01-05", 200_00));
     insert("transactions", instalmentRow("due-lira", "TRY", "2020-01-05", 10_00));
+    insert("transactions", { ...instalmentRow("due-manual", "USD", "2020-01-05", 200_00), installment_plan_id: null, installment_no: null });
 
     await runMaintenance(USER);
 
     expect(transaction("due")).toEqual({ status: "realized", amount_try_minor: 310_00, fx_rate: "31" });
     expect(transaction("due-lira")).toEqual({ status: "realized", amount_try_minor: 10_00, fx_rate: null });
+    // A foreign purchase outside a plan keeps the snapshot it was entered with (spec §2.5).
+    expect(transaction("due-manual")).toEqual({ status: "realized", amount_try_minor: 200_00, fx_rate: "20" });
+  });
+
+  it("fixes each instalment entered as already paid at the rate stored for its own day", async () => {
+    // "Paid N of M" and every reschedule write the past months as realized at
+    // the one rate the screen had. Maintenance restates what is pending and
+    // fixes a row as it TURNS realized, so a row born realized kept that rate
+    // for good: all three below were once written at 35.
+    const plan = {
+      title: "Kamera", kind: "loan" as const, totalAmountMinor: 30_00, monthlyAmountMinor: null,
+      installmentCount: 3, startMonth: "2020-01", dueDay: 5, paymentSourceId: null, personId: "self",
+      personIsSelf: true, categoryId: null, note: null,
+    };
+    const dollars = { ...plan, currency: "USD", fxRate: "35", tryFactor: 35 };
+    const usd = await createInstallmentPlan(USER, dollars);
+    const lira = await createInstallmentPlan(USER, { ...plan, currency: "TRY", fxRate: null, tryFactor: 1 });
+
+    await runMaintenance(USER);
+
+    const billed = (planId: string) => harness.db!
+      .prepare(`SELECT status, amount_try_minor, fx_rate FROM transactions WHERE installment_plan_id = ? ORDER BY installment_no`)
+      .all(planId);
+    expect(billed(usd)).toEqual([
+      { status: "realized", amount_try_minor: 310_00, fx_rate: "31" },
+      { status: "realized", amount_try_minor: 350_00, fx_rate: "35" },
+      { status: "realized", amount_try_minor: 350_00, fx_rate: "35" },
+    ]);
+    expect(billed(lira).map((row) => row.fx_rate)).toEqual([null, null, null]);
+
+    // Once paid, a month is history: a rate corrected afterwards restates it
+    // only when the owner moves the schedule, which restates history on purpose.
+    harness.db!.prepare(`UPDATE fx_rates SET rate_try = '33' WHERE id = 'usd-2020-01-05'`).run();
+    await updateInstallmentPlan(USER, usd, dollars);
+    expect(billed(usd)[0]).toEqual({ status: "realized", amount_try_minor: 310_00, fx_rate: "31" });
+    await updateInstallmentPlan(USER, usd, dollars, { reschedule: true });
+    expect(billed(usd)[0]).toEqual({ status: "realized", amount_try_minor: 330_00, fx_rate: "33" });
   });
 
   it("leaves a coming instalment already at the last rate, and one too small to survive conversion", async () => {
@@ -298,18 +432,23 @@ describe("foreign-currency instalments", () => {
 
     expect(transaction("current")).toEqual({ status: "pending", amount_try_minor: 350_00, fx_rate: "35" });
     expect(transaction("tiny")).toEqual({ status: "pending", amount_try_minor: 1, fx_rate: "20" });
+    expect([rewritten("current"), rewritten("tiny")]).toEqual([false, false]);
   });
 
   it("restates a coming instalment at the last known rate, and leaves lira and rateless ones alone", async () => {
     insert("transactions", instalmentRow("coming", "USD", "2099-01-05", 200_00));
     insert("transactions", instalmentRow("lira", "TRY", "2099-01-05", 10_00));
     insert("transactions", instalmentRow("no-rate", "GBP", "2099-01-05", 200_00));
+    // Already at the last rate, with a figure that rate no longer explains.
+    insert("transactions", { ...instalmentRow("stale", "USD", "2099-01-05", 340_00), fx_rate: "35" });
 
     await runMaintenance(USER);
 
     expect(transaction("coming")).toEqual({ status: "pending", amount_try_minor: 350_00, fx_rate: "35" });
+    expect(transaction("stale")).toEqual({ status: "pending", amount_try_minor: 350_00, fx_rate: "35" });
     expect(transaction("lira")).toEqual({ status: "pending", amount_try_minor: 10_00, fx_rate: null });
     expect(transaction("no-rate")).toEqual({ status: "pending", amount_try_minor: 200_00, fx_rate: "20" });
+    expect([rewritten("lira"), rewritten("no-rate")]).toEqual([false, false]);
   });
 });
 

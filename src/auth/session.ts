@@ -17,7 +17,7 @@ import {
   wasPasswordRecoveryDetected,
 } from "../sync/supabase";
 import { pendingOutboxCount, resetLocalWorkspace, writeSetting } from "../db/mutations";
-import { flushOutbox, purgeRemoteAttachments, runSyncSessionTask, startSyncSession, stopSyncSession } from "../sync/engine";
+import { eraseDeviceAttachments, flushOutbox, purgeRemoteAttachments, runSyncSessionTask, startSyncSession, stopSyncSession } from "../sync/engine";
 import { useSyncStatus } from "../sync/status";
 import { connectMarkets, disconnectMarkets } from "../services/markets";
 import { clearRateCache, loadRateCache } from "../services/fx-fetch";
@@ -230,6 +230,21 @@ async function ensureWorkspaceFor(userId: string): Promise<string | null> {
   return null;
 }
 
+/**
+ * The signed-out state, then this device's documents erased.
+ *
+ * Before any key removal: an emptied workspace under a live user id reads as
+ * "setup never finished", and the route guard sends the user to Quick Start
+ * instead of sign-in. The documents go with the session because their bytes
+ * live beside the database the wipe empties, and the prune that removes orphans
+ * runs only for an open session — a signed-out device kept every receipt
+ * readable until somebody next signed in.
+ */
+async function endLocalSession(): Promise<void> {
+  useSession.setState({ userId: null, email: null, isOnlineSession: false, isNewSignup: false, isFreezing: false, previousLoginAt: null });
+  await eraseDeviceAttachments();
+}
+
 /** A revoked/deleted remote session must stop exposing its cached workspace
  * once Supabase reports SIGNED_OUT. Network failure does not emit this event,
  * so ordinary offline access remains intact. The captured owner checks keep a
@@ -251,17 +266,9 @@ async function clearInvalidatedSession(): Promise<void> {
     await kv.set(LOCAL_OWNER_KEY, LOCAL_WIPE_PENDING_OWNER).catch(() => {});
   }
   if (useSession.getState().userId !== userId) return;
-  // Before the key removals, for the same reason as signOut: the guard would
-  // otherwise read the emptied workspace as an unfinished setup and route to
-  // Quick Start rather than sign-in.
-  useSession.setState({
-    userId: null,
-    email: null,
-    isOnlineSession: false,
-    isNewSignup: false,
-    isFreezing: false,
-    previousLoginAt: null,
-  });
+  // Whether or not the rows were wiped: a retried wipe does not need the
+  // documents, and nobody is signed in to read them.
+  await endLocalSession();
   await kv.remove(LAST_USER_KEY);
   await kv.remove(LAST_EMAIL_KEY);
 }
@@ -597,13 +604,11 @@ export const useSession = create<SessionStore>((set, get) => ({
       }
       return tr.errors.workspaceResetFailed;
     }
-    // Ends the session in the same turn as the wipe, before any further await.
-    // The route guard reads `onboarded` from the live database: while a user id
-    // survives an emptied workspace it resolves false, which is indistinguishable
-    // from a genuinely incomplete setup, and the guard sends the user to Quick
-    // Start instead of sign-in. The remote revoke and the key removals below can
-    // take seconds on a device, so that window was the whole bug.
-    set({ userId: null, email: null, isOnlineSession: false, isNewSignup: false, isFreezing: false, previousLoginAt: null });
+    // Ends the session in the same turn as the wipe, before the remote revoke
+    // and the key removals below, which can take seconds on a device — that
+    // window was the whole bug. Only here, past the point of no return: a failed
+    // wipe above keeps the session, and a session that stays keeps its documents.
+    await endLocalSession();
     const supabase = getSupabase();
     if (supabase) {
       explicitSignOutInProgress = true;
@@ -678,14 +683,12 @@ export const useSession = create<SessionStore>((set, get) => ({
       // surface an actionable error. A future account cannot open this
       // workspace: ensureWorkspaceFor will retry the wipe first.
       await kv.set(LOCAL_OWNER_KEY, LOCAL_WIPE_PENDING_OWNER).catch(() => {});
-      set({ userId: null, email: null, isOnlineSession: false, isNewSignup: false, isFreezing: false, previousLoginAt: null });
+      await endLocalSession();
       await kv.remove(LAST_USER_KEY).catch(() => {});
       await kv.remove(LAST_EMAIL_KEY).catch(() => {});
       return tr.errors.workspaceResetFailed;
     }
-    // Same reason as signOut: an emptied workspace under a live user id reads as
-    // "setup never finished" and routes to Quick Start instead of sign-in.
-    set({ userId: null, email: null, isOnlineSession: false, isNewSignup: false, isFreezing: false, previousLoginAt: null });
+    await endLocalSession();
     await kv.remove(LOCAL_OWNER_KEY);
     await kv.remove(LAST_USER_KEY);
     await kv.remove(LAST_EMAIL_KEY);

@@ -66,8 +66,8 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version-file: .nvmrc
-          cache: npm
-      # No `npm ci`: the audit resolves from package-lock.json alone.
+      # No `npm ci`, and so no `cache: npm`: the audit resolves from
+      # package-lock.json alone.
       # High and critical only, and every accepted advisory is named with its
       # evidence in the script. A bare `npm audit --audit-level=high` reports
       # every package carrying Metro's two build-chain `image-size`

@@ -45,13 +45,13 @@ describe("subscription cost summary", () => {
     limit?: number,
   ) => subscriptionCostSummary(subs, history, TODAY, normalizedMonthlyLoadMinor, limit);
 
-  it("states the yearly cost as twelve of the same monthly load", () => {
+  it("states the yearly cost as what the rules charge in a year, not twelve rounded months", () => {
     const result = summary([
       rule(),
-      rule({ id: "sub-2", name: "Yıllık", amountMinor: 1_200_00, intervalMonths: 12 }),
+      rule({ id: "sub-2", name: "Yıllık", amountMinor: 1_199_00, intervalMonths: 12 }),
     ]);
-    expect(result.monthlyTryMinor).toBe(300_00);
-    expect(result.annualTryMinor).toBe(3_600_00);
+    expect(result.monthlyTryMinor).toBe(299_92);
+    expect(result.annualTryMinor).toBe(3_599_00);
   });
 
   it("counts a rule it cannot convert instead of dropping it from the total", () => {

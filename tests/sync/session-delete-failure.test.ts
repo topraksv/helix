@@ -45,6 +45,7 @@ vi.mock("../../src/sync/engine", () => ({
   stopSyncSession: vi.fn(async () => {}),
   // Account deletion clears the Storage bucket first; the sync facade owns it.
   purgeRemoteAttachments: vi.fn(async () => {}),
+  eraseDeviceAttachments: vi.fn(async () => 0),
 }));
 vi.mock("../../src/services/markets", () => ({
   clearMarkets: vi.fn(),

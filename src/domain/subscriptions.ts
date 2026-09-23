@@ -163,7 +163,8 @@ interface PriceChange {
 export interface SubscriptionCostSummary {
   /** Active TRY rules only, normalized to what they cost per month. */
   monthlyTryMinor: number;
-  /** Twelve months of that same load — a restatement, not a second model. */
+  /** The same rules over twelve months, each rounded once: twelve rounded
+   *  monthly loads report a yearly ₺1.199 as ₺1.199,04. */
   annualTryMinor: number;
   /** Active rules whose currency has no TRY figure here, so the totals can
    *  say what they exclude instead of quietly under-reporting. */
@@ -183,7 +184,7 @@ export interface SubscriptionCostSummary {
  *
  * Deliberately small: it re-uses `normalizedMonthlyLoadMinor` for the monthly
  * figure the screen already showed and adds only the two things the stored
- * data could support but nothing read — the annual restatement, and the price
+ * data could support but nothing read — the annual cost, and the price
  * changes `upsertSubscription` has been appending to `price_history` since the
  * table existed without any surface ever reading them back.
  *
@@ -200,6 +201,7 @@ export function subscriptionCostSummary(
 ): SubscriptionCostSummary {
   const active = subscriptions.filter((subscription) => subscription.isActive);
   let monthlyTryMinor = 0;
+  let annualTryMinor = 0;
   let excludedCurrencyCount = 0;
   let unknownAmountCount = 0;
   for (const subscription of active) {
@@ -209,6 +211,7 @@ export function subscriptionCostSummary(
     }
     if (subscription.amountMode === "variable" && subscription.amountMinor === 0) unknownAmountCount += 1;
     monthlyTryMinor += monthlyLoad(subscription.amountMinor, subscription.intervalMonths);
+    annualTryMinor += monthlyLoad(subscription.amountMinor * 12, subscription.intervalMonths);
   }
 
   const nameById = new Map(subscriptions.map((subscription) => [subscription.id, subscription.name]));
@@ -252,7 +255,7 @@ export function subscriptionCostSummary(
 
   return {
     monthlyTryMinor,
-    annualTryMinor: monthlyTryMinor * 12,
+    annualTryMinor,
     excludedCurrencyCount,
     unknownAmountCount,
     recentChanges: changes.slice(0, Math.max(0, limit)),

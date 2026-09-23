@@ -32,10 +32,16 @@ const paths = [
 ];
 
 describe("session cleanup order", () => {
+  it("endLocalSession clears the user id before it awaits anything", () => {
+    const helper = body("async function endLocalSession", "\n}\n");
+    expect(helper.indexOf("userId: null")).toBeGreaterThan(-1);
+    expect(helper.indexOf("userId: null")).toBeLessThan(helper.indexOf("await "));
+  });
+
   for (const path of paths) {
     it(`${path.name} ends the session before it awaits anything else`, () => {
       const wipe = path.source.indexOf("resetLocalWorkspace()");
-      const clear = path.source.indexOf("userId: null");
+      const clear = path.source.indexOf("endLocalSession()");
       expect(wipe, "path no longer wipes the workspace").toBeGreaterThan(-1);
       expect(clear, "path no longer ends the session").toBeGreaterThan(-1);
       expect(clear, "the session must be ended after the wipe succeeds").toBeGreaterThan(wipe);

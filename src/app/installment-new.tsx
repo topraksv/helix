@@ -3,7 +3,7 @@
 import React, { useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { Redirect, Stack, useLocalSearchParams, useRouter } from "expo-router";
-import { closeInstallmentPlan, countInstallmentsForPlan, createInstallmentPlan, CreditCardCycleRequiredError, deletePlan, deleteTransaction, FxRateUnavailableError, InstallmentHistoryConflictError, reopenInstallmentPlan, updateInstallmentPlan } from "../data/repo";
+import { closeInstallmentPlan, countInstallmentsForPlan, createInstallmentPlan, CreditCardCycleRequiredError, deletePlan, deleteTransaction, FxRateUnavailableError, InstallmentHistoryConflictError, InstallmentTotalTooSmallError, reopenInstallmentPlan, updateInstallmentPlan } from "../data/repo";
 import { useAllTransactionsState, useAnsweredForId, useCategoriesState, usePersonsState, usePlansState, useSourcesState, useUserId } from "../data/hooks";
 import { combineLiveStates } from "../data/live-state";
 import { classifyRecordId } from "../domain/route-params";
@@ -501,6 +501,7 @@ function CloseLoanCard({ plan, instalments }: { plan: Plan; instalments: PlanRow
 
 function saveFailureMessage(error: unknown): string {
   if (error instanceof CreditCardCycleRequiredError) return tr.sources.cycleRequired;
+  if (error instanceof InstallmentTotalTooSmallError) return tr.installments.totalTooSmall;
   return error instanceof InstallmentHistoryConflictError ? tr.installments.historyConflict : tr.errors.saveFailed;
 }
 

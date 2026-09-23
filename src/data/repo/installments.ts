@@ -8,7 +8,7 @@ import { assertSupportedMinorAmount, splitIntoInstallments, type Minor } from ".
 import { assertInputWithinLimit } from "../../domain/input";
 import { isValidCardCycle, statementForDueDate, type CardCycle, type CardStatementPeriod } from "../../domain/card-statements";
 import { convertToTryMinor } from "../../domain/fx";
-import { CreditCardCycleRequiredError, FxRateUnavailableError, InstallmentHistoryConflictError, InstallmentRefundNothingLeftError, InstallmentRefundTooLargeError } from "./errors";
+import { CreditCardCycleRequiredError, FxRateUnavailableError, InstallmentHistoryConflictError, InstallmentRefundNothingLeftError, InstallmentRefundTooLargeError, InstallmentTotalTooSmallError } from "./errors";
 import { assertLiveTransactionPerson, assertTransactionCategory, cardStatementWrite, livePaymentSource } from "./transactions";
 
 // Installment plans
@@ -173,18 +173,25 @@ function carryStoredDetails(writes: RowWrite[], stored: Record<string, unknown>[
  * Paid rows are history and keep the figures they were written with — under an
  * older split rule, or before the total was corrected — so a fresh split of the
  * total beside them leaves the schedule a few kuruş off the purchase. What is
- * left of the total is divided over what is left to pay instead. A total
- * corrected below what was already paid leaves nothing to divide, and the
- * schedule's own figures stand.
+ * left of the total is divided over what is left to pay instead.
+ *
+ * A total that leaves some unpaid month less than a kuruş — a little, nothing,
+ * or less than nothing — is refused: the count is what is wrong, and no split
+ * of it totals the purchase.
  */
-function divideWhatIsLeft(writes: RowWrite[], input: NewPlan, kept: Record<string, unknown>[]): RowWrite[] {
+function divideWhatIsLeft(writes: RowWrite[], input: NewPlan, kept: Map<string, Record<string, unknown>>): RowWrite[] {
   if (input.totalAmountMinor == null) return writes;
-  const keptIds = new Set(kept.map((row) => String(row.id)));
-  const unpaid = writes
-    .filter((write) => write.table === "transactions" && !keptIds.has(String(write.row.id)))
-    .sort((a, b) => Number(a.row.installmentNo) - Number(b.row.installmentNo));
-  const leftMinor = input.totalAmountMinor - kept.reduce((sum, row) => sum + Number(row.amount_minor), 0);
-  if (unpaid.length === 0 || leftMinor < unpaid.length) return writes;
+  // Already in schedule order: `buildPlanRows` writes the months in turn, and
+  // the first of them carries the split's rounding.
+  const unpaid = writes.filter((write) => write.table === "transactions" && !kept.has(String(write.row.id)));
+  // Instalments only: a refund or a payoff is billed beside the purchase and
+  // is no part of it, as `addInstallmentRefund` already counts.
+  const paidMinor = [...kept.values()]
+    .filter((row) => row.installment_no != null)
+    .reduce((sum, row) => sum + Number(row.amount_minor), 0);
+  const leftMinor = input.totalAmountMinor - paidMinor;
+  if (unpaid.length === 0) return writes;
+  if (leftMinor < unpaid.length) throw new InstallmentTotalTooSmallError();
   const shares = splitIntoInstallments(leftMinor, unpaid.length);
   const shareById = new Map(unpaid.map((write, index) => [String(write.row.id), shares[index]!]));
   return writes.map((write) => {
@@ -199,6 +206,29 @@ function divideWhatIsLeft(writes: RowWrite[], input: NewPlan, kept: Record<strin
       },
     };
   });
+}
+
+/**
+ * Each foreign-currency instalment is billed at the rate stored on or before
+ * its own day (spec §3.2) — for one still to come, the last known one — but a
+ * plan is built with the single rate the screen had. Maintenance fixes a row at
+ * its own day only as it TURNS realized, so a row born realized — by "paid N
+ * of M" or a reschedule — is billed here or never. Kept history is not restated.
+ */
+async function billAtEachDaysRate(
+  userId: string,
+  writes: RowWrite[],
+  currency: string,
+  kept: Map<string, Record<string, unknown>>,
+): Promise<RowWrite[]> {
+  const billed: RowWrite[] = [];
+  for (const write of writes) {
+    const own = write.table === "transactions" && !kept.has(String(write.row.id))
+      ? await billedInTry(userId, currency, Number(write.row.amountMinor), String(write.row.effectiveDate) as ISODate)
+      : null;
+    billed.push(own ? { ...write, row: { ...write.row, ...own } } : write);
+  }
+  return billed;
 }
 
 async function writePlanWithSchedule(
@@ -243,8 +273,8 @@ async function writePlanWithSchedule(
   let writes = cardCycle && resolvedInput.paymentSourceId
     ? await linkDueRowsToCardStatements(userId, resolvedInput.paymentSourceId, cardCycle, rows)
     : rows;
+  const realizedById = new Map(realized.map((transaction) => [String(transaction.id), transaction]));
   if (realized.length > 0) {
-    const realizedById = new Map(realized.map((transaction) => [String(transaction.id), transaction]));
     writes = writes.map((write) => {
       if (write.table !== "transactions") return write;
       const historical = realizedById.get(String(write.row.id));
@@ -259,8 +289,9 @@ async function writePlanWithSchedule(
     writes = writes.filter(
       (write) => write.table !== "credit_card_statements" || referencedStatementIds.has(String(write.row.id)),
     );
-    writes = divideWhatIsLeft(writes, resolvedInput, realized);
+    writes = divideWhatIsLeft(writes, resolvedInput, realizedById);
   }
+  writes = await billAtEachDaysRate(userId, writes, resolvedInput.currency, realizedById);
   writes = carryStoredDetails(writes, existingPlanTransactions);
   if (preserveRealized) {
     writes.push(
@@ -291,7 +322,7 @@ async function writePlanWithSchedule(
  * stored, so a caller keeps the figure it already holds instead of inventing
  * one. The bounds are the rate cache's own.
  */
-export async function storedRateOnOrBefore(userId: string, currency: string, date: ISODate): Promise<number | null> {
+async function storedRateOnOrBefore(userId: string, currency: string, date: ISODate): Promise<number | null> {
   if (currency === "TRY") return 1;
   const sqlite = await getSqliteAsync();
   const row = await sqlite.getFirstAsync<{ rate_try: string }>(
@@ -302,6 +333,26 @@ export async function storedRateOnOrBefore(userId: string, currency: string, dat
   );
   const rate = Number(row?.rate_try);
   return Number.isFinite(rate) && rate > 0 && rate <= 1_000_000 ? rate : null;
+}
+
+/**
+ * What a foreign-currency amount bills in lira at the rate stored for
+ * `rateDate` or before it, or nothing to change: a lira amount, no usable rate,
+ * or a figure too small to survive conversion. One rule for an instalment
+ * however it is billed — built, fixed as its day comes, or restated while it is
+ * still to come.
+ */
+export async function billedInTry(
+  userId: string,
+  currency: string,
+  amountMinor: Minor,
+  rateDate: ISODate,
+): Promise<{ amountTryMinor: Minor; fxRate: string } | null> {
+  if (currency === "TRY") return null;
+  const rate = await storedRateOnOrBefore(userId, currency, rateDate);
+  if (rate == null) return null;
+  const amountTryMinor = convertToTryMinor(amountMinor, rate);
+  return amountTryMinor === 0 ? null : { amountTryMinor, fxRate: String(rate) };
 }
 
 /** Live installment transactions belonging to a plan — for a warn-before-delete

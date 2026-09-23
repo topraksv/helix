@@ -32,7 +32,7 @@ import { isSupabaseConfigured } from "../sync/supabase";
 import * as Sharing from "expo-sharing";
 import { useSyncDeadLettersState, useUserId } from "../data/hooks";
 import { dismissSyncDeadLetter, retrySyncDeadLetter } from "../data/repo";
-import { buildExportText, saveTextFile } from "../services/export-import";
+import { buildExportText, saveFile } from "../services/export-import";
 import { devError } from "../services/logger";
 import { syncNow } from "../sync/engine";
 import { isMonthKey, todayISO } from "../domain/dates";
@@ -135,7 +135,7 @@ export default function SyncIssuesScreen() {
     if (busy) return;
     setBusy(true);
     try {
-      const path = await saveTextFile(
+      const path = await saveFile(
         `helix-yedek-${todayISO()}.json`,
         await buildExportText(userId),
         "application/json",

@@ -1614,10 +1614,10 @@ describe("placement contract", () => {
     expect(offenders).toEqual([]);
   });
 
-  it("names every layout-mode width threshold in responsive.ts", () => {
-    // A width identifier compared against a two-or-more digit literal. Single
-    // digits are counts and indices, never viewports.
-    const threshold = /\b\w*(?:W|w)idth\w*\s*(?:<=?|>=?)\s*\d{2,}/g;
+  it("names every layout-mode viewport threshold in responsive.ts", () => {
+    // A width or height identifier compared against a two-or-more digit
+    // literal. Single digits are counts and indices, never viewports.
+    const threshold = /\b\w*(?:[Ww]idth|[Hh]eight)\w*\s*(?:<=?|>=?)\s*\d{2,}/g;
     const offenders = placementSources
       .filter((path) => path !== "src/ui/responsive.ts")
       .flatMap((path) => {

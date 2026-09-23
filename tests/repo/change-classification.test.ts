@@ -9,6 +9,20 @@ import { classify, CI_EXECUTED_SCRIPTS } from "../../scripts/classify-changes.mj
 const root = resolve(process.cwd());
 const classifier = resolve(root, "scripts/classify-changes.mjs");
 
+/** A scratch repository with one committed file; the caller removes it. */
+function repositoryWith(file: string): { repository: string; base: string } {
+  const repository = mkdtempSync(join(tmpdir(), "helix-classifier-"));
+  const git = (...args: string[]) => execFileSync("git", args, { cwd: repository, encoding: "utf8" }).trim();
+  git("init", "--quiet");
+  git("config", "user.email", "classifier@example.invalid");
+  git("config", "user.name", "Classifier Test");
+  mkdirSync(join(repository, file, ".."), { recursive: true });
+  writeFileSync(join(repository, file), "export const shipped = true;\n");
+  git("add", ".");
+  git("commit", "--quiet", "-m", "base");
+  return { repository, base: git("rev-parse", "HEAD") };
+}
+
 function filesUnder(directory: string): string[] {
   const absolute = resolve(root, directory);
   return readdirSync(absolute).flatMap((entry) => {
@@ -101,7 +115,7 @@ describe("change classification", () => {
   }
 
   it("runs and ships everything when no diff is available", () => {
-    expect(classify([])).toMatchObject({
+    expect(classify(null)).toMatchObject({
       run_ci: true,
       light_gate: true,
       full_gate: true,
@@ -336,16 +350,8 @@ describe("change classification", () => {
   });
 
   it("classifies both sides of a rename so a shipped removal cannot disappear", () => {
-    const repository = mkdtempSync(join(tmpdir(), "helix-classifier-"));
+    const { repository, base } = repositoryWith("src/ui/removed.ts");
     try {
-      execFileSync("git", ["init", "--quiet"], { cwd: repository });
-      execFileSync("git", ["config", "user.email", "classifier@example.invalid"], { cwd: repository });
-      execFileSync("git", ["config", "user.name", "Classifier Test"], { cwd: repository });
-      mkdirSync(join(repository, "src/ui"), { recursive: true });
-      writeFileSync(join(repository, "src/ui/removed.ts"), "export const shipped = true;\n");
-      execFileSync("git", ["add", "."], { cwd: repository });
-      execFileSync("git", ["commit", "--quiet", "-m", "base"], { cwd: repository });
-      const base = execFileSync("git", ["rev-parse", "HEAD"], { cwd: repository, encoding: "utf8" }).trim();
 
       mkdirSync(join(repository, "docs"), { recursive: true });
       execFileSync("git", ["mv", "src/ui/removed.ts", "docs/removed.ts"], { cwd: repository });
@@ -359,6 +365,36 @@ describe("change classification", () => {
       expect(output).toContain("run_web_build=true");
       expect(output).toContain("deploy_web=true");
       expect(output).toContain("deploy_mobile=true");
+    } finally {
+      rmSync(repository, { recursive: true, force: true });
+    }
+  });
+
+  /**
+   * A diff that resolved and came back empty is an answer, not a missing one.
+   * Both used to land on the same empty list, so a commit touching only
+   * Git-ignored paths — `.claude/`, `docs/`, `AGENTS.md`, ordinary work here —
+   * ran the full gate and republished both surfaces for a tree that was
+   * already live: cd2b1f6 cost 10m36s and two publishes for zero tracked files.
+   * A deliberate republish is what `workflow_dispatch` is for.
+   */
+  it("ships nothing for a resolved diff that is empty, and fails open only without one", () => {
+    const { repository, base } = repositoryWith("src/app.ts");
+    try {
+      execFileSync("git", ["commit", "--quiet", "--allow-empty", "-m", "ignored paths only"], { cwd: repository });
+      const head = execFileSync("git", ["rev-parse", "HEAD"], { cwd: repository, encoding: "utf8" }).trim();
+      const run = (...refs: string[]) => execFileSync(process.execPath, [classifier, ...refs], { cwd: repository, encoding: "utf8" });
+
+      const empty = run(base, head);
+      expect(empty).toContain("full_gate=false");
+      expect(empty).toContain("deploy_web=false");
+      expect(empty).toContain("deploy_mobile=false");
+
+      for (const unknown of [run("0000000000000000000000000000000000000000", head), run("not-a-commit", head)]) {
+        expect(unknown).toContain("full_gate=true");
+        expect(unknown).toContain("deploy_web=true");
+        expect(unknown).toContain("deploy_mobile=true");
+      }
     } finally {
       rmSync(repository, { recursive: true, force: true });
     }

@@ -51,7 +51,7 @@ vi.mock("../../src/db/ids", () => ({
   }),
 }));
 
-import { importBundle, saveBinaryFile, saveTextFile } from "../../src/services/export-import";
+import { importBundle, saveFile } from "../../src/services/export-import";
 
 // A backup restores into the account that wrote it — a bundle from another
 // account is refused outright (see backup-round-trip.test.ts), so these
@@ -331,8 +331,8 @@ describe("handing a file to the platform", () => {
   it("downloads text and bytes on the web, typed as asked", async () => {
     const { anchor, created, revoke } = download();
 
-    expect(await saveTextFile("yedek.json", "{}", "application/json")).toBeNull();
-    expect(await saveBinaryFile("helix.xlsx", new Uint8Array([1, 2, 3]), "application/vnd.ms-excel")).toBeNull();
+    expect(await saveFile("yedek.json", "{}", "application/json")).toBeNull();
+    expect(await saveFile("helix.xlsx", new Uint8Array([1, 2, 3]), "application/vnd.ms-excel")).toBeNull();
 
     expect(await Promise.all(created.map(async (blob) => [blob.type, blob.size]))).toEqual([
       ["application/json", 2],
@@ -348,8 +348,8 @@ describe("handing a file to the platform", () => {
     dependencies.platform.OS = "ios";
     dependencies.existing.add("cache/helix.xlsx");
 
-    expect(await saveTextFile("yedek.json", "{}", "application/json")).toBe("cache/yedek.json");
-    expect(await saveBinaryFile("helix.xlsx", new Uint8Array([1, 2, 3]), "application/vnd.ms-excel")).toBe("cache/helix.xlsx");
+    expect(await saveFile("yedek.json", "{}", "application/json")).toBe("cache/yedek.json");
+    expect(await saveFile("helix.xlsx", new Uint8Array([1, 2, 3]), "application/vnd.ms-excel")).toBe("cache/helix.xlsx");
 
     expect(dependencies.files).toEqual([
       "create cache/yedek.json", "write cache/yedek.json {}",

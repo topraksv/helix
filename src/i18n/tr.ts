@@ -1257,6 +1257,7 @@ export const tr = {
     scheduleAndAssignmentHint: "Başlangıç dönemini, ödeme yöntemini, kişiyi ve Mali Tablo kalemini seç.",
     editHint: "Tutar ve taksit sayısı yalnızca ödenmemiş ayları değiştirir. Ödenen taksiti düzeltirsen çizelge o sayıya göre yeniden kurulur.",
     historyConflict: "Taksit sayısını daha önce ödenmiş bir taksiti kaldıracak kadar düşüremezsin. Ödenmiş dönemler finansal geçmiş olarak korunur.",
+    totalTooSmall: "Bu toplam, ödenmiş taksitlerden sonra kalan aylara yetmiyor. Toplamı artır ya da taksit sayısını azalt.",
     delete: "Bu planı sil",
     noSource: "Ödeme yöntemi yok",
     deleteBody: (count: number) => `Bu plan ve ona bağlı ${count} taksit kaydı kalıcı olarak silinecek. Geri alınamaz.`,

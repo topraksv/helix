@@ -288,9 +288,9 @@ function SubscriptionScheduleOverview({
  *
  * Deliberately small, and deliberately built on what is already stored: the
  * monthly figure is the one the schedule card already showed, the annual one
- * restates it, and the changes come from `price_history` rows that
- * `upsertSubscription` has been writing since the table existed with no
- * surface ever reading them. No new store, no new chart engine.
+ * applies the same rules over a year, and the changes come from
+ * `price_history` rows that `upsertSubscription` has been writing since the
+ * table existed with no surface ever reading them. No new store, no new chart engine.
  *
  * Direction is carried by a glyph AND by a word, never by the colour alone.
  */
@@ -334,7 +334,7 @@ function SubscriptionCostSummary({
       {/* The market card's two-rate block, for the two figures that are one
           fact. They used to share a rail as equal columns, which reads as two
           independent numbers to compare — and they are not: the annual one is
-          twelve of the monthly one. Same shape as Alış/Satış: the supporting
+          the same rules over a year. Same shape as Alış/Satış: the supporting
           figure muted above, the one being answered in full ink below. */}
       <View testID="subscription-cost-figures" style={{ marginTop: spacing.sm, gap: 3 }}>
         <Spread style={{ alignItems: "baseline" }}>

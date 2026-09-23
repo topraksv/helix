@@ -38,6 +38,16 @@ const SERVER_SQLITE_STUB = path.resolve(__dirname, "src/db/expo-sqlite.server.js
 const REALTIME_STUB = path.resolve(__dirname, "src/sync/realtime-absent.js");
 
 /**
+ * Local reminders, which the web does not have.
+ *
+ * Every caller returns early on the web, but the package still sat in the entry
+ * chunk and ran its push-token side effect at import. Scoped to the web: the
+ * phone schedules through the real module. The stub says what happens if the
+ * web ever needs it.
+ */
+const NOTIFICATIONS_STUB = path.resolve(__dirname, "src/services/notifications-absent.js");
+
+/**
  * `expo-sqlite` does not exist on the server, so the server bundle stops
  * carrying it.
  *
@@ -61,6 +71,9 @@ config.resolver.resolveRequest = (context, moduleName, platform) => {
   }
   if (moduleName === "@supabase/realtime-js") {
     return { type: "sourceFile", filePath: REALTIME_STUB };
+  }
+  if (moduleName === "expo-notifications" && platform === "web") {
+    return { type: "sourceFile", filePath: NOTIFICATIONS_STUB };
   }
   return (defaultResolveRequest ?? context.resolveRequest)(context, moduleName, platform);
 };

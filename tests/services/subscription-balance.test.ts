@@ -188,8 +188,8 @@ describe("adding a subscription never moves the current balance", () => {
     expect(transactions).toHaveLength(1);
     expect(transactions[0]).toMatchObject({ status: "realized", effective_date: todayISO() });
     expect(balanceNow()).toBe(OPENING_MINOR - baseInput.amountMinor);
-    // Provenance, not decoration: the catch-up list and the undo bar both have
-    // to tell a charge the app made from one the owner confirmed.
+    // Provenance: a charge the app made is recorded apart from one the owner
+    // confirmed. No screen reads it yet; docs/BACKLOG.md holds that decision.
     expect(autoConfirmedFlag()).toBe(1);
   });
 

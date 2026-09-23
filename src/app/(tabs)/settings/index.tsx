@@ -41,7 +41,7 @@ import { useSettingsMapState, settingValue, useSyncDeadLettersState, useUserId }
 import { combineLiveStates } from "../../../data/live-state";
 import { asyncFieldState } from "../../../domain/form-state";
 import { pendingSyncChangeCount, setPendingTableVisibility, setReminderDays } from "../../../data/repo";
-import { buildExportText, buildWorkbookBytes, importBundle, MAX_BACKUP_BYTES, parseExportBundleText, saveBinaryFile, saveTextFile } from "../../../services/export-import";
+import { buildExportText, buildWorkbookBytes, importBundle, MAX_BACKUP_BYTES, parseExportBundleText, saveFile } from "../../../services/export-import";
 import { WORKBOOK_MIME } from "../../../services/workbook-export";
 import { disableNotifications, enableNotifications, rescheduleAll, updateNotificationDetails } from "../../../services/notifications";
 import { syncNow } from "../../../sync/engine";
@@ -432,7 +432,7 @@ export default function SettingsScreen() {
 
   const exportJson = () =>
     runDataOperation("export", async ({ signal }) => {
-      const path = await saveTextFile(
+      const path = await saveFile(
         `helix-yedek-${todayISO()}.json`,
         await buildExportText(userId, signal),
         "application/json",
@@ -443,7 +443,7 @@ export default function SettingsScreen() {
 
   const exportWorkbook = () =>
     runDataOperation("workbook", async ({ signal }) => {
-      const path = await saveBinaryFile(
+      const path = await saveFile(
         `helix-${todayISO()}.xlsx`,
         await buildWorkbookBytes(userId, signal),
         WORKBOOK_MIME,

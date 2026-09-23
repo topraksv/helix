@@ -617,7 +617,8 @@ function ForecastToggle({ projected, actual, open, onToggle, wide }: { projected
     <Pressable
       testID="dashboard-forecast-toggle"
       accessibilityRole="button"
-      accessibilityLabel={`${tr.dashboard.forecastToggle} ${rising ? tr.dashboard.forecastRising : tr.dashboard.forecastFalling}`}
+      // The name replaces what the button draws, so the figure has to be in it.
+      accessibilityLabel={`${tr.dashboard.forecastToggle} ${formatMinorCompact(projected)}, ${rising ? tr.dashboard.forecastRising : tr.dashboard.forecastFalling}`}
       aria-expanded={open}
       accessibilityState={{ expanded: open }}
       onPress={onToggle}

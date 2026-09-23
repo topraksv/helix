@@ -17,6 +17,7 @@ import { useModalAccessibility } from "./accessibility";
 import { useReducedMotion } from "./motion";
 import { interactionSurface } from "./interaction";
 import { modalAnimationType } from "./modal-motion";
+import { isShortLandscape } from "./responsive";
 
 type Op = "+" | "-" | "×" | "÷";
 
@@ -321,7 +322,7 @@ export function CalculatorModal({
   const reducedMotion = useReducedMotion();
   const titleRef = useModalAccessibility(true, returnFocusRef);
   const { width, height } = useWindowDimensions();
-  const shortLandscape = width > height && height <= 480;
+  const shortLandscape = isShortLandscape(width, height);
   return (
     <Modal transparent animationType={modalAnimationType(reducedMotion)} visible onRequestClose={onClose}>
       <Pressable

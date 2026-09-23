@@ -27,7 +27,7 @@
 import { getSqliteAsync } from "../db/client";
 import { isAttachmentMimeType, isStoredAttachmentName, MAX_ATTACHMENT_BYTES } from "../domain/attachments";
 import { isUuidShaped } from "./merge-policy";
-import { readAttachmentBytes, writeAttachmentBytes } from "../services/attachment-store";
+import { pruneOrphanAttachmentFiles, readAttachmentBytes, writeAttachmentBytes } from "../services/attachment-store";
 import { devWarning } from "../services/logger";
 import { getSupabase } from "./supabase";
 
@@ -242,6 +242,11 @@ async function reconcileOnce(
     if (error) devWarning("attachment.mirror", `remove ${error.message}`);
     else knownRemote.delete(row.stored_name);
   }
+}
+
+/** Erase every document's bytes from this device; `session.ts` says when. */
+export function eraseDeviceAttachments(): Promise<number> {
+  return pruneOrphanAttachmentFiles(new Set());
 }
 
 /**
