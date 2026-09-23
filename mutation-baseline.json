@@ -442,12 +442,12 @@
       "measuredDate": "2026-09-02"
     },
     "src/domain/expected.ts": {
-      "score": 98.11,
-      "killed": 207,
+      "score": 98.17,
+      "killed": 214,
       "timeout": 1,
       "survived": 4,
       "noCoverage": 0,
-      "measuredOn": "eec6f35fac7a81c207727fe0eca3d83adf3013fd",
+      "measuredOn": "d6d3ce8e67fc1783a6573416233715e45be15379",
       "measuredDate": "2026-09-23"
     },
     "src/domain/feedback.ts": {
@@ -955,13 +955,13 @@
       "measuredDate": "2026-09-07"
     },
     "src/sync/attachment-mirror.ts": {
-      "score": 65.63,
-      "killed": 126,
+      "score": 73.52,
+      "killed": 161,
       "timeout": 0,
-      "survived": 47,
-      "noCoverage": 19,
-      "measuredOn": "6b188b7f05384011a6ff7de1486a0f8ec5fec37a",
-      "measuredDate": "2026-09-02"
+      "survived": 44,
+      "noCoverage": 14,
+      "measuredOn": "d6d3ce8e67fc1783a6573416233715e45be15379",
+      "measuredDate": "2026-09-23"
     },
     "src/sync/engine.ts": {
       "score": 83.97,
