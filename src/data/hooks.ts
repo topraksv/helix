@@ -13,11 +13,15 @@ import { buildLedgerChain, ledgerChainEndYear, sliceLedgerYear, type LedgerBundl
 import type { classifyRecordId } from "../domain/route-params";
 import { projectInvestmentState } from "../domain/investment-projection";
 import type { InvestmentState } from "../domain/investments";
-import { daysBetweenISO, todayISO, type MonthKey } from "../domain/dates";
+import { daysBetweenISO, todayISO, type ISODate, type MonthKey } from "../domain/dates";
+import { plannedExpectations, type PlannedExpectation } from "../domain/expected";
+import { convertToTryMinor } from "../domain/fx";
 import type { TxLike } from "../domain/types";
 import { isWorkbookRemainderRow } from "../domain/transactions";
 import { settleCardStatements, type CardSettlement } from "../domain/card-statements";
 import { devError } from "../services/logger";
+import { lookupRate, useFxRates } from "../services/fx-fetch";
+import { marketSellRateTry } from "../services/markets";
 import { decodeSettingValue, type SettingKey } from "../domain/settings";
 import { balanceColumnLabel, type StoredBalanceColumns } from "../domain/matrix-preferences";
 import { tr } from "../i18n/tr";
@@ -884,6 +888,46 @@ function sliceCacheFor(chain: LedgerChain): Map<number, LedgerBundle> {
   return created;
 }
 
+/**
+ * The expectations the chain draws, one list for every screen reading it.
+ *
+ * A module value for the reason `txLikeCache` is one: a list built per mounted
+ * screen would hand the chain cache a new identity from each of them and
+ * rebuild the chain on every render of either. The rate is read when an input
+ * changes rather than on every render, so the Summary card's forecast and the
+ * Mali Tablo's close are made of the same converted amounts.
+ */
+let plannedCache: { inputs: readonly unknown[]; value: PlannedExpectation[] } | null = null;
+
+function plannedExpectationsFor(
+  userId: string,
+  expected: readonly (typeof s.expectedPayments.$inferSelect)[],
+  subscriptions: readonly (typeof s.subscriptions.$inferSelect)[],
+  incomes: readonly (typeof s.recurringIncomes.$inferSelect)[],
+  transactions: readonly TxLike[],
+  today: ISODate,
+  fxVersion: number,
+): PlannedExpectation[] {
+  const inputs = [userId, expected, subscriptions, incomes, transactions, today, fxVersion] as const;
+  if (plannedCache && plannedCache.inputs.every((input, index) => input === inputs[index])) return plannedCache.value;
+  const subscriptionById = new Map(subscriptions.map((row) => [row.id, row]));
+  const incomeById = new Map(incomes.map((row) => [row.id, row]));
+  const value = plannedExpectations({
+    expected,
+    transactions,
+    today,
+    // Missing FX stays missing; a foreign amount is never treated as TRY.
+    toTryMinor: (currency, amountMinor) => {
+      if (currency === "TRY") return amountMinor;
+      const rateTry = marketSellRateTry(currency) ?? lookupRate(userId, currency)?.rate.rateTry ?? null;
+      return rateTry == null ? null : convertToTryMinor(amountMinor, rateTry);
+    },
+    ruleOf: (kind, refId) => (kind === "subscription" ? subscriptionById : incomeById).get(refId),
+  });
+  plannedCache = { inputs, value };
+  return value;
+}
+
 export function useLedgerState(year: number): LiveValueResult<LedgerBundle | null> {
   const settingsState = useSettingsMapState();
   const personsState = usePersonsState();
@@ -891,6 +935,11 @@ export function useLedgerState(year: number): LiveValueResult<LedgerBundle | nul
   const transactionsState = useAllTransactionsState();
   const adjustmentsState = useAdjustmentsState();
   const paymentsState = useStatementPaymentsState();
+  const expectedState = usePendingExpectedState();
+  const subscriptionsState = useSubscriptionsState();
+  const incomesState = useRecurringIncomesState();
+  const fxVersion = useFxRates();
+  const userId = useUserId();
   const settlement = useCardSettlement();
   const txLike = settlement.transactions;
   const settings = settingsState.data;
@@ -902,6 +951,9 @@ export function useLedgerState(year: number): LiveValueResult<LedgerBundle | nul
     transactionsState,
     adjustmentsState,
     paymentsState,
+    expectedState,
+    subscriptionsState,
+    incomesState,
   ]);
 
   // `null` means ONE thing now: the queries have not answered yet. It used to
@@ -916,7 +968,8 @@ export function useLedgerState(year: number): LiveValueResult<LedgerBundle | nul
   const configuredStart = settingValue<MonthKey | null>(settings, "start_month", null);
   const openingBalanceMinor = settingValue<number>(settings, "opening_balance_minor", 0);
   const includePendingInCells = settingValue<boolean>(settings, "show_pending_in_table", true);
-  const inputs = [configuredStart, openingBalanceMinor, includePendingInCells, txLike, adjustments, settlement.flows, today] as const;
+  const planned = plannedExpectationsFor(userId, expectedState.data, subscriptionsState.data, incomesState.data, txLike, today, fxVersion);
+  const inputs = [configuredStart, openingBalanceMinor, includePendingInCells, txLike, adjustments, settlement.flows, planned, today] as const;
   const endYear = ledgerChainEndYear(year, today);
   const cached = ledgerChainCache.get(endYear);
   let chain: LedgerChain;
@@ -930,6 +983,7 @@ export function useLedgerState(year: number): LiveValueResult<LedgerBundle | nul
       transactions: txLike,
       adjustments: adjustments.map((row) => ({ id: row.id, date: row.date, amountMinor: row.amountMinor, declaredMinor: row.declaredMinor })),
       settlements: settlement.flows,
+      plannedExpectations: planned,
       endYear,
       today,
     });

@@ -128,7 +128,7 @@ describe("workbook column remainders", () => {
     const model = buildDashboardModel({
       transactions, expected: [], ledger: [], actualBalanceMinor: 0, today: TODAY,
       monthStart: "2026-07-01", monthEnd: "2026-07-31", currentMonth: "2026-07", year: 2026,
-      expectedTryMinor: (_currency, amount) => amount,
+      plannedExpectations: [],
     });
     expect(model.distribution).toEqual(distributionForRange(transactions, "2026-07-01", "2026-07-31", TODAY));
     expect(model.variableMinor).toBe(400_00);

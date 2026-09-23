@@ -14,7 +14,9 @@ import TrendingDown from "lucide-react-native/icons/trending-down";
 import TrendingUp from "lucide-react-native/icons/trending-up";
 import { deleteTransaction, restoreTransaction, saveCellNote } from "../../../data/repo";
 import { monthFlowTotals } from "../../../domain/balance";
+import { groupBy } from "../../../domain/card-statements";
 import { firstDayOf, isMonthKey, lastDayOf, monthKeyOf, todayISO, yearOf } from "../../../domain/dates";
+import { expectationEffect, type PlannedExpectation } from "../../../domain/expected";
 import {
   useAttachmentsState,
   useBalanceColumns,
@@ -35,7 +37,7 @@ import { CategoryIcon } from "../../../ui/category-icon";
 import { dateLabel, monthLabel, tr } from "../../../i18n/tr";
 import { Amount, Body, Button, Card, DataGateScreen, DataStateNotice, DisclosureChevron, EmptyState, Field, Heading, Row, Screen, Spread } from "../../../ui/components";
 import { useDrawIn } from "../../../ui/motion-primitives";
-import { TransactionRow } from "../../../ui/transaction-row";
+import { ExpectationRow, TransactionRow } from "../../../ui/transaction-row";
 import { useUndo } from "../../../ui/undo";
 import { selectionTapIfChanged } from "../../../ui/haptics";
 import { interactionBleed, interactionSurface } from "../../../ui/interaction";
@@ -51,8 +53,9 @@ type MonthTransactions = ReturnType<typeof useSettledTransactionsBetweenState>["
 type MonthListItem =
   | { kind: "summary" }
   | { kind: "empty" }
-  | { kind: "group-header"; categoryId: string; category: Categories[number] | undefined; txs: MonthTransactions; open: boolean }
+  | { kind: "group-header"; categoryId: string; category: Categories[number] | undefined; txs: MonthTransactions; planned: PlannedExpectation[]; open: boolean }
   | { kind: "tx"; categoryId: string; category: Categories[number] | undefined; tx: MonthTransactions[number]; last: boolean }
+  | { kind: "expected"; categoryId: string; item: PlannedExpectation; last: boolean }
   | { kind: "group-footer"; categoryId: string; category: Categories[number] | undefined };
 
 /**
@@ -281,13 +284,14 @@ export default function MonthDetailScreen() {
   const selfIds = new Set(persons.filter((p) => p.isSelf).map((p) => p.id));
   const planTitle = new Map(plans.map((plan) => [plan.id, plan.title]));
 
-  const byCategory = new Map<string, typeof transactions>();
-  for (const transaction of transactions) {
-    const key = transaction.categoryId ?? "uncategorized";
-    const list = byCategory.get(key);
-    if (list) list.push(transaction);
-    else byCategory.set(key, [transaction]);
-  }
+  const byCategory = groupBy(transactions, (transaction) => transaction.categoryId ?? "uncategorized");
+  // The summary card counts what the chain planned for this month, so each
+  // category lists it too; a category holding only an expectation still gets
+  // its group.
+  const plannedByCategory = groupBy(
+    bundle?.plannedExpectations ?? [],
+    (item) => (monthKeyOf(item.dueDate) === rangeMonth ? item.categoryId ?? "uncategorized" : null),
+  );
 
   const cellNotesState = useCellNotesState();
   const attachmentsState = useAttachmentsState();
@@ -318,13 +322,16 @@ export default function MonthDetailScreen() {
 
   const items: MonthListItem[] = [
     { kind: "summary" },
-    ...(transactions.length === 0 ? [{ kind: "empty" } as const] : []),
-    ...[...byCategory.entries()].flatMap<MonthListItem>(([categoryId, txs]) => {
+    ...(transactions.length === 0 && plannedByCategory.size === 0 ? [{ kind: "empty" } as const] : []),
+    ...[...new Set([...byCategory.keys(), ...plannedByCategory.keys()])].flatMap<MonthListItem>((categoryId) => {
+      const txs = byCategory.get(categoryId) ?? [];
+      const planned = plannedByCategory.get(categoryId) ?? [];
       const category = categories.find((c) => c.id === categoryId);
       const open = expanded === categoryId;
       return [
-        { kind: "group-header", categoryId, category, txs, open },
-        ...(open ? txs.map((tx, index) => ({ kind: "tx" as const, categoryId, category, tx, last: index === txs.length - 1 })) : []),
+        { kind: "group-header", categoryId, category, txs, planned, open },
+        ...(open ? txs.map((tx, index) => ({ kind: "tx" as const, categoryId, category, tx, last: index === txs.length - 1 && planned.length === 0 })) : []),
+        ...(open ? planned.map((item, index) => ({ kind: "expected" as const, categoryId, item, last: index === planned.length - 1 })) : []),
         ...(open ? [{ kind: "group-footer" as const, categoryId, category }] : []),
       ];
     }),
@@ -349,12 +356,12 @@ export default function MonthDetailScreen() {
       case "empty":
         return <EmptyState icon={Inbox} title={tr.cashflow.emptyMonth} />;
       case "group-header": {
-        const { categoryId, category, txs, open } = item;
+        const { categoryId, category, txs, planned, open } = item;
         const title = category?.name ?? tr.common.none;
         const selfSum = txs.filter((t) => selfIds.has(t.personId)).reduce(
           (sum, t) => sum + signedBalanceEffectOf(t.type, t.amountTryMinor, category?.kind ?? null),
           0,
-        );
+        ) + planned.reduce((sum, entry) => sum + expectationEffect(entry), 0);
         const note = cellNotes.find((n) => n.categoryId === categoryId);
         return (
           <View style={[groupSurface, groupTop, { paddingTop: spacing.lg, paddingBottom: open ? spacing.sm : spacing.lg }, open ? null : groupBottom]}>
@@ -445,6 +452,18 @@ export default function MonthDetailScreen() {
           </View>
         );
       }
+      case "expected": {
+        const { item: planned, last } = item;
+        return (
+          <View style={groupSurface}>
+            <ExpectationRow
+              item={planned}
+              onEdit={() => router.push(planned.kind === "subscription" ? { pathname: "/subscription-form", params: { id: planned.refId } } : "/incomes")}
+              divider={!last}
+            />
+          </View>
+        );
+      }
       case "group-footer": {
         const existing = cellNotes.find((n) => n.categoryId === item.categoryId);
         return (
@@ -497,7 +516,9 @@ export default function MonthDetailScreen() {
             ? item.kind
             : item.kind === "tx"
               ? `tx:${item.tx.id}`
-              : `${item.kind}:${item.categoryId}`
+              : item.kind === "expected"
+                ? `expected:${item.item.id}`
+                : `${item.kind}:${item.categoryId}`
         }
         renderItem={renderItem}
         renderScrollComponent={renderKeyboardSafeListScroll}

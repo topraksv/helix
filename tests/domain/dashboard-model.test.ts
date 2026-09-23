@@ -1,9 +1,15 @@
 import { describe, expect, it } from "vitest";
 import { distributionForRange, fixedVsVariable } from "../../src/domain/analytics";
 import { buildDashboardModel } from "../../src/domain/dashboard";
+import { plannedExpectations } from "../../src/domain/expected";
+import type { ExpectedPaymentLike, TxLike } from "../../src/domain/types";
 import { projectedBalance } from "../../src/domain/balance";
 import { projectedTransactionFlow } from "../../src/domain/transactions";
 import { tx } from "../helpers";
+
+/** What the ledger hook hands the dashboard, with every amount already TRY. */
+const planned = (expected: ExpectedPaymentLike[], transactions: TxLike[], today: string) =>
+  plannedExpectations({ expected, transactions, today, toTryMinor: (_currency, amount) => amount, ruleOf: () => undefined });
 
 describe("dashboard model parity", () => {
   it("matches the prior independent aggregate and forecast rules", () => {
@@ -29,7 +35,7 @@ describe("dashboard model parity", () => {
       monthEnd: "2026-07-31",
       currentMonth: "2026-07",
       year: 2026,
-      expectedTryMinor: (_currency, amount) => amount,
+      plannedExpectations: planned(expected, transactions, today),
     });
 
     expect(model.distribution).toEqual(distributionForRange(transactions, "2026-07-01", "2026-07-31", today));
@@ -52,18 +58,19 @@ describe("dashboard model parity", () => {
       status: "pending",
       subscriptionId: "electricity",
     });
+    const expected: ExpectedPaymentLike[] = [{
+      id: "electricity-expected",
+      direction: "out",
+      kind: "subscription",
+      refId: "electricity",
+      dueDate: "2026-07-28",
+      amountMinor: 125_00,
+      currency: "TRY",
+      status: "pending",
+    }];
     const model = buildDashboardModel({
       transactions: [futureTransaction],
-      expected: [{
-        id: "electricity-expected",
-        direction: "out",
-        kind: "subscription",
-        refId: "electricity",
-        dueDate: "2026-07-28",
-        amountMinor: 125_00,
-        currency: "TRY",
-        status: "pending",
-      }],
+      expected,
       ledger: [],
       actualBalanceMinor: 1_000_00,
       today: "2026-07-18",
@@ -71,7 +78,7 @@ describe("dashboard model parity", () => {
       monthEnd: "2026-07-31",
       currentMonth: "2026-07",
       year: 2026,
-      expectedTryMinor: (_currency, amount) => amount,
+      plannedExpectations: planned(expected, [futureTransaction], "2026-07-18"),
     });
 
     expect(model.outgoingMinor).toBe(125_00);
@@ -93,7 +100,7 @@ describe("dashboard model parity", () => {
       monthEnd: "2026-07-31",
       currentMonth: "2026-07",
       year: 2026,
-      expectedTryMinor: (_currency, amount) => amount,
+      plannedExpectations: [],
       partlyPaidStatementIds: new Set(["st-partial"]),
     });
 
@@ -112,7 +119,7 @@ describe("dashboard model parity", () => {
       monthEnd: "2026-07-31",
       currentMonth: "2026-07",
       year: 2026,
-      expectedTryMinor: (_currency, amount) => amount,
+      plannedExpectations: [],
     });
 
     expect(model.outgoingMinor).toBe(300_00);
@@ -131,7 +138,7 @@ describe("dashboard model parity", () => {
       monthEnd: "2026-07-31",
       currentMonth: "2026-07",
       year: 2026,
-      expectedTryMinor: (_currency, amount) => amount,
+      plannedExpectations: [],
     });
 
     expect(model.distribution.workbookRemainderMinor).toBe(-30_00);
@@ -168,7 +175,7 @@ describe("expected variable spending", () => {
     monthEnd: "2026-07-31",
     currentMonth: "2026-07",
     year: 2026,
-    expectedTryMinor: (_currency, amountMinor) => amountMinor,
+    plannedExpectations: [],
   });
 
   it("estimates what a typical month still has left to spend", () => {

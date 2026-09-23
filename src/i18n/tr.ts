@@ -1025,6 +1025,7 @@ export const tr = {
        lets the legend beside it carry whatever they are called today. */
     tableColorHint: "Bir hücreyi, satırı ya da ayı basılı tut, renkle işaretle. Renklerin adlarını da buradan değiştirebilirsin:",
     cellTransactions: "Hareketler",
+    plannedExpectation: (income: boolean) => (income ? "Beklenen gelir" : "Beklenen ödeme"),
     cellNote: "Hücre notu",
     uncategorized: "Kategorisiz",
     uncategorizedLegacy: "Kategorisiz eski kayıtlar",

@@ -19,6 +19,8 @@
 import { describe, expect, it } from "vitest";
 import {
   buildLedger,
+  buildLedgerChain,
+  monthFlowTotals,
   reconciliationDelta,
   resolveLedgerAnchor,
 } from "../../src/domain/balance";
@@ -26,6 +28,8 @@ import { categoryRangeMatrix, distributionForRange, fixedVsVariable } from "../.
 import { buildCashFlowMatrixModel } from "../../src/domain/cash-flow-matrix";
 import { buildDashboardModel } from "../../src/domain/dashboard";
 import { firstDayOf, lastDayOf, monthKeyOf } from "../../src/domain/dates";
+import { plannedExpectations } from "../../src/domain/expected";
+import type { ExpectedPaymentLike, TxLike } from "../../src/domain/types";
 import { required, tl, tx, directBalance } from "../helpers";
 
 const TODAY = "2026-07-25";
@@ -133,7 +137,7 @@ describe("every money screen reports the same dataset the same way", () => {
       monthEnd: lastDayOf("2026-07"),
       currentMonth: "2026-07",
       year: 2026,
-      expectedTryMinor: (_currency, amount) => amount,
+      plannedExpectations: [],
     });
     expect(model.distribution.incomeTotalMinor).toBe(july.incomeMinor);
     expect(model.distribution.expenseTotalMinor).toBe(july.expenseMinor);
@@ -239,5 +243,100 @@ describe("correcting the current balance", () => {
       required(anchoredLedger([{ date: TODAY, amountMinor: second }]).ledger.find((month) => month.month === "2026-07"))
         .closingMinor,
     ).toBe(tl("118.500,00"));
+  });
+});
+
+describe("the table's month close and the Summary card's month-end forecast", () => {
+  const today = "2026-07-18" as const;
+  const expectation = (overrides: Partial<ExpectedPaymentLike>): ExpectedPaymentLike => ({
+    id: "netflix-jul",
+    direction: "out",
+    kind: "subscription",
+    refId: "netflix",
+    dueDate: "2026-07-25",
+    amountMinor: tl("100,00"),
+    currency: "TRY",
+    status: "pending",
+    ...overrides,
+  });
+
+  function screens(transactions: TxLike[], expected: ExpectedPaymentLike[], includePendingInCells = true) {
+    const chain = buildLedgerChain({
+      configuredStart: "2026-07",
+      openingBalanceMinor: tl("1.000,00"),
+      includePendingInCells,
+      transactions,
+      adjustments: [],
+      plannedExpectations: plannedExpectations({
+        expected,
+        transactions,
+        today,
+        toTryMinor: (_currency, amountMinor) => amountMinor,
+        ruleOf: (_kind, refId) => (refId === "deleted" ? undefined : { categoryId: `cat-${refId}`, name: refId }),
+      }),
+      endYear: 2026,
+      today,
+    });
+    const dashboard = buildDashboardModel({
+      transactions,
+      expected,
+      plannedExpectations: chain.plannedExpectations,
+      ledger: chain.ledger,
+      actualBalanceMinor: chain.actualBalanceMinor,
+      today,
+      monthStart: "2026-07-01",
+      monthEnd: "2026-07-31",
+      currentMonth: "2026-07",
+      year: 2026,
+    });
+    const month = (key: string) => required(chain.ledger.find((entry) => entry.month === key), key);
+    return { month, dashboard };
+  }
+
+  it("are one figure while a subscription is still to come this month", () => {
+    const { month, dashboard } = screens([], [expectation({})]);
+    expect(dashboard.projectedMinor).toBe(tl("900,00"));
+    expect(monthFlowTotals(month("2026-07")).closingMinor).toBe(tl("900,00"));
+    // Drawn where the row adds up on its own face: in its category's cell.
+    expect(month("2026-07").byCategory.get("cat-netflix")).toBe(tl("100,00"));
+    // The balance itself is still only what has happened.
+    expect(month("2026-07").closingMinor).toBe(tl("1.000,00"));
+  });
+
+  it("are one figure across realized and pending rows, income, and a later month", () => {
+    const { month, dashboard } = screens(
+      [
+        tx({ type: "expense", amountTryMinor: tl("200,00"), effectiveDate: "2026-07-05", categoryId: "cat-market", categoryKind: "expense" }),
+        tx({ type: "expense", amountTryMinor: tl("150,00"), effectiveDate: "2026-07-25", status: "pending", categoryId: "cat-market", categoryKind: "expense", installmentPlanId: "plan" }),
+      ],
+      [
+        expectation({}),
+        expectation({ id: "salary-jul", kind: "recurring_income", refId: "salary", direction: "in", dueDate: "2026-07-30", amountMinor: tl("500,00") }),
+        expectation({ id: "netflix-aug", dueDate: "2026-08-25" }),
+      ],
+    );
+    expect(dashboard.projectedMinor).toBe(tl("1.050,00"));
+    expect(monthFlowTotals(month("2026-07")).closingMinor).toBe(dashboard.projectedMinor);
+    expect(month("2026-08").byCategory.get("cat-netflix")).toBe(tl("100,00"));
+    expect(monthFlowTotals(month("2026-08")).closingMinor).toBe(tl("950,00"));
+  });
+
+  it("keeps the forecast when the table is set to show only what has happened", () => {
+    const { month, dashboard } = screens([], [expectation({})], false);
+    expect(dashboard.projectedMinor).toBe(tl("900,00"));
+    expect(month("2026-07").byCategory.get("cat-netflix")).toBeUndefined();
+    expect(monthFlowTotals(month("2026-07")).closingMinor).toBe(tl("1.000,00"));
+  });
+
+  it("draws an expectation whose rule is gone in the uncategorised cell", () => {
+    const { month, dashboard } = screens([], [expectation({ refId: "deleted" })]);
+    expect(month("2026-07").uncategorizedMinor).toBe(tl("100,00"));
+    expect(month("2026-07").byCategory.size).toBe(0);
+    expect(monthFlowTotals(month("2026-07")).closingMinor).toBe(dashboard.projectedMinor);
+  });
+
+  it("gives the forecast nothing to count when the chain was given nothing", () => {
+    const chain = buildLedgerChain({ configuredStart: "2026-07", openingBalanceMinor: 0, includePendingInCells: true, transactions: [], adjustments: [], endYear: 2026, today });
+    expect(chain.plannedExpectations).toEqual([]);
   });
 });

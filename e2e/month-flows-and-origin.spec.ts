@@ -1,8 +1,10 @@
 /**
- * Three regressions that only a real render proves:
+ * Regressions that only a real render proves:
  *
  * - a future month's summary showed a carried balance above three zeros while the
  *   table cell beside it already listed the planned amount;
+ * - the table closed the month without a subscription the Summary card's
+ *   month-end forecast already counted;
  * - the transfer classification was repeated as a live switch under every
  *   single expense column;
  * - a screen's recorded origin did not survive a round trip through another
@@ -11,7 +13,7 @@
 
 import { expect, test, type Page } from "@playwright/test";
 import { addMonthsToKey } from "../src/domain/dates";
-import { addMarketExpense, currentMonthKey, isolateExternalData, onboard, pickOption } from "./helpers";
+import { addMarketExpense, currentIstanbulDay, currentMonthKey, isolateExternalData, onboard, openCashFlow, pickOption } from "./helpers";
 import { monthLabel } from "../src/i18n/tr";
 
 test.beforeEach(async ({ context }) => isolateExternalData(context));
@@ -63,6 +65,37 @@ test("a future month focus states the planned flows behind its own total", async
     page.getByRole("group", { name: new RegExp(`${monthLabel(planned)}, Güncel Bakiye, -.*₺5\\.000,00`) }),
   ).toBeVisible();
   await expect(page.getByRole("button", { name: /Market.*5\.000,00/ })).toBeVisible();
+});
+
+test("the table closes this month on the Summary card's month-end forecast", async ({ page }) => {
+  await onboard(page);
+  // Billed today and not yet confirmed: an obligation, not a movement.
+  await page.getByRole("tab", { name: "Abonelikler" }).click();
+  await page.getByRole("button", { name: "Abonelik Ekle", exact: true }).click();
+  await page.getByRole("textbox", { name: "Ad", exact: true }).fill("Netflix");
+  await page.getByRole("textbox", { name: "Tutar · TRY", exact: true }).fill("229,99");
+  await page.getByRole("textbox", { name: "Ödeme günü", exact: true }).fill(currentIstanbulDay());
+  await page.getByRole("button", { name: "Kaydet", exact: true }).click();
+  const categoryOffer = page.getByRole("button", { name: "Oluştur ve Kaydet", exact: true });
+  if (await categoryOffer.count()) await categoryOffer.click();
+  await expect(page).toHaveURL(/subscriptions/u);
+
+  await page.getByRole("tab", { name: "Durum" }).click();
+  const forecast = page.getByTestId("dashboard-forecast-toggle");
+  // The forecast has to carry the subscription, or two zeros would agree.
+  await expect(forecast).toHaveAttribute("aria-label", /229,99/u);
+  const figure = /^Ay sonu tahmini (.+), (?:yükseliyor|düşüyor)$/u.exec((await forecast.getAttribute("aria-label")) ?? "")?.[1];
+  expect(figure).toBeDefined();
+
+  await openCashFlow(page);
+  const month = currentMonthKey();
+  await expect(page.getByRole("group", { name: `${monthLabel(month)}, Güncel Bakiye, ${figure}`, exact: true })).toBeVisible();
+
+  // The month's own list shows what its total counts.
+  await page.goto(`/helix/cash-flow/${month}`);
+  await page.getByRole("button", { name: /229,99/u }).first().click();
+  await expect(page.getByText("Netflix", { exact: true })).toBeVisible();
+  await expect(page.getByText(/Beklenen ödeme/u)).toBeVisible();
 });
 
 test("an untouched month still reads zero rather than a borrowed number", async ({ page }) => {

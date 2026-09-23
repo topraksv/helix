@@ -42,8 +42,7 @@ import {
 import { combineLiveStates } from "../../data/live-state";
 import { confirmExpected, FxRateUnavailableError, revertExpected, setExpectedAmount } from "../../data/repo";
 import { MARKET_SYMBOLS } from "../../domain/investment-catalog";
-import { marketSellRateTry, retryMarkets, useMarkets } from "../../services/markets";
-import { convertToTryMinor } from "../../domain/fx";
+import { retryMarkets, useMarkets } from "../../services/markets";
 import { lookupRate, useFxRates } from "../../services/fx-fetch";
 import { appAlert } from "../../ui/dialog";
 import { scheduleSync } from "../../sync/engine";
@@ -444,8 +443,6 @@ function useDashboardData() {
     [byStatement],
   );
   const live = combineLiveStates([ledgerState, categoriesState, personsState, expectedState, subscriptionsState, incomesState, sourcesState, cardStatementsState]);
-  // Re-render when FX rates land so foreign-currency projections settle.
-  useFxRates();
 
   // Its own memo, so the empty-ledger fallback is one stable array rather than
   // a new one per render feeding everything derived from it.
@@ -454,14 +451,6 @@ function useDashboardData() {
   const subscriptionById = useMemo(() => new Map(subscriptions.map((s) => [s.id, s])), [subscriptions]);
   const incomeById = useMemo(() => new Map(incomes.map((income) => [income.id, income])), [incomes]);
   const catName = React.useCallback((id: string | null) => (id ? categoryById.get(id)?.name : undefined), [categoryById]);
-  // Missing FX stays missing; a foreign amount is never treated as TRY.
-  const expectedTryMinor = (currency: string, amountMinor: number): number | null => {
-    if (currency === "TRY") return amountMinor;
-    const rateTry = marketSellRateTry(currency) ?? lookupRate(userId, currency)?.rate.rateTry ?? null;
-    return rateTry == null ? null : convertToTryMinor(amountMinor, rateTry);
-  };
-  // Deliberately NOT memoized: `expectedTryMinor` reads the live market store,
-  // which this screen does not subscribe to, so a dependency list would pin a rate.
   const model = buildDashboardModel({
     transactions: txLike,
     expected,
@@ -472,7 +461,7 @@ function useDashboardData() {
     monthEnd: lastDayOf(month),
     currentMonth: month,
     year,
-    expectedTryMinor,
+    plannedExpectations: bundle?.plannedExpectations ?? [],
     partlyPaidStatementIds,
   });
   // Derived from every transaction the account has, so from the data and not the render.

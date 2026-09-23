@@ -15,13 +15,15 @@ import {
   useAttachmentsState,
   useCategoriesState,
   useCellNotesState,
+  useLedgerState,
   usePersonsState,
   usePlansState,
   useSettledTransactionsBetweenState,
   useUserId,
 } from "../data/hooks";
 import { combineLiveStates } from "../data/live-state";
-import { dateForMonthEntry, firstDayOf, lastDayOf, todayISO } from "../domain/dates";
+import { dateForMonthEntry, firstDayOf, lastDayOf, monthKeyOf, todayISO, yearOf } from "../domain/dates";
+import { expectationEffect, type PlannedExpectation } from "../domain/expected";
 import { isValidCellParams } from "../domain/route-params";
 import { installmentDisplayTitle } from "../domain/installments";
 import { formatMinorCompact, parseAmountExpression } from "../domain/money";
@@ -29,8 +31,8 @@ import { categoryTableEntryType, isWorkbookRemainderRow, signedBalanceEffectOf }
 import { transactionDateText } from "../ui/transaction-date";
 import { dateLabel, monthLabel, tr } from "../i18n/tr";
 import { scheduleSync } from "../sync/engine";
-import { Amount, Body, Button, Card, DataGateScreen, DataStateNotice, EmptyState, Field, MoneyField, PanelHeader, Row, Screen, SectionHeader } from "../ui/components";
-import { TransactionRow } from "../ui/transaction-row";
+import { Amount, Body, Button, Card, DataGateScreen, DataStateNotice, Divider, EmptyState, Field, MoneyField, PanelHeader, Row, Screen, SectionHeader } from "../ui/components";
+import { ExpectationRow, TransactionRow } from "../ui/transaction-row";
 import { placeholderPools, useRotatingPlaceholder } from "../ui/placeholders";
 import { useUndo } from "../ui/undo";
 import { spacing, type, useTheme } from "../ui/theme";
@@ -75,6 +77,7 @@ function CellEditor({ month, categoryId }: { month: string; categoryId: string }
   const rangeMonth = month;
   const transactionsState = useSettledTransactionsBetweenState(firstDayOf(rangeMonth), lastDayOf(rangeMonth));
   const transactions = transactionsState.data;
+  const ledgerState = useLedgerState(yearOf(rangeMonth));
   const undo = useUndo();
   const { palette } = useTheme();
   const [entryRaw, setEntryRaw] = useState("");
@@ -86,9 +89,15 @@ function CellEditor({ month, categoryId }: { month: string; categoryId: string }
   const selfIds = new Set(persons.filter((p) => p.isSelf).map((p) => p.id));
   const planTitle = new Map(plans.map((plan) => [plan.id, plan.title]));
   const cellTx = transactions.filter((t) => t.categoryId === categoryId);
+  const cellExpected = (ledgerState.data?.plannedExpectations ?? []).filter(
+    (item) => item.categoryId === categoryId && monthKeyOf(item.dueDate) === rangeMonth,
+  );
   const selfSum = cellTx
     .filter((t) => selfIds.has(t.personId))
-    .reduce((sum, t) => sum + signedBalanceEffectOf(t.type, t.amountTryMinor, category?.kind ?? null), 0);
+    .reduce((sum, t) => sum + signedBalanceEffectOf(t.type, t.amountTryMinor, category?.kind ?? null), 0)
+    + cellExpected.reduce((sum, item) => sum + expectationEffect(item), 0);
+  const openRule = (item: PlannedExpectation) =>
+    router.push(item.kind === "subscription" ? { pathname: "/subscription-form", params: { id: item.refId } } : "/incomes");
 
   const cellNotesState = useCellNotesState();
   const attachmentsState = useAttachmentsState();
@@ -102,7 +111,7 @@ function CellEditor({ month, categoryId }: { month: string; categoryId: string }
   const note = cellNotesState.data.find(
     (row) => row.month === rangeMonth && row.categoryId === categoryId,
   );
-  const { status: dataStatus, ready: dataReady, retry: retryData } = combineLiveStates([categoriesState, personsState, plansState, transactionsState, cellNotesState]);
+  const { status: dataStatus, ready: dataReady, retry: retryData } = combineLiveStates([categoriesState, personsState, plansState, transactionsState, ledgerState, cellNotesState]);
 
   useDirtyExitGuard(
     (entryRaw.trim() !== "" || (noteDraft != null && noteDraft !== (note?.body ?? ""))) && !busy,
@@ -278,7 +287,15 @@ function CellEditor({ month, categoryId }: { month: string; categoryId: string }
         automaticallyAdjustContentInsets={false}
         showsVerticalScrollIndicator={false}
         ListHeaderComponent={header}
-        ListEmptyComponent={<EmptyState title={tr.cashflow.emptyMonth} />}
+        ListEmptyComponent={cellExpected.length > 0 ? null : <EmptyState title={tr.cashflow.emptyMonth} />}
+        ListFooterComponent={cellExpected.length > 0 ? (
+          <View>
+            {cellTx.length > 0 ? <Divider flush /> : null}
+            {cellExpected.map((item, index) => (
+              <ExpectationRow key={item.id} item={item} onEdit={() => openRule(item)} divider={index < cellExpected.length - 1} />
+            ))}
+          </View>
+        ) : null}
         renderItem={({ item: t, index }) => {
           const installmentTitle = t.installmentPlanId
             ? installmentDisplayTitle(planTitle.get(t.installmentPlanId), t.note, tr.installments.plan)

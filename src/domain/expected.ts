@@ -8,10 +8,13 @@
 
 import { addMonthsToKey, isMonthDay, lastDayOf, monthKeyOf, type ISODate } from "./dates";
 import { dayIntervalDatesInRange, dueDateInMonth, dueDatesInRange } from "./recurrence";
+import type { Minor } from "./money";
 import type {
+  ExpectedKind,
   ExpectedPaymentLike,
   RecurringIncomeLike,
   SubscriptionLike,
+  TxLike,
 } from "./types";
 
 interface ExpectedDraft {
@@ -191,4 +194,82 @@ export function findAutoConfirmable(
     const createdDay = autoPayRules.get(e.refId) ?? null;
     return createdDay == null || e.dueDate > createdDay;
   });
+}
+
+/** An unpaid expectation as a planned flow: in TRY, in its rule's category. */
+export interface PlannedExpectation {
+  id: string;
+  kind: ExpectedKind;
+  refId: string;
+  direction: "in" | "out";
+  dueDate: ISODate;
+  amountTryMinor: Minor;
+  categoryId: string | null;
+  /** The rule's name, so a list can say what the planned amount is. */
+  name: string | null;
+}
+
+/** The rule occurrences a pending row already carries, keyed as `expectedKey` keys them. */
+function pendingOccurrences(transactions: readonly TxLike[]): Set<string> {
+  const keys = new Set<string>();
+  for (const tx of transactions) {
+    if (tx.personIsSelf && tx.status === "pending" && tx.subscriptionId) {
+      keys.add(expectedKey({ kind: "subscription", refId: tx.subscriptionId, dueDate: tx.effectiveDate }));
+    }
+  }
+  return keys;
+}
+
+/** What an expectation does to the balance, signed the way a row's effect is. */
+export function expectationEffect(item: Pick<PlannedExpectation, "direction" | "amountTryMinor">): Minor {
+  return item.direction === "in" ? item.amountTryMinor : -item.amountTryMinor;
+}
+
+/**
+ * The expectations a forecast counts, computed once for the Mali Tablo and the
+ * Summary card alike, so the table's month close and "Ay sonu tahmini" are one
+ * figure rather than two kept equal by hand.
+ *
+ * Unpaid and due today or later: an overdue one is on the late list, waiting
+ * to be confirmed on the day it was actually paid. A foreign amount without a
+ * rate is left out rather than read as TRY.
+ *
+ * One obligation can reach here twice, as an expectation and as a pending row
+ * of the rule that generated it. The app's own flows cannot do that —
+ * confirming marks the expectation paid, reverting tombstones the row — but a
+ * restore or a sync from an older client can. Only a rule reference
+ * establishes identity, and `subscriptionId` is the only one a transaction
+ * carries, so an income rule cannot be matched. The match also requires the
+ * same date, because counting one obligation twice overstates what leaves the
+ * account while collapsing two real ones would understate it, and only the
+ * first error is safe. `kind + refId + dueDate` is the identity
+ * `generateExpected` already stays idempotent on.
+ */
+export function plannedExpectations(input: {
+  expected: readonly ExpectedPaymentLike[];
+  transactions: readonly TxLike[];
+  today: ISODate;
+  toTryMinor: (currency: string, amountMinor: number) => number | null;
+  ruleOf: (kind: ExpectedKind, refId: string) => { categoryId: string | null; name: string } | undefined;
+}): PlannedExpectation[] {
+  const carried = pendingOccurrences(input.transactions);
+  const planned: PlannedExpectation[] = [];
+  for (const item of input.expected) {
+    if ((item.status !== "pending" && item.status !== "late") || item.dueDate < input.today) continue;
+    if (carried.has(expectedKey(item))) continue;
+    const amountTryMinor = input.toTryMinor(item.currency, item.amountMinor);
+    if (amountTryMinor == null) continue;
+    const rule = input.ruleOf(item.kind, item.refId);
+    planned.push({
+      id: item.id,
+      kind: item.kind,
+      refId: item.refId,
+      direction: item.direction,
+      dueDate: item.dueDate,
+      amountTryMinor,
+      categoryId: rule?.categoryId ?? null,
+      name: rule?.name ?? null,
+    });
+  }
+  return planned;
 }

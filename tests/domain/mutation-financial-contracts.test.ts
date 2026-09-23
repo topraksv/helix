@@ -17,6 +17,8 @@ import {
 } from "../../src/domain/card-statements";
 import { buildCashFlowMatrixModel } from "../../src/domain/cash-flow-matrix";
 import { buildDashboardModel } from "../../src/domain/dashboard";
+import { plannedExpectations } from "../../src/domain/expected";
+import type { ExpectedPaymentLike } from "../../src/domain/types";
 import { tx } from "../helpers";
 
 const TODAY = "2026-07-18";
@@ -92,18 +94,20 @@ describe("mutation-sensitive card-cycle contracts", () => {
 
 describe("mutation-sensitive dashboard contract", () => {
   it("distinguishes today from yesterday and the horizon's next day", () => {
+    const dueToday: ExpectedPaymentLike[] = [
+      { id: "due-today", direction: "in", kind: "recurring_income", refId: "today", dueDate: "2026-07-18", amountMinor: 40, currency: "TRY", status: "pending" },
+      { id: "after", direction: "out", kind: "subscription", refId: "after", dueDate: "2026-08-01", amountMinor: 50, currency: "TRY", status: "pending" },
+    ];
     const model = buildDashboardModel({
       transactions: [
         tx({ id: "yesterday", status: "pending", type: "expense", amountTryMinor: 10, effectiveDate: "2026-07-17", categoryKind: "expense" }),
         tx({ id: "today", status: "pending", type: "expense", amountTryMinor: 20, effectiveDate: "2026-07-18", categoryKind: "expense" }),
         tx({ id: "after", status: "pending", type: "expense", amountTryMinor: 30, effectiveDate: "2026-08-01", categoryKind: "expense" }),
       ],
-      expected: [
-        { id: "due-today", direction: "in", kind: "recurring_income", refId: "today", dueDate: "2026-07-18", amountMinor: 40, currency: "TRY", status: "pending" },
-        { id: "after", direction: "out", kind: "subscription", refId: "after", dueDate: "2026-08-01", amountMinor: 50, currency: "TRY", status: "pending" },
-      ],
+      expected: dueToday,
       ledger: [], actualBalanceMinor: 100, today: TODAY, monthStart: "2026-07-01", monthEnd: "2026-07-31",
-      currentMonth: "2026-07", year: 2026, expectedTryMinor: (_currency, amount) => amount,
+      currentMonth: "2026-07", year: 2026,
+      plannedExpectations: plannedExpectations({ expected: dueToday, transactions: [], today: TODAY, toTryMinor: (_currency, amount) => amount, ruleOf: () => undefined }),
     });
     expect(model.lateItems).toEqual([]);
     expect(model.monthEndFlows).toEqual([
@@ -120,7 +124,7 @@ describe("mutation-sensitive dashboard contract", () => {
         tx({ type: "expense", amountTryMinor: 9_999, effectiveDate: "2026-08-01", categoryId: "food", categoryKind: "expense" }),
       ],
       expected: [], ledger: [], actualBalanceMinor: 0, today: "2026-07-31", monthStart: "2026-07-01", monthEnd: "2026-07-31",
-      currentMonth: "2026-07", year: 2026, expectedTryMinor: () => null,
+      currentMonth: "2026-07", year: 2026, plannedExpectations: [],
     });
     expect(model.distribution.expenseTotalMinor).toBe(100);
     expect(model.distribution.expenseByCategory).toEqual(new Map([["food", 100]]));
@@ -130,7 +134,7 @@ describe("mutation-sensitive dashboard contract", () => {
     const model = buildDashboardModel({
       transactions: [tx({ type: "expense", amountTryMinor: 100, effectiveDate: "2026-08-01", categoryId: "food", categoryKind: "expense" })],
       expected: [], ledger: [], actualBalanceMinor: 0, today: "2026-08-31", monthStart: "2026-07-01", monthEnd: "2026-07-31",
-      currentMonth: "2026-08", year: 2026, expectedTryMinor: () => null,
+      currentMonth: "2026-08", year: 2026, plannedExpectations: [],
     });
     expect(model.distribution.expenseTotalMinor).toBe(0);
     expect(model.distribution.expenseByCategory).toEqual(new Map());
@@ -140,7 +144,7 @@ describe("mutation-sensitive dashboard contract", () => {
     const model = buildDashboardModel({
       transactions: [tx({ type: "income", amountTryMinor: 100, effectiveDate: "2026-07-18", status: "pending", categoryKind: "income" })],
       expected: [], ledger: [], actualBalanceMinor: null, today: TODAY, monthStart: "2026-07-01", monthEnd: "2026-07-31",
-      currentMonth: "2026-07", year: 2026, expectedTryMinor: () => null,
+      currentMonth: "2026-07", year: 2026, plannedExpectations: [],
     });
     expect(model.projectedMinor).toBeNull();
   });
@@ -166,7 +170,7 @@ describe("mutation-sensitive dashboard contract", () => {
     const model = buildDashboardModel({
       transactions, expected, ledger, actualBalanceMinor: 1_000, today: TODAY,
       monthStart: "2026-07-01", monthEnd: "2026-07-31", currentMonth: "2026-07", year: 2026,
-      expectedTryMinor: (currency, amount) => currency === "TRY" ? amount : null,
+      plannedExpectations: plannedExpectations({ expected, transactions, today: TODAY, toTryMinor: (currency, amount) => currency === "TRY" ? amount : null, ruleOf: () => undefined }),
     });
 
     expect(model.pendingItems.map((item) => item.id)).toEqual(["pending", "past-pending", "late-future"]);
@@ -188,7 +192,7 @@ describe("mutation-sensitive dashboard contract", () => {
     ]);
     expect(buildDashboardModel({ ...{
       transactions: [], expected: [], ledger: [], today: TODAY, monthStart: "2026-07-01", monthEnd: "2026-07-31", currentMonth: "2026-07", year: 2026,
-      expectedTryMinor: () => null,
+      plannedExpectations: [],
     }, actualBalanceMinor: null }).projectedMinor).toBeNull();
   });
 });

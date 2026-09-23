@@ -10,7 +10,9 @@
  * negative (Temmuz 2026: −18.773,03).
  */
 
+import { groupBy } from "./card-statements";
 import { addMonthsToKey, lastDayOf, makeMonthKey, monthKeyOf, monthRange, yearOf, type ISODate, type MonthKey } from "./dates";
+import type { PlannedExpectation } from "./expected";
 import type { Minor } from "./money";
 import type { AdjustmentLike, SettlementFlow, TxLike } from "./types";
 import { financialFlow, signedBalanceEffect } from "./transactions";
@@ -141,6 +143,8 @@ interface LedgerInput {
   includePendingInCells?: boolean;
   /** What recorded statement payments move, from `settleCardStatements`. */
   settlements?: SettlementFlow[];
+  /** Drawn beside the pending rows, under the same switch. */
+  plannedExpectations?: readonly PlannedExpectation[];
 }
 
 /**
@@ -295,6 +299,11 @@ export function buildLedger(input: LedgerInput): MonthLedger[] {
     else target.set(key, [adj]);
   }
 
+  const expectedByMonth = groupBy(
+    includePendingInCells ? input.plannedExpectations ?? [] : [],
+    (item) => monthKeyOf(item.dueDate),
+  );
+
   const settlementsByMonth = new Map<MonthKey, SettlementFlow[]>();
   for (const flow of input.settlements ?? []) {
     const key = monthKeyOf(flow.date);
@@ -345,6 +354,16 @@ export function buildLedger(input: LedgerInput): MonthLedger[] {
       if (tx.categoryId) {
         byCategory.set(tx.categoryId, (byCategory.get(tx.categoryId) ?? 0) + flow.amountTryMinor);
       } else uncategorized += flow.amountTryMinor;
+    }
+    // An expectation is planned the way a pending row is, and in its rule's
+    // category, so the month close carries what "Ay sonu tahmini" counts and
+    // the row still adds up on its own face.
+    for (const item of expectedByMonth.get(month) ?? []) {
+      if (item.direction === "in") plannedIncome += item.amountTryMinor;
+      else plannedExpense += item.amountTryMinor;
+      if (item.categoryId) {
+        byCategory.set(item.categoryId, (byCategory.get(item.categoryId) ?? 0) + item.amountTryMinor);
+      } else uncategorized += item.amountTryMinor;
     }
     const statics = staticByMonth.get(month) ?? [];
     let adjustment = statics.reduce((sum, adj) => sum + adj.amountMinor, 0);
@@ -422,6 +441,8 @@ export interface LedgerBundle {
   firstRecordedMonth: MonthKey | null;
   actualBalanceMinor: Minor;
   txLike: TxLike[];
+  /** See `LedgerChain.plannedExpectations`. */
+  plannedExpectations: readonly PlannedExpectation[];
   /** See `LedgerChain.declarationDeltaById`. */
   declarationDeltaById: ReadonlyMap<string, Minor>;
 }
@@ -452,6 +473,8 @@ export interface LedgerChain {
   firstRecordedMonth: MonthKey | null;
   actualBalanceMinor: Minor;
   txLike: TxLike[];
+  /** What the chain drew as planned beside the pending rows, for the forecast and the lists. */
+  plannedExpectations: readonly PlannedExpectation[];
   /** What each stored balance declaration adds, by row id, as the rows stand now. */
   declarationDeltaById: ReadonlyMap<string, Minor>;
 }
@@ -485,6 +508,8 @@ export function buildLedgerChain(input: {
   adjustments: AdjustmentLike[];
   /** What recorded statement payments move, from `settleCardStatements`. */
   settlements?: SettlementFlow[];
+  /** From `plannedExpectations`; drawn only when pending rows are. */
+  plannedExpectations?: readonly PlannedExpectation[];
   endYear: number;
   today: ISODate;
 }): LedgerChain {
@@ -516,6 +541,7 @@ export function buildLedgerChain(input: {
     today,
     includePendingInCells: input.includePendingInCells,
     settlements,
+    plannedExpectations: input.plannedExpectations,
   });
   // The current month's close is the actual balance. A chain that starts after
   // this month holds nothing dated on or before today — an earlier row or
@@ -529,6 +555,7 @@ export function buildLedgerChain(input: {
     firstRecordedMonth: firstRecordedMonth(transactions, adjustments),
     actualBalanceMinor,
     txLike: transactions,
+    plannedExpectations: input.plannedExpectations ?? [],
     declarationDeltaById: new Map(ledger.flatMap((month) => month.declarationDeltas.map((entry) => [entry.id, entry.deltaMinor] as const))),
   };
 }
@@ -542,6 +569,7 @@ export function sliceLedgerYear(chain: LedgerChain, year: number): LedgerBundle 
     firstRecordedMonth: chain.firstRecordedMonth,
     actualBalanceMinor: chain.actualBalanceMinor,
     txLike: chain.txLike,
+    plannedExpectations: chain.plannedExpectations,
     declarationDeltaById: chain.declarationDeltaById,
   };
 }

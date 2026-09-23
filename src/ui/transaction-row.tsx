@@ -10,7 +10,8 @@ import { Text, View } from "react-native";
 import Paperclip from "lucide-react-native/icons/paperclip";
 import Pencil from "lucide-react-native/icons/pencil";
 import Trash from "lucide-react-native/icons/trash";
-import { tr } from "../i18n/tr";
+import { expectationEffect, type PlannedExpectation } from "../domain/expected";
+import { dateLabel, tr } from "../i18n/tr";
 import { Amount, Badge, Body, Divider, IconButton, Row, Spread } from "./components";
 import { font, spacing, type, useTheme } from "./theme";
 
@@ -41,7 +42,7 @@ export function TransactionRow({
   hasDocuments?: boolean;
   amountMinor: number;
   onEdit: () => void;
-  onDelete: () => void;
+  onDelete?: () => void;
   divider: boolean;
 }) {
   const { palette } = useTheme();
@@ -73,10 +74,30 @@ export function TransactionRow({
         <Row gap={spacing.sm}>
           <Amount minor={amountMinor} />
           <IconButton icon={Pencil} label={`${tr.common.edit} · ${dateText}`} onPress={onEdit} />
-          <IconButton icon={Trash} tone="danger" label={`${tr.common.delete} · ${dateText}`} haptic="none" onPress={onDelete} />
+          {onDelete ? <IconButton icon={Trash} tone="danger" label={`${tr.common.delete} · ${dateText}`} haptic="none" onPress={onDelete} /> : null}
         </Row>
       </Spread>
       {divider ? <Divider flush /> : null}
     </View>
+  );
+}
+
+/**
+ * A rule's unpaid occurrence, listed beside the rows because the cell counts it
+ * (`plannedExpectations`). It has no delete: an occurrence belongs to its rule,
+ * which is where editing it leads.
+ */
+export function ExpectationRow({ item, onEdit, divider }: { item: PlannedExpectation; onEdit: () => void; divider: boolean }) {
+  return (
+    <TransactionRow
+      installmentTitle={null}
+      note={item.name ?? tr.common.paymentFallback}
+      dateText={`${dateLabel(item.dueDate)}  ·  ${tr.cashflow.plannedExpectation(item.direction === "in")}`}
+      pending
+      reversalBadge={null}
+      amountMinor={expectationEffect(item)}
+      onEdit={onEdit}
+      divider={divider}
+    />
   );
 }

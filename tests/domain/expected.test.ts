@@ -3,10 +3,13 @@ import {
   confirmEffectiveDate,
   findAutoConfirmable,
   findLate,
+  expectationEffect,
   generateExpected,
   obsoleteExpectedIds,
+  plannedExpectations,
 } from "../../src/domain/expected";
 import type { ExpectedPaymentLike, RecurringIncomeLike, SubscriptionLike } from "../../src/domain/types";
+import { tx } from "../helpers";
 
 function sub(overrides: Partial<SubscriptionLike>): SubscriptionLike {
   return {
@@ -226,5 +229,72 @@ describe("confirmEffectiveDate", () => {
   it("ignores a null/undefined paidOn", () => {
     expect(confirmEffectiveDate("2026-07-20", "2026-07-15", null)).toBe("2026-07-15");
     expect(confirmEffectiveDate("2026-07-20", "2026-07-15", undefined)).toBe("2026-07-15");
+  });
+});
+
+describe("plannedExpectations", () => {
+  const today = "2026-07-18" as const;
+  const due = (overrides: Partial<ExpectedPaymentLike>): ExpectedPaymentLike => ({
+    id: "e-1",
+    direction: "out",
+    kind: "subscription",
+    refId: "netflix",
+    dueDate: "2026-07-28",
+    amountMinor: 100_00,
+    currency: "TRY",
+    status: "pending",
+    ...overrides,
+  });
+  const rules = new Map([["netflix", { categoryId: "cat-fun", name: "Netflix" }]]);
+  const planned = (expected: ExpectedPaymentLike[], transactions = [tx({ type: "expense", amountTryMinor: 1, effectiveDate: "2026-07-01" })]) =>
+    plannedExpectations({
+      expected,
+      transactions,
+      today,
+      toTryMinor: (currency, amountMinor) => (currency === "TRY" ? amountMinor : currency === "USD" ? amountMinor * 40 : null),
+      ruleOf: (_kind, refId) => rules.get(refId),
+    });
+
+  it("draws an unpaid expectation due today or later in its rule's category, in TRY", () => {
+    expect(planned([due({}), due({ id: "e-usd", dueDate: today, amountMinor: 10_00, currency: "USD" })])).toEqual([
+      { id: "e-1", kind: "subscription", refId: "netflix", direction: "out", dueDate: "2026-07-28", amountTryMinor: 100_00, categoryId: "cat-fun", name: "Netflix" },
+      { id: "e-usd", kind: "subscription", refId: "netflix", direction: "out", dueDate: today, amountTryMinor: 400_00, categoryId: "cat-fun", name: "Netflix" },
+    ]);
+  });
+
+  it("leaves out what is settled, what is already late, and what has no rate", () => {
+    expect(planned([
+      due({ id: "paid", status: "paid" }),
+      due({ id: "skipped", status: "skipped" }),
+      due({ id: "late", status: "late", dueDate: "2026-07-17" }),
+      due({ id: "overdue", dueDate: "2026-07-17" }),
+      due({ id: "no-rate", currency: "CHF" }),
+    ])).toEqual([]);
+  });
+
+  it("counts one obligation once when a pending row already carries it", () => {
+    const pendingRow = tx({ type: "expense", amountTryMinor: 100_00, effectiveDate: "2026-07-28", status: "pending", subscriptionId: "netflix" });
+    expect(planned([due({})], [pendingRow])).toEqual([]);
+    // Another day of the same rule is another occurrence.
+    expect(planned([due({ dueDate: "2026-08-28" })], [pendingRow])).toHaveLength(1);
+  });
+
+  it("lets only the owner's own pending row stand in for it", () => {
+    const sameOccurrence = { type: "expense", amountTryMinor: 100_00, effectiveDate: "2026-07-28", subscriptionId: "netflix" } as const;
+    expect(planned([due({})], [tx({ ...sameOccurrence, status: "pending", personIsSelf: false })])).toHaveLength(1);
+    expect(planned([due({})], [tx({ ...sameOccurrence, status: "realized" })])).toHaveLength(1);
+  });
+
+  it("lets the due date decide, not a late mark", () => {
+    expect(planned([due({ status: "late" })])).toHaveLength(1);
+  });
+
+  it("moves the balance the way a row in its direction would", () => {
+    expect(expectationEffect({ direction: "in", amountTryMinor: 500_00 })).toBe(500_00);
+    expect(expectationEffect({ direction: "out", amountTryMinor: 100_00 })).toBe(-100_00);
+  });
+
+  it("keeps an expectation whose rule is gone, uncategorised and unnamed", () => {
+    expect(planned([due({ refId: "deleted-rule" })])[0]).toMatchObject({ categoryId: null, name: null });
   });
 });

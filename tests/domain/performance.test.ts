@@ -80,7 +80,7 @@ describe("large-ledger performance contracts", () => {
       monthEnd: "2026-12-31",
       currentMonth: "2026-12",
       year: 2026,
-      expectedTryMinor: (_currency, amountMinor) => amountMinor,
+      plannedExpectations: [],
     });
     const elapsed = performance.now() - startedAt;
 

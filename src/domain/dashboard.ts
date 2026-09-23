@@ -3,6 +3,7 @@
 import { countsTowardBalance, projectedBalance, type MonthLedger, type UpcomingFlow } from "./balance";
 import { addMonthsToKey, firstDayOf, monthKeyOf, type ISODate } from "./dates";
 import type { Distribution } from "./analytics";
+import type { PlannedExpectation } from "./expected";
 import type { ExpectedPaymentLike, TxLike } from "./types";
 import { financialFlow, projectedTransactionFlow, signedBalanceEffect } from "./transactions";
 
@@ -40,7 +41,8 @@ interface DashboardModelInput<TExpected extends ExpectedPaymentLike = ExpectedPa
   monthEnd: ISODate;
   currentMonth: string;
   year: number;
-  expectedTryMinor: (currency: string, amountMinor: number) => number | null;
+  /** The chain's own list, so the forecast counts exactly what the table draws. */
+  plannedExpectations: readonly PlannedExpectation[];
   /**
    * Statements paid in part. Their charges stay pending on the due date, but
    * the ledger gives every one of them back there: the balance has already
@@ -81,32 +83,6 @@ export function buildDashboardModel<TExpected extends ExpectedPaymentLike>(
     (item) => item.status === "late" || (item.status === "pending" && item.dueDate < input.today),
   );
   const monthEndFlows: UpcomingFlow[] = [];
-  /**
-   * Rule occurrences already projected as a transaction, so the expectation
-   * that produced them is not counted a second time.
-   *
-   * Only a rule reference can establish identity here: two rows for one
-   * obligation share the rule that generated them, and nothing else about them
-   * has to agree. `subscriptionId` is the only such link a transaction carries
-   * — `recurring_income` has no counterpart field, so an income rule cannot be
-   * matched and is left counted as it was.
-   *
-   * The app's own flows cannot reach this state: confirming an expectation
-   * marks it paid, which drops it from `pendingItems`, and reverting one
-   * tombstones the transaction it created. What can reach it is data — a
-   * restore, a sync from an older client, or a row left linked by the matching
-   * surface that was removed. The match is therefore deliberately strict: it
-   * requires the same date as well as the same rule, because counting one
-   * obligation twice overstates what leaves the account, while collapsing two
-   * real ones would understate it. Of those two errors only the first is safe.
-   *
-   * `kind + refId + dueDate` is not a key invented here: it is the same
-   * identity `generateExpected` already uses to stay idempotent, so one
-   * occurrence means the same thing on both sides of the engine.
-   */
-  const projectedRuleOccurrences = new Set<string>();
-  const occurrenceKey = (kind: string, refId: string, date: string): string =>
-    `${kind}\u0000${refId}\u0000${date}`;
   const expenseByCategory = new Map<string, number>();
   let uncategorizedExpenseMinor = 0;
   let expenseTotalMinor = 0;
@@ -135,11 +111,6 @@ export function buildDashboardModel<TExpected extends ExpectedPaymentLike>(
       !(transaction.cardStatementId && input.partlyPaidStatementIds?.has(transaction.cardStatementId))
     ) {
       monthEndFlows.push({ ...projectedTransactionFlow(transaction), date: transaction.effectiveDate });
-      if (transaction.subscriptionId) {
-        projectedRuleOccurrences.add(
-          occurrenceKey("subscription", transaction.subscriptionId, transaction.effectiveDate),
-        );
-      }
     }
 
     if (!countsTowardBalance(transaction, input.today)) continue;
@@ -188,12 +159,10 @@ export function buildDashboardModel<TExpected extends ExpectedPaymentLike>(
     }
   }
 
-  for (const item of pendingItems) {
-    if (item.dueDate < input.today || item.dueDate > input.monthEnd) continue;
-    if (projectedRuleOccurrences.has(occurrenceKey(item.kind, item.refId, item.dueDate))) continue;
-    const amountTryMinor = input.expectedTryMinor(item.currency, item.amountMinor);
-    if (amountTryMinor == null) continue;
-    monthEndFlows.push({ direction: item.direction, amountTryMinor, date: item.dueDate });
+  for (const item of input.plannedExpectations) {
+    if (item.dueDate <= input.monthEnd) {
+      monthEndFlows.push({ direction: item.direction, amountTryMinor: item.amountTryMinor, date: item.dueDate });
+    }
   }
 
   let incomingMinor = 0;
