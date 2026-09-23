@@ -36,7 +36,7 @@ import Users from "lucide-react-native/icons/users";
 import Wallet from "lucide-react-native/icons/wallet";
 import Wrench from "lucide-react-native/icons/wrench";
 import type { LucideIcon } from "lucide-react-native";
-import { SIGN_OUT_PENDING_CHANGES, useSession } from "../../../auth/session";
+import { DELETE_DOCUMENTS_REMAIN, SIGN_OUT_PENDING_CHANGES, useSession } from "../../../auth/session";
 import { useSettingsMapState, settingValue, useSyncDeadLettersState, useUserId } from "../../../data/hooks";
 import { combineLiveStates } from "../../../data/live-state";
 import { asyncFieldState } from "../../../domain/form-state";
@@ -44,7 +44,7 @@ import { pendingSyncChangeCount, setPendingTableVisibility, setReminderDays } fr
 import { buildExportText, buildWorkbookBytes, importBundle, MAX_BACKUP_BYTES, parseExportBundleText, saveFile } from "../../../services/export-import";
 import { WORKBOOK_MIME } from "../../../services/workbook-export";
 import { disableNotifications, enableNotifications, rescheduleAll, updateNotificationDetails } from "../../../services/notifications";
-import { syncNow } from "../../../sync/engine";
+import { syncNow, unsentAttachments } from "../../../sync/engine";
 import { useSyncStatus } from "../../../sync/status";
 import { isSupabaseConfigured } from "../../../sync/supabase";
 import { setGlobalPalettePreference, setGlobalThemePreference } from "../../_layout";
@@ -363,9 +363,10 @@ export default function SettingsScreen() {
       const error = await signOut();
       if (error === SIGN_OUT_PENDING_CHANGES) {
         const pending = await pendingSyncChangeCount();
+        const documents = await unsentAttachments(userId);
         setSigningOut(false);
         clearLifecycleIntent();
-        const proceed = await appConfirm(tr.auth.signOutPendingTitle, tr.auth.signOutPendingWarn(pending), {
+        const proceed = await appConfirm(tr.auth.signOutPendingTitle, tr.auth.signOutPendingWarn(pending, documents.count, documents.verified), {
           confirmLabel: tr.auth.signOutAnyway,
           danger: true,
           operation: "sign-out",
@@ -491,7 +492,13 @@ export default function SettingsScreen() {
     setLifecycleIntent("delete");
     setDeleting(true);
     try {
-      const error = await deleteAccount();
+      let error = await deleteAccount();
+      if (error === DELETE_DOCUMENTS_REMAIN) {
+        clearLifecycleIntent();
+        if (!(await appConfirm(tr.account.deleteDocumentsTitle, tr.account.deleteDocumentsBody, { confirmLabel: tr.account.deleteAnyway, danger: true, operation: "delete" }))) return;
+        setLifecycleIntent("delete");
+        error = await deleteAccount({ force: true });
+      }
       if (error) {
         clearLifecycleIntent();
         void appAlert(error, tr.errors.title);

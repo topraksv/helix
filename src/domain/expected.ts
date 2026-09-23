@@ -196,6 +196,16 @@ export function findAutoConfirmable(
   });
 }
 
+/**
+ * The rows auto-pay recorded as paid without asking, by transaction id, so a
+ * list can say which charges the app made on its own.
+ */
+export function autoConfirmedTransactionIds(
+  expected: readonly { autoConfirmed: boolean; transactionId: string | null }[],
+): Set<string> {
+  return new Set(expected.flatMap((item) => (item.autoConfirmed && item.transactionId ? [item.transactionId] : [])));
+}
+
 /** An unpaid expectation as a planned flow: in TRY, in its rule's category. */
 export interface PlannedExpectation {
   id: string;

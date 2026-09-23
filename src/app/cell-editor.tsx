@@ -13,6 +13,7 @@ import PlusCircle from "lucide-react-native/icons/circle-plus";
 import { addTransaction, deleteTransaction, restoreTransaction, saveCellNote } from "../data/repo";
 import {
   useAttachmentsState,
+  useAutoConfirmedTransactionIds,
   useCategoriesState,
   useCellNotesState,
   useLedgerState,
@@ -78,6 +79,7 @@ function CellEditor({ month, categoryId }: { month: string; categoryId: string }
   const transactionsState = useSettledTransactionsBetweenState(firstDayOf(rangeMonth), lastDayOf(rangeMonth));
   const transactions = transactionsState.data;
   const ledgerState = useLedgerState(yearOf(rangeMonth));
+  const autoConfirmed = useAutoConfirmedTransactionIds();
   const undo = useUndo();
   const { palette } = useTheme();
   const [entryRaw, setEntryRaw] = useState("");
@@ -312,6 +314,7 @@ function CellEditor({ month, categoryId }: { month: string; categoryId: string }
               note={t.note}
               pending={t.status === "pending"}
               hasDocuments={documented.has(t.id)}
+              automatic={autoConfirmed.has(t.id)}
               reversalBadge={
                 isWorkbookRemainderRow(t)
                   ? { text: tr.analysis.remainderBadge, tone: "muted" }

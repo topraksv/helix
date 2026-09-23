@@ -26,8 +26,8 @@ function body(start: string, end: string): string {
 }
 
 const paths = [
-  { name: "signOut", source: body("signOut: async (options) => {", "deleteAccount: async () => {") },
-  { name: "deleteAccount", source: body("deleteAccount: async () => {", "verifyPassword: async (password)") },
+  { name: "signOut", source: body("signOut: async (options) => {", "deleteAccount: async (options) => {") },
+  { name: "deleteAccount", source: body("deleteAccount: async (options) => {", "verifyPassword: async (password)") },
   { name: "clearInvalidatedSession", source: body("async function clearInvalidatedSession", "function ensureAuthLifecycleSubscription") },
 ];
 

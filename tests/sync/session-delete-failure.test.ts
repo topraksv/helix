@@ -44,8 +44,10 @@ vi.mock("../../src/sync/engine", () => ({
   startSyncSession: vi.fn(),
   stopSyncSession: vi.fn(async () => {}),
   // Account deletion clears the Storage bucket first; the sync facade owns it.
-  purgeRemoteAttachments: vi.fn(async () => {}),
+  purgeRemoteAttachments: vi.fn(async () => true),
   eraseDeviceAttachments: vi.fn(async () => 0),
+  reconcileAttachments: vi.fn(async () => {}),
+  unsentAttachments: vi.fn(async () => ({ count: 0, verified: true })),
 }));
 vi.mock("../../src/services/markets", () => ({
   clearMarkets: vi.fn(),
@@ -135,6 +137,19 @@ describe("signing out", () => {
     const { pendingOutboxCount } = await import("../../src/db/mutations");
     vi.mocked(pendingOutboxCount).mockResolvedValue(count);
   }
+
+  it("sends documents before counting them, and refuses while one exists only here", async () => {
+    await pendingRowsRemain(0);
+    const { reconcileAttachments, unsentAttachments } = await import("../../src/sync/engine");
+    vi.mocked(unsentAttachments).mockResolvedValue({ count: 1, verified: true });
+
+    const result = await useSession.getState().signOut();
+
+    expect(result).toBe(tr.auth.signOutPendingBlocked);
+    expect(reconcileAttachments).toHaveBeenCalledWith("user-a");
+    expect(harness.resetLocalWorkspace).not.toHaveBeenCalled();
+    vi.mocked(unsentAttachments).mockResolvedValue({ count: 0, verified: true });
+  });
 
   it("refuses while a change exists only on this device", async () => {
     await pendingRowsRemain(3);
@@ -251,20 +266,40 @@ describe("account deletion when the cloud refuses", () => {
   });
 
   /**
-   * The opposite rule, and the reason it is written down: an unreachable FILE
-   * must never become the reason an account survives. Migration 35 repeats the
-   * removal inside the RPC, so the account is cleaned either way.
+   * Nothing on the server repeats the purge, so documents that could not be
+   * erased would outlive the account. That is the owner's call, not this
+   * module's: stop, keep everything, and let `force` carry their answer.
    */
-  it("deletes the account even when the stored documents cannot be reached", async () => {
-    const { purgeRemoteAttachments } = await import("../../src/sync/engine");
-    vi.mocked(purgeRemoteAttachments).mockRejectedValueOnce(new Error("storage unreachable"));
+  it("asks before deleting an account whose documents could not be erased", async () => {
+    const { purgeRemoteAttachments, startSyncSession } = await import("../../src/sync/engine");
+    vi.mocked(purgeRemoteAttachments).mockClear().mockResolvedValueOnce(false).mockRejectedValueOnce(new Error("storage unreachable"));
 
-    const result = await useSession.getState().deleteAccount();
+    await expect(useSession.getState().deleteAccount()).resolves.toBe(tr.account.deleteDocumentsTitle);
+    expect(purgeRemoteAttachments).toHaveBeenCalledTimes(2);
+    expect(harness.supabase.rpc).not.toHaveBeenCalled();
+    expect(harness.resetLocalWorkspace).not.toHaveBeenCalled();
+    expect(startSyncSession).toHaveBeenCalledWith("user-a");
+    expect(useSession.getState().userId).toBe("user-a");
+  });
+
+  /** An unreachable file must never by itself be the reason an account survives. */
+  it("deletes the account without its documents once the owner has accepted that", async () => {
+    const { purgeRemoteAttachments } = await import("../../src/sync/engine");
+    vi.mocked(purgeRemoteAttachments).mockResolvedValueOnce(false).mockResolvedValueOnce(false);
+
+    const result = await useSession.getState().deleteAccount({ force: true });
 
     expect(result).toBeNull();
     expect(harness.supabase.rpc).toHaveBeenCalledWith("delete_own_account");
-    expect(harness.resetLocalWorkspace).toHaveBeenCalled();
     expect(useSession.getState().userId).toBeNull();
+  });
+
+  it("does not ask when a second attempt erases them", async () => {
+    const { purgeRemoteAttachments } = await import("../../src/sync/engine");
+    vi.mocked(purgeRemoteAttachments).mockResolvedValueOnce(false);
+
+    await expect(useSession.getState().deleteAccount()).resolves.toBeNull();
+    expect(harness.supabase.rpc).toHaveBeenCalledWith("delete_own_account");
   });
 
   /**

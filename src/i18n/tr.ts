@@ -494,8 +494,13 @@ export const tr = {
     errService: "Sunucu şu anda yanıt vermiyor. Birazdan tekrar dene.",
     errGeneric: "İşlem tamamlanamadı. Lütfen tekrar dene.",
     signOutPendingTitle: "Gönderilmemiş kayıtlar var",
-    signOutPendingWarn: (n: number) =>
-      `${n} kayıt henüz buluta eşitlenmedi. Şimdi çıkarsan bu kayıtlar kalıcı olarak silinir. Yine de çıkmak istiyor musun?`,
+    signOutPendingWarn: (records: number, documents: number, documentsVerified: boolean) =>
+      [
+        records > 0 ? `${records} kayıt henüz buluta eşitlenmedi.` : null,
+        documents > 0 && documentsVerified ? `${documents} belge henüz buluta gönderilmedi.` : null,
+        documents > 0 && !documentsVerified ? `${documents} belgenin buluta ulaşıp ulaşmadığı şu an doğrulanamıyor.` : null,
+        "Şimdi çıkarsan buluta ulaşmamış olanlar kalıcı olarak silinir. Yine de çıkmak istiyor musun?",
+      ].filter(Boolean).join(" "),
     signOutAnyway: "Yine de Çık",
     restoringData: "Hesabın eşitleniyor",
     restoringDataFresh: "Hesabın hazırlanıyor",
@@ -545,6 +550,9 @@ export const tr = {
     deleteDialogFinalCheckTitle: "Son kontrol",
     deleteDialogFinalCheckDetail: "Şifren son adımda yeniden doğrulanır.",
     deleteCloudFailed: "Buluttaki veriler silinemedi; internet bağlantını kontrol edip tekrar dene. Hiçbir şey silinmedi.",
+    deleteDocumentsTitle: "Belgeler silinemedi",
+    deleteDocumentsBody: "Yüklediğin belgeler buluttan silinemedi. Yine de silersen hesabın ve tüm verilerin silinir, ama bu belgeler bulutta kalabilir. Vazgeçersen hiçbir şey silinmez; bağlantın düzelince tekrar deneyebilirsin.",
+    deleteAnyway: "Yine de Sil",
     // Security: re-auth + credential change
     security: "Hesap Güvenliği",
     securityDesc: "E-posta ve şifreni değiştir.",
@@ -1121,6 +1129,7 @@ export const tr = {
     // this app names a currency everywhere else.
     changeCurrency: (currency: string) => `${currency} · Değiştir`,
     futureNote: "İleri tarihli",
+    autoConfirmed: "Otomatik ödendi",
     installmentToggle: "Taksitli",
     installmentCount: "Taksit sayısı",
     alreadyPaid: "Ödenen taksit",

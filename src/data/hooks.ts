@@ -14,7 +14,7 @@ import type { classifyRecordId } from "../domain/route-params";
 import { projectInvestmentState } from "../domain/investment-projection";
 import type { InvestmentState } from "../domain/investments";
 import { daysBetweenISO, todayISO, type ISODate, type MonthKey } from "../domain/dates";
-import { plannedExpectations, type PlannedExpectation } from "../domain/expected";
+import { autoConfirmedTransactionIds, plannedExpectations, type PlannedExpectation } from "../domain/expected";
 import { convertToTryMinor } from "../domain/fx";
 import type { TxLike } from "../domain/types";
 import { isWorkbookRemainderRow } from "../domain/transactions";
@@ -554,6 +554,12 @@ export function usePendingExpectedState() {
         .orderBy(asc(s.expectedPayments.dueDate)),
     ["expected_payments"],
   );
+}
+
+/** See `autoConfirmedTransactionIds`. */
+export function useAutoConfirmedTransactionIds(): ReadonlySet<string> {
+  const { data } = usePendingExpectedState();
+  return useMemo(() => autoConfirmedTransactionIds(data), [data]);
 }
 
 export function useAllTransactionsState() {

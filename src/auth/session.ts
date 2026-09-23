@@ -17,7 +17,7 @@ import {
   wasPasswordRecoveryDetected,
 } from "../sync/supabase";
 import { pendingOutboxCount, resetLocalWorkspace, writeSetting } from "../db/mutations";
-import { eraseDeviceAttachments, flushOutbox, purgeRemoteAttachments, runSyncSessionTask, startSyncSession, stopSyncSession } from "../sync/engine";
+import { eraseDeviceAttachments, flushOutbox, purgeRemoteAttachments, reconcileAttachments, runSyncSessionTask, startSyncSession, stopSyncSession, unsentAttachments } from "../sync/engine";
 import { useSyncStatus } from "../sync/status";
 import { connectMarkets, disconnectMarkets } from "../services/markets";
 import { clearRateCache, loadRateCache } from "../services/fx-fetch";
@@ -91,11 +91,13 @@ async function completeWithRecoveryToken(newPassword: string): Promise<string | 
 }
 
 /**
- * Sign-out refused because rows would be lost. Safe to show as-is — it names
- * the outcome, not the machinery — and identity-comparable so the caller can
- * offer "sign out anyway" instead of treating it as a failure.
+ * Sign-out refused because rows or documents would be lost. Safe to show
+ * as-is — it names the outcome, not the machinery — and identity-comparable so
+ * the caller can offer "sign out anyway" instead of treating it as a failure.
  */
 export const SIGN_OUT_PENDING_CHANGES = tr.auth.signOutPendingBlocked;
+/** `deleteAccount` stopped because documents would outlive the account. */
+export const DELETE_DOCUMENTS_REMAIN = tr.account.deleteDocumentsTitle;
 
 const LAST_USER_KEY = "helix.last_user_id";
 /** Signed-in e-mail, persisted so an offline bootstrap can still re-auth. */
@@ -322,8 +324,10 @@ interface SessionStore {
    *  `force` once the user has accepted losing those rows. */
   signOut: (options?: { force?: boolean }) => Promise<string | null>;
   /** Permanently delete all data (cloud + this device) and sign out. Returns a
-   *  user-facing error string when the cloud wipe could not complete. */
-  deleteAccount: () => Promise<string | null>;
+   *  user-facing error string when the cloud wipe could not complete, or
+   *  `DELETE_DOCUMENTS_REMAIN` when the stored documents could not be erased;
+   *  pass `force` once the user has accepted leaving them behind. */
+  deleteAccount: (options?: { force?: boolean }) => Promise<string | null>;
   /** Re-authenticate the current account to confirm a sensitive action
    *  (delete / freeze / credential change). Returns null when the password is
    *  correct, otherwise a user-facing error — including a local cooldown
@@ -561,16 +565,17 @@ export const useSession = create<SessionStore>((set, get) => ({
 
   signOut: async (options) => {
     const userId = get().userId;
-    // Unsynced rows only exist here. Flush them first and, if any survive, stop
-    // rather than delete a change the user believes is saved; `force` is the
-    // caller's proof that the user was asked and accepted the loss.
+    // Unsynced rows and unsent documents only exist here. Send them first and,
+    // if any survive, stop rather than delete a change the user believes is
+    // saved; `force` is the caller's proof that the user was asked and
+    // accepted the loss.
     if (
       userId &&
       !options?.force &&
       isSupabaseConfigured &&
       (await pendingChangesWouldBeLost({
-        pendingCount: pendingOutboxCount,
-        flush: () => flushOutbox(userId),
+        pendingCount: async () => (await pendingOutboxCount()) + (await unsentAttachments(userId)).count,
+        flush: () => Promise.allSettled([flushOutbox(userId), reconcileAttachments(userId)]),
       }))
     ) {
       return SIGN_OUT_PENDING_CHANGES;
@@ -624,7 +629,7 @@ export const useSession = create<SessionStore>((set, get) => ({
     return null;
   },
 
-  deleteAccount: async () => {
+  deleteAccount: async (options) => {
     const state = get();
     const userId = state.userId;
     if (!userId) return null;
@@ -642,12 +647,16 @@ export const useSession = create<SessionStore>((set, get) => ({
       const supabase = getSupabase();
       if (supabase) {
         // Storage has no foreign key to the account, so nothing cascades the
-        // documents away. This removes them through the API, which is what
-        // actually frees the stored blob; migration 35 repeats the removal
-        // inside the RPC so an interruption here still cannot leave a receipt
-        // behind an identity that no longer exists. It cannot fail the delete:
-        // an unreachable file must never become the reason an account survives.
-        await purgeRemoteAttachments(userId).catch(() => {});
+        // documents away, and nothing on the server repeats this removal (see
+        // `purgeRemoteAttachments`). A second attempt absorbs a dropped
+        // request; past that the owner decides, because a receipt left behind
+        // an identity that no longer exists is theirs to accept, and an
+        // unreachable file must never by itself keep an account alive.
+        const purge = () => purgeRemoteAttachments(userId).catch(() => false);
+        if (!((await purge()) || (await purge())) && !options?.force) {
+          startSyncSession(userId);
+          return DELETE_DOCUMENTS_REMAIN;
+        }
         const { error } = await supabase.rpc("delete_own_account");
         if (error) {
           startSyncSession(userId);

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  autoConfirmedTransactionIds,
   confirmEffectiveDate,
   findAutoConfirmable,
   findLate,
@@ -296,5 +297,16 @@ describe("plannedExpectations", () => {
 
   it("keeps an expectation whose rule is gone, uncategorised and unnamed", () => {
     expect(planned([due({ refId: "deleted-rule" })])[0]).toMatchObject({ categoryId: null, name: null });
+  });
+});
+
+describe("autoConfirmedTransactionIds", () => {
+  it("names the rows auto-pay recorded, and none the owner confirmed", () => {
+    expect(autoConfirmedTransactionIds([
+      { autoConfirmed: true, transactionId: "tx-auto" },
+      { autoConfirmed: false, transactionId: "tx-confirmed" },
+      // A mark with no row behind it has nothing to label.
+      { autoConfirmed: true, transactionId: null },
+    ])).toEqual(new Set(["tx-auto"]));
   });
 });

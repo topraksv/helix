@@ -14,6 +14,7 @@ const rows = vi.fn(async (): Promise<unknown[]> => []);
 const bytesFor = vi.fn(async (_name: string): Promise<Uint8Array | null> => null);
 const written = vi.fn(async (_name: string, _bytes: Uint8Array) => {});
 const pruned = vi.fn(async (_live: ReadonlySet<string>) => 0);
+const held = vi.fn(async (_names: readonly string[]) => new Set<string>());
 
 vi.mock("../../src/db/client", () => ({
   getSqliteAsync: async () => ({ getAllAsync: (_sql: string, _params: unknown[]) => rows() }),
@@ -22,6 +23,7 @@ vi.mock("../../src/services/attachment-store", () => ({
   readAttachmentBytes: (name: string) => bytesFor(name),
   writeAttachmentBytes: (name: string, bytes: Uint8Array) => written(name, bytes),
   pruneOrphanAttachmentFiles: (live: ReadonlySet<string>) => pruned(live),
+  presentAttachments: (names: readonly string[]) => held(names),
 }));
 vi.mock("../../src/services/logger", () => ({ devWarning: vi.fn(), devError: vi.fn() }));
 
@@ -54,6 +56,7 @@ beforeEach(() => {
   configured = true;
   rows.mockResolvedValue([]);
   bytesFor.mockResolvedValue(null);
+  held.mockClear().mockResolvedValue(new Set());
   written.mockClear();
   storage.list.mockClear().mockResolvedValue({ data: [], error: null });
   storage.upload.mockClear().mockResolvedValue({ error: null });
@@ -162,8 +165,25 @@ describe("what the mirror removes", () => {
     const second = "0198ffff-cccc-4ddd-8eee-ffffffffffff.pdf";
     storage.list.mockResolvedValue({ data: [{ name: NAME }, { name: second }], error: null });
 
-    await purgeRemoteAttachments(USER);
+    await expect(purgeRemoteAttachments(USER)).resolves.toBe(true);
     expect(storage.remove).toHaveBeenCalledWith([`${USER}/${NAME}`, `${USER}/${second}`]);
+  });
+
+  /** Nothing on the server repeats the purge, so a failure has to be reported rather than swallowed. */
+  it("reports a purge it could not finish", async () => {
+    const { purgeRemoteAttachments } = await mirror();
+    storage.list.mockResolvedValue({ data: null as never, error: { message: "offline" } });
+    await expect(purgeRemoteAttachments(USER)).resolves.toBe(false);
+
+    storage.list.mockResolvedValue({ data: [{ name: NAME }], error: null });
+    storage.remove.mockResolvedValue({ error: { message: "denied" } });
+    await expect(purgeRemoteAttachments(USER)).resolves.toBe(false);
+  });
+
+  it("reports an empty folder as clear, without a removal", async () => {
+    const { purgeRemoteAttachments } = await mirror();
+    await expect(purgeRemoteAttachments(USER)).resolves.toBe(true);
+    expect(storage.remove).not.toHaveBeenCalled();
   });
 
   it("erases every document on this device when a session ends, keeping none as live", async () => {
@@ -296,5 +316,59 @@ describe("when the mirror asks the bucket again", () => {
     storage.list.mockResolvedValue({ data: [], error: null });
     await reconcileAttachments(USER);
     expect(storage.upload).toHaveBeenCalledTimes(1);
+  });
+});
+
+/**
+ * What a sign-out would erase with no copy anywhere.
+ *
+ * A document's bytes travel apart from its row, so an empty outbox says
+ * nothing about them. The count has to be honest in both directions: a file
+ * the bucket already holds is not at risk, and a file this session never got
+ * to ask about is not known to be safe.
+ */
+describe("what a sign-out would lose", () => {
+  const SENT = "0198ffff-cccc-4ddd-8eee-ffffffffffff.pdf";
+
+  it("counts only what is held here and not seen in the bucket", async () => {
+    const { reconcileAttachments, unsentAttachments } = await mirror();
+    const unheld = "0198eeee-cccc-4ddd-8eee-ffffffffffff.pdf";
+    const alsoSent = "0198cccc-cccc-4ddd-8eee-ffffffffffff.pdf";
+    rows.mockResolvedValue([live(NAME), live(SENT), live(alsoSent), live(unheld), dead("0198dddd-cccc-4ddd-8eee-ffffffffffff.pdf")]);
+    held.mockResolvedValue(new Set([NAME, SENT, alsoSent]));
+    // The bucket has two of them; NAME fails to upload, so it stays at risk.
+    storage.list.mockResolvedValue({ data: [{ name: SENT }, { name: alsoSent }], error: null });
+    storage.upload.mockResolvedValue({ error: { message: "offline" } });
+    bytesFor.mockResolvedValue(new Uint8Array([1]));
+    await reconcileAttachments(USER);
+
+    await expect(unsentAttachments(USER)).resolves.toEqual({ count: 1, verified: true });
+    expect(held).toHaveBeenCalledWith([NAME, SENT, alsoSent, unheld]);
+  });
+
+  it("counts every held document, unverified, before any listing has answered", async () => {
+    const { unsentAttachments } = await mirror();
+    rows.mockResolvedValue([live(NAME), live(SENT)]);
+    held.mockResolvedValue(new Set([NAME, SENT]));
+
+    await expect(unsentAttachments(USER)).resolves.toEqual({ count: 2, verified: false });
+  });
+
+  it("does not answer for one account with another's listing", async () => {
+    const { reconcileAttachments, unsentAttachments } = await mirror();
+    rows.mockResolvedValue([live(SENT)]);
+    held.mockResolvedValue(new Set([SENT]));
+    storage.list.mockResolvedValue({ data: [{ name: SENT }], error: null });
+    await reconcileAttachments(OTHER);
+
+    await expect(unsentAttachments(USER)).resolves.toEqual({ count: 1, verified: false });
+  });
+
+  it("has nothing to count without a live document", async () => {
+    const { unsentAttachments } = await mirror();
+    rows.mockResolvedValue([dead(NAME)]);
+
+    await expect(unsentAttachments(USER)).resolves.toEqual({ count: 0, verified: true });
+    expect(held).not.toHaveBeenCalled();
   });
 });

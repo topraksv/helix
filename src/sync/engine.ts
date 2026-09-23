@@ -30,7 +30,7 @@ import { devError, devWarning } from "../services/logger";
 import { uploadDiagnostics, type DiagnosticUpload, type DiagnosticUploadPort } from "../services/diagnostics";
 import { reportUsage, type UsageUploadPort } from "../services/usage";
 import { prepareOutboundBatch } from "./outbound-validation";
-import { eraseDeviceAttachments, purgeRemoteAttachments, reconcileAttachments } from "./attachment-mirror";
+import { eraseDeviceAttachments, purgeRemoteAttachments, reconcileAttachments, unsentAttachments } from "./attachment-mirror";
 import { isValidImportRow } from "../services/backup-validation";
 import type { Database } from "./database.types";
 
@@ -715,7 +715,8 @@ export async function syncNow(userId: string, allowRefresh = true): Promise<bool
 }
 
 /**
- * Erase this account's documents, from the bucket and from this device.
+ * What the auth layer does to documents: send and count them before a
+ * sign-out, and erase them from the bucket and from this device.
  *
  * Re-exported here rather than imported from `attachment-mirror` directly,
  * because this module is the whole of what the auth layer knows about sync —
@@ -723,7 +724,7 @@ export async function syncNow(userId: string, allowRefresh = true): Promise<bool
  * it made the sign-out path load the database layer that the auth tests mock
  * this module precisely to avoid, which is the seam telling the truth.
  */
-export { eraseDeviceAttachments, purgeRemoteAttachments };
+export { eraseDeviceAttachments, purgeRemoteAttachments, reconcileAttachments, unsentAttachments };
 
 /** Debounced trigger for after-write sync (UI never waits on this). */
 export function scheduleSync(userId: string, delayMs = 1500): void {

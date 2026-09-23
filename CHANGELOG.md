@@ -15,6 +15,10 @@ Notlar kısa tutulur: ne değişti, tek cümle. Sebebi ve ölçümü commit'te.
 - Yıllık aboneliğin maliyeti artık tam tutarı gösteriyor: ₺1.199'luk plan ₺1.199,04 okunmuyor.
 - Çıkış yapınca ya da hesabı silince cihazdaki belge dosyaları da siliniyor; silinen bir işlemin fişleri de geri alma süresi geçince kaldırılıyor.
 - Yedek dosyası boş tabloları yazmıyor, böylece eski sürüm de açabiliyor; tablo önizlemesi tekrarlanan satırı içe aktarmanın saydığı gibi sayıyor.
+- Mali Tablo'da bu ayın kapanışı artık Özet'teki "Ay sonu tahmini" ile aynı: ödenmemiş abonelik ve gelirler kendi kategorilerinde planlanan tutar olarak görünüyor.
+- Otomatik ödemenin işlediği satırlar ay listelerinde "Otomatik ödendi" diye ayrılıyor.
+- Çıkış yaparken buluta gitmemiş belgeler önce gönderiliyor; gönderilemeyen varsa çıkmadan önce soruluyor.
+- Hesap silinirken belgeler buluttan silinemezse, silmeye devam etmeden önce soruluyor.
 
 ## 1.8.4
 

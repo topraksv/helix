@@ -19,6 +19,7 @@ import { firstDayOf, isMonthKey, lastDayOf, monthKeyOf, todayISO, yearOf } from 
 import { expectationEffect, type PlannedExpectation } from "../../../domain/expected";
 import {
   useAttachmentsState,
+  useAutoConfirmedTransactionIds,
   useBalanceColumns,
   useCategoriesState,
   useCellNotesState,
@@ -295,6 +296,7 @@ export default function MonthDetailScreen() {
 
   const cellNotesState = useCellNotesState();
   const attachmentsState = useAttachmentsState();
+  const autoConfirmed = useAutoConfirmedTransactionIds();
   // Which rows in this list carry a document. One pass over the account's
   // attachments rather than a query per row: the list is virtualized and a
   // per-row lookup would run on every scroll frame.
@@ -437,6 +439,7 @@ export default function MonthDetailScreen() {
               note={t.note}
               pending={t.status === "pending"}
               hasDocuments={documented.has(t.id)}
+              automatic={autoConfirmed.has(t.id)}
               reversalBadge={
                 isWorkbookRemainderRow(t)
                   ? { text: tr.analysis.remainderBadge, tone: "muted" }

@@ -12,7 +12,7 @@ import Eraser from "lucide-react-native/icons/eraser";
 import RotateCcw from "lucide-react-native/icons/rotate-ccw";
 import Snowflake from "lucide-react-native/icons/snowflake";
 import Trash from "lucide-react-native/icons/trash";
-import { useSession } from "../auth/session";
+import { DELETE_DOCUMENTS_REMAIN, useSession } from "../auth/session";
 import { performAccountFreeze, type AccountFreezePhase } from "../auth/freeze";
 import { useUserId } from "../data/hooks";
 import { pendingSyncChangeCount, setAccountFrozen } from "../data/repo";
@@ -168,7 +168,13 @@ function CloudAccountSecurityScreen() {
     setLifecycleIntent("delete");
     setDeleting(true);
     try {
-      const error = await deleteAccount();
+      let error = await deleteAccount();
+      if (error === DELETE_DOCUMENTS_REMAIN) {
+        clearLifecycleIntent();
+        if (!(await appConfirm(tr.account.deleteDocumentsTitle, tr.account.deleteDocumentsBody, { confirmLabel: tr.account.deleteAnyway, danger: true, operation: "delete" }))) return;
+        setLifecycleIntent("delete");
+        error = await deleteAccount({ force: true });
+      }
       if (error) {
         clearLifecycleIntent();
         void appAlert(error, tr.errors.title);

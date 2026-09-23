@@ -103,7 +103,12 @@ vi.mock("../../src/sync/engine", () => ({
   },
   purgeRemoteAttachments: async () => {
     harness.log.push("attachments:purge");
+    return true;
   },
+  reconcileAttachments: async () => {
+    harness.log.push("attachments:send");
+  },
+  unsentAttachments: async () => ({ count: 0, verified: true }),
   runSyncSessionTask: vi.fn(async (_userId: string, task: (signal: AbortSignal) => Promise<unknown>) => task(new AbortController().signal)),
   startSyncSession: harness.startSyncSession,
   stopSyncSession: harness.stopSyncSession,

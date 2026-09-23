@@ -9,6 +9,7 @@
 import { Text, View } from "react-native";
 import Paperclip from "lucide-react-native/icons/paperclip";
 import Pencil from "lucide-react-native/icons/pencil";
+import Repeat from "lucide-react-native/icons/repeat";
 import Trash from "lucide-react-native/icons/trash";
 import { expectationEffect, type PlannedExpectation } from "../domain/expected";
 import { dateLabel, tr } from "../i18n/tr";
@@ -22,6 +23,7 @@ export function TransactionRow({
   pending,
   reversalBadge,
   hasDocuments,
+  automatic,
   amountMinor,
   onEdit,
   onDelete,
@@ -40,6 +42,8 @@ export function TransactionRow({
    * nothing in the list said which rows had one.
    */
   hasDocuments?: boolean;
+  /** Auto-pay recorded it paid; the owner never confirmed it. */
+  automatic?: boolean;
   amountMinor: number;
   onEdit: () => void;
   onDelete?: () => void;
@@ -63,10 +67,11 @@ export function TransactionRow({
           {note && note !== title ? (
             <Text style={[type.small, { color: palette.textSecondary }]}>{note}</Text>
           ) : null}
-          {reversalBadge || pending || hasDocuments ? (
+          {reversalBadge || pending || hasDocuments || automatic ? (
             <Row gap={spacing.sm} style={{ marginTop: 2, flexWrap: "wrap" }}>
               {reversalBadge ? <Badge text={reversalBadge.text} tone={reversalBadge.tone} /> : null}
               {pending ? <Badge text={tr.tx.futureNote} tone="warning" /> : null}
+              {automatic ? <Badge icon={Repeat} text={tr.tx.autoConfirmed} tone="primary" /> : null}
               {hasDocuments ? <Badge icon={Paperclip} text={tr.attachments.onTransaction} tone="primary" /> : null}
             </Row>
           ) : null}

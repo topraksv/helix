@@ -27,7 +27,7 @@
 import { getSqliteAsync } from "../db/client";
 import { isAttachmentMimeType, isStoredAttachmentName, MAX_ATTACHMENT_BYTES } from "../domain/attachments";
 import { isUuidShaped } from "./merge-policy";
-import { pruneOrphanAttachmentFiles, readAttachmentBytes, writeAttachmentBytes } from "../services/attachment-store";
+import { presentAttachments, pruneOrphanAttachmentFiles, readAttachmentBytes, writeAttachmentBytes } from "../services/attachment-store";
 import { devWarning } from "../services/logger";
 import { getSupabase } from "./supabase";
 
@@ -244,32 +244,53 @@ async function reconcileOnce(
   }
 }
 
+/**
+ * Documents a sign-out would erase with no copy anywhere: held here, and not
+ * seen in the bucket by this session.
+ *
+ * Before any listing has answered — offline since the app started — that is
+ * every document held here, and `verified` is false, so the warning can say
+ * it could not check rather than claim they were never sent. Only a listing
+ * turns a name into knowledge; an unanswered question is not a yes.
+ */
+export async function unsentAttachments(userId: string): Promise<{ count: number; verified: boolean }> {
+  const live = (await mirrorRows(userId)).filter((row) => row.deleted_at == null).map((row) => row.stored_name);
+  if (live.length === 0) return { count: 0, verified: true };
+  const verified = listed && listedFor === userId;
+  let count = 0;
+  for (const name of await presentAttachments(live)) if (!verified || !knownRemote.has(name)) count += 1;
+  return { count, verified };
+}
+
 /** Erase every document's bytes from this device; `session.ts` says when. */
 export function eraseDeviceAttachments(): Promise<number> {
   return pruneOrphanAttachmentFiles(new Set());
 }
 
 /**
- * Erase this account's documents from the bucket.
+ * Erase this account's documents from the bucket, and say whether it is clear.
  *
  * Called before `delete_own_account()`, because Storage does not cascade from
  * `auth.users` and the API — not a `delete` against `storage.objects` — is what
- * actually frees the blob. Migration 35 repeats the removal inside the RPC as a
- * backstop for the case where this never ran.
+ * actually frees the blob. Nothing behind this repeats it: migration 35's
+ * removal inside the RPC is refused by the storage guard and swallowed, so
+ * false is the only notice that a document would outlive the account.
  */
-export async function purgeRemoteAttachments(userId: string): Promise<void> {
+export async function purgeRemoteAttachments(userId: string): Promise<boolean> {
   const supabase = getSupabase();
-  if (!supabase || !isUuidShaped(userId)) return;
+  if (!supabase || !isUuidShaped(userId)) return true;
   const remote = await remoteNames(userId);
-  if (!remote || remote.size === 0) return;
+  if (!remote) return false;
   const paths = [...remote]
     .map((name) => objectPath(userId, name))
     .filter((path): path is string => path !== null);
-  if (paths.length === 0) return;
+  if (paths.length === 0) return true;
   const { error } = await supabase.storage.from(BUCKET).remove(paths);
-  if (error) devWarning("attachment.mirror", `purge ${error.message}`);
-  else {
-    knownRemote.clear();
-    listed = false;
+  if (error) {
+    devWarning("attachment.mirror", `purge ${error.message}`);
+    return false;
   }
+  knownRemote.clear();
+  listed = false;
+  return true;
 }
