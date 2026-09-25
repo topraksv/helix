@@ -233,12 +233,28 @@ select is(
   'keepalive declares its service-role-only RLS contract'
 );
 
-select ok(
-  pg_catalog.to_regclass('public.idx_card_statement_user_source_period') is null
-    and pg_catalog.to_regclass(
-      'public.credit_card_statements_user_id_payment_source_id_period_mon_key'
-    ) is not null,
-  'the statement natural key has one covering index, not a duplicate copy'
+-- The Security Advisor's duplicate-index lint, run here because the advisor
+-- CLI is blind locally. Two copies have shipped: the statement natural key's,
+-- and `transactions (user_id, id)`, which migration 30 re-added unaware that
+-- migration 6 already had it.
+select is(
+  (
+    select count(*)
+    from (
+      select 1
+      from pg_index index_definition
+      join pg_class table_class on table_class.oid = index_definition.indrelid
+      join pg_namespace namespace on namespace.oid = table_class.relnamespace
+      where namespace.nspname = 'public'
+      group by index_definition.indrelid, index_definition.indkey::text,
+        index_definition.indclass::text, index_definition.indisunique,
+        coalesce(index_definition.indexprs::text, ''),
+        coalesce(index_definition.indpred::text, '')
+      having count(*) > 1
+    ) duplicates
+  ),
+  0::bigint,
+  'no public table carries two identical indexes'
 );
 
 select is(
