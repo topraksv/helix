@@ -63,6 +63,7 @@
     "eslint-config-expo": "~57.0.2",
     "fast-check": "^4.10.0",
     "typescript": "~6.0.3",
+    "typescript-7": "npm:typescript@7.0.2",
     "vitest": "^4.1.9"
   },
   "scripts": {
@@ -82,7 +83,7 @@
     "test:e2e:export": "node scripts/export-e2e-web.mjs",
     "test:e2e": "npm run test:e2e:export && playwright test",
     "test:e2e:only": "playwright test",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "node node_modules/typescript-7/bin/tsc --noEmit",
     "db:generate": "drizzle-kit generate",
     "verify": "npm run typecheck && npm run test:coverage && npm run lint:ratchet",
     "bundle:check": "node scripts/check-web-budget.mjs dist --require-supabase-config",

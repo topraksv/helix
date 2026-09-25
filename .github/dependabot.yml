@@ -79,7 +79,8 @@ updates:
       # `@typescript-eslint/typescript-estree` (8.70.0) declares
       # `typescript: ">=4.8.4 <6.1.0"` and throws before linting a line.
       # Neither has an upstream release that would work; re-check when
-      # `eslint-plugin-react` publishes an ESLint 10 peer.
+      # `eslint-plugin-react` publishes an ESLint 10 peer. The typecheck itself
+      # already runs on 7 through the `typescript-7` alias (docs/ARCHITECTURE.md).
       - dependency-name: "eslint"
         update-types: ["version-update:semver-patch", "version-update:semver-minor", "version-update:semver-major"]
       - dependency-name: "typescript"

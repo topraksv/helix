@@ -48,6 +48,12 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version-file: .nvmrc
+          # The only job holding `contents: write`, and it installs nothing.
+          # setup-node restores a package cache on its own the moment
+          # package.json names a `packageManager`, and a cache any workflow can
+          # write is not something a publishing job should read (zizmor
+          # cache-poisoning).
+          package-manager-cache: false
       - name: Publish the release from the changelog
         env:
           GH_TOKEN: ${{ github.token }}

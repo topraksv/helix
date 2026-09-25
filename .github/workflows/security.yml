@@ -1,4 +1,4 @@
-# CodeQL and scheduled dependency auditing.
+# CodeQL, the workflow audit, and scheduled dependency auditing.
 #
 # CodeQL and registry advisories stay off the delivery path because either can
 # change without a source change. They run for security-relevant paths and on a
@@ -20,6 +20,7 @@ on:
       - "scripts/**"
       - "supabase/**"
       - ".github/workflows/**"
+      - ".github/dependabot.yml"
   schedule:
     # Weekly, so a newly published query pack still reaches a quiet repository.
     - cron: "0 5 * * 1"
@@ -55,6 +56,23 @@ jobs:
       - uses: github/codeql-action/analyze@b96794f015dfd88f77b49b1c93e0fa7110f94c63 # v4.38.0
         with:
           category: "/language:javascript-typescript"
+
+  # The workflows are the delivery path, and every push to `main` runs them with
+  # a deploy environment attached, so a template injection, an over-broad
+  # token or a poisoned cache in one of them is a way into production that no
+  # source scan reads. zizmor audits exactly that surface. The version is
+  # pinned so a new audit arrives as a decision, not as a red Monday; the token
+  # enables the online audits (known-vulnerable and impostor actions).
+  workflows:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: pipx run zizmor==1.30.1 --format=github .github/
+        env:
+          GH_TOKEN: ${{ github.token }}
 
   dependencies:
     runs-on: ubuntu-latest
