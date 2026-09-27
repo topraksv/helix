@@ -86,6 +86,35 @@ describe("password recovery session binding", () => {
     expect(wasPasswordRecoveryDetected()).toBe(false);
   });
 
+  /**
+   * supabase-js takes the code out of the address bar once it has tried to
+   * redeem it, so the landing is read at the one moment it is still there:
+   * just before the client that strips it is created.
+   */
+  it("reads an e-mail link's landing once, before the web client can strip it", async () => {
+    vi.stubGlobal("location", { href: "https://topraksv.github.io/helix/?code=0b6f" });
+    try {
+      const web = await load();
+      expect(web.takeEmailLinkLanding()).toBeNull();
+      web.getSupabase();
+      expect(web.takeEmailLinkLanding()).toBe("confirmed");
+      expect(web.takeEmailLinkLanding()).toBeNull();
+
+      harness.platform.OS = "ios";
+      const native = await load();
+      native.getSupabase();
+      expect(native.takeEmailLinkLanding()).toBeNull();
+
+      harness.platform.OS = "web";
+      vi.stubGlobal("location", undefined);
+      const bare = await load();
+      expect(() => bare.getSupabase()).not.toThrow();
+      expect(bare.takeEmailLinkLanding()).toBeNull();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("creates one persisted PKCE client, reading the session from the URL only on web", async () => {
     const web = await load();
     const client = web.getSupabase();

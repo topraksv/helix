@@ -8,7 +8,7 @@ import Table2 from "lucide-react-native/icons/table-2";
 import WalletCards from "lucide-react-native/icons/wallet-cards";
 import { useSession } from "../../auth/session";
 import { LegalConsentControl, LegalNoticeSheet } from "../../ui/legal-notice";
-import { isSupabaseConfigured } from "../../sync/supabase";
+import { isSupabaseConfigured, takeEmailLinkLanding } from "../../sync/supabase";
 import { Body, Button, Card, Field, Screen } from "../../ui/components";
 import { useSubmitOnEnter } from "../../ui/keyboard";
 import { clearLifecycleIntent } from "../../ui/lifecycle-intent";
@@ -197,10 +197,13 @@ function useAuthForm() {
   const [busy, setBusy] = useState(false);
   const [resetSent, setResetSent] = useState(false);
   const [signUpConfirmationSent, setSignUpConfirmationSent] = useState(false);
+  const [landing, setLanding] = useState(takeEmailLinkLanding);
+  const [resending, setResending] = useState(false);
+  const [confirmationResent, setConfirmationResent] = useState(false);
   const [consented, setConsented] = useState(false);
   /** Only true after a refused submit: the form does not scold while it is being filled. */
   const [consentRefused, setConsentRefused] = useState(false);
-  const { signIn, signUp, requestPasswordReset } = useSession();
+  const { signIn, signUp, requestPasswordReset, resendSignUpConfirmation } = useSession();
   const operationGuard = useOperationGuard();
 
   const emailValid = /.+@.+\..+/.test(email.trim());
@@ -223,6 +226,8 @@ function useAuthForm() {
     setError(null);
     setResetSent(false);
     setSignUpConfirmationSent(false);
+    setLanding(null);
+    setConfirmationResent(false);
     // Consent belongs to the attempt that was made, not to the session.
     setConsented(false);
     setConsentRefused(false);
@@ -248,6 +253,8 @@ function useAuthForm() {
       setBusy(true);
       setError(null);
       setSignUpConfirmationSent(false);
+      setLanding(null);
+      setConfirmationResent(false);
       try {
         // On success, let the root route guard navigate (it keys off userId +
         // onboarded). Replacing to "/" here landed on a length-0 route that made the
@@ -263,6 +270,25 @@ function useAuthForm() {
     });
   };
 
+  /** Offered wherever a confirmation link is what stands between this person
+   *  and their account: just sent, refused at sign-in, or dead on arrival. */
+  const canResend = isSupabaseConfigured && emailValid && !busy && !resending
+    && (signUpConfirmationSent || confirmationResent || landing === "unusable" || error === tr.auth.errEmailNotConfirmed);
+
+  const resend = async () => {
+    setResending(true);
+    setError(null);
+    try {
+      const err = await resendSignUpConfirmation(email.trim());
+      if (err) setError(err);
+      setConfirmationResent(!err);
+    } catch {
+      setError(tr.errors.requestFailed);
+    } finally {
+      setResending(false);
+    }
+  };
+
   const edit = (setter: (value: string) => void) => (value: string) => {
     setter(value);
     setError(null);
@@ -270,7 +296,7 @@ function useAuthForm() {
   };
 
   return {
-    mode, email, password, error, busy, resetSent, signUpConfirmationSent, consented, consentRefused, emailValid, formReady, canSubmit, submit,
+    mode, email, password, error, busy, resetSent, signUpConfirmationSent, landing, confirmationResent, canResend, resend, consented, consentRefused, emailValid, formReady, canSubmit, submit,
     setEmail: edit(setEmail),
     setPassword: edit(setPassword),
     switchMode: () => {
@@ -352,6 +378,8 @@ function AuthFormCard({ form, wide, onOpenNotice }: { form: AuthForm; wide: bool
         />
       ) : null}
       {form.resetSent || form.signUpConfirmationSent ? <AuthNotice tone="success" text={form.signUpConfirmationSent ? tr.auth.signUpConfirmationSent : tr.auth.resetSent} /> : null}
+      {form.landing ? <AuthNotice tone={form.landing === "confirmed" ? "success" : "error"} text={form.landing === "confirmed" ? tr.auth.emailLinkConfirmed : tr.auth.emailLinkUnusable} /> : null}
+      {form.confirmationResent ? <AuthNotice tone="success" text={tr.auth.confirmationResent} /> : null}
       {form.error ? <AuthNotice tone="error" text={form.error} /> : null}
       {form.busy ? (
         // Between the password field and the submit button, where nothing had
@@ -375,6 +403,7 @@ function AuthFormCard({ form, wide, onOpenNotice }: { form: AuthForm; wide: bool
           the spacing. The notice is not offered here: signing in or repairing a
           password starts no processing an account creation would. */}
       <View style={{ alignItems: "center", marginTop: spacing.sm }}>
+        {form.canResend ? <AuthLink label={tr.auth.resendConfirmation} onPress={() => void form.resend()} /> : null}
         {mode === "signIn" ? <AuthLink label={tr.auth.forgotPassword} onPress={form.showForgot} /> : null}
         <AuthLink label={text.other()} onPress={form.switchMode} disabled={form.busy} />
       </View>

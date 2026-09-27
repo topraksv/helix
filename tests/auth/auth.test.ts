@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { friendlyAuthError } from "../../src/auth/auth-errors";
-import { requestPasswordRecoveryEmail } from "../../src/auth/email-flows";
+import { requestPasswordRecoveryEmail, resendSignUpConfirmation } from "../../src/auth/email-flows";
 import {
   loadPreviousLogin,
   recordSuccessfulLogin,
@@ -11,6 +11,7 @@ import {
   type LoginHistoryStorage,
 } from "../../src/auth/login-history";
 import {
+  parseEmailLinkLanding,
   parsePasswordRecoveryUrl,
   passwordRecoveryRequestRedirect,
   webPasswordRecoveryRedirectUrl,
@@ -100,6 +101,20 @@ describe("server-side password policy", () => {
     const template = readFileSync(join(process.cwd(), "supabase/templates/recovery.html"), "utf8");
     expect(template).toContain('href="{{ .RedirectTo }}?token_hash={{ .TokenHash }}&type=recovery"');
     expect(template).not.toContain("{{ .ConfirmationURL }}");
+  });
+
+  /**
+   * The opposite choice from the reset link, on purpose. Auth's verify
+   * endpoint confirms the address on the first GET, whichever browser makes
+   * it, so a phone's mail app or a link checker still leaves the account
+   * confirmed — there is nothing for the app to redeem afterwards, and the
+   * PKCE code it returns only signs in the browser that signed up.
+   */
+  it("sends sign-up confirmations through Auth's own verify link", () => {
+    expect(config).toMatch(/\[auth\.email\.template\.confirmation\][\s\S]*?^content_path = "\.\/supabase\/templates\/confirmation\.html"$/m);
+    const template = readFileSync(join(process.cwd(), "supabase/templates/confirmation.html"), "utf8");
+    expect(template).toContain('href="{{ .ConfirmationURL }}"');
+    expect(template).not.toContain("{{ .TokenHash }}");
   });
 });
 
@@ -301,6 +316,62 @@ describe("password recovery e-mail request", () => {
     );
 
     expect(error).toBe(tr.auth.errEmailDelivery);
+  });
+});
+
+/**
+ * Where a confirmation link leaves a person when the browser that opens it is
+ * not the one that signed up: Auth has already confirmed the address, the PKCE
+ * code cannot be redeemed there, and sign-in used to open with no word about
+ * either.
+ */
+describe("e-mail link landings on the Site URL", () => {
+  const site = "https://topraksv.github.io/helix/";
+
+  it("reads a returned code as a confirmed address", () => {
+    expect(parseEmailLinkLanding(`${site}?code=0b6f`)).toBe("confirmed");
+  });
+
+  it("reads Auth's error, in the query or the fragment, as a link that no longer works", () => {
+    expect(parseEmailLinkLanding(`${site}?error=access_denied&error_code=otp_expired`)).toBe("unusable");
+    expect(parseEmailLinkLanding(`${site}#error_code=otp_expired&error_description=Email+link+is+invalid`)).toBe("unusable");
+    expect(parseEmailLinkLanding(`${site}#error=server_error`)).toBe("unusable");
+    // The error wins over a code: a failed verify never confirmed anything.
+    expect(parseEmailLinkLanding(`${site}?code=0b6f&error=access_denied`)).toBe("unusable");
+  });
+
+  it("says nothing about an ordinary visit or a malformed address", () => {
+    expect(parseEmailLinkLanding(site)).toBeNull();
+    expect(parseEmailLinkLanding(`${site}?tab=durum`)).toBeNull();
+    expect(parseEmailLinkLanding("not a url")).toBeNull();
+  });
+
+  it("leaves reset links to the reset screen", () => {
+    expect(parseEmailLinkLanding(`${site}reset-password?code=0b6f`)).toBeNull();
+    expect(parseEmailLinkLanding(`${site}reset-password/#error_code=otp_expired`)).toBeNull();
+    // Only the reset screen itself: a path that merely passes through the name
+    // is not it.
+    expect(parseEmailLinkLanding(`${site}reset-password/done?code=0b6f`)).toBe("confirmed");
+  });
+});
+
+describe("sign-up confirmation resend", () => {
+  it("asks Auth for a new sign-up link to the trimmed address", async () => {
+    const calls: unknown[] = [];
+    const error = await resendSignUpConfirmation(
+      { resend: async (request) => { calls.push(request); return { error: null }; } },
+      "  kisi@example.com ",
+    );
+    expect(error).toBeNull();
+    expect(calls).toEqual([{ type: "signup", email: "kisi@example.com" }]);
+  });
+
+  it("names Auth's wait-before-retrying answer as a rate limit", async () => {
+    const error = await resendSignUpConfirmation(
+      { resend: async () => ({ error: { message: "For security purposes, you can only request this after 42 seconds." } }) },
+      "kisi@example.com",
+    );
+    expect(error).toBe(tr.auth.errRateLimit);
   });
 });
 

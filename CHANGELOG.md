@@ -6,6 +6,19 @@ defterinde yazılıdır ve bu depoya dahil değildir.
 
 Notlar kısa tutulur: ne değişti, tek cümle. Sebebi ve ölçümü commit'te.
 
+## 1.9.0
+
+### Minor Changes
+
+- Yeni hesaplar e-posta onayıyla açılıyor; onay e-postası şifre yenileme e-postasıyla aynı görünümde.
+- Onay bağlantısının süresi dolduysa ya da e-posta gelmediyse giriş ekranından yeni bağlantı istenebiliyor.
+- Onay bağlantısı başka bir tarayıcıda açıldığında giriş ekranı adresin onaylandığını, bağlantı geçersizse bunu söylüyor.
+
+### Patch Changes
+
+- "Helix başka bir sekmede açık" ekranı koyu temada okunmuyordu; artık her temada okunuyor ve ne yapılacağını iki adımda söylüyor.
+- Web uygulaması daha hızlı açılıyor: yalnız geliştirmede kullanılan bir araç paketten çıkarıldı.
+
 ## 1.8.5
 
 ### Patch Changes

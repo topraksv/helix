@@ -4,12 +4,11 @@
  * fully offline; sync, FX and notifications run opportunistically.
  */
 
-import { useEffect, useMemo, useState } from "react";
-import { Platform, Pressable, Text, useColorScheme, View } from "react-native";
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { Platform, Text, useColorScheme, View } from "react-native";
 import { Stack, useRouter, useSegments } from "expo-router";
 import { screenKey } from "../domain/usage";
 import { recordScreenView } from "../services/usage";
-import AppWindow from "lucide-react-native/icons/app-window";
 import DatabaseZap from "lucide-react-native/icons/database-zap";
 import Head from "expo-router/head";
 import { StatusBar } from "expo-status-bar";
@@ -28,7 +27,6 @@ import { classifyBootFailure, classifyRootRoute, drawsWithoutDatabase, resolveRo
 import ResetPasswordScreen from "./(auth)/reset-password";
 import { kv } from "../services/kv";
 import {
-  controlSize,
   darkPalette,
   font,
   radius,
@@ -40,23 +38,24 @@ import {
   PALETTES,
   ThemeContext,
   type,
+  circle,
+  useTheme,
   type PaletteId,
   type ThemePreference,
 } from "../ui/theme";
-import { Badge, Button, EmptyState, Screen, Title, WaitingNotice } from "../ui/components";
+import { Button, Card, EmptyState, Screen, Title, WaitingNotice } from "../ui/components";
 import { useLifecycleIntent, type LifecycleIntent } from "../ui/lifecycle-intent";
 import type { OperationFlowKind } from "../ui/operation-flow";
 
 import { DialogHost, PromptHost } from "../ui/dialog";
 import { ErrorBoundary } from "../ui/error-boundary";
 import { FrozenGate } from "../ui/frozen-gate";
-import { interactionSurface } from "../ui/interaction";
 import { ThemeDissolve } from "../ui/motion-primitives";
 import { applyThemeChange, syncThemeColorMeta } from "../ui/theme-transition";
 import { UndoSnackbar, useUndo } from "../ui/undo";
 import { tr } from "../i18n/tr";
 import { loadDevicePreferences } from "../services/device-preferences";
-import { DelayedLoadingIndicator } from "../ui/loading-indicator";
+import { DelayedLoadingIndicator, LoadingIndicator } from "../ui/loading-indicator";
 import { HeaderBackButton, TransactionBackButton } from "../ui/header-back";
 import { cardScreenOptions, pageScreenOptions } from "../ui/header-bar";
 
@@ -122,32 +121,14 @@ function waitingState(
 const BOOT_ENDINGS = {
   // Another tab MIGHT have it — nothing has answered yet, so a reload is still
   // worth offering.
-  busy: {
-    icon: AppWindow,
-    title: tr.errors.bootBusyTitle,
-    hint: tr.errors.bootBusyHint,
-    action: tr.errors.bootBusyAction,
-    blocked: false,
-  },
+  busy: { title: tr.errors.bootBusyTitle, lead: tr.errors.bootBusyLead, steps: tr.errors.bootBusySteps, action: tr.errors.bootBusyAction, blocked: false },
   // Another tab has ANSWERED. Reloading provably lands back on this screen, so
-  // the control states which tab has the database instead of offering to do
-  // something it cannot do — the behaviour the owner reported as "basınca
-  // açılmıyor, yine aynı ekran geliyor". Nothing is lost by disabling it: the
-  // page reloads itself within about two seconds of that tab closing.
-  busyHeld: {
-    icon: AppWindow,
-    title: tr.errors.bootBusyTitle,
-    hint: tr.errors.bootBusyHintHeld,
-    action: tr.errors.bootBusyBlocked,
-    blocked: true,
-  },
-  unknown: {
-    icon: DatabaseZap,
-    title: tr.errors.bootFailedTitle,
-    hint: tr.errors.bootFailedHint,
-    action: tr.common.retry,
-    blocked: false,
-  },
+  // the screen says it is waiting instead of offering to do something it
+  // cannot do — the behaviour the owner reported as "basınca açılmıyor, yine
+  // aynı ekran geliyor". Nothing is lost without the button: the page reloads
+  // itself within about two seconds of that tab closing.
+  busyHeld: { title: tr.errors.bootBusyTitle, lead: tr.errors.bootBusyLead, steps: tr.errors.bootBusySteps, action: tr.errors.bootBusyWaiting, blocked: true },
+  unknown: { title: tr.errors.bootFailedTitle, lead: tr.errors.bootFailedHint, steps: [], action: tr.common.retry, blocked: false },
 } as const;
 
 /** Which of the three endings this failure is, once the other tabs have had
@@ -156,6 +137,68 @@ function bootEndingFor(failure: BootFailure | null, heldElsewhere: boolean) {
   if (failure !== "busy") return BOOT_ENDINGS.unknown;
   return heldElsewhere ? BOOT_ENDINGS.busyHeld : BOOT_ENDINGS.busy;
 }
+
+/**
+ * The screen a tab reaches when the app could not start.
+ *
+ * Every line that carries meaning is drawn in `palette.text` on a surface of
+ * its own. It used to be an `EmptyState`: the explanation in
+ * `textSecondary`, the only line saying what to do in a 12px chip, all of it
+ * floating centred on the page background — legible in one palette and a guess
+ * in the next. What a person has to do is two ordered steps, so it is written
+ * as two numbered steps rather than one sentence to parse.
+ */
+function BootNotice({ ending, onRetry }: { ending: ReturnType<typeof bootEndingFor>; onRetry: () => void }) {
+  const { palette } = useTheme();
+  const prose = [type.body, { lineHeight: 22, color: palette.text }];
+  return (
+    <View
+      accessibilityRole="alert"
+      accessibilityLiveRegion="assertive"
+      style={{ width: "100%", maxWidth: contentWidth.focus, padding: spacing.lg }}
+    >
+      <Card style={{ padding: spacing.xl, gap: spacing.lg, borderColor: palette.border }}>
+        <Text accessibilityRole="header" aria-level={1} style={[type.title, { color: palette.text }]}>{ending.title}</Text>
+        <Text style={prose}>{ending.lead}</Text>
+        {ending.steps.map((step, index) => (
+          <View key={step} style={{ flexDirection: "row", gap: spacing.md }}>
+            {/* Page colour on text colour: the pair every palette already
+                holds at body contrast. */}
+            <Text
+              style={[type.label, {
+                width: 26,
+                height: 26,
+                lineHeight: 26,
+                borderRadius: circle(26),
+                textAlign: "center",
+                backgroundColor: palette.text,
+                color: palette.background,
+                fontFamily: font.bold,
+              }]}
+            >
+              {index + 1}
+            </Text>
+            <Text style={[prose, { flex: 1 }]}>{step}</Text>
+          </View>
+        ))}
+        {ending.blocked ? (
+          /* A STATUS, not a refused control. A disabled `Button` is dimmed to
+             `stateOpacity.disabled`, which measured 2.07:1 here; nothing is
+             meant to happen on press, since the page reloads itself within
+             about two seconds of the other tab closing. */
+          <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.md, padding: spacing.md, borderRadius: radius.md, backgroundColor: palette.surfaceAlt }}>
+            <LoadingIndicator color={palette.text} label={ending.action} />
+            <Text style={[type.label, { flex: 1, color: palette.text, fontFamily: font.semibold }]}>{ending.action}</Text>
+          </View>
+        ) : (
+          <Button label={ending.action} onPress={onRetry} />
+        )}
+      </Card>
+    </View>
+  );
+}
+
+const noSubscription = () => () => {};
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
@@ -183,7 +226,16 @@ export function setGlobalPalettePreference(pref: PaletteId, fromBackground?: str
 }
 
 export default function RootLayout() {
-  const systemScheme = useColorScheme();
+  // The static export prerenders this layout with no colour scheme, so the
+  // HTML arrives with the light background baked in. Hydration keeps the DOM
+  // it finds, and a first client render that already reads "dark" hands React
+  // nothing to patch: the boot screens drew the dark palette's light text on
+  // the light background, 1.15:1. Matching the prerender for one render and
+  // then switching gives React the change it needs to repaint; the server
+  // snapshot is what React reads while hydrating, and nothing else is.
+  const liveScheme = useColorScheme();
+  const hydrated = useSyncExternalStore(noSubscription, () => true, () => Platform.OS !== "web");
+  const systemScheme = hydrated ? liveScheme : "light";
   // Open + migrate the database (async API on every platform) before the app.
   const [dbReady, setDbReady] = useState(false);
   const [dbError, setDbError] = useState<string | null>(null);
@@ -238,7 +290,6 @@ export default function RootLayout() {
 
   const background = systemScheme === "dark" ? darkPalette.background : lightPalette.background;
   const foreground = systemScheme === "dark" ? darkPalette.text : lightPalette.text;
-  const primaryForeground = systemScheme === "dark" ? darkPalette.primaryText : lightPalette.primaryText;
   /**
    * The theme for the screens that exist BEFORE preferences are readable.
    *
@@ -272,6 +323,7 @@ export default function RootLayout() {
       )}
       {dbReady && fontsReady ? (
         databaseRecovery ? (
+          <ThemeContext.Provider value={bootTheme}>
           <View
             style={{ flex: 1, backgroundColor: background, justifyContent: "center", alignItems: "center", padding: spacing.xl }}
           >
@@ -285,28 +337,16 @@ export default function RootLayout() {
                   : tr.databaseRecovery.recreated}
               </Text>
               <Text style={[type.body, { color: foreground }]}>{tr.databaseRecovery.next}</Text>
-              <Pressable
-                accessibilityRole="button"
+              <Button
+                label={tr.databaseRecovery.continue}
                 onPress={() => {
                   acknowledgeDatabaseRecoveryNotice();
                   setDatabaseRecovery(null);
                 }}
-                style={(state) => ({
-                  minHeight: controlSize.minimumTarget,
-                  alignItems: "center",
-                  justifyContent: "center",
-                  borderRadius: radius.md,
-                  paddingHorizontal: spacing.lg,
-                  // The boot palette is a real palette, so this button answers a
-                  // pointer the way every other one does rather than dimming on
-                  // press alone — which is the whole reason `bootTheme` exists.
-                  ...interactionSurface(bootTheme.palette, state, { base: bootTheme.palette.primary }),
-                })}
-              >
-                <Text style={[type.label, { color: primaryForeground, fontFamily: font.semibold }]}>{tr.databaseRecovery.continue}</Text>
-              </Pressable>
+              />
             </View>
           </View>
+          </ThemeContext.Provider>
         ) : (
           <RootLayoutInner />
         )
@@ -320,79 +360,27 @@ export default function RootLayout() {
         <ThemeContext.Provider value={bootTheme}>
         <View style={{ flex: 1, backgroundColor: background, alignItems: "center", justifyContent: "center" }}>
           {dbError ? (
-            /* The one screen a person reaches when the app could not start.
-               It used to be a bare centred `Text` carrying only a colour — no
-               type style at all, so it rendered at the platform's default size
-               in the app's own font-controlled product — with a `Button`
-               floating under it and nothing holding the two together. And it
-               said "Veritabanı hatası", which names the layer that failed
-               rather than what happened or what to do about it.
-
-               `EmptyState` is what every other "nothing here, here is why, here
-               is the way out" surface in this app already uses, and it works
-               here for the same reason the retry button does: the boot theme
-               mounts the same context. The role is moved to the wrapper because
-               `EmptyState`'s title is a heading, and this needs to be announced
-               as an alert. */
-            <View
-              accessibilityRole="alert"
-              accessibilityLiveRegion="assertive"
-              // `contentWidth.form` is the same bound every other screen puts on
-              // a line of prose. Without it this sentence runs the full width
-              // of a desktop window, which is the one place a boot failure is
-              // most likely to be read.
-              //
-              // No `alignSelf: "stretch"`: it overrides the parent's
-              // `alignItems: "center"`, and a stretched box with a maxWidth
-              // resolves to the START of the axis rather than the middle — the
-              // block sat against the left edge of a desktop window while
-              // everything inside it was centred within that block.
-              style={{ flex: 1, width: "100%", maxWidth: contentWidth.form }}
-            >
-              <EmptyState
-                icon={bootEnding.icon}
-                title={bootEnding.title}
-                hint={bootEnding.hint}
-                action={bootEnding.blocked ? (
-                  /* A STATUS, not a refused control.
-                     It used to be a disabled `Button`, and a disabled control
-                     is dimmed to `stateOpacity.disabled`: measured on the light
-                     theme, "Diğer Sekmede Açık" rendered at 2.07:1 against its
-                     own chip — the app holds 4.5:1 everywhere else, and this is
-                     the one line explaining why the screen will not open. It
-                     was also never an action. Nothing happens when it is
-                     pressed and nothing is meant to; the page reloads itself
-                     within about two seconds of the other tab closing. Saying
-                     that as a badge is both legible and true. */
-                  <Badge icon={AppWindow} text={bootEnding.action} />
-                ) : (
-                  <Button
-                    label={bootEnding.action}
-                    onPress={() => {
-                      // On web the usual cause is another tab holding the
-                      // exclusive OPFS access handle, which leaves wa-sqlite's
-                      // VFS permanently "Invalid VFS state" FOR THIS DOCUMENT:
-                      // re-running the migration in the same page fails
-                      // identically forever, while a reload (new realm, new
-                      // worker) succeeds the moment the other tab is gone.
-                      // Retrying in place made the button look like it did
-                      // something and never recovered. `useDatabaseHandoff`
-                      // now does this without being asked when the other tab
-                      // closes; this stays for the closures it cannot hear —
-                      // a crash, a force-quit. Native has no such realm-scoped
-                      // VFS: its failures are a locked or corrupt file, which
-                      // re-opening genuinely retries.
-                      if (Platform.OS === "web" && typeof window !== "undefined") {
-                        window.location.reload();
-                        return;
-                      }
-                      setDbReady(false);
-                      setAttempt((a) => a + 1);
-                    }}
-                  />
-                )}
-              />
-            </View>
+            <BootNotice
+              ending={bootEnding}
+              onRetry={() => {
+                // On web the usual cause is another tab holding the exclusive
+                // OPFS access handle, which leaves wa-sqlite's VFS permanently
+                // "Invalid VFS state" FOR THIS DOCUMENT: re-running the
+                // migration in the same page fails identically forever, while a
+                // reload (new realm, new worker) succeeds the moment the other
+                // tab is gone. `useDatabaseHandoff` does this without being
+                // asked when the other tab closes; this stays for the closures
+                // it cannot hear — a crash, a force-quit. Native has no such
+                // realm-scoped VFS: its failures are a locked or corrupt file,
+                // which re-opening genuinely retries.
+                if (Platform.OS === "web" && typeof window !== "undefined") {
+                  window.location.reload();
+                  return;
+                }
+                setDbReady(false);
+                setAttempt((a) => a + 1);
+              }}
+            />
           ) : (
             <DelayedLoadingIndicator />
           )}

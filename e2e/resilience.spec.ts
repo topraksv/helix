@@ -78,10 +78,15 @@ test("a second tab fails safely and its retry really recovers", async ({ page, c
   await addMarketExpense(page, "Tek sekme sahipliği", "410,00");
 
   const second = await context.newPage();
+  // Dark, because that is where this screen was unreadable: the static export
+  // prerenders the light background, hydration kept it, and the dark palette's
+  // light text was drawn on top of it.
+  await second.emulateMedia({ colorScheme: "dark" });
   await second.goto("/helix/");
   // The screen names what happened, not the layer that failed. "Veritabanı
   // hatası" sent someone looking for corrupted data over a tab they had open.
   await expect(second.getByText("Helix başka bir sekmede açık")).toBeVisible();
+  expect(await renderedContrast(second.getByText("Helix başka bir sekmede açık"), "text")).toBeGreaterThanOrEqual(4.5);
   // While the first tab still holds the database, reloading provably cannot
   // work — so the screen states which tab has it instead of offering an action
   // that lands back here. It says so as a STATUS and not as a refused button:
@@ -89,9 +94,9 @@ test("a second tab fails safely and its retry really recovers", async ({ page, c
   // the light theme this line rendered at 2.07:1 against its own chip, against
   // the 4.5:1 the app holds everywhere else — illegible, on the one line
   // explaining why the screen will not open.
-  await expect(second.getByText("Diğer Sekmede Açık")).toBeVisible();
-  await expect(second.getByRole("button", { name: "Diğer Sekmede Açık" })).toHaveCount(0);
-  const legible = await renderedContrast(second.getByText("Diğer Sekmede Açık"), "text");
+  await expect(second.getByText("Diğer sekmenin kapanması bekleniyor")).toBeVisible();
+  await expect(second.getByRole("button", { name: "Diğer sekmenin kapanması bekleniyor" })).toHaveCount(0);
+  const legible = await renderedContrast(second.getByText("Diğer sekmenin kapanması bekleniyor"), "text");
   expect(legible, "the only line explaining the screen has to be readable").toBeGreaterThanOrEqual(4.5);
 
   // The owning tab is untouched by the blocked one.
@@ -135,7 +140,7 @@ test("a reset link opens its screen in a second tab while Helix holds the databa
     second.getByRole("heading", { name: "Yeni şifreni belirle" })
       .or(second.getByText("Helix başka bir sekmede açık. Devam etmek için o sekmeye dön.")),
   ).toBeVisible();
-  await expect(second.getByText("Diğer Sekmede Açık")).toHaveCount(0);
+  await expect(second.getByText("Diğer sekmenin kapanması bekleniyor")).toHaveCount(0);
   await second.close();
 
   await page.bringToFront();

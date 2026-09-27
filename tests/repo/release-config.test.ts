@@ -164,6 +164,26 @@ describe("release contract", () => {
     expect(subscribers, "these files subscribe to a transport that is not bundled").toEqual([]);
   });
 
+  /**
+   * `expo-sqlite` reaches its devtools client only under `__DEV__`, but Metro
+   * collects the `require` before the minifier removes the branch, so a
+   * release carried @expo/devtools (14_832 bytes of entry chunk) it can never
+   * call. Scoped to release builds: the SQLite inspector keeps working in dev.
+   */
+  it("keeps the SQLite devtools client out of release bundles only", () => {
+    const metro = read("metro.config.js");
+    const stub = read("src/db/devtools-absent.js");
+    const stryker = read("stryker.ci.config.mjs");
+    const client = read("node_modules/expo-sqlite/build/SQLiteDevToolsClient.js");
+
+    expect(metro).toContain('moduleName === "expo/devtools" && !context.dev');
+    expect(metro).toContain("src/db/devtools-absent.js");
+    expect(stryker).toContain("devtools-absent\\.js");
+    // The premise: the package calls it only behind the dev guard.
+    expect(client).toMatch(/if \(!__DEV__ \|\| client != null\) \{\s*return;\s*\}[\s\S]*require\('expo\/devtools'\)/);
+    expect(stub).toMatch(/export (async )?function getDevToolsPluginClientAsync\b/);
+  });
+
   it("keeps local reminders out of the web bundle, and answers every call the app makes", () => {
     const metro = read("metro.config.js");
     const stub = read("src/services/notifications-absent.js");

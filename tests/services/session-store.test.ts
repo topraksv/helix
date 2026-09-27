@@ -42,6 +42,7 @@ const harness = vi.hoisted(() => {
         getUser: vi.fn(),
         updateUser: vi.fn(async (_attributes: unknown) => ({ error: null as { message: string } | null })),
         resetPasswordForEmail: vi.fn(async (_email: string, _options: unknown) => ({ error: null })),
+        resend: vi.fn(async (_request: unknown) => ({ error: null as { message: string } | null })),
         exchangeCodeForSession: vi.fn(),
         setSession: vi.fn(),
       },
@@ -186,6 +187,7 @@ function reset(): void {
   harness.supabase.auth.updateUser.mockReset();
   harness.supabase.auth.updateUser.mockResolvedValue({ error: null });
   harness.supabase.auth.resetPasswordForEmail.mockClear();
+  harness.supabase.auth.resend.mockClear();
   harness.supabase.auth.exchangeCodeForSession.mockReset();
   harness.supabase.auth.setSession.mockReset();
   harness.supabase.rpc.mockReset();
@@ -804,6 +806,19 @@ describe("requesting a reset link", () => {
       { redirectTo: "http://localhost:8081/reset-password" },
       { redirectTo: "http://localhost:8081/helix/reset-password" },
     ]);
+  });
+});
+
+describe("resending a sign-up confirmation", () => {
+  it("says the project is not configured", async () => {
+    harness.configured.value = false;
+    expect(await useSession.getState().resendSignUpConfirmation(USER_A.email)).toBe(tr.errors.supabaseNotConfigured);
+    expect(harness.supabase.auth.resend).not.toHaveBeenCalled();
+  });
+
+  it("asks Auth for a new sign-up link", async () => {
+    expect(await useSession.getState().resendSignUpConfirmation(` ${USER_A.email} `)).toBeNull();
+    expect(harness.supabase.auth.resend).toHaveBeenCalledWith({ type: "signup", email: USER_A.email });
   });
 });
 

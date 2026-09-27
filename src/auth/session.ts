@@ -25,7 +25,7 @@ import { clearAccountNotifications, rescheduleAll } from "../services/notificati
 import { kv } from "../services/kv";
 import { tr } from "../i18n/tr";
 import { friendlyAuthError } from "./auth-errors";
-import { requestPasswordRecoveryEmail } from "./email-flows";
+import { requestPasswordRecoveryEmail, resendSignUpConfirmation } from "./email-flows";
 import { pendingChangesWouldBeLost, signOutWithLocalFallback } from "./sign-out";
 import { loadPreviousLogin, recordSuccessfulLogin, seedCurrentLogin, startLoginHistory } from "./login-history";
 import { parsePasswordRecoveryUrl, passwordRecoveryRequestRedirect } from "./recovery";
@@ -311,6 +311,8 @@ interface SessionStore {
   signUp: (email: string, password: string) => Promise<SignUpResult>;
   /** Send a neutral, expiring Supabase password-reset link. */
   requestPasswordReset: (email: string) => Promise<string | null>;
+  /** Send a new sign-up confirmation link; the last one lives five minutes. */
+  resendSignUpConfirmation: (email: string) => Promise<string | null>;
   /** Read a recovery link. A token link is held unspent until save; older code
    *  and token links are exchanged for a short-lived session here — except in
    *  a `standalone` tab, where that session would be shared with the tab that
@@ -480,6 +482,12 @@ export const useSession = create<SessionStore>((set, get) => ({
         })
       : passwordRecoveryRequestRedirect({ platform: "native" });
     return requestPasswordRecoveryEmail(supabase.auth, email, redirectTo);
+  },
+
+  resendSignUpConfirmation: async (email) => {
+    const supabase = getSupabase();
+    if (!supabase) return tr.errors.supabaseNotConfigured;
+    return resendSignUpConfirmation(supabase.auth, email);
   },
 
   preparePasswordRecovery: async (url, options) => {

@@ -9,6 +9,7 @@ import { Platform } from "react-native";
 import * as SecureStore from "expo-secure-store";
 import type { Database } from "./database.types";
 import { createSecureChunkedStorage } from "./secure-chunked-storage";
+import { parseEmailLinkLanding } from "../auth/recovery";
 
 const secureChunkedStorage = createSecureChunkedStorage(SecureStore);
 
@@ -19,7 +20,15 @@ export const isSupabaseConfigured = Boolean(url && anonKey);
 
 let client: SupabaseClient<Database> | null = null;
 let passwordRecoveryUserId: string | null = null;
+let emailLinkLanding: ReturnType<typeof parseEmailLinkLanding> = null;
 const authEventListeners = new Set<(event: AuthChangeEvent, session: Session | null) => void>();
+
+/** What the e-mail link this page opened from said, once; see `parseEmailLinkLanding`. */
+export function takeEmailLinkLanding(): ReturnType<typeof parseEmailLinkLanding> {
+  const landing = emailLinkLanding;
+  emailLinkLanding = null;
+  return landing;
+}
 
 /** True only for the recovery session belonging to `userId`, when supplied. */
 export function wasPasswordRecoveryDetected(userId?: string): boolean {
@@ -71,6 +80,9 @@ export function createRecoveryClient(): SupabaseClient<Database> | null {
 export function getSupabase(): SupabaseClient<Database> | null {
   if (!isSupabaseConfigured) return null;
   if (!client) {
+    // Before the client exists: with `detectSessionInUrl` it takes the code
+    // out of the address bar, and with it the only sign a confirmation landed.
+    if (Platform.OS === "web" && globalThis.location) emailLinkLanding = parseEmailLinkLanding(globalThis.location.href);
     client = createClient<Database>(url!, anonKey!, {
       auth: {
         storage: Platform.OS === "web" ? undefined : secureChunkedStorage,

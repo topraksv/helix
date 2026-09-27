@@ -106,3 +106,25 @@ export function parsePasswordRecoveryUrl(url: string | null, target: RecoveryTar
   }
   return { kind: "invalid" };
 }
+
+/**
+ * What an Auth e-mail link says when it returns to the Site URL rather than to
+ * the reset screen: sign-up and address-change confirmations do.
+ *
+ * Auth's verify endpoint confirms the address before it redirects, so a
+ * returned `code` means confirmed even where it cannot be redeemed — the
+ * browser that opens the mail is often not the one that signed up, and only
+ * that one holds the PKCE verifier. Read before supabase-js strips the URL.
+ */
+export function parseEmailLinkLanding(url: string): "confirmed" | "unusable" | null {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return null;
+  }
+  if (/\/reset-password\/?$/.test(parsed.pathname)) return null;
+  const params = linkParams(parsed);
+  if (params.has("error") || params.has("error_code")) return "unusable";
+  return params.has("code") ? "confirmed" : null;
+}

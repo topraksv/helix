@@ -14,6 +14,8 @@
   ],
   "ignore": [
     "src/db/expo-sqlite.server.js",
+    "src/db/devtools-absent.js",
+    "src/services/notifications-absent.js",
     "src/sync/database.types.ts",
     "src/sync/realtime-absent.js",
     "supabase/functions/**"

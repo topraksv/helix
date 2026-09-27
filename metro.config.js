@@ -48,6 +48,14 @@ const REALTIME_STUB = path.resolve(__dirname, "src/sync/realtime-absent.js");
 const NOTIFICATIONS_STUB = path.resolve(__dirname, "src/services/notifications-absent.js");
 
 /**
+ * The Expo devtools client, which only a dev build can reach.
+ *
+ * `expo-sqlite` requires it behind `__DEV__`; Metro still bundles the module,
+ * so releases carried it for nothing. The stub says why it throws.
+ */
+const DEVTOOLS_STUB = path.resolve(__dirname, "src/db/devtools-absent.js");
+
+/**
  * `expo-sqlite` does not exist on the server, so the server bundle stops
  * carrying it.
  *
@@ -71,6 +79,9 @@ config.resolver.resolveRequest = (context, moduleName, platform) => {
   }
   if (moduleName === "@supabase/realtime-js") {
     return { type: "sourceFile", filePath: REALTIME_STUB };
+  }
+  if (moduleName === "expo/devtools" && !context.dev) {
+    return { type: "sourceFile", filePath: DEVTOOLS_STUB };
   }
   if (moduleName === "expo-notifications" && platform === "web") {
     return { type: "sourceFile", filePath: NOTIFICATIONS_STUB };

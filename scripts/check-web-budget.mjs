@@ -346,13 +346,20 @@ const root = process.argv[2] ?? "dist";
 // the 1% step: measured plus 6_306, that 6_735 rounded down to a thousand, so
 // an on-demand reader coming back (+20_477) still trips it. Total moves to measured plus ~1%, the export to
 // measured plus ~1.5%, the steps each already carried.
+// 2026-09-27: the second-tab screen was redrawn and sign-in learned to resend
+// a confirmation and say what a confirmation link did — entry 3_354_606 ->
+// 3_357_795. Paid for by `expo/devtools`, which `expo-sqlite` requires only
+// under `__DEV__` and a release now resolves to `src/db/devtools-absent.js`:
+// entry 3_341_132, total 4_025_892, export 7_707_283. ALL THREE COME DOWN by
+// the steps above — entry measured plus 6_868, so an on-demand reader coming
+// back (+20_477) still trips it; total ~1%, export ~1.5%.
 const limits = {
-  entryJavaScript: 3_355_000,
-  totalJavaScript: 4_074_000,
+  entryJavaScript: 3_348_000,
+  totalJavaScript: 4_066_000,
   // Fonts are 1_534_728 of this and the rest is one HTML file per route, so it
   // grows in coarser steps than the JavaScript above it — measured 8_037_112
   // with ~3% of slack rather than the ~1% the JS ceilings carry.
-  totalExport: 7_831_000,
+  totalExport: 7_823_000,
   fontFiles: 6,
   fontBytes: 800_000,
   // Pages is public. Symbolication maps belong only in a private crash service,

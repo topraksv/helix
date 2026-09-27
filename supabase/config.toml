@@ -263,6 +263,12 @@ otp_expiry = 300
 subject = "🔑 Helix şifre yenileme bağlantın"
 content_path = "./supabase/templates/recovery.html"
 
+# Unlike the reset link, this one goes through Auth's verify endpoint: that GET
+# is what confirms the address, whichever browser makes it.
+[auth.email.template.confirmation]
+subject = "✉️ Helix hesabını onayla"
+content_path = "./supabase/templates/confirmation.html"
+
 # Uncomment to customize notification email template
 # [auth.email.notification.password_changed]
 # enabled = true

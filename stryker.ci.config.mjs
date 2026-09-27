@@ -104,13 +104,17 @@ const MUTATION_RELEVANT = /^src\/(?:domain|data\/repo|db|sync|auth|services)\/.*
  * `expo-notifications` to, one empty handler with everything else a throw. The
  * same suite holds it to every function `src` calls on the package.
  *
+ * `src/db/devtools-absent.js` is the fourth: what a release resolves
+ * `expo/devtools` to, one throw that `expo-sqlite` reaches only under
+ * `__DEV__`. The same suite holds the substitution and that premise together.
+ *
  * The exclusion stays narrow: everything under `domain`, `data/repo`,
  * `services`, `sync` and `auth` is still mutated, including files whose
  * mutants are mostly static. `domain/statement-import.ts` is 219 static
  * mutants of Turkish month names and amount-splitting regexes — real logic,
  * so it keeps paying for itself.
  */
-const MUTATION_EXCLUDED = /^src\/(?:db\/(?:migrations\/|schema\.ts$|expo-sqlite\.server\.js$)|domain\/brand-mark-audit\.ts$|services\/notifications-absent\.js$|sync\/(?:database\.types\.ts|realtime-absent\.js)$)/;
+const MUTATION_EXCLUDED = /^src\/(?:db\/(?:migrations\/|schema\.ts$|expo-sqlite\.server\.js$|devtools-absent\.js$)|domain\/brand-mark-audit\.ts$|services\/notifications-absent\.js$|sync\/(?:database\.types\.ts|realtime-absent\.js)$)/;
 
 /**
  * Whether a path is inside the gate at all.

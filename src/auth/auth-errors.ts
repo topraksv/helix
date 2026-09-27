@@ -5,7 +5,7 @@ import { tr } from "../i18n/tr";
 export function friendlyAuthError(raw: string): string {
   if (/invalid login credentials|invalid_credentials/i.test(raw)) return tr.auth.errInvalidCredentials;
   if (/already registered|already exists/i.test(raw)) return tr.auth.errUserExists;
-  if (/rate limit|too many/i.test(raw)) return tr.auth.errRateLimit;
+  if (/rate limit|too many|only request this after/i.test(raw)) return tr.auth.errRateLimit;
   if (/refresh token|jwt|session[_ ](expired|missing|not found)/i.test(raw)) return tr.auth.errSessionExpired;
   if (/network|fetch|timeout|connection/i.test(raw)) return tr.auth.errNetwork;
   // Before the weak-password rule: Auth says "New password should be different

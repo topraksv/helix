@@ -306,12 +306,15 @@ export const tr = {
        reader to guess between. Both surfaces that showed it now say which of
        the two happened, so the key itself is gone rather than left orphaned. */
     bootBusyTitle: "Helix başka bir sekmede açık",
-    bootBusyHint: "Verilerinde bir sorun yok. Helix aynı anda tek sekmede çalışabilir. Diğer sekmeyi kapat; bu sayfa kendiliğinden açılır.",
+    bootBusyLead: "Verilerin güvende. Helix aynı anda yalnızca tek bir sekmede çalışabilir.",
+    bootBusySteps: [
+      "Helix'in açık olduğu diğer sekmeye geç ve onu kapat.",
+      "Bu sayfa birkaç saniye içinde kendiliğinden açılır; bir şeye basman gerekmez.",
+    ],
     /* Shown once another tab has actually ANSWERED, which is the state where
        reloading provably cannot help. "Burada Aç" was here and was a promise
        the button could not keep: pressing it reloaded into this same screen. */
-    bootBusyHintHeld: "Helix şu anda başka bir sekmede açık ve veritabanını orası tutuyor. Bu sayfanın açılabilmesi için önce o sekmeyi kapatman gerekiyor — kapattığın anda burası kendiliğinden açılır, bir şeye basmana gerek yok.",
-    bootBusyBlocked: "Diğer Sekmede Açık",
+    bootBusyWaiting: "Diğer sekmenin kapanması bekleniyor",
     bootBusyAction: "Yeniden Dene",
     bootFailedTitle: "Çalışma alanı açılamadı",
     bootFailedHint: "Kayıtların cihazında duruyor. Tekrar denemek çoğu zaman yeterli olur; sürerse uygulamayı kapatıp açmayı dene.",
@@ -422,6 +425,12 @@ export const tr = {
     signUpTitle: "Hesap oluştur",
     signUpSubtitle: "Hesabını oluştur; e-posta adresini doğruladıktan sonra güvenle giriş yap.",
     signUpConfirmationSent: "Doğrulama bağlantısı e-posta adresine gönderildi. Gelen kutunu ve gereksiz klasörünü kontrol et.",
+    resendConfirmation: "Doğrulama bağlantısını yeniden gönder",
+    confirmationResent: "Bu adresle onay bekleyen bir hesap varsa yeni doğrulama bağlantısı gönderildi. Gelen kutunu ve gereksiz klasörünü kontrol et.",
+    /* The browser a confirmation mail opens in is often not the one that
+       signed up, so it lands here signed out; these say what the link did. */
+    emailLinkConfirmed: "E-posta adresin onaylandı. Şimdi e-postan ve şifrenle giriş yapabilirsin.",
+    emailLinkUnusable: "Bu e-posta bağlantısı artık geçerli değil. Hesabın zaten onaylandıysa giriş yapabilirsin; değilse e-postanı yazıp yeni bağlantı iste.",
     email: "E-posta", password: "Şifre",
     signIn: "Giriş yap",
     signOut: "Çıkış yap",
