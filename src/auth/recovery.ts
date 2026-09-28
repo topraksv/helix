@@ -108,15 +108,16 @@ export function parsePasswordRecoveryUrl(url: string | null, target: RecoveryTar
 }
 
 /**
- * What an Auth e-mail link says when it returns to the Site URL rather than to
- * the reset screen: sign-up and address-change confirmations do.
+ * What a sign-up confirmation link carries when it returns to the Site URL:
+ * a token for Auth to check, or Auth's refusal.
  *
- * Auth's verify endpoint confirms the address before it redirects, so a
- * returned `code` means confirmed even where it cannot be redeemed — the
- * browser that opens the mail is often not the one that signed up, and only
- * that one holds the PKCE verifier. Read before supabase-js strips the URL.
+ * A bare `code` is deliberately not an answer. It is what Auth's own verify
+ * link hands back, and only the browser that signed up holds the PKCE
+ * verifier to redeem it, so anywhere else it proves nothing — reading it as
+ * "confirmed" let any address carrying `?code=` say so. Read before
+ * supabase-js strips the URL.
  */
-export function parseEmailLinkLanding(url: string): "confirmed" | "unusable" | null {
+export function parseEmailLinkLanding(url: string): { tokenHash: string } | "unusable" | null {
   let parsed: URL;
   try {
     parsed = new URL(url);
@@ -126,5 +127,6 @@ export function parseEmailLinkLanding(url: string): "confirmed" | "unusable" | n
   if (/\/reset-password\/?$/.test(parsed.pathname)) return null;
   const params = linkParams(parsed);
   if (params.has("error") || params.has("error_code")) return "unusable";
-  return params.has("code") ? "confirmed" : null;
+  const tokenHash = params.get("token_hash");
+  return tokenHash && params.get("type") === "email" ? { tokenHash } : null;
 }

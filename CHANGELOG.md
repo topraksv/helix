@@ -6,6 +6,14 @@ defterinde yazılıdır ve bu depoya dahil değildir.
 
 Notlar kısa tutulur: ne değişti, tek cümle. Sebebi ve ölçümü commit'te.
 
+## 1.9.1
+
+### Patch Changes
+
+- Sekmelerin başlık alanı artık hep aynı yükseklikte; sekme değiştirince başlık ve altındaki içerik yerinden oynamıyor.
+- Onay bağlantısı artık Helix'e gelip Supabase'e soruluyor; giriş ekranı adresin onaylandığını yalnız gerçekten onaylandıysa söylüyor.
+- Oturum açıkken açılan bir onay bağlantısının mesajı, sonraki bir çıkışta giriş ekranında belirmiyor.
+
 ## 1.9.0
 
 ### Minor Changes

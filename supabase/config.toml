@@ -263,14 +263,15 @@ otp_expiry = 300
 subject = "🔑 Helix şifre yenileme bağlantın"
 content_path = "./supabase/templates/recovery.html"
 
-# Unlike the reset link, this one goes through Auth's verify endpoint: that GET
-# is what confirms the address, whichever browser makes it.
+# Like the reset link, the token reaches the app unspent and the app asks Auth:
+# a PKCE code from the verify endpoint proves nothing outside the browser that
+# signed up, so the app could not say whether anything was confirmed.
 [auth.email.template.confirmation]
 subject = "✉️ Helix hesabını onayla"
 content_path = "./supabase/templates/confirmation.html"
 
-# Sent to both addresses while double_confirm_changes is on; like the
-# confirmation, the verify GET itself confirms.
+# Sent to both addresses while double_confirm_changes is on; the verify GET
+# itself confirms, and the person is signed in to read the result.
 [auth.email.template.email_change]
 subject = "📧 Helix e-posta adresi değişikliği"
 content_path = "./supabase/templates/email_change.html"

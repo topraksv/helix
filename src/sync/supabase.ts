@@ -20,11 +20,11 @@ export const isSupabaseConfigured = Boolean(url && anonKey);
 
 let client: SupabaseClient<Database> | null = null;
 let passwordRecoveryUserId: string | null = null;
-let emailLinkLanding: ReturnType<typeof parseEmailLinkLanding> = null;
+let emailLinkLanding: Promise<"confirmed" | "unusable"> | null = null;
 const authEventListeners = new Set<(event: AuthChangeEvent, session: Session | null) => void>();
 
-/** What the e-mail link this page opened from said, once; see `parseEmailLinkLanding`. */
-export function takeEmailLinkLanding(): ReturnType<typeof parseEmailLinkLanding> {
+/** What Auth said about the e-mail link this page opened from, once. */
+export function takeEmailLinkLanding(): Promise<"confirmed" | "unusable"> | null {
   const landing = emailLinkLanding;
   emailLinkLanding = null;
   return landing;
@@ -77,12 +77,34 @@ export function createRecoveryClient(): SupabaseClient<Database> | null {
   });
 }
 
+/**
+ * Redeem a confirmation token on a client of its own, as a reset token is:
+ * the account it confirms may not be the one this device is signed in with,
+ * and confirming it signs nobody in here. The token leaves the address bar
+ * first, so a reload cannot spend it twice and report the refusal.
+ */
+function landEmailLink(href: string): Promise<"confirmed" | "unusable"> | null {
+  const landing = parseEmailLinkLanding(href);
+  if (landing === null) return null;
+  if (landing === "unusable") return Promise.resolve(landing);
+  const address = new URL(href);
+  address.search = "";
+  address.hash = "";
+  globalThis.history.replaceState(globalThis.history.state, "", address.href);
+  const verifier = createRecoveryClient()!;
+  return verifier.auth.verifyOtp({ token_hash: landing.tokenHash, type: "email" }).then(async ({ error }) => {
+    if (error) return "unusable";
+    await verifier.auth.signOut({ scope: "local" });
+    return "confirmed";
+  });
+}
+
 export function getSupabase(): SupabaseClient<Database> | null {
   if (!isSupabaseConfigured) return null;
   if (!client) {
-    // Before the client exists: with `detectSessionInUrl` it takes the code
-    // out of the address bar, and with it the only sign a confirmation landed.
-    if (Platform.OS === "web" && globalThis.location) emailLinkLanding = parseEmailLinkLanding(globalThis.location.href);
+    // Before the client exists: with `detectSessionInUrl` it rewrites the
+    // address bar, and with it the only sign a confirmation landed.
+    if (Platform.OS === "web" && globalThis.location) emailLinkLanding = landEmailLink(globalThis.location.href);
     client = createClient<Database>(url!, anonKey!, {
       auth: {
         storage: Platform.OS === "web" ? undefined : secureChunkedStorage,
@@ -94,6 +116,9 @@ export function getSupabase(): SupabaseClient<Database> | null {
     });
     client.auth.onAuthStateChange((event, session) => {
       const userId = session?.user?.id ?? null;
+      // A signed-in device shows no sign-in screen to read it on, and after a
+      // sign-out it would be news about a link nobody here just opened.
+      if (session) emailLinkLanding = null;
       if (event === "PASSWORD_RECOVERY") {
         passwordRecoveryUserId = userId;
       } else if (event === "SIGNED_OUT" || (passwordRecoveryUserId && userId && userId !== passwordRecoveryUserId)) {

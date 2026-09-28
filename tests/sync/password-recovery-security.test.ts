@@ -4,6 +4,8 @@ const harness = vi.hoisted(() => {
   const callbacks: ((event: string, session: unknown) => void)[] = [];
   const client = {
     auth: {
+      verifyOtp: vi.fn(async (_request: { token_hash: string; type: string }) => ({ error: null as { message: string } | null })),
+      signOut: vi.fn(async (_options: { scope: string }) => ({ error: null })),
       onAuthStateChange: (callback: (event: string, session: unknown) => void) => {
         callbacks.push(callback);
         return { data: { subscription: { unsubscribe: () => {} } } };
@@ -87,19 +89,48 @@ describe("password recovery session binding", () => {
   });
 
   /**
-   * supabase-js takes the code out of the address bar once it has tried to
-   * redeem it, so the landing is read at the one moment it is still there:
-   * just before the client that strips it is created.
+   * The landing is read before the app's client exists, and the token is
+   * redeemed on a client of its own: the account being confirmed may not be
+   * the one this device is signed in with, and confirming it must not sign
+   * anyone in here. Only Auth's answer is reported as "confirmed".
    */
-  it("reads an e-mail link's landing once, before the web client can strip it", async () => {
-    vi.stubGlobal("location", { href: "https://topraksv.github.io/helix/?code=0b6f" });
+  it("confirms an e-mail link's token with Auth, once, and says what Auth said", async () => {
+    const replaceState = vi.fn();
+    vi.stubGlobal("location", { href: "https://topraksv.github.io/helix/?token_hash=pkce_0b6f&type=email" });
+    vi.stubGlobal("history", { state: { key: 1 }, replaceState });
     try {
       const web = await load();
       expect(web.takeEmailLinkLanding()).toBeNull();
       web.getSupabase();
-      expect(web.takeEmailLinkLanding()).toBe("confirmed");
+      // Out of the address bar before anything else runs: a reload must not
+      // spend the same token a second time and report the refusal.
+      expect(replaceState).toHaveBeenCalledWith({ key: 1 }, "", "https://topraksv.github.io/helix/");
+      await expect(web.takeEmailLinkLanding()).resolves.toBe("confirmed");
       expect(web.takeEmailLinkLanding()).toBeNull();
+      expect(harness.client.auth.verifyOtp).toHaveBeenCalledWith({ token_hash: "pkce_0b6f", type: "email" });
+      expect(harness.client.auth.signOut).toHaveBeenCalledWith({ scope: "local" });
+      expect(web.createClient).toHaveBeenCalledTimes(2);
+      expect(web.createClient.mock.calls[0]?.[2]).toMatchObject({ auth: { persistSession: false } });
 
+      harness.client.auth.verifyOtp.mockResolvedValueOnce({ error: { message: "Token has expired or is invalid" } });
+      const refused = await load();
+      refused.getSupabase();
+      await expect(refused.takeEmailLinkLanding()).resolves.toBe("unusable");
+
+      vi.stubGlobal("location", { href: "https://topraksv.github.io/helix/#error_code=otp_expired" });
+      const expired = await load();
+      expired.getSupabase();
+      await expect(expired.takeEmailLinkLanding()).resolves.toBe("unusable");
+
+      replaceState.mockClear();
+      vi.stubGlobal("location", { href: "https://topraksv.github.io/helix/?tab=durum" });
+      const ordinary = await load();
+      ordinary.getSupabase();
+      expect(ordinary.takeEmailLinkLanding()).toBeNull();
+      expect(replaceState).not.toHaveBeenCalled();
+
+      // A native build has no address bar; a location stubbed onto it is not one.
+      vi.stubGlobal("location", { href: "https://topraksv.github.io/helix/?token_hash=pkce_0b6f&type=email" });
       harness.platform.OS = "ios";
       const native = await load();
       native.getSupabase();
@@ -110,6 +141,29 @@ describe("password recovery session binding", () => {
       const bare = await load();
       expect(() => bare.getSupabase()).not.toThrow();
       expect(bare.takeEmailLinkLanding()).toBeNull();
+    } finally {
+      vi.unstubAllGlobals();
+      harness.client.auth.verifyOtp.mockClear();
+      harness.client.auth.signOut.mockClear();
+    }
+  });
+
+  // A signed-in device has no sign-in screen to show it on; after a sign-out
+  // it would greet the next person with news about somebody else's link.
+  it("drops an unread landing once a session exists", async () => {
+    vi.stubGlobal("location", { href: "https://topraksv.github.io/helix/#error_code=otp_expired" });
+    vi.stubGlobal("history", { state: null, replaceState: vi.fn() });
+    try {
+      const web = await load();
+      web.getSupabase();
+      const emit = emitter();
+      emit("INITIAL_SESSION", null);
+      await expect(web.takeEmailLinkLanding()).resolves.toBe("unusable");
+
+      const signedIn = await load();
+      signedIn.getSupabase();
+      emitter()("SIGNED_IN", { user: { id: "user-b" } });
+      expect(signedIn.takeEmailLinkLanding()).toBeNull();
     } finally {
       vi.unstubAllGlobals();
     }

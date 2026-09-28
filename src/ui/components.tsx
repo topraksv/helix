@@ -247,7 +247,19 @@ export function Screen({
           >
             {title}
           </Text>
-          {subtitle ? <Text style={[type.small, { color: palette.textSecondary, marginTop: 2 }]}>{subtitle}</Text> : null}
+          {/* The subtitle's line is held even when empty. The tab roots are
+              this header's only users, and the band was 34, 44 or 51pt
+              depending on whether a screen had a subtitle or a button —
+              so a tab change moved the title and everything under it. The
+              text column is the band's tallest child on every platform, so
+              one font metric decides one height everywhere. The
+              no-break space keeps the empty line from collapsing on web. */}
+          <Text
+            aria-hidden={!subtitle}
+            style={[type.small, { color: palette.textSecondary, marginTop: 2 }]}
+          >
+            {subtitle || " "}
+          </Text>
         </View>
         {right}
       </View>

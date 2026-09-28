@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import AlertCircle from "lucide-react-native/icons/circle-alert";
 import BellRing from "lucide-react-native/icons/bell-ring";
@@ -197,7 +197,10 @@ function useAuthForm() {
   const [busy, setBusy] = useState(false);
   const [resetSent, setResetSent] = useState(false);
   const [signUpConfirmationSent, setSignUpConfirmationSent] = useState(false);
-  const [landing, setLanding] = useState(takeEmailLinkLanding);
+  // Held in state so Strict Mode's second effect run reads the same answer
+  // rather than the empty one a second take would give.
+  const [landingAnswer] = useState(takeEmailLinkLanding);
+  const [landing, setLanding] = useState<"confirmed" | "unusable" | null>(null);
   const [resending, setResending] = useState(false);
   const [confirmationResent, setConfirmationResent] = useState(false);
   const [consented, setConsented] = useState(false);
@@ -205,6 +208,16 @@ function useAuthForm() {
   const [consentRefused, setConsentRefused] = useState(false);
   const { signIn, signUp, requestPasswordReset, resendSignUpConfirmation } = useSession();
   const operationGuard = useOperationGuard();
+
+  useEffect(() => {
+    let live = true;
+    void landingAnswer?.then((answer) => {
+      if (live) setLanding(answer);
+    });
+    return () => {
+      live = false;
+    };
+  }, [landingAnswer]);
 
   const emailValid = /.+@.+\..+/.test(email.trim());
   /**

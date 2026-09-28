@@ -309,6 +309,32 @@ test("a tab arrives once and then stays where it is", async ({ page }) => {
   }
 });
 
+test("every tab's title band has one height, so a tab change moves nothing under it", async ({ page }) => {
+  await onboard(page);
+  for (const width of [390, 1280]) {
+    await page.setViewportSize({ width, height: 900 });
+    const bands: Record<string, { height: number; title: number }> = {};
+    for (const [tab, heading] of [
+      ["Durum", /^(Günaydın|İyi günler|İyi akşamlar|İyi geceler)$/],
+      ["Mali Tablo", "Mali Tablo"],
+      ["Abonelikler", "Abonelikler"],
+      ["Yatırımlar", "Yatırımlar"],
+      ["Ayarlar", "Ayarlar"],
+    ] as const) {
+      await page.getByRole("tab", { name: tab, exact: true }).click();
+      // Visited tabs stay mounted, so the header is found by the title it carries.
+      const header = page.getByTestId("screen-header").filter({ has: page.getByRole("heading", { level: 1, name: heading, exact: true }) });
+      await expect(header).toBeVisible();
+      await expect.poll(() => peakOffset(page.getByTestId("screen-entrance").filter({ has: header }), page, 250)).toBeLessThan(0.5);
+      const box = (await header.boundingBox())!;
+      const title = (await header.getByRole("heading", { level: 1 }).boundingBox())!;
+      bands[tab] = { height: Math.round(box.height), title: Math.round(title.y + title.height / 2 - box.y) };
+    }
+    const first = bands.Durum;
+    for (const [tab, band] of Object.entries(bands)) expect(band, `${tab} at ${width}px`).toEqual(first);
+  }
+});
+
 test("a pushed screen still arrives with movement, and never blanks", async ({ page }) => {
   // The other half of the same rule. Removing the per-visit replay must not
   // remove the entrance itself: a screen you have not seen before is new, and

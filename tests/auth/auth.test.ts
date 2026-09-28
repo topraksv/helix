@@ -104,17 +104,17 @@ describe("server-side password policy", () => {
   });
 
   /**
-   * The opposite choice from the reset link, on purpose. Auth's verify
-   * endpoint confirms the address on the first GET, whichever browser makes
-   * it, so a phone's mail app or a link checker still leaves the account
-   * confirmed — there is nothing for the app to redeem afterwards, and the
-   * PKCE code it returns only signs in the browser that signed up.
+   * The same shape as the reset link, for a different reason. Auth's verify
+   * endpoint confirmed on the first GET and handed back a PKCE code, and a
+   * code only the signing-up browser can redeem proves nothing to any other:
+   * the app said "confirmed" to any address carrying `?code=`, a forged one
+   * included. A token hash is checked by Auth itself, from any browser.
    */
-  it("sends sign-up confirmations through Auth's own verify link", () => {
+  it("sends sign-up confirmations to the app with a token Auth checks", () => {
     expect(config).toMatch(/\[auth\.email\.template\.confirmation\][\s\S]*?^content_path = "\.\/supabase\/templates\/confirmation\.html"$/m);
     const template = readFileSync(join(process.cwd(), "supabase/templates/confirmation.html"), "utf8");
-    expect(template).toContain('href="{{ .ConfirmationURL }}"');
-    expect(template).not.toContain("{{ .TokenHash }}");
+    expect(template).toContain('href="{{ .RedirectTo }}?token_hash={{ .TokenHash }}&type=email"');
+    expect(template).not.toContain("{{ .ConfirmationURL }}");
   });
 
   // Mailed to both addresses while double_confirm_changes is on; the verify GET confirms each.
@@ -330,38 +330,42 @@ describe("password recovery e-mail request", () => {
 });
 
 /**
- * Where a confirmation link leaves a person when the browser that opens it is
- * not the one that signed up: Auth has already confirmed the address, the PKCE
- * code cannot be redeemed there, and sign-in used to open with no word about
- * either.
+ * What a sign-up confirmation link carries back to the Site URL. Only Auth can
+ * say whether it confirmed anything, so the parser reports what to ask it, and
+ * a bare `code` — which no browser but the one that signed up can redeem —
+ * is not read as an answer.
  */
 describe("e-mail link landings on the Site URL", () => {
   const site = "https://topraksv.github.io/helix/";
 
-  it("reads a returned code as a confirmed address", () => {
-    expect(parseEmailLinkLanding(`${site}?code=0b6f`)).toBe("confirmed");
+  it("hands a confirmation token on to be checked", () => {
+    expect(parseEmailLinkLanding(`${site}?token_hash=pkce_0b6f&type=email`)).toEqual({ tokenHash: "pkce_0b6f" });
+    expect(parseEmailLinkLanding(`${site}#token_hash=pkce_0b6f&type=email`)).toEqual({ tokenHash: "pkce_0b6f" });
   });
 
   it("reads Auth's error, in the query or the fragment, as a link that no longer works", () => {
     expect(parseEmailLinkLanding(`${site}?error=access_denied&error_code=otp_expired`)).toBe("unusable");
     expect(parseEmailLinkLanding(`${site}#error_code=otp_expired&error_description=Email+link+is+invalid`)).toBe("unusable");
     expect(parseEmailLinkLanding(`${site}#error=server_error`)).toBe("unusable");
-    // The error wins over a code: a failed verify never confirmed anything.
-    expect(parseEmailLinkLanding(`${site}?code=0b6f&error=access_denied`)).toBe("unusable");
+    expect(parseEmailLinkLanding(`${site}?token_hash=pkce_0b6f&type=email&error=access_denied`)).toBe("unusable");
   });
 
-  it("says nothing about an ordinary visit or a malformed address", () => {
+  it("claims nothing it cannot prove", () => {
+    expect(parseEmailLinkLanding(`${site}?code=0b6f`)).toBeNull();
+    expect(parseEmailLinkLanding(`${site}?token_hash=pkce_0b6f`)).toBeNull();
+    expect(parseEmailLinkLanding(`${site}?token_hash=pkce_0b6f&type=recovery`)).toBeNull();
+    expect(parseEmailLinkLanding(`${site}?token_hash=&type=email`)).toBeNull();
     expect(parseEmailLinkLanding(site)).toBeNull();
     expect(parseEmailLinkLanding(`${site}?tab=durum`)).toBeNull();
     expect(parseEmailLinkLanding("not a url")).toBeNull();
   });
 
   it("leaves reset links to the reset screen", () => {
-    expect(parseEmailLinkLanding(`${site}reset-password?code=0b6f`)).toBeNull();
+    expect(parseEmailLinkLanding(`${site}reset-password?token_hash=pkce_0b6f&type=email`)).toBeNull();
     expect(parseEmailLinkLanding(`${site}reset-password/#error_code=otp_expired`)).toBeNull();
     // Only the reset screen itself: a path that merely passes through the name
     // is not it.
-    expect(parseEmailLinkLanding(`${site}reset-password/done?code=0b6f`)).toBe("confirmed");
+    expect(parseEmailLinkLanding(`${site}reset-password/done?token_hash=pkce_0b6f&type=email`)).toEqual({ tokenHash: "pkce_0b6f" });
   });
 });
 

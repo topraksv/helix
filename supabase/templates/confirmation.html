@@ -81,7 +81,7 @@
                 <tr>
                   <td class="pad" style="padding:32px 44px 8px 44px;">
                     <!--[if mso]>
-                    <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" href="{{ .ConfirmationURL }}" style="height:56px; v-text-anchor:middle; width:472px;" arcsize="25%" stroke="f" fillcolor="#A55335">
+                    <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" href="{{ .RedirectTo }}?token_hash={{ .TokenHash }}&type=email" style="height:56px; v-text-anchor:middle; width:472px;" arcsize="25%" stroke="f" fillcolor="#A55335">
                       <w:anchorlock/>
                       <center style="color:#FBF4EF; font-family:Arial, sans-serif; font-size:17px; font-weight:bold;">E-postamı Onayla</center>
                     </v:roundrect>
@@ -90,7 +90,7 @@
                     <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
                       <tr>
                         <td align="center" style="background-color:#A55335; border-radius:14px;">
-                          <a href="{{ .ConfirmationURL }}" target="_blank" style="display:block; padding:17px 24px; font-family:Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size:17px; font-weight:700; line-height:22px; color:#FBF4EF; text-decoration:none; border-radius:14px;">E-postamı Onayla&nbsp;&nbsp;→</a>
+                          <a href="{{ .RedirectTo }}?token_hash={{ .TokenHash }}&type=email" target="_blank" style="display:block; padding:17px 24px; font-family:Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size:17px; font-weight:700; line-height:22px; color:#FBF4EF; text-decoration:none; border-radius:14px;">E-postamı Onayla&nbsp;&nbsp;→</a>
                         </td>
                       </tr>
                     </table>
@@ -126,9 +126,9 @@
                 <!-- Fallback link -->
                 <tr>
                   <td class="pad" style="padding:28px 44px 0 44px; font-family:Inter, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size:13px; line-height:20px; color:#62564C;">
-                    Bağlantının süresi dolduysa Helix'te aynı e-postayla yeniden <strong style="color:#3A3028;">Hesap oluştur</strong>'a dokun; yeni bir bağlantı gönderilir.<br><br>
+                    Bağlantının süresi dolduysa Helix'in giriş ekranında e-postanı yazıp <strong style="color:#3A3028;">Doğrulama bağlantısını yeniden gönder</strong>'e dokun.<br><br>
                     Buton açılmazsa bu bağlantıyı tarayıcına yapıştır:<br>
-                    <a href="{{ .ConfirmationURL }}" target="_blank" style="color:#A55335; word-break:break-all;">{{ .ConfirmationURL }}</a>
+                    <a href="{{ .RedirectTo }}?token_hash={{ .TokenHash }}&type=email" target="_blank" style="color:#A55335; word-break:break-all;">{{ .RedirectTo }}?token_hash={{ .TokenHash }}&type=email</a>
                   </td>
                 </tr>
 
