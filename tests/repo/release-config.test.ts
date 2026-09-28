@@ -1,5 +1,6 @@
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { dirname, relative, resolve } from "node:path";
+import { runInNewContext } from "node:vm";
 import { describe, expect, it } from "vitest";
 
 const read = (path: string) => readFileSync(resolve(process.cwd(), path), "utf8");
@@ -233,10 +234,23 @@ describe("release contract", () => {
     expect(html).toContain("trustedSupabaseOrigin(process.env.EXPO_PUBLIC_SUPABASE_URL)");
     expect(html).not.toContain("https://*.supabase.co");
     expect(html).toContain('"frame-src \'none\'"');
-    expect(serviceWorker).toContain('const CACHE = "helix-v2"');
+    expect(serviceWorker).toContain('const CACHE = "helix-v3"');
     expect(serviceWorker).toContain('res.ok && contentType.startsWith("text/html")');
     expect(serviceWorker.indexOf('contentType.startsWith("text/html")'))
       .toBeLessThan(serviceWorker.indexOf("cache.put(SHELL, res.clone())"));
+  });
+
+  // A file whose name never changes, served cache-first, is the first copy
+  // forever: the old mark's favicon outlived the new one's deploy (2026-09-28).
+  it("serves from the offline cache first only what a build names by its content", () => {
+    const context: Record<string, unknown> = { self: { addEventListener: () => {} } };
+    runInNewContext(read("public/sw.js"), context);
+    const hashed = context.hashed as (path: string) => boolean;
+    expect(hashed("/helix/_expo/static/js/web/entry-0f1e2d3c4b5a69788796a5b4c3d2e1f0.js")).toBe(true);
+    expect(hashed("/helix/assets/assets/fonts/Inter_600SemiBold.01a8a409ba37ab3934865fbb212fb2c9.ttf")).toBe(true);
+    for (const path of ["favicon.ico", "icons/icon-192.png", "icons/email-mark.png", "manifest.webmanifest", "og-cover.jpg"]) {
+      expect(hashed(`/helix/${path}`), path).toBe(false);
+    }
   });
 
   /**

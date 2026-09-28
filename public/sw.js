@@ -6,17 +6,26 @@
  *   - Navigations (HTML): network-first, fall back to the cached shell only
  *     when offline. Online always gets the freshly deployed HTML, so OTA-style
  *     Pages deploys land immediately.
- *   - Same-origin static assets (JS/CSS/fonts/images): cache-first. Expo
- *     content-hashes these filenames, so a new build has new names — the cache
- *     can't shadow an update.
+ *   - Same-origin files Expo names by their content (`hashed`): cache-first.
+ *     A new build has new names, so the cache can't shadow an update.
+ *   - Every other same-origin file (favicon, icons, manifest, social card):
+ *     network-first, the cache only offline. Their names never change, so
+ *     cache-first kept the first copy forever — the old mark's favicon outlived
+ *     the new one's deploy (2026-09-28).
  *   - Cross-origin (Supabase, FX feeds, favicons): never intercepted or cached.
  */
 // v2 drops any shell entry an older worker may have replaced with a navigated
 // JS/image response before the content-type boundary below existed.
-const CACHE = "helix-v2";
+// v3 drops the icons v2 cached for good.
+const CACHE = "helix-v3";
 // Absolute so the offline fallback matches regardless of the navigated path
 // (a relative "./index.html" resolved against the request, not the shell).
 const SHELL = "/helix/index.html";
+
+/** A path a build names by its content, which can be served from the cache without asking. */
+function hashed(path) {
+  return path.includes("/_expo/static/") || /\.[0-9a-f]{32}\.[a-z0-9]+$/i.test(path);
+}
 
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE).then((cache) => cache.add(SHELL)).catch(() => {}));
@@ -74,6 +83,21 @@ self.addEventListener("fetch", (event) => {
             new Response("<!doctype html><meta charset=utf-8><title>Helix</title>", { headers: { "Content-Type": "text/html" } })
           );
         }),
+    );
+    return;
+  }
+
+  if (!hashed(url.pathname)) {
+    event.respondWith(
+      fetch(req)
+        .then((res) => {
+          if (res.ok) {
+            const copy = res.clone();
+            caches.open(CACHE).then((cache) => cache.put(req, copy)).catch(() => {});
+          }
+          return res;
+        })
+        .catch(async () => (await caches.match(req)) || Response.error()),
     );
     return;
   }
