@@ -387,7 +387,13 @@ describe("release contract", () => {
     const classify = ci.slice(ci.indexOf("  classify:"), ci.indexOf("  light-gate:"));
     expect(classify).toMatch(/permissions:\n\s+contents: read\n(?:\s+#.*\n)*\s+actions: read/);
     expect(classify).toContain("base: ${{ steps.base.outputs.sha }}");
-    expect(classify).toContain("actions/workflows/ci.yml/runs?branch=main&event=push&status=success&per_page=1");
+    // Unfiltered, then filtered here. On 2026-09-28 the `status=success`
+    // listing answered with a run from 20 days earlier while the plain one
+    // already held the previous day's: 42 commits of scope, a mutation shard
+    // past 90 minutes, and no deploy.
+    expect(classify).toContain("actions/workflows/ci.yml/runs?branch=main&event=push&per_page=100");
+    expect(classify).toContain('[.workflow_runs[] | select(.conclusion == \"success\")][0].head_sha // \"\"');
+    expect(classify).not.toContain("status=success");
     // Ancestry, not recency: a green run this commit does not descend from is
     // not what production was built from.
     expect(classify).toContain('git merge-base --is-ancestor "$green" "$HEAD_SHA"');
@@ -434,7 +440,8 @@ describe("release contract", () => {
     expect(nightly).toContain("node scripts/check-published.mjs expo-go");
     // …and fails while main is ahead of the newest run that published.
     const drift = nightly.slice(nightly.indexOf("  main-published:"));
-    expect(drift).toContain("runs?branch=main&event=push&status=success&per_page=1");
+    expect(drift).toContain("runs?branch=main&event=push&per_page=100");
+    expect(drift).not.toContain("status=success");
     expect(drift).toMatch(/if \[ "\$green" != "\$head" \] && \[ "\$open" = "0" \]; then\n[^\n]*\n\s+exit 1/);
   });
 
