@@ -609,7 +609,7 @@ jobs:
       #   value and hands the command's own flags to npm — measured, `--version`
       #   printed npm's version, not the CLI's. With `--ignore-scripts` neither
       #   of the tree's install hooks runs — dtrace-provider compiles a native
-      #   addon, protobufjs runs a postinstall — and 23.2.0 starts without
+      #   addon, protobufjs runs a postinstall — and 24.8.0 starts without
       #   either, measured.
       # - `npm_config_before` resolves every transitive range as it stood on a
       #   fixed day, so nothing published after that day can enter, however it
@@ -619,8 +619,8 @@ jobs:
       #   which is the loud failure to want.
       - name: Install the pinned EAS CLI without the credential
         env:
-          npm_config_before: "2026-09-08"
-        run: npx --yes --ignore-scripts eas-cli@23.2.0 --version
+          npm_config_before: "2026-09-25"
+        run: npx --yes --ignore-scripts eas-cli@24.8.0 --version
       - name: Publish Expo Go preview update
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
@@ -635,7 +635,7 @@ jobs:
           # refuses the publish rather than defaulting, so it is pinned to the
           # branch this job actually updates. `--json` prints only the updates
           # to stdout; the CLI's own log goes to stderr.
-          npx --yes=false eas-cli@23.2.0 update --branch preview --environment preview --platform all --message "$version $GITHUB_SHA" --clear-cache --non-interactive --json > "$RUNNER_TEMP/eas-update.json"
+          npx --yes=false eas-cli@24.8.0 update --branch preview --environment preview --platform all --message "$version $GITHUB_SHA" --clear-cache --non-interactive --json > "$RUNNER_TEMP/eas-update.json"
       # One update per platform, one group, on the runtime Expo Go runs — and
       # the group and update ids written onto the run's summary, which is the
       # record a rollback republishes from.

@@ -68,13 +68,17 @@ describe("release contract", () => {
    * that case: it hashes the native project and moves whenever the runtime
    * does.
    *
-   * So the two must move together. The moment this project gains standalone
-   * build configuration — `eas.build`, an `updates` URL, a build profile — the
-   * policy has to become `fingerprint` BEFORE the next update is published, and
-   * this test fails until it does.
+   * So the two must move together. A store build profile alone does not
+   * move them: with no `updates.url` and no channel, expo-updates is off in the
+   * binary and it runs the bundle it shipped with (Expo SDK 57 docs), so the
+   * TestFlight build and the Expo Go channel share this repository safely. The
+   * moment a binary can take an update — an `updates` URL, a profile's
+   * channel, an EAS workflow — the policy has to become `fingerprint` BEFORE
+   * the next update is published, and this test fails until it does.
    */
-  it("targets the Expo Go runtime without standalone-build configuration", () => {
-    const standalone = Boolean(app.expo.updates || eas.build || existsSync(easPreviewPath));
+  it("keeps Expo Go's runtime while no binary can take an update", () => {
+    const channels = Object.values(eas.build ?? {}).filter((profile) => "channel" in (profile as object));
+    const standalone = Boolean(app.expo.updates || channels.length > 0 || existsSync(easPreviewPath));
     expect(app.expo.runtimeVersion).toEqual({ policy: standalone ? "fingerprint" : "sdkVersion" });
     expect(app.expo.updates).toBeUndefined();
     expect(app.expo.extra.eas.projectId).toBe("f71b0477-c800-45cc-903a-9b4d32a9c6b4");
@@ -82,9 +86,10 @@ describe("release contract", () => {
     expect(app.expo.android.package).toBe("com.toprak.helix");
     expect(app.expo.android.allowBackup).toBe(false);
     expect(packageJson.dependencies.expo).toMatch(/^~57\./);
-    expect(eas.cli.version).toBe("23.2.0");
-    expect(eas.build).toBeUndefined();
-    expect(eas.submit).toBeUndefined();
+    expect(eas.cli.version).toBe("24.8.0");
+    expect(eas.cli.appVersionSource).toBe("remote");
+    expect(eas.build.production).toMatchObject({ autoIncrement: true });
+    expect(app.expo.ios.config.usesNonExemptEncryption).toBe(false);
     expect(packageJson.engines.node).toBe("^22");
   });
 

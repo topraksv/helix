@@ -10,6 +10,9 @@
     "ios": {
       "bundleIdentifier": "com.toprak.helix",
       "supportsTablet": true,
+      "config": {
+        "usesNonExemptEncryption": false
+      },
       "entitlements": {
         "com.apple.developer.default-data-protection": "NSFileProtectionComplete"
       },
