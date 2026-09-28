@@ -244,7 +244,7 @@ Deno.serve(async (request: Request): Promise<Response> => {
       <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="max-width:600px;">
         <tr><td align="center" style="padding:0 0 18px 0;">
           <table role="presentation" cellspacing="0" cellpadding="0" border="0"><tr>
-            <td width="36" height="36" align="center" valign="middle" style="width:36px; height:36px; background-color:#A55335; border-radius:10px; font-family:${serif}; font-size:20px; font-weight:600; line-height:36px; color:#FBF4EF;">H</td>
+            <td width="36" height="36" valign="middle" style="width:36px; height:36px;"><img src="https://topraksv.github.io/helix/icons/email-mark.png" width="36" height="36" alt="" style="display:block; width:36px; height:36px; border:0; border-radius:10px;"></td>
             <td style="padding-left:10px; font-family:${serif}; font-size:20px; font-weight:600; color:#2A211B;">Helix <span style="font-family:${font}; font-size:13px; font-weight:500; color:#6D6157;">· Geri bildirim</span></td>
           </tr></table>
         </td></tr>

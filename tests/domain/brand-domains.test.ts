@@ -234,9 +234,11 @@ describe("the app's own brand mark", () => {
     });
   }
 
-  it("uses the ratio the artwork actually has", () => {
+  it("renders the splash symbol, and sizes the drawn mark, at the drawing's own ratio", async () => {
     const bounds = inkBounds("assets/brand/symbol-light-t.png");
-    const source = readFileSync(join(root, "src/ui/brand.tsx"), "utf8");
-    expect(source).toContain(`const MARK_ASPECT = ${bounds.width} / ${bounds.height};`);
+    const { VIEW_BOX } = await import("../../src/ui/brand-art");
+    const [, , width, height] = VIEW_BOX.split(" ").map(Number);
+    expect(readFileSync(join(root, "src/ui/brand.tsx"), "utf8")).toContain(`export const MARK_ASPECT = ${width} / ${height};`);
+    expect(bounds.width / bounds.height).toBeCloseTo(width! / height!, 2);
   });
 });

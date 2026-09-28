@@ -100,6 +100,10 @@ export default function Root({ children }: PropsWithChildren) {
             that does not run JavaScript — which is most link-preview bots —
             saw a page with no title at all. */}
         <title>{tr.meta.title}</title>
+        {/* Installing to the home screen: the brand kit's icons, with the
+            maskable one drawn inside the safe zone a launcher never cuts. */}
+        <link rel="manifest" href="/helix/manifest.webmanifest" />
+        <link rel="apple-touch-icon" href="/helix/icons/apple-touch-icon.png" />
         <meta
           name="description"
           content={tr.meta.description}
