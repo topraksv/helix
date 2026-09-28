@@ -6,9 +6,9 @@ defterinde yazılıdır ve bu depoya dahil değildir.
 
 Notlar kısa tutulur: ne değişti, tek cümle. Sebebi ve ölçümü commit'te.
 
-## 1.10.0
+## 1.9.2
 
-### Minor Changes
+### Patch Changes
 
 - Yeni Helix işareti: yaprakları ve yerleşimi her boyutta aynı, favicon'da da okunaklı.
 - İşaret açılırken kendini çiziyor: sarmal iniyor, basamaklar geçiyor, yapraklar açılıyor. "Hareketi azalt" açıksa sabit.
