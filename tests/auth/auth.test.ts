@@ -116,6 +116,16 @@ describe("server-side password policy", () => {
     expect(template).toContain('href="{{ .ConfirmationURL }}"');
     expect(template).not.toContain("{{ .TokenHash }}");
   });
+
+  // Mailed to both addresses while double_confirm_changes is on; the verify GET confirms each.
+  it("sends an e-mail change through Auth's own verify link, naming both addresses", () => {
+    expect(config).toMatch(/\[auth\.email\.template\.email_change\][\s\S]*?^content_path = "\.\/supabase\/templates\/email_change\.html"$/m);
+    const template = readFileSync(join(process.cwd(), "supabase/templates/email_change.html"), "utf8");
+    expect(template).toContain('href="{{ .ConfirmationURL }}"');
+    expect(template).toContain("{{ .Email }}");
+    expect(template).toContain("{{ .NewEmail }}");
+    expect(template).not.toContain("{{ .TokenHash }}");
+  });
 });
 
 describe("password recovery links", () => {

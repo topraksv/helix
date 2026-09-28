@@ -269,6 +269,12 @@ content_path = "./supabase/templates/recovery.html"
 subject = "✉️ Helix hesabını onayla"
 content_path = "./supabase/templates/confirmation.html"
 
+# Sent to both addresses while double_confirm_changes is on; like the
+# confirmation, the verify GET itself confirms.
+[auth.email.template.email_change]
+subject = "📧 Helix e-posta adresi değişikliği"
+content_path = "./supabase/templates/email_change.html"
+
 # Uncomment to customize notification email template
 # [auth.email.notification.password_changed]
 # enabled = true
