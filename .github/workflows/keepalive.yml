@@ -1,11 +1,14 @@
-# Supabase Free tier pauses projects after ~7 days of inactivity (spec §2.2).
-# This heartbeat writes AND reads every 3 days so the project never pauses,
-# even when the app itself is only opened once a month.
+# Supabase's free plan pauses a project after about seven days without
+# database activity (Helix spec §2.2). This heartbeat writes AND reads every
+# three days so the project never pauses, even when nobody opens the app for a
+# month. Helix and Gital run this same file.
 #
 # Only status codes are echoed. The response bodies are still asserted against
-# (the read must contain an "id"), but printing them put PostgREST output —
-# including whatever an error response happens to carry — into a public Actions
-# log for no diagnostic gain the status code does not already provide.
+# (the read must contain an "id"), but printing them would put PostgREST output
+# into a public Actions log for no diagnostic gain over the status code.
+#
+# GitHub disables a public repository's scheduled workflows after 60 days with
+# no repository activity; docs/RELEASE.md says what to do then.
 name: supabase-keepalive
 
 on:

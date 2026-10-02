@@ -40,11 +40,12 @@ describe("change classification", () => {
       "docs/BASELINE.md",
       "assets/screenshots/dashboard-dark.png",
       ".gitignore",
+      "CHANGELOG.md",
+      ".mcp.json",
     ])).toMatchObject({
-      run_ci: false,
-      light_gate: true,
       full_gate: false,
       run_web_build: false,
+      run_e2e: false,
       deploy_web: false,
       deploy_mobile: false,
       reason: "no application impact; light gate retained",
@@ -60,10 +61,9 @@ describe("change classification", () => {
     expect(lightFiles.length).toBeGreaterThan(50);
     for (const file of lightFiles) {
       expect(classify([file]), file).toMatchObject({
-        run_ci: true,
-        light_gate: true,
         full_gate: false,
         run_web_build: true,
+        run_e2e: true,
         deploy_web: true,
         deploy_mobile: true,
       });
@@ -109,17 +109,16 @@ describe("change classification", () => {
   ] as const) {
     it(`treats ${area} as high risk`, () => {
       const result = classify([file]);
-      expect(result, file).toMatchObject({ run_ci: true, light_gate: true, full_gate: true });
+      expect(result.full_gate, file).toBe(true);
       expect(result.deploy_mobile, file).toBe(shipping);
     });
   }
 
   it("runs and ships everything when no diff is available", () => {
     expect(classify(null)).toMatchObject({
-      run_ci: true,
-      light_gate: true,
       full_gate: true,
       run_web_build: true,
+      run_e2e: true,
       deploy_web: true,
       deploy_mobile: true,
       reason: "no diff available; fail-open full gate and dual deploy",
@@ -128,23 +127,25 @@ describe("change classification", () => {
 
   it("escalates an unrecognised path instead of guessing", () => {
     expect(classify(["some/new/thing.ts"])).toMatchObject({
-      run_ci: true,
-      light_gate: true,
       full_gate: true,
       run_web_build: true,
+      run_e2e: true,
       deploy_web: true,
       deploy_mobile: true,
     });
   });
 
   it("verifies tests and non-delivery tooling without publishing unchanged application bytes", () => {
-    for (const file of [
-      "tests/balance.test.ts",
-      "e2e/core-flow.spec.ts",
-    ]) {
-      const result = classify([file]);
-      expect(result, file).toMatchObject({
-        light_gate: true,
+    // A changed browser test runs the browser suite, on the light tier: the
+    // push that changed a test is the one that runs it.
+    for (const [file, e2e] of [
+      ["tests/balance.test.ts", false],
+      ["e2e/core-flow.spec.ts", true],
+      ["e2e/native/01-launch.yaml", false],
+    ] as const) {
+      expect(classify([file]), file).toMatchObject({
+        full_gate: false,
+        run_e2e: e2e,
         deploy_web: false,
         deploy_mobile: false,
       });
@@ -153,6 +154,17 @@ describe("change classification", () => {
       full_gate: true,
       run_web_build: true,
       deploy_web: false,
+    });
+    // Web ships only when one shipped file is also a web input, not when one
+    // file is shipped and another is an input.
+    expect(classify(["scripts/check-web-budget.mjs", "eas.json"]).deploy_web).toBe(false);
+    // A Node bump exports once, through the browser suite, and ships nothing.
+    expect(classify([".nvmrc"])).toMatchObject({
+      full_gate: true,
+      run_web_build: false,
+      run_e2e: true,
+      deploy_web: false,
+      deploy_mobile: false,
     });
   });
 
@@ -192,11 +204,17 @@ describe("change classification", () => {
         if (!text.includes(command)) continue;
         for (const config of configs) scan(readFileSync(config, "utf8"), depth + 1);
       }
-      for (const match of text.matchAll(/npm run ([\w:-]+)/g)) {
-        const target = match[1]!;
-        if (visited.has(target) || packageScripts[target] == null) continue;
-        visited.add(target);
-        scan(packageScripts[target]!, depth + 1);
+      for (const match of text.matchAll(/npm (?:run )?([\w:-]+)( --ignore-scripts)?/g)) {
+        // `npm ci` runs the install lifecycle, so every job that installs runs
+        // its hooks — unless they are switched off.
+        const targets = match[1] === "ci"
+          ? (match[2] ? [] : ["preinstall", "install", "postinstall", "prepare"])
+          : [match[1]!];
+        for (const target of targets) {
+          if (visited.has(target) || packageScripts[target] == null) continue;
+          visited.add(target);
+          scan(packageScripts[target]!, depth + 1);
+        }
       }
     };
 
@@ -230,7 +248,7 @@ describe("change classification", () => {
    * had the same shape in `security.yml`, which states in its own header that
    * it stays off the delivery path on purpose. A script neither reachable from
    * the gate nor able to change what it proves must not buy coverage, mutation
-   * and a three-shard browser run.
+   * and a sharded browser run.
    *
    * Asserted with the reachability walk rather than by naming the scripts light,
    * so this stays a decision instead of becoming an oversight: each one must
@@ -261,10 +279,9 @@ describe("change classification", () => {
       ".github/dependabot.yml",
     ]) {
       expect(classify([file]), file).toMatchObject({
-        run_ci: true,
-        light_gate: true,
         full_gate: false,
         run_web_build: false,
+        run_e2e: false,
         deploy_web: false,
         deploy_mobile: false,
       });
@@ -275,9 +292,9 @@ describe("change classification", () => {
     for (const file of [
       ".github/workflows/ci.yml",
       "scripts/classify-changes.mjs",
+      "scripts/check-published.mjs",
     ]) {
       expect(classify([file]), file).toMatchObject({
-        light_gate: true,
         full_gate: true,
         run_web_build: true,
         deploy_web: true,
@@ -313,7 +330,7 @@ describe("change classification", () => {
     }
     for (const file of ["assets/brand/horizontal-light.png", "assets/brand/horizontal-dark.png"]) {
       expect(classify([file]), file).toMatchObject({
-        run_ci: false,
+        full_gate: false,
         run_web_build: false,
         deploy_web: false,
         deploy_mobile: false,

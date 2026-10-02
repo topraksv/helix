@@ -3,7 +3,7 @@ import { addMarketExpense, assertNoRuntimeErrors, collectRuntimeErrors, currentM
 
 test.beforeEach(async ({ context }) => isolateExternalData(context));
 
-test("offline relaunch keeps the SQLite ledger and avoids duplicate writes @smoke", async ({ page, context }, testInfo) => {
+test("offline relaunch keeps the SQLite ledger and avoids duplicate writes", async ({ page, context }, testInfo) => {
   const errors = collectRuntimeErrors(page);
   await onboard(page);
   await addMarketExpense(page, "Çevrimdışı kalıcılık", "210,50");
@@ -30,7 +30,7 @@ test("offline relaunch keeps the SQLite ledger and avoids duplicate writes @smok
   await assertNoRuntimeErrors(errors, testInfo);
 });
 
-test("a navigated static asset cannot poison the offline app shell @smoke", async ({ page, context }) => {
+test("a navigated static asset cannot poison the offline app shell", async ({ page, context }) => {
   await page.goto("/helix/");
   await page.evaluate(async () => {
     if (!("serviceWorker" in navigator)) throw new Error("Service Worker unavailable");
@@ -150,7 +150,7 @@ test("a reset link opens its screen in a second tab while Helix holds the databa
   await assertNoRuntimeErrors(errors, testInfo);
 });
 
-test("protected and modal deep links keep deterministic navigation @smoke @cross-browser", async ({ page }, testInfo) => {
+test("protected and modal deep links keep deterministic navigation @cross-browser", async ({ page }, testInfo) => {
   const errors = collectRuntimeErrors(page);
   await onboard(page);
   const routes: [string, string][] = [

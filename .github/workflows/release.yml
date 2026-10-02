@@ -1,10 +1,9 @@
 # A GitHub Release for every version tag, with the changelog as its body.
 #
-# The tags were already here and the Releases page was empty, so the repository
-# published five versions that a visitor could only read by opening a file. A
-# release is where GitHub puts the "what changed" question, and leaving it
-# unanswered while the answer sits in `CHANGELOG.md` is a formatting accident
-# rather than a decision.
+# Helix and Gital run this same file. Helix's tags existed for five versions
+# before anyone could read them anywhere but a file: a release is where GitHub
+# puts the "what changed" question, and the answer already sits in
+# `CHANGELOG.md`.
 #
 # Notes come from the changelog rather than from the commit range: the commits
 # are how the work happened and the changelog is what it means, and only one of
@@ -49,10 +48,9 @@ jobs:
         with:
           node-version-file: .nvmrc
           # The only job holding `contents: write`, and it installs nothing.
-          # setup-node restores a package cache on its own the moment
-          # package.json names a `packageManager`, and a cache any workflow can
-          # write is not something a publishing job should read (zizmor
-          # cache-poisoning).
+          # setup-node restores a package cache on its own once package.json
+          # names a `packageManager`; a publishing job must not read a cache any
+          # workflow can write (zizmor cache-poisoning).
           package-manager-cache: false
       - name: Publish the release from the changelog
         env:
@@ -70,13 +68,15 @@ jobs:
           fi
           # A tag is what bisecting and rolling back trust, so it has to name a
           # commit that shipped: one whose `ci` push run finished green, which
-          # is the run that publishes. The runbook said so and nothing held it.
+          # is the run that publishes.
           # The tags stay the owner's own, signed; this only refuses to turn a
           # mistaken one into a release. A tag pushed before its run finishes
           # stops here too, and re-running this job once that run is green
           # publishes it.
-          shipped_in=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?head_sha=$GITHUB_SHA&event=push&status=success&per_page=1" \
-            --jq '.workflow_runs[0].html_url // ""')
+          # Unfiltered and filtered by jq, as `ci.yml`'s base is: see the note
+          # there. A commit older than the last hundred runs is refused.
+          shipped_in=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?per_page=100" \
+            | jq -r --arg sha "$GITHUB_SHA" '[.workflow_runs[] | select(.head_sha == $sha and .event == "push" and .conclusion == "success")][0].html_url // ""')
           if [ -z "$shipped_in" ]; then
             echo "::error::$TAG names $GITHUB_SHA, which has no green ci push run; tag the commit that shipped, or re-run this job once its run is green"
             exit 1

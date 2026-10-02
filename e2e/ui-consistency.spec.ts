@@ -1449,7 +1449,7 @@ test("leaving the wallet transfer returns to Investments without inventing a dra
   await expect(page).toHaveURL(/investments/);
 });
 
-test("a mistaken investment journal and its selected ledger refund are removed together @smoke", async ({ page }) => {
+test("a mistaken investment journal and its selected ledger refund are removed together", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
   await onboard(page);
   await page.getByRole("tab", { name: "Yatırımlar", exact: true }).click();
@@ -1524,7 +1524,7 @@ test("a mistaken investment journal and its selected ledger refund are removed t
   await expect(page.getByText("Yatırım hareketleri", { exact: true })).toHaveCount(0);
 });
 
-test("investment setup, weighted sale, BES contribution and wallet refund form one flow @smoke @cross-browser", async ({ page }) => {
+test("investment setup, weighted sale, BES contribution and wallet refund form one flow @cross-browser", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await onboard(page);
   await page.getByRole("tab", { name: "Yatırımlar", exact: true }).click();
@@ -2568,7 +2568,7 @@ test("disabled primary actions remain readable in every theme", async ({ page })
   }
 });
 
-test("primary work surfaces reflow without page overflow across the target viewport matrix @smoke", async ({ page }) => {
+test("primary work surfaces reflow without page overflow across the target viewport matrix", async ({ page }) => {
   await onboard(page);
   const viewports = [
     { width: 320, height: 568 },

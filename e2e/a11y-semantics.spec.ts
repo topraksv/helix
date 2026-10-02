@@ -149,7 +149,7 @@ test("busy controls, spinners and decorative art are correctly exposed", async (
   await assertNoRuntimeErrors(errors, testInfo);
 });
 
-test("an open dialog is a real modal that owns focus @smoke @cross-browser", async ({ page }, testInfo) => {
+test("an open dialog is a real modal that owns focus @cross-browser", async ({ page }, testInfo) => {
   const errors = collectRuntimeErrors(page);
   await onboard(page);
   await page.goto("/helix/settings");

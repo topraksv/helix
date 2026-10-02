@@ -175,7 +175,7 @@ describe("published surfaces", () => {
     const routes: Record<string, string> = {
       "/helix/": `<script src="/helix${entry}"></script>`,
       [`/helix${entry}`]: bundleDeclaring(app.version),
-      "/helix/upcoming": "<html></html>",
+      "/helix/privacy": "<html></html>",
     };
     const server = createServer((request, response) => {
       const body = routes[request.url ?? ""];

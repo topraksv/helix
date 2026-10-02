@@ -15,6 +15,13 @@ const app = JSON.parse(read("app.json"));
 const eas = JSON.parse(read("eas.json"));
 const ci = read(".github/workflows/ci.yml");
 const classifier = read("scripts/classify-changes.mjs");
+/** One job of `ci.yml`, up to the next one, so no slice depends on job order. */
+const job = (name: string) => {
+  const start = ci.indexOf(`\n  ${name}:\n`);
+  if (start < 0) throw new Error(`ci.yml has no job ${name}`);
+  const next = ci.slice(start + 1).search(/\n  [a-z0-9-]+:\n/);
+  return next < 0 ? ci.slice(start + 1) : ci.slice(start + 1, start + 1 + next);
+};
 /**
  * The two documents this suite checks are not in the repository.
  *
@@ -290,106 +297,113 @@ describe("release contract", () => {
 
   it("publishes one Expo Go preview update and never searches for or creates a binary", () => {
     expect(existsSync(easPreviewPath)).toBe(false);
-    const mobile = ci.slice(ci.indexOf("  deploy-mobile:"));
+    const mobile = job("deploy-mobile");
     const deploy = mobile.split("\n").find((line) => line.includes("eas-cli@") && line.includes(" update "));
     expect(deploy).toBeDefined();
     expect(deploy).toMatch(/npx --yes=false eas-cli@\d+\.\d+\.\d+ update /);
     expect(deploy).toContain("--branch preview");
     expect(deploy).toContain("--platform all");
-    expect(deploy).toContain("--clear-cache");
     expect(deploy).toContain("--non-interactive");
     expect(deploy).not.toContain("@latest");
     expect(mobile).not.toMatch(/workflow:run|fingerprint|get-build|eas\s+build|eas\s+submit|type:\s*(build|submit)/);
     expect(mobile).not.toMatch(/APPLE_|ASC_|provision/i);
+
+    // It uploads what `mobile-build` exported beside the gate, and exports
+    // nothing itself: eas-cli's own export is the minutes this moved out.
+    expect(deploy).toContain('--skip-bundler --input-dir "$RUNNER_TEMP/dist-mobile"');
+    expect(mobile).toContain("dist-mobile-${{ github.run_id }}");
+    const build = job("mobile-build");
+    expect(build).toContain("if: needs.classify.outputs.deploy_mobile == 'true'");
+    // eas-cli 24.8.0's export for `--platform all` (buildBundlesAsync), with
+    // the `.env` its `--environment` switches off switched off here too.
+    expect(build).toContain('npx expo export --output-dir "$RUNNER_TEMP/dist-mobile" --source-maps --dump-assetmap --platform ios --platform android --clear');
+    expect(build).toContain('EXPO_NO_DOTENV: "1"');
+    expect(build).toContain("dist-mobile-${{ github.run_id }}");
+    expect(build).toContain("if-no-files-found: error");
+    expect(mobile.split("\n").find((line) => line.startsWith("    needs:"))).toContain("mobile-build");
   });
 
-  it("runs each light and full release check once in its owning job", () => {
+  it("runs each release check once in its owning job", () => {
     for (const command of [
       "npm run typecheck",
       // The lint step is the ratchet, which runs ESLint itself and gates on
       // `lint-baseline.json`. A bare `npx expo lint` beside it would be a
       // second full lint that no longer decides anything.
       "npm run lint:ratchet",
-      "npx vitest run",
+      "run: npm test",
       "npm run test:coverage",
       "npm run test:mutation",
-      "npx expo export -p web --clear",
+      "npm run web:export",
       "npm run bundle:check",
     ]) {
       expect(ci.split(command).length - 1, command).toBe(1);
     }
-    // One export per run. The deploy consumes the artifact the budget check
-    // ran against; a second export there could serve unchecked bytes.
+    // One export per surface, in its build job. Each deploy consumes the
+    // artifact its build made; an export there could publish unchecked bytes.
     expect(ci.split("npx expo export").length - 1).toBe(1);
+    expect(job("web-build")).toContain("npm run web:export");
     expect(ci).not.toContain("verify:release");
   });
 
   it("never pays for the same unit or browser test twice in one run", () => {
     // `test:coverage` runs the whole unit suite under the per-file thresholds,
-    // so the plain run is the light tier's own signal and must stand down when
+    // so the plain run is the light tier's own signal and stands down when
     // the full tier is selected.
-    expect(ci).toMatch(/if: needs\.classify\.outputs\.full_gate != 'true'\n\s+run: npx vitest run/);
-    // `e2e-full` executes the whole browser suite; the `@smoke` tests are a
-    // subset of it, and `test:e2e:smoke` would also export a third bundle.
-    expect(ci).toMatch(/e2e-smoke:\n\s+needs: classify\n\s+if: needs\.classify\.outputs\.full_gate != 'true'/);
+    const check = job("check");
+    expect(check).toMatch(/if: needs\.classify\.outputs\.full_gate == 'true'\n\s+run: npm run test:coverage/);
+    expect(check).toMatch(/if: needs\.classify\.outputs\.full_gate != 'true'\n\s+run: npm test/);
   });
 
-  it("classifies first, always runs light checks, and adds full checks only for high risk", () => {
+  it("classifies first, always runs the checks, and adds mutation only for high risk", () => {
     expect(ci).toContain("  classify:");
-    for (const output of [
-      "run_ci",
-      "light_gate",
-      "full_gate",
-      "run_web_build",
-      "deploy_web",
-      "deploy_mobile",
-      "reason",
-    ]) {
+    // A dispatch's `release_target` overrides only what it can choose: what is
+    // built and published. What the push proves stays the classifier's.
+    const routed = ["run_web_build", "deploy_web", "deploy_mobile"];
+    for (const output of ["full_gate", "run_e2e", "reason", ...routed]) {
       expect(classifier).toContain(`${output}:`);
-      expect(ci).toContain(`${output}: ` + "${{ steps.route.outputs." + output + " }}");
+      const step = routed.includes(output) ? "route" : "raw";
+      expect(ci).toContain(`${output}: \${{ steps.${step}.outputs.${output} }}`);
     }
 
-    const light = ci.slice(ci.indexOf("  light-gate:"), ci.indexOf("  full-gate:"));
-    expect(light).toContain("needs: classify");
-    expect(light).not.toContain("needs.classify.outputs.full_gate == 'true'");
-    expect(light).toContain("npm run typecheck");
-    expect(light).toContain("npm run lint:ratchet");
-    expect(light).toContain("npx vitest run");
+    const check = job("check");
+    expect(check).toContain("needs: classify");
+    // On every push: no job-level condition.
+    expect(check).not.toMatch(/^    if:/m);
+    expect(check).toContain("npm run typecheck");
+    expect(check).toContain("npm run lint:ratchet");
 
-    const full = ci.slice(ci.indexOf("  full-gate:"), ci.indexOf("  web-build:"));
-    // Mutation waits for typecheck and lint: a push that fails either cannot
-    // deploy whatever a half-hour mutation shard finds.
-    expect(full).toContain("needs: [classify, light-gate]");
-    expect(full).toContain("needs.classify.outputs.full_gate == 'true'");
-    expect(full).toContain("npm run test:coverage");
-    expect(full).toContain("npm run test:mutation:ci");
-    expect(full).toContain("MUTATION_BASE_SHA: ${{ needs.classify.outputs.base }}");
-    expect(full).toContain("MUTATION_HEAD_SHA: ${{ github.sha }}");
-    expect(full).toContain("MUTATION_EVENT_NAME: ${{ github.event_name }}");
-    expect(full).toContain("fetch-depth: 0");
+    const mutation = job("mutation");
+    // Beside `check`, not behind it: a red `check` fails the gate either way.
+    expect(mutation).toContain("needs: classify\n");
+    expect(mutation).toContain("if: needs.classify.outputs.full_gate == 'true'");
+    expect(mutation).toContain("npm run test:mutation:ci");
+    expect(mutation).toContain("MUTATION_BASE_SHA: ${{ needs.classify.outputs.base }}");
+    expect(mutation).toContain("MUTATION_HEAD_SHA: ${{ github.sha }}");
+    expect(mutation).toContain("MUTATION_EVENT_NAME: ${{ github.event_name }}");
+    expect(mutation).toContain("fetch-depth: 0");
   });
 
-  it("divides the mutation gate across as many runners as the matrix holds, and covers once", () => {
-    const full = ci.slice(ci.indexOf("  full-gate:"), ci.indexOf("  web-build:"));
-    const shards = full.match(/shard: \[([\d, ]+)\]/)?.[1]?.split(",").map((value) => Number(value.trim()));
-    expect(shards).toEqual([1, 2, 3]);
-    expect(full).toContain(`MUTATION_SHARD: \${{ matrix.shard }}/${shards!.length}`);
-    expect(full).toMatch(/if: matrix\.shard == 1\n\s+run: npm run test:coverage/);
+  it("divides the mutation gate across as many runners as the matrix holds", () => {
+    const mutation = job("mutation");
+    const shards = mutation.match(/shard: \[([\d, ]+)\]/)?.[1]?.split(",").map((value) => Number(value.trim()));
+    expect(shards).toEqual(Array.from({ length: shards!.length }, (_, i) => i + 1));
+    expect(mutation).toContain("MUTATION_SHARD: ${{ matrix.shard }}/${{ strategy.job-total }}");
     // A shard dealt nothing skips the pass rather than running it on an empty list.
-    expect(full).toMatch(/if: steps\.scope\.outputs\.files != '0'\n\s+run: npm run test:mutation:ci/);
+    expect(mutation).toMatch(/if: steps\.scope\.outputs\.files != '0'\n\s+run: npm run test:mutation:ci/);
   });
 
   it("gates automatic and manual deploys on the same successful run", () => {
-    for (const job of ["deploy-web", "deploy-mobile"] as const) {
-      const condition = ci.slice(ci.indexOf(`  ${job}:\n`), ci.indexOf("steps:", ci.indexOf(`  ${job}:\n`)));
-      expect(condition, job).toContain("gate");
-      expect(condition, job).toContain("classify");
+    for (const name of ["deploy-web", "deploy-mobile"] as const) {
+      const condition = job(name).slice(0, job(name).indexOf("steps:"));
       // `!cancelled()` is load-bearing: without it GitHub propagates the
       // upstream skip through `gate`'s `always()` and this job never runs.
-      expect(condition, job).toContain("!cancelled()");
-      expect(condition, job).toContain("needs.gate.result == 'success'");
-      expect(condition, job).toContain(`needs.classify.outputs.deploy_${job === "deploy-web" ? "web" : "mobile"} == 'true'`);
+      expect(condition, name).toContain("!cancelled()");
+      expect(condition, name).toContain("needs.gate.result == 'success'");
     }
+    expect(job("deploy-web")).toContain("needs.classify.outputs.deploy_web == 'true'");
+    // `mobile-build` runs only on the classifier's decision, so its success is it.
+    expect(job("deploy-mobile")).toContain("needs.mobile-build.result == 'success'");
+    expect(job("mobile-build")).toContain("if: needs.classify.outputs.deploy_mobile == 'true'");
     expect(ci).not.toContain("release_approval");
   });
 
@@ -403,16 +417,17 @@ describe("release contract", () => {
    * longest 2.6 days, five of them closed by a manual dispatch.
    */
   it("measures a push from the last green run it descends from, and mutates that range", () => {
-    const classify = ci.slice(ci.indexOf("  classify:"), ci.indexOf("  light-gate:"));
+    const classify = job("classify");
     expect(classify).toMatch(/permissions:\n\s+contents: read\n(?:\s+#.*\n)*\s+actions: read/);
     expect(classify).toContain("base: ${{ steps.base.outputs.sha }}");
-    // Unfiltered, then filtered here. On 2026-09-28 the `status=success`
-    // listing answered with a run from 20 days earlier while the plain one
-    // already held the previous day's: 42 commits of scope, a mutation shard
-    // past 90 minutes, and no deploy.
-    expect(classify).toContain("actions/workflows/ci.yml/runs?branch=main&event=push&per_page=100");
-    expect(classify).toContain('[.workflow_runs[] | select(.conclusion == \"success\")][0].head_sha // \"\"');
-    expect(classify).not.toContain("status=success");
+    // Unfiltered, then filtered here. GitHub answers `branch`, `event`,
+    // `status` and `head_sha` from its run search: on 2026-09-28 the
+    // `status=success` listing named a run 20 days stale, and on 2026-10-02,
+    // with only `branch` and `event` left, one 24 days stale — each a 40-odd-
+    // commit scope, a mutation shard past 90 minutes, and no deploy.
+    expect(classify).toContain(
+      '[.workflow_runs[] | select(.event == \"push\" and .head_branch == \"main\" and .conclusion == \"success\")][0].head_sha // \"\"',
+    );
     // Ancestry, not recency: a green run this commit does not descend from is
     // not what production was built from.
     expect(classify).toContain('git merge-base --is-ancestor "$green" "$HEAD_SHA"');
@@ -427,16 +442,22 @@ describe("release contract", () => {
     expect(fallback).toMatch(/^\s+if git diff --quiet "\$BEFORE_SHA" "\$HEAD_SHA"[^\n]*; then base=""; fi$/m);
   });
 
+  it("never asks GitHub's run search, which has answered weeks stale", () => {
+    for (const [name, text] of [["ci.yml", ci], ["nightly.yml", nightly], ["release.yml", releaseWorkflow]] as const) {
+      const queries = text.split("/runs?").length - 1;
+      expect(queries, name).toBeGreaterThan(0);
+      expect(text.split('actions/workflows/ci.yml/runs?per_page=100"').length - 1, name).toBe(queries);
+    }
+  });
+
   it("never publishes a commit main has already moved past", () => {
-    for (const job of ["deploy-web", "deploy-mobile"] as const) {
-      const start = ci.indexOf(`  ${job}:\n`);
-      const end = job === "deploy-web" ? ci.indexOf("\n  deploy-mobile:", start) : ci.length;
-      const block = ci.slice(start, end);
+    for (const name of ["deploy-web", "deploy-mobile"] as const) {
+      const block = job(name);
       const guard = block.indexOf("- name: Refuse to publish a commit main has moved past");
-      expect(guard, job).toBeGreaterThan(0);
+      expect(guard, name).toBeGreaterThan(0);
       for (const later of ["actions/checkout@", "actions/deploy-pages@", "eas-cli@"]) {
         const at = block.indexOf(later);
-        if (at >= 0) expect(at, `${job}: ${later} must come after the guard`).toBeGreaterThan(guard);
+        if (at >= 0) expect(at, `${name}: ${later} must come after the guard`).toBeGreaterThan(guard);
       }
       // Failing, not skipping: a superseded run that went green would become
       // the next push's base while having published nothing.
@@ -445,10 +466,10 @@ describe("release contract", () => {
   });
 
   it("counts a publication only when what is live is what this run built", () => {
-    const build = ci.slice(ci.indexOf("  web-build:"), ci.indexOf("  e2e-smoke:"));
+    const build = job("web-build");
     expect(build).toContain("entry: ${{ steps.entry.outputs.path }}");
     expect(build).toContain('node scripts/check-published.mjs entry dist >> "$GITHUB_OUTPUT"');
-    const web = ci.slice(ci.indexOf("  deploy-web:\n"), ci.indexOf("\n  deploy-mobile:"));
+    const web = job("deploy-web");
     expect(web).toContain("ENTRY: ${{ needs.web-build.outputs.entry }}");
     expect(web).toMatch(/node scripts\/check-published\.mjs web "\$BASE" --entry "\$ENTRY" --wait \d+/);
     expect(web).not.toContain("curl");
@@ -459,14 +480,12 @@ describe("release contract", () => {
     expect(nightly).toContain("node scripts/check-published.mjs expo-go");
     // …and fails while main is ahead of the newest run that published.
     const drift = nightly.slice(nightly.indexOf("  main-published:"));
-    expect(drift).toContain("runs?branch=main&event=push&per_page=100");
-    expect(drift).not.toContain("status=success");
     expect(drift).toMatch(/if \[ "\$green" != "\$head" \] && \[ "\$open" = "0" \]; then\n[^\n]*\n\s+exit 1/);
   });
 
   it("turns a tag into a release only when the tagged commit shipped", () => {
     expect(releaseWorkflow).toMatch(/contents: write\n(?:\s+#.*\n)*\s+actions: read/);
-    const shipped = releaseWorkflow.indexOf("runs?head_sha=$GITHUB_SHA&event=push&status=success&per_page=1");
+    const shipped = releaseWorkflow.indexOf('select(.head_sha == $sha and .event == "push" and .conclusion == "success")');
     expect(shipped).toBeGreaterThan(0);
     expect(shipped).toBeLessThan(releaseWorkflow.indexOf('gh release create "$TAG"'));
   });
@@ -483,11 +502,8 @@ describe("release contract", () => {
       expect(agents).not.toContain("helix-release-approval");
     }
 
-    for (const job of ["deploy-web", "deploy-mobile"] as const) {
-      const start = ci.indexOf(`  ${job}:\n`);
-      const jobEnd = job === "deploy-web" ? ci.indexOf("\n  deploy-mobile:", start) : -1;
-      const jobBlock = ci.slice(start, jobEnd === -1 ? undefined : jobEnd);
-      expect(jobBlock, job).toContain("environment:\n      name: helix");
+    for (const name of ["deploy-web", "deploy-mobile"] as const) {
+      expect(job(name), name).toContain("environment:\n      name: helix");
     }
   });
 
@@ -503,27 +519,25 @@ describe("release contract", () => {
     // Each shard used to run its own `test:e2e:export`: a second full Metro
     // bundle, and two shards testing two separately-produced artifacts.
     expect(ci.split("npm run test:e2e:export").length - 1, "one E2E export per run").toBe(1);
-    const build = ci.slice(ci.indexOf("  e2e-build:"), ci.indexOf("  e2e-full:"));
+    const build = job("e2e-build");
+    expect(build).toContain("if: needs.classify.outputs.run_e2e == 'true'");
     expect(build).toContain("npm run test:e2e:export");
     expect(build).toContain("actions/upload-artifact");
     expect(build).toContain("if-no-files-found: error");
-    const full = ci.slice(ci.indexOf("  e2e-full:"), ci.indexOf("  gate:"));
-    expect(full).toMatch(/needs: .*e2e-build/);
-    expect(full).toContain("actions/download-artifact");
-    expect(full).toContain("path: dist-e2e");
+    const suite = job("e2e");
+    expect(suite).toContain("needs: e2e-build");
+    expect(suite).toContain("actions/download-artifact");
+    expect(suite).toContain("path: dist-e2e");
     // Every shard must consume the same named artifact.
     const artifact = "dist-e2e-${{ github.run_id }}";
     expect(build).toContain(artifact);
-    expect(full).toContain(artifact);
+    expect(suite).toContain(artifact);
     // …and must not rebuild it, which `npm run test:e2e` would.
-    expect(full).not.toContain("npm run test:e2e");
-    expect(full).toContain("npx playwright test --shard=");
+    expect(suite).not.toContain("npm run test:e2e");
   });
 
-  it("runs smoke on a light push and shards the risk-selected full suite", () => {
-    expect(ci).toContain("npm run test:e2e:smoke");
-    expect(ci).toContain("npx playwright install chromium firefox --with-deps");
-    expect(nightly).toContain("npx playwright install chromium firefox --with-deps");
+  it("shards the whole browser suite, and the nightly only reports", () => {
+    expect(job("e2e")).toContain("npx playwright install chromium firefox --with-deps");
     const playwright = read("playwright.config.ts");
     expect(playwright).toContain('name: "chromium"');
     expect(playwright).toContain('name: "firefox-critical"');
@@ -532,33 +546,20 @@ describe("release contract", () => {
     // Sharding across runners is the only parallelism: this suite drives one
     // browser against one static server and goes flaky with two workers.
     expect(ci).not.toMatch(/workers:\s*[2-9]/);
-    // The shard count is read from the workflow rather than pinned here, but
-    // the matrix and the flag have to agree — a matrix of three feeding
-    // `--shard=n/2` silently drops a third of the suite.
-    const shardCount = ci.match(/--shard=\${{ matrix\.shard }}\/(\d+)/)?.[1];
-    expect(shardCount, "ci declares a shard count").toBeDefined();
-    expect(ci).toContain(`shard: [${Array.from({ length: Number(shardCount) }, (_, i) => i + 1).join(", ")}]`);
-    expect(nightly).toContain(`--shard=\${{ matrix.shard }}/${shardCount}`);
-    expect(nightly).toContain(`shard: [${Array.from({ length: Number(shardCount) }, (_, i) => i + 1).join(", ")}]`);
+    // The divisor is the matrix's own size, so the two cannot disagree; the
+    // matrix still has to count from one, or a shard index is never run.
+    expect(job("e2e")).toContain('npx playwright test --shard="$SHARD"\n        env:\n          SHARD: ${{ matrix.shard }}/${{ strategy.job-total }}');
+    const shards = job("e2e").match(/shard: \[([\d, ]+)\]/)?.[1]?.split(",").map((value) => Number(value.trim()));
+    expect(shards).toEqual(Array.from({ length: shards!.length }, (_, i) => i + 1));
     // Playwright splits by FILE unless `fullyParallel` is set, and this suite's
     // specs are very unevenly sized — measured, two shards took 65 and 10 of
     // the 75 tests. Balance is what makes a shard count worth raising.
     expect(playwright).toContain("fullyParallel: true");
-    expect(nightly.split("npm run test:e2e:export").length - 1).toBe(1);
-    expect(nightly).toContain("nightly-dist-e2e-${{ github.run_id }}");
-    expect(nightly).toContain("actions/upload-artifact");
-    expect(nightly).toContain("actions/download-artifact");
-    const nightlySuite = nightly.slice(nightly.indexOf("  full-suite:"));
-    expect(nightlySuite).not.toContain("npm run test:e2e");
     // The nightly run reports; it never publishes. No deploy job, no Pages
     // artifact, no EAS dispatch and no write permission to reach them with.
     expect(nightly).not.toMatch(/^\s+deploy[\w-]*:$/m);
     expect(nightly).not.toMatch(/deploy-pages|upload-pages-artifact|eas-cli/);
     expect(nightly).toMatch(/permissions:\n\s+contents: read/);
-    const e2eBuild = ci.slice(ci.indexOf("  e2e-build:"), ci.indexOf("  e2e-full:"));
-    const e2eFull = ci.slice(ci.indexOf("  e2e-full:"), ci.indexOf("  gate:"));
-    expect(e2eBuild).toContain("needs.classify.outputs.full_gate == 'true'");
-    expect(e2eFull).toContain("needs.classify.outputs.full_gate == 'true'");
   });
 
   it("cancels a superseded run rather than certifying a stale commit", () => {
@@ -571,7 +572,7 @@ describe("release contract", () => {
    * Every job is bounded in time.
    *
    * Nothing was, so the ceiling was GitHub's default of six hours. That is not
-   * hypothetical here: `nightly.yml` records a Playwright `apt-get` step
+   * hypothetical here: `ci.yml` records a Playwright `apt-get` step
    * hanging past 25 minutes on three shards at once, and the mutation job sat
    * over an hour on 2026-08-20 while the deploy waited behind it. A hung job
    * should fail and free the runner, not hold a release all afternoon.
@@ -603,9 +604,9 @@ describe("release contract", () => {
   it("caches npm only in a job that installs, so an empty cache cannot claim the shared key", () => {
     for (const [name, jobsSection] of jobSections) {
       const jobs = jobsSection.split(/^(?=  [a-z0-9-]+:$)/m).slice(1);
-      for (const job of jobs) {
-        if (!/^\s+cache: npm$/m.test(job)) continue;
-        expect(job, `${name}: ${job.split("\n")[0]}`).toMatch(/^\s+(- )?run: .*\bnpm ci\b/m);
+      for (const section of jobs) {
+        if (!/^\s+cache: npm$/m.test(section)) continue;
+        expect(section, `${name}: ${section.split("\n")[0]}`).toMatch(/^\s+(- )?run: .*\bnpm ci\b/m);
       }
     }
   });
@@ -679,7 +680,7 @@ describe("release contract", () => {
      * true: each of its transitive ranges still took whatever was newest on
      * the day of the publish.
      */
-    const mobile = ci.slice(ci.indexOf("  deploy-mobile:"));
+    const mobile = job("deploy-mobile");
     const deploy = mobile.split("\n").find((line) => line.includes("eas-cli@") && line.includes(" update "));
     expect(deploy).toBeDefined();
     expect(deploy).toContain(`npx --yes=false eas-cli@${eas.cli.version} update`);
@@ -695,7 +696,7 @@ describe("release contract", () => {
   });
 
   it("withholds the Expo publish credential from everything that installs", () => {
-    const mobile = ci.slice(ci.indexOf("  deploy-mobile:"));
+    const mobile = job("deploy-mobile");
     const jobHeader = mobile.slice(0, mobile.indexOf("    steps:"));
     expect(jobHeader).not.toContain("EXPO_TOKEN");
 
@@ -765,8 +766,10 @@ describe("release contract", () => {
  */
 describe("database workflow", () => {
   it("proves account isolation on a schedule and when the schema changes", () => {
-    expect(database).toContain("supabase@2.109.1 test db --local");
-    expect(database).toContain("supabase@2.109.1 db lint --local --schema public --fail-on warning");
+    // One pinned CLI for every step, so the stack that lints is the one tested.
+    expect(database).toMatch(/\n  SUPABASE: npx --yes supabase@\d+\.\d+\.\d+\n/);
+    expect(database).toContain("$SUPABASE test db --local");
+    expect(database).toContain("$SUPABASE db lint --local --schema public --fail-on warning");
     expect(database).toContain("cron:");
     // The CLI must not arrive through a third-party action. This repository
     // allows GitHub-owned actions only (`patterns_allowed` empty,

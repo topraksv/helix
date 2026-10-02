@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 /**
  * Decide what a main-branch push has to prove and which surfaces it can ship.
+ * Helix and Gital run this same file; only `CI_EXECUTED_SCRIPTS` differs,
+ * because it names what each repository's own `ci.yml` reaches.
  *
  * The safe error is a slow run: every unrecognised path receives the full
  * gate, while a missing base receives the full gate and both deploy targets.
@@ -17,49 +19,29 @@ import { fileURLToPath } from "node:url";
 import { resolve } from "node:path";
 
 /**
- * The scripts THIS gate executes.
+ * The scripts THIS repository's `ci.yml` executes, matched by equality: an
+ * escaped path in a regex is right until the first name with a `+` in it.
  *
- * `scripts/` used to escalate as a whole, and the cost of that was paid by
- * files no runner ever loads: editing the font subsetter or the brand-mark
- * auditor bought coverage, mutation and a three-shard browser run for a change
- * that cannot reach either delivered artifact. What decides risk is not the
- * directory, it is whether the gate that certifies this push can run the file.
- *
- * Scoped to `ci.yml`, for the same reason `.github/` is narrowed to `ci.yml`
- * below, and the two rationales have to agree or one of them is wrong. They
- * disagreed once: `release-notes.mjs` was listed here and escalated every main
- * push that touched it, while `release.yml` — the only workflow that can run
- * it, and only on a tag push, which never triggers this gate at all — stayed
- * on the light tier. `check-advisories.mjs` was the same shape, in
- * `security.yml`, whose own header states it deliberately "stays off the
- * delivery path". Neither can change what a main push proves before it
- * deploys, so neither escalates one. Their own workflows still run them, and
- * the light tier still typechecks, lints and unit-tests them.
- *
- * Reachability is proven rather than asserted. `tests/change-classification`
- * walks every `run:` line in `.github/workflows/ci.yml`, follows each `npm run`
- * target through `package.json`, reads the config files those commands load,
- * and fails if it finds a `node scripts/...` command that is missing here — so
- * a script that becomes part of the gate cannot stay on the light tier by
- * being forgotten. Everything under `scripts/` that is NOT here is a local
- * tool or another workflow's, and `NOT_SHIPPED` already keeps the whole
- * directory out of both deployments whichever tier it lands on.
- *
- * `.github/` is narrowed on the same reasoning: only `ci.yml` decides what a
- * push proves, and it is already delivery control. The other workflows carry
- * their own triggers and cannot change this one's answer.
+ * What decides risk is not the directory but whether the gate that certifies
+ * this push can run the file, so a local tool or another workflow's script
+ * stays light. A test walks `ci.yml`, the `npm run` targets it names, the
+ * configs those load and the `postinstall` every `npm ci` runs, and fails when
+ * this list and that walk disagree.
  */
-const CI_EXECUTED_SCRIPTS = [
+export const CI_EXECUTED_SCRIPTS = [
   "scripts/check-lint-ratchet.mjs",
   "scripts/check-mutation-ratchet.mjs",
   "scripts/check-published.mjs",
   "scripts/check-web-budget.mjs",
   "scripts/classify-changes.mjs",
   "scripts/export-e2e-web.mjs",
+  // `npm ci` runs it as `postinstall`: it rewrites what every job builds.
+  "scripts/patch-dependencies.mjs",
+  // Started by `playwright.config.ts`, not by a `run:`.
   "scripts/serve-static.mjs",
 ];
 
-/** Money, persistence, identity, sync, native and delivery boundaries. */
+/** Money, persistence, identity, sync, native, and what builds or checks the app. */
 const HIGH_RISK = [
   /^src\/domain\//,
   /^src\/data\//,
@@ -70,6 +52,7 @@ const HIGH_RISK = [
   /^supabase\//,
   /^package(-lock)?\.json$/,
   /^\.npmrc$/,
+  /^\.nvmrc$/,
   /^app\.json$/,
   /^eas\.json$/,
   /^\.eas\//,
@@ -79,6 +62,7 @@ const HIGH_RISK = [
   /^tsconfig\.json$/,
   /^vitest(?:\.coverage|\.mutation)?\.config\.mts$/,
   /^stryker(?:\.[^.]+)?\.config\.mjs$/,
+  /^(lint|mutation)-baseline\.json$/,
   /^playwright\.config\.ts$/,
   /^knip\.json$/,
   /^src\/app\/(?:.*\/)?_layout\.tsx$/,
@@ -87,63 +71,59 @@ const HIGH_RISK = [
 ];
 
 /**
- * The gate scripts are matched by EQUALITY, not by a pattern.
- *
- * They were folded into `HIGH_RISK` as a regex built from the list, which
- * meant escaping path text into a pattern — and an escape that handles `.` and
- * nothing else is the kind that is right until the first name containing a `+`
- * or a `(`. CodeQL called it, correctly, before any such name existed. These
- * are exact paths and comparing them as exact paths cannot be incomplete.
- */
-const isCiExecutedScript = (path) => CI_EXECUTED_SCRIPTS.includes(path);
-
-/**
- * Repository material that cannot alter either delivered application.
- *
- * `docs/` is untracked and cannot reach a diff from a clone, but the pattern
- * stays: the notes still exist on the machine this is run from, and a stray
- * `git add` of one must not be able to trigger a web deploy and an OTA update.
+ * Repository material that cannot alter either delivered application. `docs/`
+ * and the agent files are untracked, but a stray `git add` of one must not be
+ * able to trigger a web deploy and an OTA update.
  */
 const NO_APP_IMPACT = [
   /^README\.md$/,
   /^LICENSE$/,
   /^\.gitignore$/,
   /^\.env\.example$/,
+  /^\.editorconfig$/,
+  /^\.mcp\.json$/,
+  // Release notes: `release.yml` reads them on a tag, and neither app does.
+  /^CHANGELOG\.md$/,
+  // Local audit configs: no workflow reads them.
+  /^\.(?:jscpd\.json|madgerc)$/,
+  /^AGENTS\.md$/,
+  /^CLAUDE\.md$/,
+  /^\.claude\//,
   /^\.vscode\//,
   /^docs\//,
   /^assets\/screenshots\//,
   /^assets\/brand\/horizontal-(?:light|dark)\.png$/,
 ];
 
-/** Checked here but never published as Pages or Expo Go application bytes. */
+/**
+ * Checked here but never published as Pages or Expo Go application bytes.
+ * `patch-dependencies.mjs` is the exception under `scripts/`: it edits
+ * `node_modules` on every install, so it ships like the lockfile does.
+ */
 const NOT_SHIPPED = [
   /^e2e\//,
   /^tests\//,
   /^\.github\//,
-  /^scripts\//,
+  /^scripts\/(?!patch-dependencies\.mjs$)/,
   /^supabase\//,
   /^plugins\//,
+  /^(lint|mutation)-baseline\.json$/,
 ];
 
 /**
- * Controls whose own correctness decides whether either delivery can finish.
- *
- * A change to either republishes both surfaces after the full gate, so a
- * broken deploy job is found by the push that broke it rather than by the next
- * release that needs it. This was also, once, the only way a shipping push
- * that failed before publication got its bytes out; `ci.yml` now measures
- * every push from the last green run, which carries those changes forward on
- * its own.
+ * Controls whose own correctness decides whether either delivery can finish:
+ * a change to one republishes both surfaces after the full gate, so a broken
+ * deploy or verification step is found by the push that broke it.
  */
 const DELIVERY_CONTROL = [
   /^\.github\/workflows\/ci\.yml$/,
   /^scripts\/classify-changes\.mjs$/,
+  /^scripts\/check-published\.mjs$/,
 ];
 
 /** Explicit light-tier allowlist; everything else escalates. */
 const KNOWN_LIGHT = [
-  // Whatever HIGH_RISK above did not name. A file matching both is high risk:
-  // `unknown` is what escalates, and HIGH_RISK is tested first.
+  // Whatever HIGH_RISK above did not name. HIGH_RISK is tested first.
   /^scripts\//,
   /^\.github\//,
   /^src\/i18n\//,
@@ -155,38 +135,6 @@ const KNOWN_LIGHT = [
   /^assets\//,
 ];
 
-/** Inputs capable of changing the production web artifact. */
-const AFFECTS_WEB_BUILD = [
-  /^src\//,
-  /^assets\//,
-  /^public\//,
-  /^app\.json$/,
-  /^package(-lock)?\.json$/,
-  /^(babel|metro)\.config\.js$/,
-  /^tsconfig\.json$/,
-  /^\.npmrc$/,
-  /^scripts\/(check-published|check-web-budget|export-e2e-web|serve-static)\.mjs$/,
-];
-
-/** Verification and release plumbing that provably cannot change web bytes. */
-const NEVER_WEB_BUILD = [
-  /^tests\//,
-  /^e2e\//,
-  /^playwright\.config\.ts$/,
-  /^vitest(?:\.coverage|\.mutation)?\.config\.mts$/,
-  /^stryker(?:\.[^.]+)?\.config\.mjs$/,
-  /^\.github\//,
-  /^\.eas\//,
-  /^eas\.json$/,
-  /^plugins\//,
-  /^supabase\//,
-  /^drizzle\.config\.ts$/,
-  /^knip\.json$/,
-  /^eslint\.config\.js$/,
-  /^\.nvmrc$/,
-  /^scripts\/classify-changes\.mjs$/,
-];
-
 /** Inputs capable of changing Expo Go JavaScript or shipped assets. */
 const AFFECTS_MOBILE_UPDATE = [
   /^src\//,
@@ -196,20 +144,35 @@ const AFFECTS_MOBILE_UPDATE = [
   /^(babel|metro)\.config\.js$/,
   /^tsconfig\.json$/,
   /^\.npmrc$/,
+  /^scripts\/patch-dependencies\.mjs$/,
+];
+
+/** The same, plus what only the web export or its budget check reads. */
+const AFFECTS_WEB_BUILD = [...AFFECTS_MOBILE_UPDATE, /^public\//, /^scripts\/check-web-budget\.mjs$/];
+
+/**
+ * What the browser suite needs besides the app itself: a change here runs the
+ * suite on any tier, so a changed test is run by the push that changed it.
+ */
+const E2E_INPUTS = [
+  // Not `e2e/native*`: those are Maestro flows, run on a simulator by hand.
+  /^e2e\/(?!native)/,
+  // The Node every export runs on: a release that breaks Metro shows nowhere
+  // else in a push that changes only this.
+  /^\.nvmrc$/,
+  /^playwright\.config\.ts$/,
+  /^scripts\/(export-e2e-web|serve-static|serve-web-export)\.mjs$/,
 ];
 
 const matches = (path, patterns) => patterns.some((pattern) => pattern.test(path));
-
-export { CI_EXECUTED_SCRIPTS };
 
 /** `files` is null when no diff could be taken, and empty when one was. */
 export function classify(files) {
   if (files === null) {
     return {
-      run_ci: true,
-      light_gate: true,
       full_gate: true,
       run_web_build: true,
+      run_e2e: true,
       deploy_web: true,
       deploy_mobile: true,
       reason: "no diff available; fail-open full gate and dual deploy",
@@ -219,39 +182,30 @@ export function classify(files) {
   const relevant = files.filter((file) => !matches(file, NO_APP_IMPACT));
   if (relevant.length === 0) {
     return {
-      run_ci: false,
-      // Every main push still proves the inexpensive baseline. `run_ci` keeps
-      // the no-impact tier visible without turning documentation into a bypass.
-      light_gate: true,
       full_gate: false,
       run_web_build: false,
+      run_e2e: false,
       deploy_web: false,
       deploy_mobile: false,
       reason: "no application impact; light gate retained",
     };
   }
 
-  const unknown = relevant.filter(
-    (file) => !matches(file, HIGH_RISK) && !isCiExecutedScript(file) && !matches(file, KNOWN_LIGHT),
-  );
-  const highRisk = relevant.filter(
-    (file) => matches(file, HIGH_RISK) || isCiExecutedScript(file) || unknown.includes(file),
-  );
+  const escalates = (file) => matches(file, HIGH_RISK) || CI_EXECUTED_SCRIPTS.includes(file);
+  const unknown = (file) => !escalates(file) && !matches(file, KNOWN_LIGHT);
+  const highRisk = relevant.filter((file) => escalates(file) || unknown(file));
   const deliveryControl = relevant.filter((file) => matches(file, DELIVERY_CONTROL));
   const shipping = relevant.filter((file) => !matches(file, NOT_SHIPPED));
-  const buildsWeb = relevant.filter(
-    (file) => !matches(file, NEVER_WEB_BUILD)
-      && (matches(file, AFFECTS_WEB_BUILD) || unknown.includes(file)),
-  );
+  const buildsWeb = (file) => matches(file, AFFECTS_WEB_BUILD) || unknown(file);
+  const run_web_build = deliveryControl.length > 0 || relevant.some(buildsWeb);
 
   return {
-    run_ci: true,
-    light_gate: true,
     full_gate: highRisk.length > 0,
-    run_web_build: deliveryControl.length > 0 || buildsWeb.length > 0,
-    deploy_web: deliveryControl.length > 0 || (shipping.length > 0 && buildsWeb.length > 0),
+    run_web_build,
+    run_e2e: run_web_build || relevant.some((file) => matches(file, E2E_INPUTS)),
+    deploy_web: deliveryControl.length > 0 || shipping.some(buildsWeb),
     deploy_mobile: deliveryControl.length > 0 || shipping.some(
-      (file) => matches(file, AFFECTS_MOBILE_UPDATE) || unknown.includes(file),
+      (file) => matches(file, AFFECTS_MOBILE_UPDATE) || unknown(file),
     ),
     reason: deliveryControl.length > 0
       ? `delivery control changed: ${deliveryControl.slice(0, 5).join(", ")}; full gate and dual republish`
@@ -261,8 +215,7 @@ export function classify(files) {
   };
 }
 
-const UNRESOLVABLE_BASE = "0000000000000000000000000000000000000000";
-const hasBase = (base) => Boolean(base) && base !== UNRESOLVABLE_BASE;
+const hasBase = (base) => Boolean(base) && !/^0+$/.test(base);
 
 function changedFiles(base, head) {
   // Rename detection can return only the destination. If a shipped path moves

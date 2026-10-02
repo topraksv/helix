@@ -14,6 +14,9 @@
  * last checked. A new high advisory fails the job. An acknowledgement that
  * stops matching also fails it, so an entry cannot outlive the problem it
  * describes.
+ *
+ * Helix and Gital run this same file; only `UNAUDITED` differs, because it
+ * names what each repository's own lockfile installs from outside the registry.
  */
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
@@ -41,9 +44,9 @@ const ACKNOWLEDGED = [
     // there is no fix to override to. The flaw is in RSA PKCS#1 v1.5 signature
     // verification. Both carriers are Node tooling: @expo/cli on the developer
     // machine and in CI, and @expo/code-signing-certificates, which expo-updates
-    // uses only to make and check code-signing certificates. Helix configures
-    // no `updates.codeSigningCertificate` in app.json, the phone verifies
-    // nothing through node-forge, and the web export does not contain it
+    // uses only to make and check code-signing certificates. Neither Helix nor
+    // Gital configures `updates.codeSigningCertificate` in app.json, the phone
+    // verifies nothing through node-forge, and neither web export contains it
     // (`grep -rl "node-forge\|forge.pki" dist` returns nothing, 2026-10-02).
     expectedPaths: ["expo", "expo-updates"],
     reason: "No patched release; reached only by build-time tooling and unused code signing, absent from the web export.",
@@ -60,7 +63,7 @@ const ACKNOWLEDGED = [
  * them, which is the same answer it would give for a version with a known
  * critical hole.
  *
- * SheetJS is the deliberate case. It left npm in 2023 and publishes from its
+ * SheetJS is Helix's deliberate case. It left npm in 2023 and publishes from its
  * own CDN, and the package is kept on that terms rather than swapped: the
  * spreadsheet import is the feature this app was built around. What it costs
  * is this list.
@@ -87,14 +90,19 @@ const UNAUDITED = [
 const BLOCKING = new Set(["high", "critical"]);
 
 function audit() {
+  let report;
   try {
     // npm exits non-zero when it finds anything at or above the audit level,
     // which is the normal case here — the report on stdout is what matters.
-    return JSON.parse(execFileSync("npm", ["audit", "--json"], { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 }));
+    report = JSON.parse(execFileSync("npm", ["audit", "--json"], { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 }));
   } catch (error) {
-    if (typeof error.stdout === "string" && error.stdout.trim().startsWith("{")) return JSON.parse(error.stdout);
-    throw error;
+    if (typeof error.stdout !== "string" || !error.stdout.trim().startsWith("{")) throw error;
+    report = JSON.parse(error.stdout);
   }
+  // An unreachable audit endpoint exits 0 with `{ message, error }` (npm 10,
+  // 2026-10-02): read as a report, that is no advisories and a green gate.
+  if (report.error) throw new Error(`npm audit returned no report: ${report.message ?? JSON.stringify(report.error)}`);
+  return report;
 }
 
 /**

@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 /**
  * Ask what was actually published, rather than whether a request succeeded.
+ * Helix and Gital run this same file.
  *
  *   node scripts/check-published.mjs entry <export-dir>
  *   node scripts/check-published.mjs web <base-url> [--entry <path>] [--wait <seconds>]
@@ -9,7 +10,8 @@
  *
  * `entry` prints the export's entry bundle as `path=…`, for $GITHUB_OUTPUT.
  * That name is a content hash, so no other build carries it, and `web` asks
- * the live site for exactly that name with the same code. A 200 would not do:
+ * the live site for exactly that name with the same code. It also refuses an
+ * export whose page has no title to show. A 200 would not do:
  * Pages answers 200 with the previous deploy while a new one propagates, and a
  * half-published artifact answers 200 for a shell whose bundle is gone.
  * Without `--entry`, `web` checks what the nightly can know — that the live
@@ -26,6 +28,11 @@ import { fileURLToPath } from "node:url";
 /** The entry bundle a page references, as a path below the site's base. */
 export function entryOf(html) {
   return /\/_expo\/static\/js\/web\/entry-[\w-]+\.js/.exec(html)?.[0] ?? null;
+}
+
+/** The title a browser shows: the first `<title>` in the document, empty or not. */
+export function titleOf(html) {
+  return /<title[^>]*>([^<]*)<\/title>/.exec(html)?.[1] ?? null;
 }
 
 /**
@@ -147,9 +154,9 @@ async function checkWeb(base, { expected, waitSeconds, version, slug }) {
   const served = appVersionOf(bundle.body, slug);
   if (served !== version) return fail(`production is not serving ${version}: the live bundle declares ${served ?? "no app version"}`);
   // A static route below the root, so a publication that carried only the
-  // shell is caught too.
-  const route = await get(`${site}/upcoming`);
-  if (route.status !== 200) return fail(`${site}/upcoming answered HTTP ${route.status}`);
+  // shell is caught too. Both applications have this one.
+  const route = await get(`${site}/privacy`);
+  if (route.status !== 200) return fail(`${site}/privacy answered HTTP ${route.status}`);
   console.log(`production serves ${entry}, declaring ${version}`);
   // The summary is Markdown rendered on the run page, so it records what this
   // run asserted and has now confirmed — the bundle name it was handed and the
@@ -189,8 +196,10 @@ async function main() {
   const projectMajor = () => sdkMajorOf(JSON.parse(readFileSync("package.json", "utf8")).dependencies.expo);
 
   if (command === "entry" && target) {
-    const entry = entryOf(readFileSync(join(target, "index.html"), "utf8"));
+    const html = readFileSync(join(target, "index.html"), "utf8");
+    const entry = entryOf(html);
     if (!entry) throw new Error(`${target}/index.html references no entry bundle`);
+    if (!titleOf(html)) throw new Error(`${target}/index.html shows no title: its first <title> is empty or missing`);
     process.stdout.write(`path=${entry}\n`);
   } else if (command === "web" && target) {
     const expected = option("--entry");

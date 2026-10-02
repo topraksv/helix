@@ -1,4 +1,5 @@
-# CodeQL, the workflow audit, and scheduled dependency auditing.
+# CodeQL, the workflow audit, and scheduled dependency auditing. Helix and
+# Gital run this same file.
 #
 # CodeQL and registry advisories stay off the delivery path because either can
 # change without a source change. They run for security-relevant paths and on a
@@ -126,7 +127,7 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci --ignore-scripts
-      # Measured 2026-08-07: 1339 packages with verified registry signatures,
+      # Measured on Helix 2026-08-07: 1339 packages with verified signatures,
       # 240 of them also carrying an attestation. A count that falls is a
       # package that stopped being verifiable.
       # Node 22 ships npm 10, whose attestation verifier does not understand
