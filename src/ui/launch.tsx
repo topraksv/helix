@@ -1,7 +1,7 @@
 /**
  * What a cold start shows between the native splash and the app: the mark
  * drawing itself on the splash's own ground, at the splash image's size and
- * place, so the hand-over from native to JavaScript changes nothing but the
+ * place, and the name writing itself under it, so the hand-over from native to JavaScript changes nothing but the
  * mark beginning to move. It is held until the root has something to show and
  * the drawing has had its time, then dissolves into the app.
  *
@@ -133,7 +133,7 @@ export function Launch({ settled, onGone }: { settled: boolean; onGone: () => vo
           : { opacity },
       ]}
     >
-      {drawable && <BrandMark size={SPLASH_MARK} duration={LAUNCH.draw} />}
+      {drawable && <BrandMark size={SPLASH_MARK} duration={LAUNCH.draw} named />}
     </Animated.View>
   );
 }

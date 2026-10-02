@@ -13,6 +13,7 @@ import DatabaseZap from "lucide-react-native/icons/database-zap";
 import Head from "expo-router/head";
 import { StatusBar } from "expo-status-bar";
 import * as SplashScreen from "expo-splash-screen";
+import * as SystemUI from "expo-system-ui";
 import { useFonts } from "expo-font";
 import { migrateDb } from "../db/migrate";
 import {
@@ -485,6 +486,15 @@ function RootLayoutInner({ launching, onSettled }: { launching: boolean; onSettl
   // choice changes; it overwrites those tags rather than adding another,
   // because only the first matching one is ever read.
   useEffect(() => syncThemeColorMeta(theme.palette.background), [theme.palette.background]);
+  // The root view shows through wherever no screen is drawn: beside a page
+  // sliding in, and in a phone's rounded corners. Unset, expo-system-ui leaves
+  // it white (black in dark), not the page's ground, in a store build as much
+  // as in Expo Go. Expo Go alone repaints it white each time it comes to the
+  // front (its `EXAppViewController`), which a store build has no part of.
+  useEffect(() => {
+    if (Platform.OS === "web") return;
+    void SystemUI.setBackgroundColorAsync(theme.palette.background).catch(() => {});
+  }, [theme.palette.background]);
 
 
   useEffect(() => {
