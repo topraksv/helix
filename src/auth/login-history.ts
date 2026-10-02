@@ -14,10 +14,7 @@ function previousKey(userId: string): string {
   return `helix.login.previous.${userId}`;
 }
 
-/**
- * Advance history only after a complete successful sign-in. The timestamp
- * returned is the login before the one being recorded, never this session.
- */
+/** The timestamp returned is the opening before this one, never this one. */
 export async function recordSuccessfulLogin(
   storage: LoginHistoryStorage,
   userId: string,
@@ -40,17 +37,6 @@ export async function startLoginHistory(
   await storage.set(currentKey(userId), signedInAt);
 }
 
-/** Seed users who receive this feature mid-session without moving history. */
-export async function seedCurrentLogin(
-  storage: LoginHistoryStorage,
-  userId: string,
-  signedInAt: string,
-): Promise<void> {
-  if (await storage.get(currentKey(userId))) return;
-  await storage.set(currentKey(userId), signedInAt);
-}
-
-/** Cold-starting an existing session does not advance login history. */
 export function loadPreviousLogin(storage: LoginHistoryStorage, userId: string): Promise<string | null> {
   return storage.get(previousKey(userId));
 }

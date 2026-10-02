@@ -138,10 +138,17 @@ describe("published surfaces", () => {
 
   it("reads the stores' SDK as the newest released one, not the newest listed", () => {
     // Trimmed from api.expo.dev on 2026-09-15, which listed 58 as a preview.
+    const notes = (major: number) => `https://expo.dev/changelog/sdk-${major}`;
     expect(storeSdkMajor({
       "58.0.0": { expoVersion: "~58.0.0-preview.1", iosClientVersion: "58.0.0" },
-      "57.0.0": { expoVersion: "~57.0.22", iosClientVersion: "57.0.9" },
-      "56.0.0": { expoVersion: "~56.0.0", iosClientVersion: "56.0.4" },
+      "57.0.0": { expoVersion: "~57.0.22", iosClientVersion: "57.0.9", releaseNoteUrl: notes(57) },
+      "56.0.0": { expoVersion: "~56.0.0", iosClientVersion: "56.0.4", releaseNoteUrl: notes(56) },
+    })).toBe(57);
+    // And on 2026-09-30 as a beta with no prerelease tag and no `beta` flag,
+    // on React Native 0.88.0-rc.3: only its missing release notes said so.
+    expect(storeSdkMajor({
+      "58.0.0": { expoVersion: "~58.0.2", iosClientVersion: "58.0.2" },
+      "57.0.0": { expoVersion: "~57.0.26", iosClientVersion: "57.0.9", releaseNoteUrl: notes(57) },
     })).toBe(57);
     expect(storeSdkMajor({})).toBeNull();
   });

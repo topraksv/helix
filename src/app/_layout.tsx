@@ -4,7 +4,7 @@
  * fully offline; sync, FX and notifications run opportunistically.
  */
 
-import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore, type ContextType } from "react";
 import { Platform, Text, useColorScheme, View } from "react-native";
 import { Stack, useRouter, useSegments } from "expo-router";
 import { screenKey } from "../domain/usage";
@@ -56,6 +56,7 @@ import { UndoSnackbar, useUndo } from "../ui/undo";
 import { tr } from "../i18n/tr";
 import { loadDevicePreferences } from "../services/device-preferences";
 import { DelayedLoadingIndicator, LoadingIndicator } from "../ui/loading-indicator";
+import { Launch } from "../ui/launch";
 import { HeaderBackButton, TransactionBackButton } from "../ui/header-back";
 import { cardScreenOptions, pageScreenOptions } from "../ui/header-bar";
 
@@ -225,6 +226,38 @@ export function setGlobalPalettePreference(pref: PaletteId, fromBackground?: str
   }, fromBackground);
 }
 
+/**
+ * One `Launch` above both boot phases rather than one in each: the outer wait
+ * and `RootLayoutInner`'s are different trees, and a mark remounted between
+ * them starts drawing again from nothing. The outer phase has a screen of its
+ * own on a failure, the reset page, or a recovery notice; the inner one
+ * reports through `settleInner`.
+ */
+function useLaunchGate(boot: {
+  dbError: string | null;
+  standaloneRecovery: boolean;
+  dbReady: boolean;
+  fontsReady: boolean;
+  databaseRecovery: DatabaseRecoveryNotice | null;
+}) {
+  const outerSettled =
+    boot.dbError != null || boot.standaloneRecovery || (boot.dbReady && boot.fontsReady && boot.databaseRecovery != null);
+  const [launched, setLaunched] = useState(false);
+  const [innerSettled, setInnerSettled] = useState(false);
+  const endLaunch = useCallback(() => setLaunched(true), []);
+  const settleInner = useCallback(() => setInnerSettled(true), []);
+  return { launched, settled: innerSettled || outerSettled, endLaunch, settleInner };
+}
+
+function LaunchOver({ launched, theme, settled, onGone }: { launched: boolean; theme: ContextType<typeof ThemeContext>; settled: boolean; onGone: () => void }) {
+  if (launched) return null;
+  return (
+    <ThemeContext.Provider value={theme}>
+      <Launch settled={settled} onGone={onGone} />
+    </ThemeContext.Provider>
+  );
+}
+
 export default function RootLayout() {
   // The static export prerenders this layout with no colour scheme, so the
   // HTML arrives with the light background baked in. Hydration keeps the DOM
@@ -308,10 +341,11 @@ export default function RootLayout() {
     [systemScheme],
   );
   const fontsReady = fontsLoaded || fontsError != null || fontGrace;
+  const { launched, settled: bootSettled, endLaunch, settleInner } = useLaunchGate({ dbError, standaloneRecovery, dbReady, fontsReady, databaseRecovery });
 
   return (
     <KeyboardSafeRoot>
-      <>
+      <View style={{ flex: 1 }}>
       {Platform.OS === "web" && (
         <Head>
           {/* Not "Helix" alone. This string is the browser tab, the search
@@ -348,7 +382,7 @@ export default function RootLayout() {
           </View>
           </ThemeContext.Provider>
         ) : (
-          <RootLayoutInner />
+          <RootLayoutInner launching={!launched} onSettled={settleInner} />
         )
       ) : standaloneRecovery ? (
         <ThemeContext.Provider value={bootTheme}>
@@ -381,18 +415,20 @@ export default function RootLayout() {
                 setAttempt((a) => a + 1);
               }}
             />
-          ) : (
+          ) : launched ? (
+            // A native retry after the launch screen has gone.
             <DelayedLoadingIndicator />
-          )}
+          ) : null}
         </View>
         </ThemeContext.Provider>
       )}
-      </>
+      <LaunchOver launched={launched} theme={bootTheme} settled={bootSettled} onGone={endLaunch} />
+      </View>
     </KeyboardSafeRoot>
   );
 }
 
-function RootLayoutInner() {
+function RootLayoutInner({ launching, onSettled }: { launching: boolean; onSettled: () => void }) {
   const systemScheme = useColorScheme();
   const [themePref, setThemePref] = useState<ThemePreference>("system");
   const [palettePref, setPalettePref] = useState<PaletteId>("clay");
@@ -485,10 +521,6 @@ function RootLayoutInner() {
     void bootstrap(); // DB is migrated before this component mounts
   }, [bootstrap]);
 
-  useEffect(() => {
-    if (ready) SplashScreen.hideAsync().catch(() => {});
-  }, [ready]);
-
   // The undo bar belongs to the session that raised it. Its message quotes a
   // real row ("Netflix · Silindi") and its action is a closure holding the
   // previous account's user id and row snapshot, both of which survive the
@@ -546,15 +578,24 @@ function RootLayoutInner() {
     if (guard.redirect) router.replace(guard.redirect);
   }, [guard.redirect, router]);
 
-  // A bare background here is indistinguishable from the app having died, and
-  // that is exactly how a stuck lock read was reported: "the screen vanishes".
-  // The indicator is delayed, so a normal boot still shows nothing at all.
+  // Whether this render draws the page and nothing on it: the wait before the
+  // first decision, or the one frame before a redirect lands. The launch screen
+  // stays over these, since dissolving into an empty page and then popping the
+  // screen in is the flash it exists to hide.
+  const blank =
+    !ready ||
+    locked === null ||
+    (!locked && !frozenGate && !guardQueryFailed && !awaitingFirstPull && guard.view === "wait");
+  useEffect(() => {
+    if (!blank) onSettled();
+  }, [blank, onSettled]);
+
+  // Only a cold start reaches this: `ready` and a resolved `locked` never
+  // revert, so the launch screen above is always what covers it. A bare
+  // background with nothing over it is how a stuck lock read was reported —
+  // "the screen vanishes" — and the mark resting there is what answers that.
   if (!ready || locked === null) {
-    return (
-      <View style={{ flex: 1, backgroundColor: theme.palette.background, alignItems: "center", justifyContent: "center" }}>
-        <DelayedLoadingIndicator />
-      </View>
-    );
+    return <View style={{ flex: 1, backgroundColor: theme.palette.background }} />;
   }
 
   if (locked) {
@@ -627,7 +668,9 @@ function RootLayoutInner() {
             // hold is the account's first pull, and a brand-new account has
             // nothing to pull — so the two say different things.
             <WaitingNotice kind={wait.kind} title={wait.title} message={wait.message} />
-          ) : !guard.redirect ? (
+          ) : !guard.redirect && !launching ? (
+            // Under the launch screen this would be a second progress bar
+            // that nobody can see and a screen reader still announces.
             <DelayedLoadingIndicator />
           ) : null}
         </View>

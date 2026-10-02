@@ -28,12 +28,18 @@ type Art = typeof import("./brand-art");
 let art: Art | undefined;
 let pending: Promise<Art> | undefined;
 
+/** Settles once the drawing can be drawn. The launch screen waits on it, so
+ *  its first frame after the native splash is the mark and never a blank box. */
+export function preloadBrandMark(): Promise<Art> {
+  return (pending ??= import("./brand-art").then((module) => (art = module)));
+}
+
 function useArt(): Art | undefined {
   const [, setArrived] = useState(art !== undefined);
   useEffect(() => {
     if (art) return;
     let live = true;
-    void (pending ??= import("./brand-art").then((module) => (art = module))).then(() => live && setArrived(true));
+    void preloadBrandMark().then(() => live && setArrived(true));
     return () => {
       live = false;
     };
@@ -96,14 +102,27 @@ function DrawMask({ id, stroke, drawn, gaps }: { id: string; stroke: Stroke; dra
   );
 }
 
-export function BrandMark({ size = 56, onGradient = false }: { size?: number; onGradient?: boolean }) {
+export function BrandMark({
+  size = 56,
+  onGradient = false,
+  duration,
+}: {
+  size?: number;
+  onGradient?: boolean;
+  /** The whole intro in milliseconds, the kit's timeline scaled evenly to fit.
+   *  The kit's own length when omitted; the launch screen asks for more, so a
+   *  cold start is long enough to be seen. */
+  duration?: number;
+}) {
   const { palette, paletteId } = useTheme();
   const drawing = useArt();
   const { leaves } = TIMELINE;
-  const elapsed = useIntro(leaves.at + leaves.every * ((drawing?.LEAVES.length ?? 1) - 1) + leaves.for, drawing !== undefined);
+  const natural = leaves.at + leaves.every * ((drawing?.LEAVES.length ?? 1) - 1) + leaves.for;
+  const pace = (duration ?? natural) / natural;
+  const elapsed = useIntro(duration ?? natural, drawing !== undefined);
   // `useId` answers with colons, which a `url(#…)` reference cannot hold.
   const id = useId().replace(/[^a-zA-Z0-9]/g, "");
-  const progress = (start: number, duration: number) => (elapsed === null ? 1 : easeOut(Math.min(1, Math.max(0, (elapsed - start) / duration))));
+  const progress = (start: number, length: number) => (elapsed === null ? 1 : easeOut(Math.min(1, Math.max(0, (elapsed - start * pace) / (length * pace)))));
   const ink = onGradient ? PALETTES[paletteId].dark.textStrong : palette.textStrong;
   const clay = PALETTES[paletteId].light.primary;
   const width = Math.round(size * MARK_ASPECT);

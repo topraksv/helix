@@ -27,7 +27,7 @@ import { tr } from "../i18n/tr";
 import { friendlyAuthError } from "./auth-errors";
 import { requestPasswordRecoveryEmail, resendSignUpConfirmation } from "./email-flows";
 import { pendingChangesWouldBeLost, signOutWithLocalFallback } from "./sign-out";
-import { loadPreviousLogin, recordSuccessfulLogin, seedCurrentLogin, startLoginHistory } from "./login-history";
+import { loadPreviousLogin, recordSuccessfulLogin, startLoginHistory } from "./login-history";
 import { parsePasswordRecoveryUrl, passwordRecoveryRequestRedirect } from "./recovery";
 import { LOCAL_ONLY_USER_ID } from "../domain/user-id";
 import { resetDiagnosticUploads } from "../services/diagnostics";
@@ -45,6 +45,12 @@ let verificationBrake: VerificationBrake = IDLE_BRAKE;
 let authLifecycleSubscribed = false;
 let explicitSignOutInProgress = false;
 let invalidationCleanup: Promise<void> | null = null;
+/**
+ * The account whose opening this launch has already counted. A remount runs
+ * bootstrap again, and after a sign-in it would otherwise record the sign-in a
+ * moment ago as "the previous one".
+ */
+let openingCountedFor: string | null = null;
 /**
  * The recovery token a reset link brought, held until the owner presses save.
  *
@@ -384,12 +390,15 @@ export const useSession = create<SessionStore>((set, get) => ({
         if (data.session.user.email) {
           await kv.set(LAST_EMAIL_KEY, data.session.user.email).catch(() => {});
         }
-        await seedCurrentLogin(
-          kv,
-          data.session.user.id,
-          data.session.user.last_sign_in_at ?? new Date().toISOString(),
-        ).catch(() => {});
-        const previousLoginAt = await loadPreviousLogin(kv, data.session.user.id).catch(() => null);
+        // Every opening counts, not only a password sign-in: the session
+        // refreshes itself, so counting sign-ins alone left the dashboard's
+        // "previous sign-in" on one date for months.
+        const countOpening = openingCountedFor !== data.session.user.id;
+        openingCountedFor = data.session.user.id;
+        const previousLoginAt = await (countOpening
+          ? recordSuccessfulLogin(kv, data.session.user.id, new Date().toISOString())
+          : loadPreviousLogin(kv, data.session.user.id)
+        ).catch(() => null);
         startSyncSession(data.session.user.id);
         set({ userId: data.session.user.id, email: data.session.user.email ?? null, ready: true, isOnlineSession: true, isNewSignup: false, previousLoginAt });
         return;
@@ -430,6 +439,7 @@ export const useSession = create<SessionStore>((set, get) => ({
     // the wrong thing, and failed identically on every retry.
     await kv.set(LAST_USER_KEY, data.user.id).catch(() => {});
     await kv.set(LAST_EMAIL_KEY, data.user.email ?? email).catch(() => {});
+    openingCountedFor = data.user.id;
     const previousLoginAt = await recordSuccessfulLogin(
       kv,
       data.user.id,
@@ -462,6 +472,7 @@ export const useSession = create<SessionStore>((set, get) => ({
     }
     await kv.set(LAST_USER_KEY, data.user.id).catch(() => {});
     await kv.set(LAST_EMAIL_KEY, data.user.email ?? email).catch(() => {});
+    openingCountedFor = data.user.id;
     await startLoginHistory(kv, data.user.id, new Date().toISOString()).catch(() => {});
     // A brand-new account has no cloud data to pull → go straight to onboarding
     // (isNewSignup), skipping the "await first pull" hold used for existing

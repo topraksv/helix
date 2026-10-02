@@ -14,7 +14,7 @@ export function friendlyAuthError(raw: string): string {
   if (/different from the old password|same_password/i.test(raw)) return tr.auth.errSamePassword;
   if (/password should be|weak password/i.test(raw)) return tr.auth.errWeakPassword;
   if (/email not confirmed/i.test(raw)) return tr.auth.errEmailNotConfirmed;
-  if (/email address not authorized|error sending (recovery )?email|smtp.*(not configured|failed)/i.test(raw)) {
+  if (/email address not authorized|error sending [a-z ]*email|smtp.*(not configured|failed)/i.test(raw)) {
     return tr.auth.errEmailDelivery;
   }
   if (/invalid.*email|email.*invalid|validate email/i.test(raw)) return tr.auth.errInvalidEmail;

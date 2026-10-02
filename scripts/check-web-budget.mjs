@@ -353,8 +353,16 @@ const root = process.argv[2] ?? "dist";
 // entry 3_341_132, total 4_025_892, export 7_707_283. ALL THREE COME DOWN by
 // the steps above — entry measured plus 6_868, so an on-demand reader coming
 // back (+20_477) still trips it; total ~1%, export ~1.5%.
+// 2026-10-02, 1.10.0: the launch screen, the mark drawing itself over the
+// boot. Attributed with source maps against a `git archive` of HEAD: HEAD
+// measured 3_345_824, so 1.9.2's mark had already added 4_692 unrecorded; the
+// launch adds `ui/launch.tsx` 2_052 and `app/_layout.tsx` 1_332, no
+// dependency byte. The gate measured entry 3_349_422, total 4_052_396, export
+// 7_338_456. Entry moves to measured plus 6_578, the guard above, so an
+// on-demand reader coming back (+20_477) still trips it; total and export
+// pass and do NOT move.
 const limits = {
-  entryJavaScript: 3_348_000,
+  entryJavaScript: 3_356_000,
   totalJavaScript: 4_066_000,
   // Fonts are 1_534_728 of this and the rest is one HTML file per route, so it
   // grows in coarser steps than the JavaScript above it — measured 8_037_112

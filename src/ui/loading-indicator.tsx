@@ -1,5 +1,6 @@
 /**
- * The app's one waiting visual and one delayed-reveal boundary.
+ * The app's one waiting visual and one delayed-reveal boundary, everywhere but
+ * a cold start, which `launch.tsx` covers with the mark instead.
  *
  * `DelayedLoading` owns the shared 350 ms threshold, so callers delay either
  * the whole notice or the compact indicator without stacking timers.

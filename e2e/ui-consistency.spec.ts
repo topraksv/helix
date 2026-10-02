@@ -2643,22 +2643,22 @@ test("a wait shows one indicator for its whole duration", async ({ page, context
   });
   await page.goto("/helix/");
 
+  // A cold start's one indicator is the launch screen's mark (1.10.0): no
+  // dots under it or over it, however long the boot waits, and no swap
+  // part-way, which is what a logo appearing after a threshold once did.
   const indicator = page.locator('[role="progressbar"]');
-  await expect(indicator).toBeVisible();
+  await expect(indicator).toHaveCount(1);
   await expect(indicator).toHaveAttribute("aria-label", /hazırlanıyor/i);
+  await expect(indicator.locator("svg")).not.toHaveCount(0);
 
-  // Three dots, and nothing that has to decode or lay out a second time. The
-  // indicator must not swap representation part-way through the wait, which is
-  // what a logo appearing after a threshold did.
   const shape = async () => indicator.evaluate((el) => ({
-    dots: el.querySelectorAll("div").length,
+    boxes: el.querySelectorAll("div").length,
     images: el.querySelectorAll("img,svg").length,
   }));
   const first = await shape();
-  expect(first.dots).toBe(3);
-  expect(first.images).toBe(0);
 
   await page.waitForTimeout(2_500);
+  await expect(indicator).toHaveCount(1);
   expect(await shape()).toEqual(first);
 });
 

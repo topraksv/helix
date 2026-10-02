@@ -6,7 +6,6 @@ import { requestPasswordRecoveryEmail, resendSignUpConfirmation } from "../../sr
 import {
   loadPreviousLogin,
   recordSuccessfulLogin,
-  seedCurrentLogin,
   startLoginHistory,
   type LoginHistoryStorage,
 } from "../../src/auth/login-history";
@@ -36,19 +35,12 @@ describe("successful login history", () => {
     expect(await loadPreviousLogin(storage, "u1")).toBe("2026-07-15T08:00:00.000Z");
   });
 
-  it("does not advance on a cold start and starts new accounts without a previous login", async () => {
+  it("starts new accounts without a previous login", async () => {
     const storage = memoryStorage();
     await startLoginHistory(storage, "u1", "2026-07-15T08:00:00.000Z");
     expect(await loadPreviousLogin(storage, "u1")).toBeNull();
     expect(await recordSuccessfulLogin(storage, "u1", "2026-07-16T09:00:00.000Z")).toBe("2026-07-15T08:00:00.000Z");
     expect(await loadPreviousLogin(storage, "u1")).toBe("2026-07-15T08:00:00.000Z");
-  });
-
-  it("seeds an existing mid-session user only once", async () => {
-    const storage = memoryStorage();
-    await seedCurrentLogin(storage, "u1", "2026-07-15T08:00:00.000Z");
-    await seedCurrentLogin(storage, "u1", "2026-07-15T09:00:00.000Z");
-    expect(await recordSuccessfulLogin(storage, "u1", "2026-07-16T10:00:00.000Z")).toBe("2026-07-15T08:00:00.000Z");
   });
 });
 
@@ -63,6 +55,9 @@ describe("friendly auth errors", () => {
     expect(friendlyAuthError("Email not confirmed")).toBe(tr.auth.errEmailNotConfirmed);
     expect(friendlyAuthError("Email address not authorized")).toBe(tr.auth.errEmailDelivery);
     expect(friendlyAuthError("Error sending recovery email")).toBe(tr.auth.errEmailDelivery);
+    // What Auth answers a sign-up when its SMTP refuses, measured on Gital's live project 2026-09-28.
+    expect(friendlyAuthError("Error sending confirmation email")).toBe(tr.auth.errEmailDelivery);
+    expect(friendlyAuthError("Error sending email change email")).toBe(tr.auth.errEmailDelivery);
     expect(friendlyAuthError("Unable to validate email address: invalid format")).toBe(tr.auth.errInvalidEmail);
   });
 

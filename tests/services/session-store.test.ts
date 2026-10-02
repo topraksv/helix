@@ -280,6 +280,48 @@ describe("bootstrap with a live Supabase session", () => {
     // offline path below to pick up on the next launch.
     expect(harness.store.get(USER_KEY)).toBeUndefined();
   });
+
+  /**
+   * Sessions refresh themselves, so a password sign-in is rare: when only that
+   * advanced the history, the dashboard's "previous sign-in" stayed on the same
+   * day for months. Every opening of the account counts, and the badge shows
+   * the one before this. Each launch is a fresh module because "this launch"
+   * is module state.
+   */
+  it("counts every opening and shows the one before it", async () => {
+    harness.supabase.auth.getSession.mockResolvedValue({ data: { session: { user: USER_A } } });
+    harness.store.set(`helix.login.current.${USER_A.id}`, "2026-09-01T08:00:00.000Z");
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      vi.setSystemTime(new Date("2026-09-02T09:00:00.000Z"));
+      const monday = await freshSession();
+      await monday.getState().bootstrap();
+      expect(monday.getState().previousLoginAt).toBe("2026-09-01T08:00:00.000Z");
+
+      vi.setSystemTime(new Date("2026-09-03T10:00:00.000Z"));
+      const tuesday = await freshSession();
+      await tuesday.getState().bootstrap();
+      expect(tuesday.getState().previousLoginAt).toBe("2026-09-02T09:00:00.000Z");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("counts one launch once, however often it is opened", async () => {
+    harness.supabase.auth.getSession.mockResolvedValue({ data: { session: { user: USER_A } } });
+    harness.supabase.auth.signInWithPassword.mockResolvedValue({ data: { user: USER_A }, error: null });
+    harness.store.set(`helix.login.current.${USER_A.id}`, "2026-08-31T07:00:00.000Z");
+    const session = await freshSession();
+
+    expect(await session.getState().signIn(USER_A.email, "pw")).toBeNull();
+    // A remount re-runs bootstrap in the same launch; it must not turn the
+    // sign-in a moment ago into "the previous one".
+    await session.getState().bootstrap();
+    await session.getState().bootstrap();
+
+    expect(session.getState().previousLoginAt).toBe("2026-08-31T07:00:00.000Z");
+    expect(harness.store.get(`helix.login.current.${USER_A.id}`)).toBe(USER_A.last_sign_in_at);
+  });
 });
 
 describe("bootstrap while offline", () => {

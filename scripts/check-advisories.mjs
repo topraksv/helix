@@ -31,7 +31,24 @@ import { readFileSync } from "node:fs";
  * list like this turns into the place advisories go to be forgotten, which is
  * why a stale entry is reported as loudly as an unacknowledged advisory.
  */
-const ACKNOWLEDGED = [];
+const ACKNOWLEDGED = [
+  {
+    id: "GHSA-86w9-cpqp-85rv",
+    package: "node-forge",
+    checkedOn: "2026-10-02",
+    recheckAfter: "2026-12-01",
+    // Affects every release through 1.4.0, which is the latest published, so
+    // there is no fix to override to. The flaw is in RSA PKCS#1 v1.5 signature
+    // verification. Both carriers are Node tooling: @expo/cli on the developer
+    // machine and in CI, and @expo/code-signing-certificates, which expo-updates
+    // uses only to make and check code-signing certificates. Helix configures
+    // no `updates.codeSigningCertificate` in app.json, the phone verifies
+    // nothing through node-forge, and the web export does not contain it
+    // (`grep -rl "node-forge\|forge.pki" dist` returns nothing, 2026-10-02).
+    expectedPaths: ["expo", "expo-updates"],
+    reason: "No patched release; reached only by build-time tooling and unused code signing, absent from the web export.",
+  },
+];
 
 /**
  * Dependencies the registry audit cannot see, and the review that replaces it.

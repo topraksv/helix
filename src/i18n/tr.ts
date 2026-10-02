@@ -498,7 +498,7 @@ export const tr = {
     errSamePassword: "Yeni şifren eskisiyle aynı olamaz; farklı bir şifre seç.",
     errEmailNotConfirmed: "E-posta adresin henüz doğrulanmamış; gelen kutunu kontrol et.",
     errInvalidEmail: "Geçerli bir e-posta adresi gir.",
-    errEmailDelivery: "Şifre yenileme e-postası şu anda gönderilemiyor. Uygulama yöneticisi posta servisini yapılandırmalı.",
+    errEmailDelivery: "E-posta şu anda gönderilemiyor. Birazdan tekrar dene; sürerse Geri bildirim'den haber ver.",
     errSessionExpired: "Oturumun doğrulanamadı. Lütfen çıkış yapıp yeniden giriş yap.",
     errService: "Sunucu şu anda yanıt vermiyor. Birazdan tekrar dene.",
     errGeneric: "İşlem tamamlanamadı. Lütfen tekrar dene.",

@@ -60,7 +60,7 @@ const CI_EXECUTED_SCRIPTS = [
 ];
 
 /** Money, persistence, identity, sync, native and delivery boundaries. */
-export const HIGH_RISK = [
+const HIGH_RISK = [
   /^src\/domain\//,
   /^src\/data\//,
   /^src\/db\//,

@@ -54,11 +54,14 @@ export function appVersionOf(bundle, slug) {
  * That list names a preview SDK before any store carries its client: on
  * 2026-09-15 it listed 58.0.0, client builds included, while its `expoVersion`
  * still read `~58.0.0-preview.1`. So "newest" means newest released — an
- * `expoVersion` with no prerelease tag.
+ * `expoVersion` with no prerelease tag. On 2026-09-30 the beta lost that tag
+ * and carried no `beta` flag either, and the nightly failed for two nights on
+ * an SDK no store had; what every released SDK has and a beta lacks is its
+ * release notes, so a released one is also one with a `releaseNoteUrl`.
  */
 export function storeSdkMajor(sdkVersions) {
   const released = Object.entries(sdkVersions ?? {})
-    .filter(([, sdk]) => typeof sdk?.expoVersion === "string" && !sdk.expoVersion.includes("-") && sdk.beta !== true)
+    .filter(([, sdk]) => typeof sdk?.expoVersion === "string" && !sdk.expoVersion.includes("-") && sdk.beta !== true && typeof sdk.releaseNoteUrl === "string")
     .map(([version]) => Number.parseInt(version, 10))
     .filter((major) => Number.isInteger(major));
   return released.length > 0 ? Math.max(...released) : null;
