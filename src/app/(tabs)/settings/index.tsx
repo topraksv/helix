@@ -58,7 +58,7 @@ import { dateLabel, dateTimeLabel, tr } from "../../../i18n/tr";
 import { Badge, Body, Button, Card, ChoiceTile, DataStateNotice, Field, ListRow, OperationStatusNotice, Row, Screen, SectionHeader, Toggle } from "../../../ui/components";
 import { appAlert, appConfirm } from "../../../ui/dialog";
 import { OperationCancelledError, useTrackedOperation, type TrackedOperationContext } from "../../../ui/operation-guard";
-import { circle, density, font, PALETTES, radius, spacing, type, type Palette, type ThemePreference, useTheme } from "../../../ui/theme";
+import { circle, density, font, PALETTES, radius, spacing, type, type Palette, type ThemePreference, resolveThemePreference, useTheme } from "../../../ui/theme";
 import { selectionTapIfChanged } from "../../../ui/haptics";
 import { todayISO } from "../../../domain/dates";
 import { formatMinorCompact } from "../../../domain/money";
@@ -315,7 +315,7 @@ export default function SettingsScreen() {
 
   React.useEffect(() => {
     void Promise.all([kv.get("helix.theme"), kv.get("helix.biometric")]).then(([theme, biometricValue]) => {
-      if (theme === "light" || theme === "dark" || theme === "system") setThemePref(theme);
+      setThemePref(resolveThemePreference(theme));
       setBiometric(biometricValue === "true");
     }).finally(() => setLocalPreferencesLoaded(true));
   }, []);

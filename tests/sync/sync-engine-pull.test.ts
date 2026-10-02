@@ -488,7 +488,8 @@ describe("a page the device refuses", () => {
     startSyncSession(USER);
 
     expect(await syncNow(USER, false)).toBe(false);
-    expect(logger.devError).toHaveBeenCalledWith("sync", "pull persons: permission denied for table categories");
+    // `settings` is merged first: its `onboarded` flag ends the first-pull wait.
+    expect(logger.devError).toHaveBeenCalledWith("sync", "pull settings: permission denied for table categories");
   });
 });
 

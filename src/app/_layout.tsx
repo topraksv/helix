@@ -28,14 +28,13 @@ import { classifyBootFailure, classifyRootRoute, drawsWithoutDatabase, resolveRo
 import ResetPasswordScreen from "./(auth)/reset-password";
 import { kv } from "../services/kv";
 import {
-  darkPalette,
   font,
   radius,
   contentWidth,
   spacing,
   resolvePaletteId,
+  resolveThemePreference,
   DEFAULT_PALETTE_ID,
-  lightPalette,
   PALETTES,
   ThemeContext,
   type,
@@ -250,8 +249,33 @@ function useLaunchGate(boot: {
   return { launched, settled: innerSettled || outerSettled, endLaunch, settleInner };
 }
 
-function LaunchOver({ launched, theme, settled, onGone }: { launched: boolean; theme: ContextType<typeof ThemeContext>; settled: boolean; onGone: () => void }) {
-  if (launched) return null;
+type SavedThemePrefs = { theme: ThemePreference; palette: PaletteId };
+const DEFAULT_THEME_PREFS: SavedThemePrefs = { theme: "system", palette: DEFAULT_PALETTE_ID };
+let savedThemePrefs: Promise<SavedThemePrefs> | null = null;
+
+/**
+ * The saved theme, read once per launch. It lives on the device, not in the
+ * database, so the launch screen can paint the user's own ground before the
+ * database opens; the root starts from the same answer. A refused read is the
+ * defaults rather than a launch screen that never comes.
+ */
+function readSavedThemePrefs(): Promise<SavedThemePrefs> {
+  savedThemePrefs ??= Promise.all([kv.get("helix.theme"), kv.get("helix.palette")]).then(
+    ([theme, palette]) => ({ theme: resolveThemePreference(theme), palette: resolvePaletteId(palette) }),
+    () => DEFAULT_THEME_PREFS,
+  );
+  return savedThemePrefs;
+}
+
+function themeFor(prefs: SavedThemePrefs, systemScheme: string | null | undefined): ContextType<typeof ThemeContext> {
+  const scheme = prefs.theme === "system" ? (systemScheme === "dark" ? "dark" : "light") : prefs.theme;
+  return { palette: PALETTES[prefs.palette][scheme], scheme, paletteId: prefs.palette };
+}
+
+/** Mounted once the saved theme is read: until then the native splash stays up,
+ *  and the mark is drawn on the ground of the theme the app opens in. */
+function LaunchOver({ launched, theme, settled, onGone }: { launched: boolean; theme: ContextType<typeof ThemeContext> | null; settled: boolean; onGone: () => void }) {
+  if (launched || !theme) return null;
   return (
     <ThemeContext.Provider value={theme}>
       <Launch settled={settled} onGone={onGone} />
@@ -322,26 +346,20 @@ export default function RootLayout() {
     return () => clearTimeout(t);
   }, []);
 
-  const background = systemScheme === "dark" ? darkPalette.background : lightPalette.background;
-  const foreground = systemScheme === "dark" ? darkPalette.text : lightPalette.text;
-  /**
-   * The theme for the screens that exist BEFORE preferences are readable.
-   *
-   * The database has not opened yet, so the saved palette is unknown; the
-   * system scheme is the one thing that is. It is the default palette in the
-   * right scheme rather than a guess at the user's chosen one, which is enough
-   * for the two controls this path draws and stops them being the only
-   * surfaces in the app outside the design system.
-   */
-  const bootTheme = useMemo(
-    () => ({
-      palette: systemScheme === "dark" ? darkPalette : lightPalette,
-      scheme: (systemScheme === "dark" ? "dark" : "light") as "light" | "dark",
-      paletteId: DEFAULT_PALETTE_ID,
-    }),
-    [systemScheme],
-  );
   const fontsReady = fontsLoaded || fontsError != null || fontGrace;
+  const [savedPrefs, setSavedPrefs] = useState<SavedThemePrefs | null>(null);
+  useEffect(() => {
+    let live = true;
+    void readSavedThemePrefs().then((prefs) => live && setSavedPrefs(prefs));
+    return () => {
+      live = false;
+    };
+  }, []);
+  /** The screens before the database — its failure, its recovery notice, the
+   *  reset page — in the saved theme, and the default palette only for the
+   *  moment before it is read. The launch screen waits for the saved one. */
+  const bootTheme = useMemo(() => themeFor(savedPrefs ?? DEFAULT_THEME_PREFS, systemScheme), [savedPrefs, systemScheme]);
+  const { background, text: foreground } = bootTheme.palette;
   const { launched, settled: bootSettled, endLaunch, settleInner } = useLaunchGate({ dbError, standaloneRecovery, dbReady, fontsReady, databaseRecovery });
 
   return (
@@ -423,7 +441,7 @@ export default function RootLayout() {
         </View>
         </ThemeContext.Provider>
       )}
-      <LaunchOver launched={launched} theme={bootTheme} settled={bootSettled} onGone={endLaunch} />
+      <LaunchOver launched={launched} theme={savedPrefs && bootTheme} settled={bootSettled} onGone={endLaunch} />
       </View>
     </KeyboardSafeRoot>
   );
@@ -432,7 +450,7 @@ export default function RootLayout() {
 function RootLayoutInner({ launching, onSettled }: { launching: boolean; onSettled: () => void }) {
   const systemScheme = useColorScheme();
   const [themePref, setThemePref] = useState<ThemePreference>("system");
-  const [palettePref, setPalettePref] = useState<PaletteId>("clay");
+  const [palettePref, setPalettePref] = useState<PaletteId>(DEFAULT_PALETTE_ID);
   const { userId, ready, bootstrap, isOnlineSession, isNewSignup, isFreezing } = useSession();
   const lifecycle = useLifecycleIntent();
   const { locked, unlock } = useBiometricLock(ready, userId);
@@ -470,17 +488,11 @@ function RootLayoutInner({ launching, onSettled }: { launching: boolean; onSettl
     refreshOnboarded: onboardedState.retry,
   });
 
-  const scheme: "light" | "dark" =
-    themePref === "system" ? (systemScheme === "dark" ? "dark" : "light") : themePref;
-  const paletteId = palettePref;
   const theme = useMemo(
-    () => ({
-      palette: PALETTES[paletteId][scheme],
-      scheme,
-      paletteId,
-    }),
-    [paletteId, scheme],
+    () => themeFor({ theme: themePref, palette: palettePref }, systemScheme),
+    [themePref, palettePref, systemScheme],
   );
+  const { scheme } = theme;
   // The shell declares one `theme-color` per scheme so the browser chrome is
   // right before any of this mounts. This is what an explicit in-app theme
   // choice changes; it overwrites those tags rather than adding another,
@@ -515,9 +527,9 @@ function RootLayoutInner({ launching, onSettled }: { launching: boolean; onSettl
 
   useEffect(() => {
     void loadDevicePreferences();
-    void Promise.all([kv.get("helix.theme"), kv.get("helix.palette")]).then(([themeValue, paletteValue]) => {
-      if (themeValue === "light" || themeValue === "dark" || themeValue === "system") setThemePref(themeValue);
-      setPalettePref(resolvePaletteId(paletteValue));
+    void readSavedThemePrefs().then((prefs) => {
+      setThemePref(prefs.theme);
+      setPalettePref(prefs.palette);
     });
     themePrefListeners.add(setThemePref);
     palettePrefListeners.add(setPalettePref);

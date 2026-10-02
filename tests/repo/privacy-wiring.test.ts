@@ -102,7 +102,8 @@ describe("account-scoped state and redaction wiring", () => {
     // Sign-out, account deletion, remote invalidation and account switch all
     // reach the same reset; a fifth teardown path added without it would show up
     // here as a count mismatch rather than as a silent leak.
-    expect(session.match(/await clearAccountScopedDeviceState\(\)/g)).toHaveLength(4);
+    // Every call, awaited alone or inside a `Promise.all`; not the declaration.
+    expect(session.match(/clearAccountScopedDeviceState\(\)(?!:)/g)).toHaveLength(4);
     // Assert the rule, not the literal: EVERY field the sync status store holds
     // has to be named in the reset. Pinning the exact string made this break on
     // an unrelated but correct change, and — worse — it would have stayed green

@@ -366,6 +366,11 @@ export function resolvePaletteId(value: string | null): PaletteId {
   return isPaletteId(value) ? value : DEFAULT_PALETTE_ID;
 }
 
+/** Tema tercihi için aynısı: tanınmayan değer sistemi izler. */
+export function resolveThemePreference(value: string | null): ThemePreference {
+  return value === "light" || value === "dark" || value === "system" ? value : "system";
+}
+
 export const spacing = { xs: 4, sm: 8, md: 12, lg: 16, xl: 24, xxl: 32 } as const;
 
 /**

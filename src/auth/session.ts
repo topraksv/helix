@@ -604,8 +604,7 @@ export const useSession = create<SessionStore>((set, get) => ({
     await stopSyncSession(userId ?? undefined);
     disconnectMarkets();
     clearRateCache();
-    await clearAccountNotifications(true).catch(() => {});
-    await clearAccountScopedDeviceState();
+    await Promise.all([clearAccountNotifications(true).catch(() => {}), clearAccountScopedDeviceState()]);
     // Best practice for a finance app: leave no plaintext financial data on the
     // device after an explicit sign-out. The cloud (RLS-scoped) is the source
     // of truth, so the next sign-in re-hydrates via the initial pull. Clearing
@@ -691,10 +690,12 @@ export const useSession = create<SessionStore>((set, get) => ({
     // and end the session.
     disconnectMarkets();
     clearRateCache();
-    await clearAccountNotifications(true).catch(() => {});
-    await clearAccountScopedDeviceState();
+    await Promise.all([clearAccountNotifications(true).catch(() => {}), clearAccountScopedDeviceState()]);
     const supabase = getSupabase();
-    if (supabase) {
+    // The revocation is a round trip and the wipe is local, and neither needs
+    // the other, so they run side by side; both settle before the session ends.
+    const revoke = (async () => {
+      if (!supabase) return;
       explicitSignOutInProgress = true;
       try {
         // The identity itself is gone, so every device's token should go with
@@ -703,10 +704,9 @@ export const useSession = create<SessionStore>((set, get) => ({
       } finally {
         explicitSignOutInProgress = false;
       }
-    }
-    try {
-      await resetLocalWorkspace();
-    } catch {
+    })();
+    const [, wiped] = await Promise.all([revoke, resetLocalWorkspace().then(() => true, () => false)]);
+    if (!wiped) {
       // The cloud identity is already gone, so keep the local owner marker and
       // surface an actionable error. A future account cannot open this
       // workspace: ensureWorkspaceFor will retry the wipe first.

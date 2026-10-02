@@ -35,14 +35,10 @@ export function nowIso(): string {
  */
 export async function resetLocalWorkspace(): Promise<void> {
   const sqlite = await getSqliteAsync();
-  await withTransaction(async () => {
-    for (const table of Object.keys(SYNCED_TABLES) as SyncedTableName[]) {
-      await sqlite.runAsync(`DELETE FROM ${table}`, []);
-    }
-    await sqlite.runAsync(`DELETE FROM outbox`, []);
-    await sqlite.runAsync(`DELETE FROM sync_dead_letters`, []);
-    await sqlite.runAsync(`DELETE FROM sync_state`, []);
-  });
+  // One script rather than a statement per table: on the web every call is a
+  // round trip to the SQLite worker, and a sign-out waited on one per table.
+  const tables = [...Object.keys(SYNCED_TABLES), "outbox", "sync_dead_letters", "sync_state"];
+  await withTransaction(() => sqlite.execAsync(tables.map((table) => `DELETE FROM ${table};`).join("\n")));
 }
 
 /** camelCase Drizzle row → snake_case DB/remote payload. */

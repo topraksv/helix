@@ -1,6 +1,7 @@
 import { ScrollViewStyleReset } from "expo-router/html";
 import { type PropsWithChildren } from "react";
 import { tr } from "../i18n/tr";
+import { darkPalette, lightPalette } from "../ui/theme";
 import { MARKET_DATA_HOST } from "../domain/market";
 import { trustedSupabaseOrigin } from "../domain/web-security";
 
@@ -21,9 +22,10 @@ const SITE_URL = "https://topraksv.github.io/helix/";
  *  encoding is the right one. */
 const OG_IMAGE = "og-cover.jpg";
 
-/** The splash colours from `app.json`, which are the app's own first frame. */
-const LIGHT_BACKGROUND = "#E7ECEB";
-const DARK_BACKGROUND = "#101315";
+/** The splash colours in `app.json`: the default palette's ground, which the
+ *  launch screen keeps for anyone who has not chosen another. */
+const LIGHT_BACKGROUND = lightPalette.background;
+const DARK_BACKGROUND = darkPalette.background;
 
 const STRUCTURED_DATA = {
   "@context": "https://schema.org",

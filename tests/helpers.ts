@@ -91,6 +91,7 @@ export function sqliteClientMock(db: () => DatabaseSync, onAcquire?: () => void)
         runAsync: async (sql: string, args: unknown[] = []) => ({
           changes: Number(db().prepare(sql).run(...(args as never[])).changes),
         }),
+        execAsync: async (sql: string) => void db().exec(sql),
       };
     },
     withTransaction: async (task: () => Promise<void>) => {

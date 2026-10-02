@@ -6,7 +6,8 @@
  * intro ends every mask is dropped, so the resting mark is the kit's exact
  * drawing. The ink follows the theme and the clay leaves the palette's
  * accent, as the kit's dark, petrol and servi marks do; `onGradient` inks it
- * for a dark ground whatever the scheme. `named` writes the name under it,
+ * for a dark ground whatever the scheme. Only a cold start draws it; every
+ * other screen shows it at rest. `named` writes the name under it,
  * left to right, as a cold start shows it. Reduced motion draws it at rest.
  *
  * The drawing, 18 KB of path data, is its own chunk on the web: the entry had
@@ -104,11 +105,11 @@ function Name({ id, art, ink, written }: { id: string; art: Art; ink: string; wr
  * than an animated value: a mask's stroke is not a prop the native driver can
  * reach, and under two seconds of re-renders on one small tree costs nothing.
  */
-function useIntro(duration: number, ready: boolean): number | null {
+function useIntro(duration: number | undefined, ready: boolean): number | null {
   const reducedMotion = useReducedMotion();
   const [elapsed, setElapsed] = useState<number | null>(0);
   useEffect(() => {
-    if (reducedMotion || !ready) return;
+    if (reducedMotion || !ready || duration === undefined) return;
     const start = Date.now();
     let frame = 0;
     const tick = () => {
@@ -120,7 +121,7 @@ function useIntro(duration: number, ready: boolean): number | null {
     frame = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(frame);
   }, [reducedMotion, duration, ready]);
-  return reducedMotion ? null : elapsed;
+  return reducedMotion || duration === undefined ? null : elapsed;
 }
 
 function DrawMask({ id, stroke, drawn, gaps }: { id: string; stroke: Stroke; drawn: number; gaps?: Art["RUNG_GAPS"] }) {
@@ -150,8 +151,8 @@ export function BrandMark({
   onGradient?: boolean;
   named?: boolean;
   /** The whole intro in milliseconds, the kit's timeline scaled evenly to fit.
-   *  The kit's own length when omitted; the launch screen asks for more, so a
-   *  cold start is long enough to be seen. */
+   *  Omitted, the mark is drawn at rest: the owner wants it to draw itself on
+   *  a cold start and nowhere else (2026-10-02). */
   duration?: number;
 }) {
   const { palette, paletteId } = useTheme();
@@ -159,7 +160,7 @@ export function BrandMark({
   const { leaves } = TIMELINE;
   const natural = leaves.at + leaves.every * ((drawing?.LEAVES.length ?? 1) - 1) + leaves.for;
   const pace = (duration ?? natural) / natural;
-  const elapsed = useIntro(duration ?? natural, drawing !== undefined);
+  const elapsed = useIntro(duration, drawing !== undefined);
   // `useId` answers with colons, which a `url(#…)` reference cannot hold.
   const id = useId().replace(/[^a-zA-Z0-9]/g, "");
   const progress = (start: number, length: number) => (elapsed === null ? 1 : easeOut(Math.min(1, Math.max(0, (elapsed - start * pace) / (length * pace)))));

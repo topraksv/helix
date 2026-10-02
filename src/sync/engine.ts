@@ -63,6 +63,10 @@ async function tryRefreshSession(): Promise<RefreshOutcome> {
 }
 
 const PULL_PAGE = 1000;
+const PULL_ORDER: readonly SyncedTableName[] = [
+  "settings",
+  ...(Object.keys(SYNCED_TABLES) as SyncedTableName[]).filter((table) => table !== "settings"),
+];
 const PUSH_BATCH = 200;
 
 /** Columns needing type coercion between SQLite and Postgres. */
@@ -379,8 +383,6 @@ async function pullAndMerge(userId: string, token: SessionEpochToken): Promise<n
   const supabase = getSupabase()!;
   const sqlite = await getSqliteAsync();
   let superseded = 0;
-  const tables = Object.keys(SYNCED_TABLES) as SyncedTableName[];
-
   // One read for every cursor. `sync_state` holds one small row per table,
   // and this was one statement per table before.
   const cursorRows = await sqlite.getAllAsync<{ table_name: string; last_pulled_at: string }>(
@@ -394,40 +396,54 @@ async function pullAndMerge(userId: string, token: SessionEpochToken): Promise<n
   // A workspace that has never pulled anything has nothing to skip, so the
   // probe could only add a round trip. Every other sync asks once and then
   // pulls the few tables that actually moved.
-  const heads = tables.some((table) => cursorFor(table).ts !== PULL_EPOCH)
+  const heads = PULL_ORDER.some((table) => cursorFor(table).ts !== PULL_EPOCH)
     ? await fetchServerHeads(supabase, token)
     : null;
-  // `filter` keeps the declaration order, parents before children. The local
-  // schema declares no foreign key, so `PRAGMA foreign_keys = ON` enforces
-  // nothing here; what the order buys is that a pull cut short between tables
-  // never leaves a child ahead of its parent. That is why the pending tables
-  // are pulled one after another rather than concurrently.
-  const pending = heads
-    ? tables.filter((table) =>
-        !heads.has(table) || !cursorIsAtServerHead(cursorFor(table), heads.get(table) ?? null))
-    : tables;
+  // Merged in declaration order, parents before children, except that
+  // `settings` goes first: it is nobody's parent, and its `onboarded` flag is
+  // what releases the first-pull wait — behind every ledger row it held that
+  // wait for the whole history. The local schema declares no foreign key, so
+  // `PRAGMA foreign_keys = ON` enforces nothing here; what the order buys is
+  // that a pull cut short between tables never leaves a child ahead of its
+  // parent.
+  const pending = PULL_ORDER.filter((table) =>
+    !heads || !heads.has(table) || !cursorIsAtServerHead(cursorFor(table), heads.get(table) ?? null));
+
+  // Cursor is a keyset on (updated_at, id) encoded as "ts|id"; a plain ISO
+  // string is the legacy form (id empty). A composite cursor is required so a
+  // page boundary that splits rows sharing one updated_at never skips them.
+  const fetchPage = (table: SyncedTableName, { ts, id }: PullCursor) => {
+    const query = supabase
+      .from(table)
+      .select("*")
+      .order("updated_at", { ascending: true })
+      .order("id", { ascending: true })
+      .limit(PULL_PAGE);
+    return Promise.resolve(
+      (id
+        ? query.or(`updated_at.gt.${ts},and(updated_at.eq.${ts},id.gt.${id})`)
+        // A legacy cursor has no id tie-breaker. Include its timestamp once so
+        // rows sharing that timestamp are recovered during the migration to
+        // the composite cursor; the LWW merge makes the replay idempotent.
+        : query.gte("updated_at", ts)
+      ).abortSignal(token.signal),
+    );
+  };
+  // Every table's first page is asked for at once; only the merge is ordered.
+  // One after another, a first pull was 22 round trips before the first
+  // screen, and most tables fit in one page. A page asked for and never merged
+  // — the pull stopped at an earlier table — is dropped; it cannot reject
+  // unobserved, since PostgREST without `throwOnError` answers a failed or
+  // aborted fetch with `{ error }`.
+  const firstPages = new Map(pending.map((table) => [table, fetchPage(table, cursorFor(table))] as const));
 
   for (const table of pending) {
     assertActive(token);
     const allowed = KNOWN_COLUMNS.get(table)!;
-    // Cursor is a keyset on (updated_at, id) encoded as "ts|id"; a plain ISO
-    // string is the legacy form (id empty). A composite cursor is required so a
-    // page boundary that splits rows sharing one updated_at never skips them.
     let { ts: curTs, id: curId } = cursorFor(table);
+    let next = firstPages.get(table)!;
     for (;;) {
-      let query = supabase
-        .from(table)
-        .select("*")
-        .order("updated_at", { ascending: true })
-        .order("id", { ascending: true })
-        .limit(PULL_PAGE);
-      query = curId
-        ? query.or(`updated_at.gt.${curTs},and(updated_at.eq.${curTs},id.gt.${curId})`)
-        // A legacy cursor has no id tie-breaker. Include its timestamp once so
-        // rows sharing that timestamp are recovered during the migration to
-        // the composite cursor; the LWW merge makes the replay idempotent.
-        : query.gte("updated_at", curTs);
-      const { data, error } = await query.abortSignal(token.signal);
+      const { data, error } = await next;
       if (error) throw new Error(`pull ${table}: ${error.message}`);
       if (!data || data.length === 0) break;
 
@@ -472,6 +488,7 @@ async function pullAndMerge(userId: string, token: SessionEpochToken): Promise<n
         );
       });
       if (data.length < PULL_PAGE) break;
+      next = fetchPage(table, { ts: curTs, id: curId });
     }
   }
   return superseded;

@@ -6,6 +6,15 @@ defterinde yazılıdır ve bu depoya dahil değildir.
 
 Notlar kısa tutulur: ne değişti, tek cümle. Sebebi ve ölçümü commit'te.
 
+## 1.9.4
+
+### Patch Changes
+
+- İşaret yalnızca uygulama açılırken kendini çiziyor; giriş ekranında ve Özet'te sabit duruyor.
+- Açılış ekranı seçili temanın zemininde açılıyor; amber koyuda artık soğuk bir siyah görünmüyor.
+- Yeni bir cihazda girişten sonraki "Verilerin getiriliyor" beklemesi kısaldı: tablolar tek tek değil aynı anda isteniyor ve ayarlar önce yazılıyor.
+- Çıkış ve hesap silme daha çabuk bitiyor.
+
 ## 1.9.3
 
 ### Patch Changes

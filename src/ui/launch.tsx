@@ -1,8 +1,10 @@
 /**
  * What a cold start shows between the native splash and the app: the mark
- * drawing itself on the splash's own ground, at the splash image's size and
- * place, and the name writing itself under it, so the hand-over from native to JavaScript changes nothing but the
- * mark beginning to move. It is held until the root has something to show and
+ * drawing itself at the splash image's size and place, and the name writing
+ * itself under it, on the ground of the theme the app opens in — the owner's
+ * amber dark launched on the splash's cool near-black (2026-10-02). The native
+ * splash is one colour for every palette, so the hand-over changes the ground
+ * where the palette differs from it. It is held until the root has something to show and
  * the drawing has had its time, then dissolves into the app.
  *
  * It replaced the three-dot boot wait. A wait still shows one indicator for
@@ -19,13 +21,6 @@ import { tr } from "../i18n/tr";
 import { BrandMark, preloadBrandMark } from "./brand";
 import { useReducedMotion } from "./motion";
 import { useTheme } from "./theme";
-
-/**
- * The `expo-splash-screen` ground in `app.json`, which `+html.tsx` also paints
- * as the web's first frame. The page background is a different colour; the
- * dissolve carries that change, so the native hand-over does not have to.
- */
-const SPLASH_GROUND = { light: "#E7ECEB", dark: "#101315" } as const;
 
 /**
  * `imageWidth` in `app.json`. The plugin fits the image into a square of that
@@ -50,7 +45,7 @@ function hideSplash() {
 }
 
 export function Launch({ settled, onGone }: { settled: boolean; onGone: () => void }) {
-  const { scheme } = useTheme();
+  const { palette } = useTheme();
   const reducedMotion = useReducedMotion();
   const [drawable, setDrawable] = useState(false);
   const [held, setHeld] = useState(false);
@@ -118,7 +113,7 @@ export function Launch({ settled, onGone }: { settled: boolean; onGone: () => vo
         {
           alignItems: "center",
           justifyContent: "center",
-          backgroundColor: SPLASH_GROUND[scheme],
+          backgroundColor: palette.background,
           // Opaque while it holds, so nothing it hides can be pressed; the app
           // takes input from the moment it starts to show through.
           pointerEvents: leaving ? "none" : "auto",
