@@ -2643,7 +2643,7 @@ test("a wait shows one indicator for its whole duration", async ({ page, context
   });
   await page.goto("/helix/");
 
-  // A cold start's one indicator is the launch screen's mark (1.10.0): no
+  // A cold start's one indicator is the launch screen's mark (1.9.3): no
   // dots under it or over it, however long the boot waits, and no swap
   // part-way, which is what a logo appearing after a threshold once did.
   const indicator = page.locator('[role="progressbar"]');

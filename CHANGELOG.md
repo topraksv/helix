@@ -6,14 +6,11 @@ defterinde yazılıdır ve bu depoya dahil değildir.
 
 Notlar kısa tutulur: ne değişti, tek cümle. Sebebi ve ölçümü commit'te.
 
-## 1.10.0
-
-### Minor Changes
-
-- Açılışta Helix'in işareti kendini çiziyor ve uygulama hazır olunca yavaşça çekiliyor; arada boş bir ekran ya da yükleme çubuğu görünmüyor. "Hareketi azalt" açıksa işaret sabit ve bekletmiyor.
+## 1.9.3
 
 ### Patch Changes
 
+- Açılışta Helix'in işareti kendini çiziyor ve uygulama hazır olunca yavaşça çekiliyor; arada boş bir ekran ya da yükleme çubuğu görünmüyor. "Hareketi azalt" açıksa işaret sabit ve bekletmiyor.
 - "Önceki giriş" artık az önce yapılan girişi göstermiyor: uygulama açılırken aynı açılış iki kez sayılıyordu.
 - Kayıt ya da onay e-postası gönderilemediğinde hata artık şifre yenilemeden söz etmiyor; ne yapılacağını söylüyor.
 

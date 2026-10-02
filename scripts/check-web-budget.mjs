@@ -353,7 +353,7 @@ const root = process.argv[2] ?? "dist";
 // entry 3_341_132, total 4_025_892, export 7_707_283. ALL THREE COME DOWN by
 // the steps above — entry measured plus 6_868, so an on-demand reader coming
 // back (+20_477) still trips it; total ~1%, export ~1.5%.
-// 2026-10-02, 1.10.0: the launch screen, the mark drawing itself over the
+// 2026-10-02, 1.9.3: the launch screen, the mark drawing itself over the
 // boot. Attributed with source maps against a `git archive` of HEAD: HEAD
 // measured 3_345_824, so 1.9.2's mark had already added 4_692 unrecorded; the
 // launch adds `ui/launch.tsx` 2_052 and `app/_layout.tsx` 1_332, no
