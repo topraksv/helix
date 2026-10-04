@@ -51,6 +51,24 @@ const ACKNOWLEDGED = [
     expectedPaths: ["expo", "expo-updates"],
     reason: "No patched release; reached only by build-time tooling and unused code signing, absent from the web export.",
   },
+  {
+    id: "GHSA-vfj7-8cjw-p6xm",
+    package: "braces",
+    checkedOn: "2026-10-04",
+    recheckAfter: "2026-12-01",
+    // Affects every release through 3.0.3, the latest published (advisory of
+    // 2026-09-18, no patched version). The flaw is stack exhaustion on a deeply
+    // nested pattern. Every path ends in a Metro file map, through micromatch:
+    // expo's own bundler, and react-native's, react-native-reanimated's and
+    // react-native-worklets', which reach `metro` only as
+    // `@react-native/community-cli-plugin` and `@react-native/metro-config`
+    // (`npm audit --json`, 2026-10-04). It expands the globs the bundler's
+    // config writes, on the developer machine and in CI; no pattern comes from
+    // a user, and the web export does not contain it (only React's "wrap your
+    // children in braces" message matches in `dist`, 2026-10-04).
+    expectedPaths: ["expo", "react-native", "react-native-reanimated", "react-native-worklets"],
+    reason: "No patched release; reached only by build-time tooling expanding the project's own globs, absent from the web export.",
+  },
 ];
 
 /**
