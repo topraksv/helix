@@ -210,7 +210,7 @@ function divideWhatIsLeft(writes: RowWrite[], input: NewPlan, kept: Map<string, 
 
 /**
  * Each foreign-currency instalment is billed at the rate stored on or before
- * its own day (spec §3.2) — for one still to come, the last known one — but a
+ * its own day (spec §3.1) — for one still to come, the last known one — but a
  * plan is built with the single rate the screen had. Maintenance fixes a row at
  * its own day only as it TURNS realized, so a row born realized — by "paid N
  * of M" or a reschedule — is billed here or never. Kept history is not restated.
@@ -318,7 +318,7 @@ async function writePlanWithSchedule(
 
 /**
  * The TRY rate stored for `currency` on `date` or the last day before it that
- * has one (spec §2.5) — never a later day's. Null when nothing usable is
+ * has one (spec §2.4) — never a later day's. Null when nothing usable is
  * stored, so a caller keeps the figure it already holds instead of inventing
  * one. The bounds are the rate cache's own.
  */

@@ -5,7 +5,7 @@ import type { Minor } from "./money";
 import type { CategoryKind, TransactionType, TxLike } from "./types";
 
 /**
- * Whether a stored row is a workbook column's remainder (spec §3.1e).
+ * Whether a stored row is a workbook column's remainder (spec §8.3).
  *
  * Recognised by the three things only the importer writes together: its
  * origin, its month-level shape and its exact note. There is no marker column,

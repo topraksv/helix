@@ -256,7 +256,7 @@ async function onboardingBalanceRows(
     ];
   }
   // An import already reached back past this month and kept the figure typed
-  // here as the month's declared opening (spec §3.1e), so coming back to change
+  // here as the month's declared opening (spec §8.3), so coming back to change
   // it restates that declaration. A zero is the form's empty optional field.
   if (openingBalanceMinor === 0) return [];
   const date = lastDayOf(addMonthsToKey(startMonth, -1));

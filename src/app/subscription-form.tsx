@@ -1,4 +1,4 @@
-/** Subscription add/edit modal. Price edits append to price_history (spec §3.1). */
+/** Subscription add/edit modal. Price edits append to price_history (spec §4.1). */
 
 import React, { useState } from "react";
 import { StyleSheet, Text, View } from "react-native";

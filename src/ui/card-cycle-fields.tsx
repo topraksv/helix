@@ -1,5 +1,5 @@
 /**
- * A credit card's two dates, as one control (spec §3.1f).
+ * A credit card's two dates, as one control (spec §3.7).
  *
  * They are a PAIR: neither day means anything without the other, and every
  * rule about them is a rule about the gap between them. Three screens build a

@@ -2,7 +2,7 @@
  * Auth session store. Fully offline-capable: the last signed-in user id is
  * persisted locally, so the app opens and works without network; Supabase
  * session refresh happens opportunistically in the background. Biometric
- * lock (not network auth) protects local data (spec §2.3).
+ * lock (not network auth) protects local data (spec §10.2).
  */
 
 import { create } from "zustand";

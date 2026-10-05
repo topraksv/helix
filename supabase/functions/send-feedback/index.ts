@@ -1,5 +1,5 @@
 /**
- * Turn a feedback report into an email to the owner (spec §4.1).
+ * Turn a feedback report into an email to the owner (spec §13.1).
  *
  * This runs on Supabase Edge Functions (Deno), not in the app bundle, for two
  * reasons that both matter:

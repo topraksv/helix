@@ -1,5 +1,5 @@
 # Supabase's free plan pauses a project after about seven days without
-# database activity (Helix spec §2.2). This heartbeat writes AND reads every
+# database activity (Helix spec §10.1). This heartbeat writes AND reads every
 # three days so the project never pauses, even when nobody opens the app for a
 # month. Helix and Gital run this same file.
 #

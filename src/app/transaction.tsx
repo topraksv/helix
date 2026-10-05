@@ -1,5 +1,5 @@
 /** Transaction entry modal — smart defaults, TR amount input, FX preview,
- *  future-dated payments (§2.7) and inline installment plan creation. */
+ *  future-dated payments (§2.2) and inline installment plan creation. */
 
 import React, { useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
@@ -95,7 +95,7 @@ function EntryTypeChoice({
 }
 
 /**
- * The expense a new refund is opened for (spec §2.7). Only a live, positive,
+ * The expense a new refund is opened for (spec §2.2). Only a live, positive,
  * single expense can take one — the repository holds the same rule — and while
  * the rows are still loading the screen waits instead of opening a plain form.
  */
@@ -327,7 +327,7 @@ function InvestmentRefundForm({ transactionsState }: { transactionsState: Return
 
 /**
  * The refunds recorded against one expense, and what it comes to after them
- * (spec §2.7). A refund stays its own row in its own month; the link only says
+ * (spec §2.2). A refund stays its own row in its own month; the link only says
  * which purchase it gave money back for.
  */
 function ExpenseRefunds({ expense }: { expense: ExistingTx }) {

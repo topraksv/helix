@@ -328,7 +328,7 @@ export const balanceAdjustments = sqliteTable("balance_adjustments", {
   /**
    * Set on a declaration: the balance at the end of `date` was this figure.
    * `amountMinor` then keeps the difference it made when it was written, which
-   * is all a client without declarations can read (spec §2.7).
+   * is all a client without declarations can read (spec §2.2).
    */
   declaredMinor: integer("declared_minor"),
 });

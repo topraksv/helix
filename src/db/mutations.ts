@@ -349,7 +349,7 @@ function outboundPolicy(table: SyncedTableName): { allowedColumns: Set<string>; 
 }
 
 /**
- * Requeue the current local version of a quarantined row (spec §5).
+ * Requeue the current local version of a quarantined row (spec §10.3).
  *
  * The dead letter stores the rejected snapshot for forensics, not as an
  * editable source of truth. Retrying that raw payload would repeat the same

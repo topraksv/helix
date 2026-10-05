@@ -1,5 +1,5 @@
 /**
- * FX rate fetching (spec §2.5). Primary: TCMB today.xml (official TRY rates,
+ * FX rate fetching (spec §2.4). Primary: TCMB today.xml (official TRY rates,
  * free, keyless). Fallback: exchangerate-api's open endpoint (keyless). Rates cache into the
  * fx_rates table; lookups fall back to the last known rate with a stale flag.
  */

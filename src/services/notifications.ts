@@ -1,5 +1,5 @@
 /**
- * Local notifications (spec §3.4). iOS: scheduled local notifications,
+ * Local notifications (spec §12.1). iOS: scheduled local notifications,
  * re-planned on every app open for the next 30 days. Web: no scheduled
  * notifications — the in-app dashboard covers the same information.
  */

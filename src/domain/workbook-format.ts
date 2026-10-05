@@ -277,7 +277,7 @@ const oneLine = (text: string) => text.replace(/\s+/g, " ").trim();
 /**
  * The plans a re-import rebuilds exactly. The importer writes a plan's whole
  * schedule from one month's note, and what a cell holds beyond its plans comes
- * back as a remainder that is not spending (spec §3.1e). So a plan is written
+ * back as a remainder that is not spending (spec §8.3). So a plan is written
  * only when every instalment is in the ledger, on its schedule, in one column,
  * over cells holding nothing but written plans give or take their rounding
  * kuruş. Any other plan stays in its cells' totals, as every plan did before.

@@ -2,7 +2,7 @@
  * A subscription rule is a schedule, not a payment.
  *
  * Creating one must never move the current balance: only a confirmed
- * occurrence does that (spec §2.6, §2.7). The regression this file exists for
+ * occurrence does that (spec §4.3, §2.2). The regression this file exists for
  * is an auto-pay rule saved on its own billing day — `subscription-form.tsx`
  * defaults `nextDueDate` to today whenever the billing day is today, and the
  * first maintenance pass then confirmed that occurrence as a REALIZED expense,

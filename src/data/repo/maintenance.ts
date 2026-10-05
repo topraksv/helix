@@ -15,7 +15,7 @@ import { cardStatementWrite, type LivePaymentSource } from "./transactions";
 import { billedInTry } from "./installments";
 
 // ---------------------------------------------------------------------------
-// Daily maintenance: §2.7 date flips, expected generation, late marking, auto-pay
+// Daily maintenance: §2.2 date flips, expected generation, late marking, auto-pay
 // ---------------------------------------------------------------------------
 
 /**
@@ -266,7 +266,7 @@ async function runMaintenanceInner(userId: string): Promise<void> {
   // 0e) A dependent goes with the row it belongs to.
   await tombstoneOrphans(userId);
 
-  // 1) §2.7 — pending transactions whose effective date arrived become realized.
+  // 1) §2.2 — pending transactions whose effective date arrived become realized.
   const due = await sqlite.getAllAsync<Record<string, unknown>>(
     `SELECT * FROM transactions WHERE user_id = ? AND status = 'pending' AND effective_date <= ? AND deleted_at IS NULL`,
     [userId, today],

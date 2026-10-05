@@ -2,7 +2,7 @@
 --
 -- Until now the metadata row synced and the file did not, so a receipt added on
 -- the phone was simply absent on the laptop and the UI said so. That was a
--- deliberate position (spec §3.1c) and it is being reversed deliberately: the
+-- deliberate position (spec §2.5) and it is being reversed deliberately: the
 -- owner asked for the documents to follow the ledger they belong to.
 --
 -- WHAT "ENCRYPTED" MEANS HERE, EXACTLY. Supabase encrypts objects at rest. The

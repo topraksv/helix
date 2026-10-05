@@ -1,5 +1,5 @@
 /**
- * Record a refund against an instalment purchase (spec §3.2).
+ * Record a refund against an instalment purchase (spec §3.1).
  *
  * Two steps, because "which purchase?" has to be answered before "how much?"
  * can mean anything: the amount is checked against what is left of that

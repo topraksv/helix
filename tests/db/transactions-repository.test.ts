@@ -798,8 +798,8 @@ describe("transaction repository persistence", () => {
   });
 
   /**
-   * A payment against a statement (spec §3.1f), a declared opening balance
-   * (§2.7), and a refund linked to the expense it returns. Each one refuses
+   * A payment against a statement (spec §3.7), a declared opening balance
+   * (§2.2), and a refund linked to the expense it returns. Each one refuses
    * the figure that would read as a typo: more than is owed, more than is left.
    */
   describe("statement payments, declarations and refund links", () => {

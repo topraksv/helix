@@ -1,4 +1,4 @@
-/** Person management (§2.8): named people; non-self people are watch-only. */
+/** Person management (§2.11): named people; non-self people are watch-only. */
 
 import { useState } from "react";
 import { StyleSheet, Text, View } from "react-native";

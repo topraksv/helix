@@ -1,5 +1,5 @@
 /**
- * Computed columns: bounded, whitelisted calculation set (spec §3.2 — no
+ * Computed columns: bounded, whitelisted calculation set (spec §1.6 — no
  * free-form formula engine). Redesigned as picture-book setup: pick a
  * calculation type card, choose categories, watch a live preview for the
  * current month, then save.

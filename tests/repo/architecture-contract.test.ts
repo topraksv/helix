@@ -192,15 +192,16 @@ describe("module graph", () => {
  * `SPEC.md` names the files that cite each section; this checks they do.
  *
  * The citation is how you get from a module to the rules it implements: every
- * module header in the older layers carries one, as `(spec §2.7)`. `AGENTS.md`
+ * module header in the older layers carries one, as `(spec §2.2)`. `AGENTS.md`
  * states the relationship in the other direction too — SPEC reconstructs "the
  * product sections cited by source files" — so a section nobody cites is a
  * section the code cannot lead you to.
  *
  * This is not a guard against a hypothetical. Sixteen files had already
- * drifted when it was written: §3.1b–§3.1g were added for statement import,
- * attachments, marks, workbook columns, card cycles and ledger documents, and
- * each one listed its citing files without any of them citing back. The ten
+ * drifted when it was written: the sections for statement import,
+ * attachments, marks, workbook columns, card cycles and ledger documents
+ * (§3.1b–§3.1g then, renumbered on 2026-10-05) were added, and each one
+ * listed its citing files without any of them citing back. The ten
  * older sections were at 24/24, which is what made the gap legible as drift
  * rather than as a convention nobody follows.
  */
@@ -216,7 +217,7 @@ describe("spec citations", () => {
    */
   const specPath = join(ROOT, "docs/SPEC.md");
   const spec = existsSync(specPath) ? readFileSync(specPath, "utf8") : "";
-  /** `## §3.1b — Card statement import (RECONSTRUCTED)` → id plus its body. */
+  /** `## §3.9 — Card statement import` → id plus its body. */
   const sections = spec.split(/^## /m).slice(1)
     .flatMap((block) => {
       const id = (block.match(/^(§[0-9]+(?:\.[0-9]+)?[a-z]?)/) ?? [])[1];

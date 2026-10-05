@@ -1,4 +1,4 @@
-/** New / edit installment plan or loan (also supports mid-progress "4/6 paid" entry), and a loan's closure or restructure (spec §3.2). */
+/** New / edit installment plan or loan (also supports mid-progress "4/6 paid" entry), and a loan's closure or restructure (spec §3.1). */
 
 import React, { useState } from "react";
 import { StyleSheet, Text, View } from "react-native";

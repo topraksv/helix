@@ -147,7 +147,7 @@ function useCurrentBalanceForm(computed: number | null) {
   return { target, saving, save };
 }
 
-/** A month's opening, stated (spec §2.7). Unlike the reconciliation it holds: records entered later before that month leave it where it was. */
+/** A month's opening, stated (spec §2.2). Unlike the reconciliation it holds: records entered later before that month leave it where it was. */
 function useDeclarationForm(bundle: Bundle | null, adjustments: Adjustment[]) {
   const userId = useUserId();
   const undo = useUndo();

@@ -1,5 +1,5 @@
 /**
- * The records the cloud would not take (spec §5).
+ * The records the cloud would not take (spec §10.3).
  *
  * This used to be a warning panel in the middle of Settings: a red-toned card
  * headed "Eşitlenmeyi bekleyen kayıtlar", four rows of raw table names and

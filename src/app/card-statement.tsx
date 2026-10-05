@@ -1,6 +1,6 @@
 /**
  * One card statement: what is on it, what has been paid, and a payment made by
- * hand (spec §3.1f).
+ * hand (spec §3.7).
  *
  * A statement nobody records a payment for is paid in full on its due date,
  * which is how every card charge already reaches the balance. The first payment

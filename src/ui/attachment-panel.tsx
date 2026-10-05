@@ -1,5 +1,5 @@
 /**
- * The documents kept beside one transaction (spec §3.1g).
+ * The documents kept beside one transaction (spec §2.6).
  *
  * Metadata is a synced row; the bytes are this device's. That split is stated
  * on the panel and shown per row: a document added on the phone appears on the

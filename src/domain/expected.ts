@@ -1,5 +1,5 @@
 /**
- * Expected payment/income engine (spec §2.6): subscriptions and recurring
+ * Expected payment/income engine (spec §4.3): subscriptions and recurring
  * incomes yield expected items with a due date; installment plans materialize
  * scheduled transactions directly. State machine: pending → paid (user
  * confirms / auto-pay) or late (due date passed without confirmation).
@@ -171,7 +171,7 @@ export function findLate(expected: ExpectedPaymentLike[], today: ISODate): Expec
  * billing day is today — so an unguarded `dueDate <= today` confirmed a
  * realized expense the instant an auto-pay subscription was created, and the
  * current balance dropped by its amount before anything had been paid
- * (spec §2.6, §2.7: the actual balance is confirmed money only).
+ * (spec §4.3, §2.2: the actual balance is confirmed money only).
  *
  * Occurrences on or before the creation day stay pending, so they remain
  * visible as an obligation, count toward the projection, and are one tap from

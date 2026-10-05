@@ -1,7 +1,7 @@
 /**
  * Spreadsheet import wizard: pick an .xlsx/.xlsm/.csv → see a visual, example-
  * rich format guide → choose which years/columns to bring → import 1:1 into the
- * Mali Tablo (spec §3.1e). Handles multi-year workbooks (each year keeps its
+ * Mali Tablo (spec §8.3). Handles multi-year workbooks (each year keeps its
  * own columns), formula/comment breakdowns, opening balance, and re-import of a
  * year that already has data. Parsing/mapping lives in
  * services/spreadsheet-import + data/repo; this screen only guides and
@@ -428,7 +428,7 @@ function OpeningCard({ sheets, selectedYears, column, onColumn, adopt, onAdopt }
   const currentStart = settingValue<MonthKey | null>(settings, "start_month", null);
   // Earlier data wins without being asked, figure or no figure: the ledger
   // back-anchors to the earliest month it holds, and a balance typed at setup
-  // is kept as that month's declared opening (spec §3.1e).
+  // is kept as that month's declared opening (spec §8.3).
   const earlier = opening != null && (currentStart == null || opening.month < currentStart);
   return (
     <Card>

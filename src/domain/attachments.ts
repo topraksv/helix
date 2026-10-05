@@ -1,5 +1,5 @@
 /**
- * Receipts, invoices and warranty documents kept beside a transaction (spec §3.1c).
+ * Receipts, invoices and warranty documents kept beside a transaction (spec §2.5).
  *
  * Every rule an attachment has to obey lives here, as pure functions, because
  * three layers have to agree about them: the picker that accepts a file, the

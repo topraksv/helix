@@ -117,7 +117,7 @@ export interface AdjustmentLike {
   amountMinor: Minor; // signed: positive raises the balance
   /**
    * A declared balance rather than a movement: at the END of `date` the balance
-   * was this figure (spec §2.7). `amountMinor` then holds the difference it made
+   * was this figure (spec §2.2). `amountMinor` then holds the difference it made
    * when it was written, for a client that predates declarations; the ledger
    * recomputes that difference from the rows as they stand now.
    */

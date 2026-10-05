@@ -92,7 +92,7 @@ describe("canonical transaction classification", () => {
 
 /**
  * A workbook column's remainder keeps the imported column equal to its file
- * (spec §3.1e). It is in the balance and the table cell, and in no chart or
+ * (spec §8.3). It is in the balance and the table cell, and in no chart or
  * category split, where a negative one read as a refund nobody made.
  */
 describe("workbook column remainders", () => {

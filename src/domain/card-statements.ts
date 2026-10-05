@@ -1,5 +1,5 @@
 /**
- * Credit-card statement cycle rules (spec §3.1f). A purchase belongs to the
+ * Credit-card statement cycle rules (spec §3.7). A purchase belongs to the
  * statement that closes on/after the purchase date. The balance-affecting date
  * is that statement's real due date, never the purchase date or a date derived
  * from "today". Nominal days 29–31 are clamped for short months.

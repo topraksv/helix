@@ -1,5 +1,5 @@
 /**
- * Installment engine — the heart of the app (spec §3.2).
+ * Installment engine — the heart of the app (spec §3.1).
  * A plan (card installment or loan) expands into one scheduled transaction
  * per calendar month (user decision: calendar-month placement, not statement
  * cycles). Plans may start in the past ("4 of 6 already paid"): generated
@@ -75,7 +75,7 @@ export function planAmounts(plan: Pick<InstallmentPlanLike, "totalAmountMinor" |
 
 /**
  * Expand a plan into its monthly schedule. `today` decides which past items
- * are auto-realized (spec §2.7: only effective_date <= today hits balance).
+ * are auto-realized (spec §2.2: only effective_date <= today hits balance).
  */
 export function generateSchedule(plan: InstallmentPlanLike, today: ISODate): GeneratedInstallment[] {
   const amounts = planAmounts(plan);
@@ -97,7 +97,7 @@ export function generateSchedule(plan: InstallmentPlanLike, today: ISODate): Gen
 
 /**
  * Derive the start month for "n of m already paid" entry so that EXACTLY
- * `paidCount` installments auto-realize (spec §2.7: realized ⇔ effectiveDate ≤
+ * `paidCount` installments auto-realize (spec §2.2: realized ⇔ effectiveDate ≤
  * today). The next unpaid installment (number paidCount+1) is placed in the
  * first month whose due date is still in the future: the current month when its
  * due day hasn't passed, otherwise next month. Without this, a plan with a due

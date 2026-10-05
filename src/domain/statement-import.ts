@@ -1,5 +1,5 @@
 /**
- * Turning a statement's text into reviewable candidates (spec §3.1b).
+ * Turning a statement's text into reviewable candidates (spec §3.9).
  *
  * ## Scope, and why it is this narrow
  *

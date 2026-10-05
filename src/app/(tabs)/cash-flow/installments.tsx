@@ -1,7 +1,7 @@
 /** Installments & loans, viewed one MONTH at a time: step through months and
  *  filter by card to see exactly which installments fall due that month. A plan
  *  that has no payment in the selected month (finished, or not yet started) is
- *  hidden — each month shows only its own live installments (spec §3.2, §2.8). */
+ *  hidden — each month shows only its own live installments (spec §3.1, §2.11). */
 
 import { useState } from "react";
 import { Pressable, Text, View } from "react-native";

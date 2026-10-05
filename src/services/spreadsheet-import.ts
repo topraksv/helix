@@ -1,7 +1,7 @@
 /**
  * Spreadsheet (xlsx/xlsm/csv/ods) import: parses the user's historical budget
  * workbook into month × category aggregates that flow straight into the Mali
- * Tablo (spec §3.1e). Every sheet is parsed independently (one sheet per year
+ * Tablo (spec §8.3). Every sheet is parsed independently (one sheet per year
  * is common), so different years keep their own column sets. Pure
  * parsing/mapping lives here (unit-testable); the wizard screen only renders
  * the preview and confirms.

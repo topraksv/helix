@@ -1,4 +1,4 @@
-/** Visible sync state (spec §5: sync errors are never swallowed silently). */
+/** Visible sync state (spec §10.3: sync errors are never swallowed silently). */
 
 import { create } from "zustand";
 

@@ -1,5 +1,5 @@
 /**
- * Post a feedback report to the edge function that emails it (spec §4.1).
+ * Post a feedback report to the edge function that emails it (spec §13.1).
  *
  * Thin on purpose: every rule about what a report may contain lives in
  * `domain/feedback.ts`, and the sending itself is one authenticated call.

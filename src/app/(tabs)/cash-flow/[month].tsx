@@ -162,7 +162,7 @@ function MonthFlowSummary({
       : []),
     // A statement paid by hand moves money on the day it was paid, and what a
     // partial payment left is owed to the card rather than taken from the
-    // account (spec §3.1f). Without these two the bridge from opening to
+    // account (spec §3.7). Without these two the bridge from opening to
     // closing would not add up for any month that holds one.
     ...(flows.cardPaymentsMinor !== 0
       ? [{

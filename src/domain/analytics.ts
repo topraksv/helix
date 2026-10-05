@@ -81,7 +81,7 @@ export interface Distribution {
   incomeTotalMinor: Minor;
   /**
    * Workbook column remainders in the range, as their signed balance effect,
-   * and in none of the totals above (spec §3.1e). They keep the imported
+   * and in none of the totals above (spec §8.3). They keep the imported
    * column equal to the file and are not spending: counted as it, a negative
    * one shrank its category like a refund nobody made.
    */
@@ -132,7 +132,7 @@ export function distributionForRange(
 /**
  * Fixed obligations = installment/loan/subscription-linked expenses;
  * variable = everything else. Answers "bu ay bankalara/kurumlara toplam ne
- * kadar ödüyorum" (spec §3.2).
+ * kadar ödüyorum" (spec §3.1).
  *
  * NO SCREEN CALLS THIS, and that is deliberate. It is a differential oracle:
  * `fixedMinor + variableMinor` must equal the expense total the dashboard
@@ -196,7 +196,7 @@ export function creditCardSplitsByMonth(
 }
 
 /**
- * Yearly subscription cost normalized to a true monthly load (spec §3.1).
+ * Yearly subscription cost normalized to a true monthly load (spec §4.1).
  *
  * A corrupt `interval_months` of 0 produced `Infinity` here, which reached
  * `formatMinor` and threw `assertMinor` DURING RENDER on the subscriptions

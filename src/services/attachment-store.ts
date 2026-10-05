@@ -1,5 +1,5 @@
 /**
- * This device's copy of an attachment's bytes (spec §3.1c).
+ * This device's copy of an attachment's bytes (spec §2.5).
  *
  * It used to be the only copy. `src/sync/attachment-mirror.ts` now sends what
  * is here to the owner's Storage bucket and fetches what is not, so this is a

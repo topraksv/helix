@@ -1,5 +1,5 @@
 /**
- * The bytes of an attachment, mirrored to the owner's Storage bucket (spec §3.1c).
+ * The bytes of an attachment, mirrored to the owner's Storage bucket (spec §2.5).
  *
  * The row that describes a document has always synced. This is the other half:
  * the file itself, so a receipt added on the phone opens on the laptop.

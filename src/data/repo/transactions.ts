@@ -499,7 +499,7 @@ async function statementRemainingMinor(
 }
 
 /**
- * Record a payment the owner made against one card statement (spec §3.1f).
+ * Record a payment the owner made against one card statement (spec §3.7).
  *
  * From the first one on, the statement is no longer paid in full on its due
  * date: `settleCardStatements` counts what was paid, on the day it was paid.
@@ -545,7 +545,7 @@ export function restoreStatementPayment(userId: string, snapshot: Record<string,
 }
 
 /**
- * Declare the balance a month opened with (spec §2.7): a declaration dated the
+ * Declare the balance a month opened with (spec §2.2): a declaration dated the
  * last day of the month before, which the ledger then holds whatever is later
  * entered on or before that day.
  *

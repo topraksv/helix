@@ -1113,7 +1113,7 @@ export const tr = {
     cardBillWarning:
       "Kart harcamaların ekstrenin son ödeme gününde zaten bakiyenden düşüyor; ekstreyi burada gider olarak girersen aynı para iki kez düşer. Ekstreyi ödediysen ekstre ödemesi olarak kaydet: o ekstre için otomatik ödeme yapılmaz, ödediğin gün bakiyene yansır.",
     cardBillAction: "Ekstre Ödemesi Kaydet",
-    // A refund linked to the expense it gave money back for (spec §2.7).
+    // A refund linked to the expense it gave money back for (spec §2.2).
     refundOfLine: (what: string, amount: string, day: string) => `${day} tarihli ${what} · ${amount} harcamasının iadesi`,
     refundOfLeft: (left: string) => `En fazla ${left} iade edilebilir.`,
     refundMismatch: "Bağlı iade, harcamayla aynı para biriminde bir gider iadesi olmalı.",
@@ -1996,7 +1996,7 @@ export const tr = {
     s6Body: "Altın, döviz, fon, hisse ve BES'i tek yerde topla. Önce ürününü tanımlarsın — bu adımda para hareket etmez. Zaten sahip olduğun bir yatırımı eklersen serbest bakiyenden düşmez; alış yaparsan düşer, satarsan geri döner. Ortalama maliyetini ve gerçekleşen kârını Helix hesaplar; serbest bakiyeni istediğinde Mali Tablo'ya aktarırsın.",
     s7Title: "Her Cihazda, Çevrimdışı da",
     /* The slide that promises "it syncs" is where the shape of that promise
-       belongs. Documents follow the ledger now (spec 3.1c), but the backup
+       belongs. Documents follow the ledger now (spec §2.5), but the backup
        file still carries only their record — someone who reads this slide and
        then relies on a backup to move devices would find the receipts gone. */
     s7Body: "Her şey önce cihazına kaydedilir; internet olmasa da çalışır. Aynı hesapla girdiğin telefon ve bilgisayarında otomatik senkronlanır. İşlemlere eklediğin fiş ve faturalar da eşitlenir; onları da her cihazından açabilirsin. Yalnız yedek dosyası belgelerin kaydını taşır, içeriğini taşımaz. Eski Excel'ini içe aktarabilir, verini istediğinde yedekleyebilirsin. Bakiyen hesabınla tutmuyorsa Bakiye Düzeltme ile tek adımda eşitlersin.",

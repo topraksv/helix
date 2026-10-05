@@ -6,7 +6,7 @@
  *   opening(m+1) = closing(m);   opening(startMonth) = openingBalance
  *
  * Only rows with status='realized', effective_date <= today and an is_self
- * person count toward the balance (spec §2.7, §2.8). Balances may go
+ * person count toward the balance (spec §2.2, §2.11). Balances may go
  * negative (Temmuz 2026: −18.773,03).
  */
 
@@ -64,7 +64,7 @@ export interface MonthLedger {
    */
   declarationDeltas: { id: string; deltaMinor: Minor }[];
   /**
-   * Recorded statement payments, as the balance sees them (spec §3.1f). The
+   * Recorded statement payments, as the balance sees them (spec §3.7). The
    * charges stay in the category cells; these say when their money actually
    * left. `cardSettlementMinor` is the realized part inside `closingMinor`,
    * `plannedCardSettlementMinor` the rest of it inside the projected close.
@@ -581,7 +581,7 @@ export interface UpcomingFlow {
 }
 
 /**
- * Projected balance at `horizon` (spec §2.7 dashboard): actual balance plus
+ * Projected balance at `horizon` (spec §2.2 dashboard): actual balance plus
  * every known future flow (pending transactions and unpaid expected
  * payments) due on or before the horizon. It sums what it is given and does
  * not look for identity between flows: two entries for one obligation are

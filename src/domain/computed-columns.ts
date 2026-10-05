@@ -1,5 +1,5 @@
 /**
- * Bounded computed-column engine (spec §3.2 explicitly forbids a free-form
+ * Bounded computed-column engine (spec §1.6 explicitly forbids a free-form
  * formula engine). Definitions are validated JSON restricted to a whitelisted
  * op set; evaluation only reads pre-aggregated month data.
  *
@@ -15,7 +15,7 @@
  * The rules below are a LITERAL translation of the schema it replaces, and the
  * order matters: a discriminated union on `op`, then strict keys, then each
  * field, then the cross-field uniqueness rule. Anything looser is a formula
- * engine with extra steps, which §3.2 forbids by name.
+ * engine with extra steps, which §1.6 forbids by name.
  */
 
 import type { Minor } from "./money";

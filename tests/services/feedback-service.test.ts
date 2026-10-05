@@ -1,5 +1,5 @@
 /**
- * Posting a feedback report (spec §4.1).
+ * Posting a feedback report (spec §13.1).
  *
  * What this module owns is not the sending — that is one call — but the three
  * answers a person can act on. A build with no Supabase, a signed-out session

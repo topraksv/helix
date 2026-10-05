@@ -259,7 +259,7 @@ export async function hasImportedData(userId: string): Promise<boolean> {
 }
 
 /**
- * Import parsed sheets 1:1 into the ledger (spec §3.1e). Categories are matched
+ * Import parsed sheets 1:1 into the ledger (spec §8.3). Categories are matched
  * by name (or created as columns), each year records its own ordered column set
  * (`column_years`), formula/comment breakdowns become itemized rows or a cell
  * note (see `planImportCell`), and the earliest month's opening balance seeds
@@ -696,7 +696,7 @@ async function ownerDeclarations(userId: string, batches: ReadonlyMap<number, Im
 
 /**
  * The live plan each workbook plan already is — entered by hand or opened by a
- * statement under another name — found by schedule (§3.2), card-blind because a
+ * statement under another name — found by schedule (§3.1), card-blind because a
  * workbook renames cards as it renames purchases, with the instalments it holds
  * beyond the rows this import replaces.
  */

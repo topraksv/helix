@@ -1,5 +1,5 @@
 /**
- * Report a problem from inside the app (spec §4.1).
+ * Report a problem from inside the app (spec §13.1).
  *
  * A root-level route rather than one inside the Settings stack, so closing it
  * returns to wherever it was opened from. It is opened from the foot of

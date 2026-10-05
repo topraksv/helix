@@ -1,5 +1,5 @@
 /**
- * What a feedback report is allowed to be (spec §4.1).
+ * What a feedback report is allowed to be (spec §13.1).
  *
  * These rules are enforced in three places that cannot see each other — the
  * form, the client that posts, and the edge function that receives — so they

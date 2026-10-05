@@ -1,5 +1,5 @@
 /**
- * What a feedback report is allowed to be (spec §4.1).
+ * What a feedback report is allowed to be (spec §13.1).
  *
  * Pure, and in the domain layer, because three parties have to agree about the
  * same rules and none of them can see the others: the form that enables its

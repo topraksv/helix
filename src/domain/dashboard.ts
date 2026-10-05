@@ -47,7 +47,7 @@ interface DashboardModelInput<TExpected extends ExpectedPaymentLike = ExpectedPa
    * Statements paid in part. Their charges stay pending on the due date, but
    * the ledger gives every one of them back there: the balance has already
    * lost what was paid, and the rest is owed to the card, not taken from the
-   * account (spec §3.1f). Counting them here would take them twice.
+   * account (spec §3.7). Counting them here would take them twice.
    */
   partlyPaidStatementIds?: ReadonlySet<string>;
 }

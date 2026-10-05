@@ -1,5 +1,5 @@
 /**
- * Reading the text out of a PDF, locally (spec §3.1b).
+ * Reading the text out of a PDF, locally (spec §3.9).
  *
  * ## Why this exists at all
  *

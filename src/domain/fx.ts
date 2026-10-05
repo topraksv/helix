@@ -1,5 +1,5 @@
 /**
- * FX logic (spec §2.5). Every record stores its original currency plus a
+ * FX logic (spec §2.4). Every record stores its original currency plus a
  * TRY snapshot taken at entry time; historical reports never re-convert.
  * Rate lookup prefers the exact date, else falls back to the most recent
  * earlier rate and flags staleness (TCMB publishes business days only).

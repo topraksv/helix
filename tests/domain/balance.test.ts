@@ -93,7 +93,7 @@ function balanceOn(transactions: TxLike[], today: ISODate): number {
   }).actualBalanceMinor;
 }
 
-describe("§2.7 future-dated payments", () => {
+describe("§2.2 future-dated payments", () => {
   const future = tx({
     type: "expense",
     amountTryMinor: 300_00,
@@ -124,7 +124,7 @@ describe("§2.7 future-dated payments", () => {
   });
 });
 
-describe("§2.8 payer-other exclusion", () => {
+describe("§2.11 payer-other exclusion", () => {
   it("excludes non-self transactions from the balance", () => {
     const other = tx({
       type: "expense",

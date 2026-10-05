@@ -1,5 +1,5 @@
 /**
- * Outbox sync engine (spec §2.2): push → pull → merge, single instance,
+ * Outbox sync engine (spec §10.1): push → pull → merge, single instance,
  * last-write-wins on server-normalized `updated_at`. Errors surface in the
  * status store (never swallowed) and retry with exponential backoff.
  */

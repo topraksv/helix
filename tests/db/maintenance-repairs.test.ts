@@ -384,7 +384,7 @@ describe("foreign-currency instalments", () => {
 
     expect(transaction("due")).toEqual({ status: "realized", amount_try_minor: 310_00, fx_rate: "31" });
     expect(transaction("due-lira")).toEqual({ status: "realized", amount_try_minor: 10_00, fx_rate: null });
-    // A foreign purchase outside a plan keeps the snapshot it was entered with (spec §2.5).
+    // A foreign purchase outside a plan keeps the snapshot it was entered with (spec §2.4).
     expect(transaction("due-manual")).toEqual({ status: "realized", amount_try_minor: 200_00, fx_rate: "20" });
   });
 

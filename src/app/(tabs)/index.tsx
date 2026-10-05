@@ -432,7 +432,7 @@ function useDashboardData() {
   const subscriptions = subscriptionsState.data;
   const incomes = incomesState.data;
   // Payments recorded by hand. A partly paid statement still owes the rest on
-  // the list, and its charges no longer come off the forecast (spec §3.1f).
+  // the list, and its charges no longer come off the forecast (spec §3.7).
   const { byStatement } = useCardSettlement();
   const statementPaidMinor = useMemo(
     () => new Map([...byStatement.values()].map((settled) => [settled.statementId, settled.paidMinor])),
