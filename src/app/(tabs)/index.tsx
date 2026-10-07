@@ -928,11 +928,12 @@ function UpcomingPanel({ data, actions, fill }: { data: DashboardData; actions: 
   const amountFragment = (item: { amountMinor: number; currency: string; amountIsEstimated?: boolean }) => occurrenceAmountText(item, formatMinorCompact, AMOUNT_LABELS);
   const late = model.lateItems.slice(0, 5);
   const coming = upcoming.slice(0, Math.max(0, 5 - late.length));
-  const payButton = (id: string, direction: string, entry: boolean, onPress: () => void) => (
+  const payButton = (id: string, name: string, direction: string, entry: boolean, onPress: () => void) => (
     <View style={{ width: STATUS_W }}>
       <Button
         size="sm"
         label={entry ? tr.subs.enterAmount : direction === "in" ? tr.dashboard.received : tr.dashboard.markPaid}
+        subject={name}
         variant="secondary"
         tone={direction === "in" ? "positive" : "primary"}
         loading={actions.confirmingId === id}
@@ -971,7 +972,7 @@ function UpcomingPanel({ data, actions, fill }: { data: DashboardData; actions: 
             iconColor={palette.error}
             title={data.nameOf(e)}
             subtitle={`${tr.dashboard.late} · ${dateLabel(e.dueDate)} · ${amountFragment(e)}`}
-            right={payButton(e.id, e.direction, actions.needsAmountEntry(e), () => actions.open(e))}
+            right={payButton(e.id, data.nameOf(e), e.direction, actions.needsAmountEntry(e), () => actions.open(e))}
           />
         ))}
         {coming.map((u) => {
@@ -992,7 +993,7 @@ function UpcomingPanel({ data, actions, fill }: { data: DashboardData; actions: 
                 : undefined}
               chevron={u.kind === "card_statement"}
               right={u.kind === "expected" && u.expectedId
-                ? payButton(u.expectedId, u.direction, Boolean(u.amountIsEstimated), () => {
+                ? payButton(u.expectedId, u.name ?? u.categoryName ?? tr.common.paymentFallback, u.direction, Boolean(u.amountIsEstimated), () => {
                     if (expectedItem) actions.open(expectedItem);
                   })
                 : undefined}

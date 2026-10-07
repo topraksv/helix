@@ -196,6 +196,7 @@ export async function writeRowBatchesAtomically(
       userId: string;
       deletedAt: string | null;
       tombstoneVersion: number;
+      createdAt: string;
     }
     const stateKey = (table: SyncedTableName, id: string) => `${table}\u0000${id}`;
     const loadBatchState = async (batch: readonly RowWrite[]): Promise<Map<string, ExistingRowState>> => {
@@ -218,8 +219,9 @@ export async function writeRowBatchesAtomically(
             user_id: string;
             deleted_at: string | null;
             tombstone_version: number;
+            created_at: string;
           }>(
-            `SELECT id, user_id, deleted_at, tombstone_version FROM ${table}
+            `SELECT id, user_id, deleted_at, tombstone_version, created_at FROM ${table}
              WHERE id IN (${chunk.map(() => "?").join(", ")})`,
             chunk,
           );
@@ -228,6 +230,7 @@ export async function writeRowBatchesAtomically(
               userId: existing.user_id,
               deletedAt: existing.deleted_at,
               tombstoneVersion: existing.tombstone_version,
+              createdAt: existing.created_at,
             });
           }
         }
@@ -256,7 +259,10 @@ export async function writeRowBatchesAtomically(
       const dbRow = toDbShape(table, {
         ...row,
         updatedAt: timestamp,
-        createdAt: row.createdAt ?? timestamp,
+        // The stored creation time, not the caller's: `upsertSql` keeps it
+        // locally, but this row is also the outbox payload, which the server
+        // stores and its ack writes back here.
+        createdAt: existing?.createdAt ?? row.createdAt ?? timestamp,
         userId,
         deletedAt: requestedDeletedAt,
         tombstoneVersion,
@@ -282,7 +288,7 @@ export async function writeRowBatchesAtomically(
          ON CONFLICT(idempotency_key) DO UPDATE SET payload = excluded.payload, created_at = excluded.created_at`,
         [table, String(dbRow.id), JSON.stringify(dbRow), `${table}:${dbRow.id}:${dbRow.updated_at}`, nowIso()],
       );
-      states.set(key, { userId, deletedAt: requestedDeletedAt, tombstoneVersion });
+      states.set(key, { userId, deletedAt: requestedDeletedAt, tombstoneVersion, createdAt: String(dbRow.created_at) });
     };
     for (const batch of batches) {
       const states = await loadBatchState(batch);

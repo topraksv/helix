@@ -6,6 +6,22 @@ defterinde yazılıdır ve bu depoya dahil değildir.
 
 Notlar kısa tutulur: ne değişti, tek cümle. Sebebi ve ölçümü commit'te.
 
+## 1.9.5
+
+### Patch Changes
+
+- Bir taksit planında yalnızca başlığı değiştirmek, ekstre içe aktarımının bilerek dışarıda bıraktığı geçmiş taksitleri artık geri getirmiyor.
+- Döngü günleri boş bırakılan bir kartla alınan yedek geri yüklenebiliyor; o kart senkronu da durdurmuyor.
+- Tarihi değiştirilen döviz işlemi yeni günün kuruyla hesaplanıyor.
+- Tamamen ödenmiş bir ekstre, kur yükselince kısmi ödenmişe dönmüyor.
+- Yedekten geri yükleme önce diğer cihazlardaki değişiklikleri alıyor; onları yedekteki hâline döndürmüyor.
+- Taksit iadesi ve plan silme Geri Al ile geri alınabiliyor.
+- Veri sıfırlamada kayıtlar sayılamazsa ekran "silinecek kayıt yok" demiyor, yeniden denemeyi öneriyor.
+- Ekran okuyucu, satırlardaki Düzenle, Sil ve Ödendi düğmelerini kaydın adıyla okuyor.
+- Yatırımlar ekranı bir kayıttan sonra bir anlığına yanıp sönmüyor; Mali Tablo ayar değişikliğinde tüm hücreleri yeniden çizmiyor.
+- E-posta değişikliği bağlantısını bir e-posta tarayıcısı açınca değişiklik onaylanmıyor.
+- Geri bildirim sınırı aynı anda gönderilen isteklerde aşılamıyor.
+
 ## 1.9.4
 
 ### Patch Changes

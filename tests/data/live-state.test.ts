@@ -19,7 +19,9 @@ describe("live query state", () => {
     expect(initial.status).toBe("loading");
 
     const ready = completeLiveQuery([42], new Date("2026-07-18T10:00:00Z"));
-    expect(startLiveQuery(ready)).toMatchObject({ data: [42], status: "refreshing", error: null });
+    // A re-run of an answered query changes nothing anyone can see until it
+    // answers: the same snapshot, so no subscriber renders for it.
+    expect(startLiveQuery(ready)).toBe(ready);
 
     const stale = failLiveQuery(ready, 2, new Date("2026-07-18T10:01:00Z"));
     expect(stale).toMatchObject({ data: [42], status: "stale", error: { kind: "query_failed", attempt: 2 } });
@@ -56,10 +58,10 @@ describe("combined live states", () => {
     expect(combineLiveStates([answered, answered]).ready).toBe(true);
   });
 
-  it("stays ready while refreshing or stale — an answered query is still answered", () => {
-    const refreshing = source(startLiveQuery(completeLiveQuery([1], at)));
+  it("stays ready while re-running or stale — an answered query is still answered", () => {
+    const rerunning = source(startLiveQuery(completeLiveQuery([1], at)));
     const stale = source(failLiveQuery(completeLiveQuery([1], at), 1, at));
-    const group = combineLiveStates([refreshing, stale]);
+    const group = combineLiveStates([rerunning, stale]);
     expect(group.ready).toBe(true);
     expect(group.status).toBe("stale");
   });

@@ -11,7 +11,7 @@ set local role postgres;
 -- first for the assertion helpers.
 set local search_path = extensions, public, pg_catalog;
 
-select extensions.plan(164);
+select extensions.plan(171);
 
 -- A small invoker-rights helper lets tests assert SQLSTATE without coupling to
 -- PostgreSQL's localized/full error text. The dynamic statement still runs as
@@ -2291,6 +2291,44 @@ select is(
   '23503',
   'a stale token for a deleted account cannot write new rows'
 );
+
+-- The feedback limit is the only bound on a public endpoint, and its table is
+-- reachable through the function alone: a caller who could read or delete its
+-- rows could erase the count against it.
+reset role;
+select ok(
+  (select prosecdef from pg_proc where oid = 'public.record_feedback_send()'::regprocedure),
+  'record_feedback_send runs as its owner'
+);
+select is(
+  (select proconfig from pg_proc where oid = 'public.record_feedback_send()'::regprocedure),
+  array['search_path=""'],
+  'record_feedback_send resolves nothing through the caller''s search_path'
+);
+select ok(
+  not has_function_privilege('anon', 'public.record_feedback_send()', 'execute'),
+  'anon cannot record a feedback send'
+);
+select ok(
+  not has_table_privilege('authenticated', 'public.feedback_reports', 'select, insert, update, delete'),
+  'authenticated holds nothing on feedback_reports'
+);
+-- Two overlapping calls once both read the same count; the per-account lock
+-- makes the second wait for the first. Concurrency needs two sessions, so the
+-- race itself was measured outside this file; this pins the mechanism.
+select ok(
+  (select prosrc from pg_proc where oid = 'public.record_feedback_send()'::regprocedure) ~ 'pg_advisory_xact_lock',
+  'record_feedback_send serialises the calls of one account'
+);
+-- User B: user A deleted their account above.
+select set_config('request.jwt.claim.sub', '20000000-0000-4000-8000-000000000002', true);
+set local role authenticated;
+select is(
+  (select array_agg(public.record_feedback_send()) from generate_series(1, 5)),
+  array[true, true, true, true, true],
+  'five sends an hour are allowed'
+);
+select is(public.record_feedback_send(), false, 'the sixth within the hour is refused');
 
 -- `reset role` returns to the Supabase CLI's short-lived login role, which can
 -- execute the assertions through the test search_path but cannot execute

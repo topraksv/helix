@@ -18,7 +18,7 @@ insert_final_newline = true
 trim_trailing_whitespace = true
 
 # Generated files, excluded because their generator decides how they end.
-# Drizzle writes 9 of the 13 migrations without a final newline and the
+# Drizzle writes most migrations without a final newline and the
 # Obsidian exporter writes all of its JSON that way; adding one on save would
 # produce a diff against the tool on every regeneration.
 [src/db/migrations/**.sql]

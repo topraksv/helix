@@ -361,8 +361,17 @@ const root = process.argv[2] ?? "dist";
 // 7_338_456. Entry moves to measured plus 6_578, the guard above, so an
 // on-demand reader coming back (+20_477) still trips it; total and export
 // pass and do NOT move.
+// 2026-10-07, 1.9.5: devil round 2026-10-07-1 and its pre-push review, every
+// byte a defect fix and no dependency byte: undo for a deleted plan and a
+// refund, row actions named by their record, the stored-rate rule on an
+// edited foreign row, the catch-up pull before a restore and its cancel, one
+// hook for decoded settings, and the e-mail change landing. The gate measured
+// entry 3_356_149 (1.9.4's ceiling 3_356_000), total 4_060_964, export
+// 7_318_978. Entry moves to measured plus 6_578, the guard above, so an
+// on-demand reader coming back (+20_477) still trips it; total and export pass
+// and do NOT move.
 const limits = {
-  entryJavaScript: 3_356_000,
+  entryJavaScript: 3_362_700,
   totalJavaScript: 4_066_000,
   // Fonts are 1_534_728 of this and the rest is one HTML file per route, so it
   // grows in coarser steps than the JavaScript above it — measured 8_037_112

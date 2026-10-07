@@ -1,6 +1,6 @@
 /** Pure state transitions shared by async SQLite live queries. */
 
-export type LiveQueryStatus = "loading" | "refreshing" | "ready" | "stale" | "error";
+export type LiveQueryStatus = "loading" | "ready" | "stale" | "error";
 
 interface LiveQueryError {
   kind: "query_failed";
@@ -19,12 +19,14 @@ export function initialLiveSnapshot<T>(data: T): LiveSnapshot<T> {
   return { data, status: "loading", error: null, updatedAt: undefined };
 }
 
+/**
+ * A re-run of a query that has answered is the snapshot it already had: a
+ * "refreshing" state notified every subscriber once for nothing on each write,
+ * and the one screen that branched on it flickered. A stale or failed query
+ * keeps saying so until the answer arrives.
+ */
 export function startLiveQuery<T>(previous: LiveSnapshot<T>): LiveSnapshot<T> {
-  return {
-    ...previous,
-    status: previous.updatedAt ? "refreshing" : "loading",
-    error: null,
-  };
+  return previous.updatedAt ? previous : { ...previous, status: "loading", error: null };
 }
 
 export function completeLiveQuery<T>(data: T, at: Date): LiveSnapshot<T> {
@@ -104,7 +106,6 @@ function combineLiveQueryStatus(snapshots: readonly LiveSnapshot<unknown>[]): Li
   if (snapshots.some((snapshot) => snapshot.status === "error")) return "error";
   if (snapshots.some((snapshot) => snapshot.status === "stale")) return "stale";
   if (snapshots.some((snapshot) => snapshot.status === "loading")) return "loading";
-  if (snapshots.some((snapshot) => snapshot.status === "refreshing")) return "refreshing";
   return "ready";
 }
 
@@ -114,7 +115,7 @@ export interface LiveStateGroup {
   /**
    * Every source has answered at least once for the current parameters.
    *
-   * A distinct question from the status: a `refreshing` query has answered,
+   * A distinct question from the status: a query re-running has answered,
    * and a `stale` one is showing its last good data. This is the one a screen
    * gates its content on, because rendering "you have no categories" from a
    * query that has not run yet is the lie.

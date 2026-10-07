@@ -88,6 +88,7 @@ export {
   countInstallmentsForPlan,
   createInstallmentPlan,
   deletePlan,
+  restorePlan,
   updateInstallmentPlan,
 } from "./repo/installments";
 export type { InstallmentRefund, NewPlan } from "./repo/installments";

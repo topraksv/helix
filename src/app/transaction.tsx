@@ -528,9 +528,17 @@ function useTransactionForm({ existing, refundOf, investmentRefund }: { existing
   const rate = lookupRate(userId, entry.currency, rateDateOf(entry, today));
   // Editing a foreign-currency row must NOT silently re-price it at today's
   // rate — the transaction's TRY value was snapshotted when it occurred. So
-  // when the currency is unchanged from the stored row, keep its original
-  // fxRate; only a fresh entry or a currency change uses the live rate.
-  const historicalRateTry = existing?.currency === entry.currency && entry.currency !== "TRY" && existing.fxRate ? Number(existing.fxRate) : null;
+  // while the currency and the day that priced it are unchanged, keep its
+  // original fxRate; a fresh entry, a currency change or a move to another
+  // day uses that day's rate, as a new entry on that day would.
+  // The day as the row places it, not as `rateDateOf` resolves it: that reads
+  // today for the current month, so a form open past midnight would drop the
+  // stored rate without the row having moved. A day the rate cache does not
+  // reach keeps the stored rate rather than leaving the edit with none.
+  const placedOn = entry.dateMode === "day" ? entry.dateStr : entry.monthKey;
+  const [storedPlacement] = useState(placedOn);
+  const keepsStoredRate = placedOn === storedPlacement || rate == null;
+  const historicalRateTry = existing?.currency === entry.currency && entry.currency !== "TRY" && existing.fxRate && keepsStoredRate ? Number(existing.fxRate) : null;
   const effectiveRateTry = entry.currency === "TRY" ? 1 : historicalRateTry ?? rate?.rate.rateTry ?? null;
 
   const personId = assignedPersonId(personChoice, persons);

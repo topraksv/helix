@@ -16,6 +16,13 @@ import { dateLabel, tr } from "../i18n/tr";
 import { Amount, Badge, Body, Divider, IconButton, Row, Spread } from "./components";
 import { font, spacing, type, useTheme } from "./theme";
 
+/**
+ * A row action named by what tells two rows apart (UI.md §4): two purchases of
+ * one day in one group were both "Sil · 3 Ekim 2026", and two of one merchant
+ * on different days would both be "Sil · MIGROS" without the date.
+ */
+const actionLabel = (verb: string, title: string | null, dateText: string) => [verb, title, dateText].filter(Boolean).join(" · ");
+
 export function TransactionRow({
   installmentTitle,
   dateText,
@@ -78,8 +85,8 @@ export function TransactionRow({
         </View>
         <Row gap={spacing.sm}>
           <Amount minor={amountMinor} />
-          <IconButton icon={Pencil} label={`${tr.common.edit} · ${dateText}`} onPress={onEdit} />
-          {onDelete ? <IconButton icon={Trash} tone="danger" label={`${tr.common.delete} · ${dateText}`} haptic="none" onPress={onDelete} /> : null}
+          <IconButton icon={Pencil} label={actionLabel(tr.common.edit, title, dateText)} onPress={onEdit} />
+          {onDelete ? <IconButton icon={Trash} tone="danger" label={actionLabel(tr.common.delete, title, dateText)} haptic="none" onPress={onDelete} /> : null}
         </Row>
       </Spread>
       {divider ? <Divider flush /> : null}

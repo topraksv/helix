@@ -23,10 +23,13 @@ vi.mock("../../src/db/client", async () => {
   return sqliteClientMock(() => device.db!);
 });
 vi.mock("react-native", () => ({ Platform: { OS: "ios" } }));
+vi.mock("expo-file-system", () => ({ File: class {}, Paths: { cache: "/tmp" } }));
 vi.mock("../../src/services/logger", () => ({ devWarning: () => undefined, devError: () => undefined }));
 vi.mock("../../src/db/ids", () => ({ newId: () => "id", deterministicId: async (key: string) => key, naturalKeys: {} }));
 vi.mock("../../src/data/repo/maintenance", () => ({ runMaintenance: async () => undefined }));
-vi.mock("../../src/sync/engine", () => ({ scheduleSync: () => undefined }));
+/** What a restore's catch-up pull runs: the restoring device's own sync. */
+const catchUp = vi.hoisted(() => ({ run: async () => false }));
+vi.mock("../../src/sync/engine", () => ({ scheduleSync: () => undefined, syncNow: () => catchUp.run() }));
 
 import { performDataReset } from "../../src/data/repo/reset";
 import { prepareOutboundBatch } from "../../src/sync/outbound-validation";
@@ -486,5 +489,39 @@ describe("a reset made while the other device is offline", () => {
       expect(client.row(ROW_B), `${name}: a row the reset never saw is not its to clear`)
         .toMatchObject({ deleted_at: null, note: "B çevrimdışı yazdı" });
     }
+  });
+});
+
+describe("a restore on a device that has not pulled yet", () => {
+  it("does not take back what another device wrote after the backup", async () => {
+    logicalClock = 0;
+    const server = new FakeServer();
+    const a = new Client(USER);
+    const b = new Client(USER);
+    a.write({ id: ROW, note: "yedekteki" });
+    a.sync(server);
+    const backup = {
+      version: 1,
+      exportedAt: nextTimestamp(),
+      tables: {
+        persons: [{ id: PERSON, user_id: USER, created_at: nextTimestamp(), updated_at: nextTimestamp(), deleted_at: null, tombstone_version: 0, name: "Ben", is_self: true }],
+        transactions: [a.row(ROW)],
+      },
+    };
+    a.write({ ...(a.row(ROW) as Row), note: "A sonra düzenledi" });
+    a.sync(server);
+
+    device.db = b.db;
+    catchUp.run = async () => {
+      b.sync(server);
+      return true;
+    };
+    const { importBundle } = await import("../../src/services/export-import");
+    await importBundle(USER, backup);
+    b.sync(server);
+    a.sync(server);
+
+    expect(a.row(ROW)?.note).toBe("A sonra düzenledi");
+    expect(b.row(ROW)?.note).toBe("A sonra düzenledi");
   });
 });

@@ -342,7 +342,9 @@ describe("budget repository persistence", () => {
     expect(outbox().map(({ table_name, row_id }) => `${table_name}:${row_id}`)).toEqual([
       `category_budgets:${id}`,
     ]);
-    expect(JSON.parse(String(outbox()[0]!.payload)).amount_minor).toBe(75_000);
+    // The payload is what the server stores and what its ack writes back
+    // here, so it carries the row's creation time, not the edit's.
+    expect(JSON.parse(String(outbox()[0]!.payload))).toMatchObject({ amount_minor: 75_000, created_at: NOW });
   });
 
   it("rejects invalid month and amount values before persistence", async () => {

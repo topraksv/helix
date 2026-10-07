@@ -271,6 +271,16 @@ async function runMaintenanceInner(userId: string): Promise<void> {
     `SELECT * FROM transactions WHERE user_id = ? AND status = 'pending' AND effective_date <= ? AND deleted_at IS NULL`,
     [userId, today],
   );
+  // A statement the owner has paid against fixes the TRY figure of its
+  // foreign instalments: the payment was made against that figure, and
+  // `settleStatement` reads the live one, so restating it after the payment
+  // turned a statement paid in full into a partial one.
+  const paidStatements = new Set((await sqlite.getAllAsync<{ statement_id: string }>(
+    `SELECT DISTINCT statement_id FROM card_statement_payments WHERE user_id = ? AND paid_on <= ? AND deleted_at IS NULL`,
+    [userId, today],
+  )).map((payment) => payment.statement_id));
+  const billsAtRate = (row: Record<string, unknown>) =>
+    row.installment_plan_id != null && !paidStatements.has(String(row.card_statement_id));
   if (due.length > 0) {
     const priority = (row: Record<string, unknown>) =>
       row.type === "transfer" && Number(row.amount_try_minor) > 0
@@ -279,7 +289,7 @@ async function runMaintenanceInner(userId: string): Promise<void> {
           ? 2
           : 1;
     for (const row of [...due].sort((a, b) => priority(a) - priority(b) || String(a.id).localeCompare(String(b.id)))) {
-      const billed = row.installment_plan_id == null
+      const billed = !billsAtRate(row)
         ? null
         : await billedInTry(userId, String(row.currency), Number(row.amount_minor), String(row.effective_date) as ISODate);
       const writes: RowWrite[] = [{ table: "transactions", row: { ...fromDbShape("transactions", row), status: "realized", ...billed } }];
@@ -301,7 +311,8 @@ async function runMaintenanceInner(userId: string): Promise<void> {
 
   // 1b) A coming instalment of a foreign-currency plan is worth what the
   // currency is worth now, not on the day the plan was entered: its TRY figure
-  // follows the last known rate until its own day arrives and fixes it above.
+  // follows the last known rate until its own day arrives and fixes it above,
+  // or until its statement is paid against.
   const comingForeign = await sqlite.getAllAsync<Record<string, unknown>>(
     `SELECT * FROM transactions
      WHERE user_id = ? AND status = 'pending' AND installment_plan_id IS NOT NULL
@@ -309,7 +320,7 @@ async function runMaintenanceInner(userId: string): Promise<void> {
     [userId, today],
   );
   const repriced: RowWrite[] = [];
-  for (const row of comingForeign) {
+  for (const row of comingForeign.filter(billsAtRate)) {
     const billed = await billedInTry(userId, String(row.currency), Number(row.amount_minor), today);
     if (!billed || (billed.amountTryMinor === Number(row.amount_try_minor) && billed.fxRate === row.fx_rate)) continue;
     repriced.push({ table: "transactions", row: { ...fromDbShape("transactions", row), ...billed } });

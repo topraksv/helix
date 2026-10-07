@@ -361,7 +361,7 @@ test("follow-up controls stay understandable on a narrow phone", async ({ page }
   // the layout property on EVERY rendered row instead: that is both calendar
   // independent and stricter than checking one row.
   const upcomingTitles = page.getByText("Uzun Açıklamalı Aylık Düzenli Maaş Geliri", { exact: true });
-  const receivedActions = page.getByRole("button", { name: "Alındı", exact: true });
+  const receivedActions = page.getByRole("button", { name: "Alındı · Uzun Açıklamalı Aylık Düzenli Maaş Geliri", exact: true });
   await expect(upcomingTitles.first()).toBeVisible();
   const rowCount = await upcomingTitles.count();
   expect(rowCount).toBeGreaterThan(0);

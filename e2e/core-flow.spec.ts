@@ -76,6 +76,65 @@ test("onboarding → add → edit → delete/undo → backup protects the core l
   await assertNoRuntimeErrors(errors, testInfo);
 });
 
+test("two rows of one day name the row each of their actions belongs to", async ({ page }, testInfo) => {
+  const errors = collectRuntimeErrors(page);
+  await onboard(page);
+  await addMarketExpense(page, "Migros", "10,00");
+  await addMarketExpense(page, "Şok", "20,00");
+
+  await page.goto(`/helix/cash-flow/${currentMonthKey()}`);
+  await page.getByRole("button", { name: /Market.*30,00/ }).click();
+  for (const verb of ["Düzenle", "Sil"]) {
+    const labels = await page
+      .getByRole("button", { name: new RegExp(`^${verb} · `) })
+      .evaluateAll((buttons) => buttons.map((button) => button.getAttribute("aria-label")));
+    // The date stays after the name: two rows of one merchant are told apart by it.
+    expect(labels).toEqual(expect.arrayContaining([
+      expect.stringMatching(new RegExp(`^${verb} · Migros · \\d`, "u")),
+      expect.stringMatching(new RegExp(`^${verb} · Şok · \\d`, "u")),
+    ]));
+  }
+  await assertNoRuntimeErrors(errors, testInfo);
+});
+
+test("an edit that moves a foreign-currency row to another day prices it at that day's rate", async ({ page }, testInfo) => {
+  const errors = collectRuntimeErrors(page);
+  await onboard(page);
+  // The feed is dated by its publication time, so two loads give two days:
+  // 40 TRY today, then 50 TRY on the 15th of the previous month.
+  const [year, month] = currentMonthKey().split("-").map(Number) as [number, number];
+  const earlier = new Date(Date.UTC(year, month - 2, 15, 9));
+  let feed = { unix: Math.floor(Date.now() / 1000), usd: 0.025 };
+  await page.route("https://open.er-api.com/v6/latest/TRY", (route) => route.fulfill({
+    contentType: "application/json",
+    body: JSON.stringify({ result: "success", time_last_update_unix: feed.unix, rates: { USD: feed.usd, EUR: 0.02 } }),
+  }));
+
+  await page.goto("/helix/cash-flow");
+  await page.getByRole("button", { name: "İşlem Ekle" }).click();
+  await page.getByRole("textbox", { name: "Tutar · TRY" }).fill("10,00");
+  await pickOption(page, "Kategori", /Market/);
+  await page.getByRole("textbox", { name: "Not" }).fill("Kur");
+  await page.getByRole("button", { name: /döviz · TRY/ }).click();
+  await page.getByRole("button", { name: /· Değiştir$/ }).click();
+  await page.getByRole("radio", { name: /Dolar/ }).click();
+  await expect(page.getByText(/^≈ .*400/)).toBeVisible();
+  await page.getByRole("button", { name: "Kaydet", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Mali Tablo", exact: true })).toBeVisible();
+
+  feed = { unix: earlier.getTime() / 1000, usd: 0.02 };
+  await page.goto(`/helix/cash-flow/${currentMonthKey()}`);
+  await page.getByRole("button", { name: /Market/ }).first().click();
+  await page.getByRole("button", { name: "Düzenle · Kur" }).click();
+  await expect(page.getByText(/^≈ .*400/)).toBeVisible();
+  await page.getByRole("button", { name: "Ödeme günü" }).click();
+  await page.getByRole("button", { name: "Önceki", exact: true }).click();
+  const day = new Intl.DateTimeFormat("tr-TR", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" }).format(earlier);
+  await page.getByRole("button", { name: day, exact: true }).click();
+  await expect(page.getByText(/^≈ .*500/)).toBeVisible();
+  await assertNoRuntimeErrors(errors, testInfo);
+});
+
 test("a clean browser restores a backup and a relationally invalid file writes nothing @cross-browser", async ({ browser, page }, testInfo) => {
   const errors = collectRuntimeErrors(page);
   await onboard(page);
@@ -610,6 +669,21 @@ test("records a refund against an instalment purchase and shows it on the plan",
   await page.getByRole("button", { name: /Çamaşır makinesi/ }).click();
   await expect(page.getByText("İadeler", { exact: true })).toBeVisible();
   await expect(page.getByText("Güncel Tutar", { exact: true })).toBeVisible();
+
+  // Both deletes here are tombstones, so both come back from the undo bar.
+  const refundRow = page.getByRole("button", { name: /^Sil · .*300/ });
+  await refundRow.click();
+  await page.getByRole("dialog").getByRole("button", { name: "Sil", exact: true }).click();
+  await expect(refundRow).toHaveCount(0);
+  await page.getByRole("button", { name: "Geri Al", exact: true }).click();
+  await expect(refundRow).toBeVisible();
+
+  await page.getByRole("button", { name: "Bu planı sil" }).click();
+  await expect(page.getByRole("dialog")).not.toContainText("Geri alınamaz");
+  await page.getByRole("dialog").getByRole("button", { name: "Sil", exact: true }).click();
+  await expect(page.getByText(/^İade .*300/)).toHaveCount(0);
+  await page.getByRole("button", { name: "Geri Al", exact: true }).click();
+  await expect(page.getByText(/^İade .*300/)).toBeVisible();
 
   await assertNoRuntimeErrors(errors, testInfo);
 });

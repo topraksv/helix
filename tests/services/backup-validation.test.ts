@@ -310,7 +310,15 @@ describe("backup validation", () => {
     expect(isValidImportRow("installment_plans", { ...plan, total_amount_minor: null, monthly_amount_minor: null })).toBe(false);
     expect(isValidImportRow("fx_rates", { ...fxRate, rate_try: "0" })).toBe(false);
     expect(isValidImportRow("transactions", { ...transaction, amount_minor: 0 })).toBe(false);
-    expect(isValidImportRow("payment_sources", cardSource)).toBe(false);
+    // A card whose cycle nobody knows is a decided state since 1.7.2: the
+    // importer writes it, the server accepts it, and refusing it here
+    // quarantined the card and stopped every table pushed after it. Only a
+    // half-filled or impossible pair is refused.
+    expect(isValidImportRow("payment_sources", cardSource)).toBe(true);
+    expect(isValidImportRow("payment_sources", { ...cardSource, statement_day: 25 })).toBe(false);
+    expect(isValidImportRow("payment_sources", { ...cardSource, due_day: 10 })).toBe(false);
+    expect(isValidImportRow("payment_sources", { ...cardSource, statement_day: 32, due_day: 10 })).toBe(false);
+    expect(isValidImportRow("payment_sources", { ...cardSource, statement_day: 25, due_day: 10 })).toBe(true);
     expect(isValidImportRow("installment_plans", { ...plan, payment_source_id: null })).toBe(false);
     // An early closure's remembered count has the plan count's own bounds.
     expect(isValidImportRow("installment_plans", { ...plan, closed_on: "2026-08-10", original_installment_count: 3 })).toBe(true);

@@ -200,7 +200,7 @@ function useAuthForm() {
   // Held in state so Strict Mode's second effect run reads the same answer
   // rather than the empty one a second take would give.
   const [landingAnswer] = useState(takeEmailLinkLanding);
-  const [landing, setLanding] = useState<"confirmed" | "unusable" | null>(null);
+  const [landing, setLanding] = useState<"confirmed" | "changeConfirmed" | "unusable" | null>(null);
   const [resending, setResending] = useState(false);
   const [confirmationResent, setConfirmationResent] = useState(false);
   const [consented, setConsented] = useState(false);
@@ -391,7 +391,7 @@ function AuthFormCard({ form, wide, onOpenNotice }: { form: AuthForm; wide: bool
         />
       ) : null}
       {form.resetSent || form.signUpConfirmationSent ? <AuthNotice tone="success" text={form.signUpConfirmationSent ? tr.auth.signUpConfirmationSent : tr.auth.resetSent} /> : null}
-      {form.landing ? <AuthNotice tone={form.landing === "confirmed" ? "success" : "error"} text={form.landing === "confirmed" ? tr.auth.emailLinkConfirmed : tr.auth.emailLinkUnusable} /> : null}
+      {form.landing ? <AuthNotice tone={form.landing === "unusable" ? "error" : "success"} text={form.landing === "unusable" ? tr.auth.emailLinkUnusable : form.landing === "changeConfirmed" ? tr.auth.emailChangeLinkConfirmed : tr.auth.emailLinkConfirmed} /> : null}
       {form.confirmationResent ? <AuthNotice tone="success" text={tr.auth.confirmationResent} /> : null}
       {form.error ? <AuthNotice tone="error" text={form.error} /> : null}
       {form.busy ? (

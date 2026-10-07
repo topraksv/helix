@@ -88,6 +88,10 @@ function CloudDataResetScreen() {
   const [range, setRange] = useState<ResetRange>(EMPTY_RANGE);
   const [preview, setPreview] = useState<ResetPreview | null>(null);
   const [counting, setCounting] = useState(false);
+  // A failed count is not a zero: "nothing to delete" read as the data already
+  // gone. Bumping `attempt` re-runs the count for the same selection.
+  const [countFailed, setCountFailed] = useState(false);
+  const [attempt, setAttempt] = useState(0);
   const [running, setRunning] = useState(false);
 
   const rangeInvalid = range.from != null && range.to != null && range.from > range.to;
@@ -105,17 +109,21 @@ function CloudDataResetScreen() {
     if (scopes.length === 0 || rangeInvalid) {
       setPreview(null);
       setCounting(false);
+      setCountFailed(false);
       return;
     }
     let live = true;
     setCounting(true);
+    setCountFailed(false);
     previewDataReset(userId, selection)
       .then((result) => {
         if (live) setPreview(result);
       })
       .catch((error) => {
         devWarning("data-reset.preview", String(error));
-        if (live) setPreview(null);
+        if (!live) return;
+        setPreview(null);
+        setCountFailed(true);
       })
       .finally(() => {
         if (live) setCounting(false);
@@ -123,7 +131,7 @@ function CloudDataResetScreen() {
     return () => {
       live = false;
     };
-  }, [userId, selection, scopes.length, rangeInvalid]);
+  }, [userId, selection, scopes.length, rangeInvalid, attempt]);
 
   const toggleScope = useCallback((scope: ResetScope) => {
     setScopes((current) =>
@@ -283,6 +291,13 @@ function CloudDataResetScreen() {
           <PanelHeader icon={TriangleAlert} tone="error" title={tr.dataReset.summaryTitle} />
           {counting ? (
             <DelayedLoadingIndicator label={tr.dataReset.calculating} />
+          ) : countFailed ? (
+            <>
+              <Body muted>{tr.errors.requestFailed}</Body>
+              <View style={{ marginTop: spacing.md, alignItems: "flex-start" }}>
+                <Button label={tr.common.retry} variant="secondary" onPress={() => setAttempt((n) => n + 1)} />
+              </View>
+            </>
           ) : preview == null || preview.total === 0 ? (
             <Body muted>{tr.dataReset.summaryEmpty}</Body>
           ) : (

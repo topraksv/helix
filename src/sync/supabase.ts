@@ -20,11 +20,12 @@ export const isSupabaseConfigured = Boolean(url && anonKey);
 
 let client: SupabaseClient<Database> | null = null;
 let passwordRecoveryUserId: string | null = null;
-let emailLinkLanding: Promise<"confirmed" | "unusable"> | null = null;
+type EmailLinkAnswer = "confirmed" | "changeConfirmed" | "unusable";
+let emailLinkLanding: Promise<EmailLinkAnswer> | null = null;
 const authEventListeners = new Set<(event: AuthChangeEvent, session: Session | null) => void>();
 
 /** What Auth said about the e-mail link this page opened from, once. */
-export function takeEmailLinkLanding(): Promise<"confirmed" | "unusable"> | null {
+export function takeEmailLinkLanding(): Promise<EmailLinkAnswer> | null {
   const landing = emailLinkLanding;
   emailLinkLanding = null;
   return landing;
@@ -83,7 +84,7 @@ export function createRecoveryClient(): SupabaseClient<Database> | null {
  * and confirming it signs nobody in here. The token leaves the address bar
  * first, so a reload cannot spend it twice and report the refusal.
  */
-function landEmailLink(href: string): Promise<"confirmed" | "unusable"> | null {
+function landEmailLink(href: string): Promise<EmailLinkAnswer> | null {
   const landing = parseEmailLinkLanding(href);
   if (landing === null) return null;
   if (landing === "unusable") return Promise.resolve(landing);
@@ -92,10 +93,12 @@ function landEmailLink(href: string): Promise<"confirmed" | "unusable"> | null {
   address.hash = "";
   globalThis.history.replaceState(globalThis.history.state, "", address.href);
   const verifier = createRecoveryClient()!;
-  return verifier.auth.verifyOtp({ token_hash: landing.tokenHash, type: "email" }).then(async ({ error }) => {
+  return verifier.auth.verifyOtp({ token_hash: landing.tokenHash, type: landing.type }).then(async ({ error }) => {
     if (error) return "unusable";
     await verifier.auth.signOut({ scope: "local" });
-    return "confirmed";
+    // One side of a change is not the change: with both addresses asked,
+    // Auth accepts the first link and still waits for the other.
+    return landing.type === "email_change" ? "changeConfirmed" : "confirmed";
   });
 }
 

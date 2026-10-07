@@ -117,6 +117,12 @@ describe("password recovery session binding", () => {
       refused.getSupabase();
       await expect(refused.takeEmailLinkLanding()).resolves.toBe("unusable");
 
+      vi.stubGlobal("location", { href: "https://topraksv.github.io/helix/?token_hash=pkce_7c1d&type=email_change" });
+      const change = await load();
+      change.getSupabase();
+      await expect(change.takeEmailLinkLanding()).resolves.toBe("changeConfirmed");
+      expect(harness.client.auth.verifyOtp).toHaveBeenLastCalledWith({ token_hash: "pkce_7c1d", type: "email_change" });
+
       vi.stubGlobal("location", { href: "https://topraksv.github.io/helix/#error_code=otp_expired" });
       const expired = await load();
       expired.getSupabase();

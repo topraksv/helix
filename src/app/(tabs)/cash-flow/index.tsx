@@ -33,6 +33,7 @@ import { dateLabel, monthLabel, monthName, shortMonthLabel, tr } from "../../../
 import { balanceDeclarationDrift, parseBalanceDeclaration } from "../../../domain/balance-declaration";
 import {
   settingValue,
+  useSettingValue,
   useAllTransactionsState,
   useBalanceColumns,
   useCellNotesState,
@@ -168,17 +169,12 @@ export default function CashflowScreen() {
   const categories = categoriesState.data;
   const computed = computedState.data;
   const settings = settingsState.data;
-  const hiddenComputed = useMemo(() => settingValue<string[]>(settings, "computed_columns_hidden", []), [settings]);
+  const hiddenComputed = useSettingValue<string[]>(settings, "computed_columns_hidden", []);
   // "You told me X; this table says Y." The declaration is the last balance the
   // user checked against a real account.
   const balanceDeclaration = parseBalanceDeclaration(settingValue<unknown>(settings, "balance_declared", null));
-  // Memoized like the other JSON settings: `settingValue` parses on every read,
-  // so an unmemoized one hands the memoized table a new object each render and
-  // defeats it.
-  const colorLabels = useMemo(
-    () => parseMatrixColorLabels(settingValue<unknown>(settings, "matrix_color_labels", null)),
-    [settings],
-  );
+  const storedColorLabels = useSettingValue<unknown>(settings, "matrix_color_labels", null);
+  const colorLabels = useMemo(() => parseMatrixColorLabels(storedColorLabels), [storedColorLabels]);
   const balanceDrift = balanceDeclarationDrift(balanceDeclaration, bundle?.actualBalanceMinor ?? null);
   const visibleComputed = useMemo(() => computed.filter((c) => !hiddenComputed.includes(c.id)), [computed, hiddenComputed]);
   const sources = sourcesState.data;
@@ -297,12 +293,7 @@ export default function CashflowScreen() {
   const maxYear = Math.max(currentYear, lastDataYear);
 
   // Per-year columns (see domain/year-columns.ts for the resolution rules).
-  // `settingValue` parses JSON, so an unmemoized read hands a brand-new object
-  // to every consumer below it on every render.
-  const columnYears = useMemo(
-    () => settingValue<Record<string, string[]>>(settings, "column_years", {}),
-    [settings],
-  );
+  const columnYears = useSettingValue<Record<string, string[]>>(settings, "column_years", {});
   const dataCats = useMemo(() => {
     const used = new Set<string>();
     bundle?.yearMonths.forEach((m) => m.byCategory.forEach((v, cid) => { if (v !== 0) used.add(cid); }));

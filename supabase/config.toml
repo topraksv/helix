@@ -270,8 +270,9 @@ content_path = "./supabase/templates/recovery.html"
 subject = "✉️ Helix hesabını onayla"
 content_path = "./supabase/templates/confirmation.html"
 
-# Sent to both addresses while double_confirm_changes is on; the verify GET
-# itself confirms, and the person is signed in to read the result.
+# Sent to both addresses while double_confirm_changes is on, each with its own
+# token hash. The verify GET used to confirm a side on whatever fetched it
+# first, a mail scanner included; the app now redeems the token itself.
 [auth.email.template.email_change]
 subject = "📧 Helix e-posta adresi değişikliği"
 content_path = "./supabase/templates/email_change.html"

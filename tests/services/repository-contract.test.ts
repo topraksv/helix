@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { required } from "../helpers";
 import { addDaysISO, todayISO } from "../../src/domain/dates";
 
@@ -93,6 +93,7 @@ const publicRuntimeExports = [
   "closeInstallmentPlan",
   "reopenInstallmentPlan",
   "deletePlan",
+  "restorePlan",
   "ensureSubscriptionCategory",
   "upsertSubscription",
   "upsertRecurringIncome",
@@ -2155,6 +2156,17 @@ describe("repository error contract", () => {
  * the app's largest single write: one row plus one transaction per month.
  */
 describe("installment plan lifecycle", () => {
+  // The edit fixtures store instalment 1 only and call 2 and 3 the unpaid
+  // months. On the real clock those months passed, and an edit rightly declines
+  // to invent a past instalment that has no stored row (SPEC §3.1).
+  const duringTheSecondMonth = () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-07-10T09:00:00.000Z"));
+  };
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   const plan = {
     title: "Buzdolabı",
     kind: "loan" as const,
@@ -2253,18 +2265,26 @@ describe("installment plan lifecycle", () => {
       sqliteWith(transactions, { id: "plan-1", user_id: "user-1", title: "Buzdolabı", deleted_at: null }),
     );
 
-    await repository.deletePlan("user-1", "plan-1");
+    const deleted = await repository.deletePlan("user-1", "plan-1");
 
     const [, writes] = dependencies.writeRows.mock.calls[0] as [string, { table: string; row: Record<string, unknown> }[]];
     expect(writes).toHaveLength(3);
     expect(writes.every((write) => write.row.deletedAt != null)).toBe(true);
     expect(writes.map((write) => write.table)).toEqual(["installment_plans", "transactions", "transactions"]);
+
+    // The undo bar brings back exactly what was tombstoned, and nothing else.
+    expect(deleted).toEqual(writes);
+    await repository.restorePlan("user-1", deleted!);
+    const [, restored] = dependencies.restoreRows.mock.calls[0] as [string, { table: string; row: Record<string, unknown> }[]];
+    expect(restored.map((write) => [write.table, write.row.id, write.row.deletedAt])).toEqual(
+      writes.map((write) => [write.table, write.row.id, null]),
+    );
   });
 
   it("writes nothing when the plan to delete is already gone", async () => {
     dependencies.getSqliteAsync.mockResolvedValue(sqliteWith([], null));
 
-    await repository.deletePlan("user-1", "plan-1");
+    expect(await repository.deletePlan("user-1", "plan-1")).toBeNull();
 
     expect(dependencies.writeRows).not.toHaveBeenCalled();
   });
@@ -2328,6 +2348,7 @@ describe("installment plan lifecycle", () => {
   });
 
   it("keeps an already-paid instalment exactly as it was recorded", async () => {
+    duringTheSecondMonth();
     const realized = {
       id: "id:installmentTx|plan-1|1", user_id: "user-1", installment_plan_id: "plan-1", installment_no: 1,
       status: "realized", type: "expense", amount_minor: 4_444, currency: "TRY", amount_try_minor: 4_444,
@@ -2355,6 +2376,7 @@ describe("installment plan lifecycle", () => {
   });
 
   it("divides what is left of a purchase over the unpaid months, so an older split still totals it", async () => {
+    duringTheSecondMonth();
     // Written before 1.8.0, when the remainder rode on the last instalment:
     // 1.000,00 over three was 333,33 · 333,33 · 333,34, and the first is paid.
     const realized = {
@@ -2377,6 +2399,7 @@ describe("installment plan lifecycle", () => {
   });
 
   it("divides the purchase over its instalments alone, never a refund or a payoff beside them", async () => {
+    duringTheSecondMonth();
     const row = (id: string, no: number | null, amount: number) => ({
       id, user_id: "user-1", installment_plan_id: "plan-1", installment_no: no, status: "realized", type: "expense",
       amount_minor: amount, currency: "TRY", amount_try_minor: amount, entry_date: "2026-07-05",

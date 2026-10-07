@@ -437,7 +437,10 @@ const TABLE_RULES: Partial<Record<SyncedTableName, (raw: Record<string, unknown>
   cell_notes: (raw, { enforceInputLimits }) => !enforceInputLimits || optionalText(raw.body, 1_000),
 
   payment_sources: (raw, { enforceInputLimits }) => {
-    if (raw.type === "credit_card" && !isValidCardCycle({
+    // Both days blank is a card whose cycle nobody knows, which the importer
+    // writes on purpose (1.7.2); only a half-filled or impossible pair is refused.
+    const cycleUnknown = raw.statement_day == null && raw.due_day == null;
+    if (raw.type === "credit_card" && !cycleUnknown && !isValidCardCycle({
       statementDay: typeof raw.statement_day === "number" ? raw.statement_day : null,
       dueDay: typeof raw.due_day === "number" ? raw.due_day : null,
     })) return false;

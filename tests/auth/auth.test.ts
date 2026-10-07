@@ -112,14 +112,15 @@ describe("server-side password policy", () => {
     expect(template).not.toContain("{{ .ConfirmationURL }}");
   });
 
-  // Mailed to both addresses while double_confirm_changes is on; the verify GET confirms each.
-  it("sends an e-mail change through Auth's own verify link, naming both addresses", () => {
+  // Mailed to both addresses while double_confirm_changes is on. Auth's own
+  // verify link confirmed a side on any GET, a mail scanner's included.
+  it("sends an e-mail change to the app with a token Auth checks, naming both addresses", () => {
     expect(config).toMatch(/\[auth\.email\.template\.email_change\][\s\S]*?^content_path = "\.\/supabase\/templates\/email_change\.html"$/m);
     const template = readFileSync(join(process.cwd(), "supabase/templates/email_change.html"), "utf8");
-    expect(template).toContain('href="{{ .ConfirmationURL }}"');
+    expect(template).toContain('href="{{ .RedirectTo }}?token_hash={{ .TokenHash }}&type=email_change"');
     expect(template).toContain("{{ .Email }}");
     expect(template).toContain("{{ .NewEmail }}");
-    expect(template).not.toContain("{{ .TokenHash }}");
+    expect(template).not.toContain("{{ .ConfirmationURL }}");
   });
 });
 
@@ -334,8 +335,9 @@ describe("e-mail link landings on the Site URL", () => {
   const site = "https://topraksv.github.io/helix/";
 
   it("hands a confirmation token on to be checked", () => {
-    expect(parseEmailLinkLanding(`${site}?token_hash=pkce_0b6f&type=email`)).toEqual({ tokenHash: "pkce_0b6f" });
-    expect(parseEmailLinkLanding(`${site}#token_hash=pkce_0b6f&type=email`)).toEqual({ tokenHash: "pkce_0b6f" });
+    expect(parseEmailLinkLanding(`${site}?token_hash=pkce_0b6f&type=email`)).toEqual({ tokenHash: "pkce_0b6f", type: "email" });
+    expect(parseEmailLinkLanding(`${site}#token_hash=pkce_0b6f&type=email`)).toEqual({ tokenHash: "pkce_0b6f", type: "email" });
+    expect(parseEmailLinkLanding(`${site}?token_hash=pkce_0b6f&type=email_change`)).toEqual({ tokenHash: "pkce_0b6f", type: "email_change" });
   });
 
   it("reads Auth's error, in the query or the fragment, as a link that no longer works", () => {
@@ -360,7 +362,7 @@ describe("e-mail link landings on the Site URL", () => {
     expect(parseEmailLinkLanding(`${site}reset-password/#error_code=otp_expired`)).toBeNull();
     // Only the reset screen itself: a path that merely passes through the name
     // is not it.
-    expect(parseEmailLinkLanding(`${site}reset-password/done?token_hash=pkce_0b6f&type=email`)).toEqual({ tokenHash: "pkce_0b6f" });
+    expect(parseEmailLinkLanding(`${site}reset-password/done?token_hash=pkce_0b6f&type=email`)).toEqual({ tokenHash: "pkce_0b6f", type: "email" });
   });
 });
 

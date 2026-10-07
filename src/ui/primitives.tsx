@@ -498,6 +498,7 @@ export function Button({
   size = "md",
   haptic: hapticKind = "none",
   accessibilityHint,
+  subject,
   expanded,
   testID,
 }: {
@@ -519,6 +520,8 @@ export function Button({
   size?: "md" | "sm";
   haptic?: HapticKind;
   accessibilityHint?: string;
+  /** The record it acts on, spoken after the label where a list repeats the same verb per row (UI.md §4). */
+  subject?: string;
   expanded?: boolean;
   testID?: string;
 }) {
@@ -543,7 +546,7 @@ export function Button({
     <Pressable
       testID={testID}
       accessibilityRole="button"
-      accessibilityLabel={label}
+      accessibilityLabel={subject ? `${label} · ${subject}` : label}
       accessibilityHint={accessibilityHint}
       aria-expanded={expanded}
       accessibilityState={{ disabled: Boolean(disabled || loading), busy: Boolean(loading), expanded }}

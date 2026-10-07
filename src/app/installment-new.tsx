@@ -3,7 +3,7 @@
 import React, { useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { Redirect, Stack, useLocalSearchParams, useRouter } from "expo-router";
-import { closeInstallmentPlan, countInstallmentsForPlan, createInstallmentPlan, CreditCardCycleRequiredError, deletePlan, deleteTransaction, FxRateUnavailableError, InstallmentHistoryConflictError, InstallmentTotalTooSmallError, reopenInstallmentPlan, updateInstallmentPlan } from "../data/repo";
+import { closeInstallmentPlan, countInstallmentsForPlan, createInstallmentPlan, CreditCardCycleRequiredError, deletePlan, deleteTransaction, FxRateUnavailableError, InstallmentHistoryConflictError, InstallmentTotalTooSmallError, reopenInstallmentPlan, restorePlan, restoreTransaction, updateInstallmentPlan } from "../data/repo";
 import { useAllTransactionsState, useAnsweredForId, useCategoriesState, usePersonsState, usePlansState, useSourcesState, useUserId } from "../data/hooks";
 import { combineLiveStates } from "../data/live-state";
 import { classifyRecordId } from "../domain/route-params";
@@ -206,6 +206,7 @@ function PlanRefunds({ planId }: { planId: string }) {
   const refunds = rows.filter((t) => t.installmentNo == null && t.amountTryMinor < 0).sort((a, b) => a.effectiveDate.localeCompare(b.effectiveDate));
   const purchaseMinor = rows.filter((t) => t.installmentNo != null).reduce((sum, t) => sum + t.amountTryMinor, 0);
   const refundedMinor = -refunds.reduce((sum, t) => sum + t.amountTryMinor, 0);
+  const undo = useUndo();
   const remove = (id: string, amountMinor: number) => {
     void (async () => {
       const ok = await appConfirm(tr.installments.refundDeleteTitle, tr.installments.refundDeleteBody(formatMinorCompact(-amountMinor)), {
@@ -214,8 +215,9 @@ function PlanRefunds({ planId }: { planId: string }) {
       });
       if (!ok) return;
       try {
-        await deleteTransaction(userId, id);
+        const snapshot = await deleteTransaction(userId, id);
         scheduleSync(userId);
+        if (snapshot) undo.show(tr.tx.deletedUndo, () => restoreTransaction(userId, snapshot).then(() => scheduleSync(userId)), "warning");
       } catch {
         void appAlert(tr.errors.saveFailed, tr.errors.title);
       }
@@ -564,6 +566,7 @@ function usePlanForm(existing: ExistingPlan | undefined) {
   const transactionsState = useAllTransactionsState();
   const plansState = usePlansState();
   const operationGuard = useOperationGuard();
+  const undo = useUndo();
   const router = useRouter();
   const data = combineLiveStates([sourcesState, personsState, categoriesState, transactionsState]);
   const persons = personsState.data;
@@ -618,13 +621,14 @@ function usePlanForm(existing: ExistingPlan | undefined) {
     }
   });
 
-  // Deleting a plan tombstones every generated instalment and cannot be undone, so the confirmation counts them.
+  // Deleting a plan tombstones every generated instalment, so the confirmation counts them; the undo bar brings back exactly those.
   const confirmDelete = () => void (async () => {
     try {
       const count = await countInstallmentsForPlan(userId, existing!.id);
       if (!(await appConfirm(existing!.title, tr.installments.deleteBody(count), { confirmLabel: tr.common.delete, danger: true }))) return;
-      await deletePlan(userId, existing!.id);
+      const deleted = await deletePlan(userId, existing!.id);
       scheduleSync(userId);
+      if (deleted) undo.show(tr.installments.deletedNotice, () => restorePlan(userId, deleted).then(() => scheduleSync(userId)), "warning");
       allowExit(close);
     } catch {
       void appAlert(tr.errors.saveFailed, tr.errors.title);

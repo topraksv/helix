@@ -238,7 +238,7 @@ describe("the app's own brand mark", () => {
     const bounds = inkBounds("assets/brand/symbol-light-t.png");
     const { VIEW_BOX } = await import("../../src/ui/brand-art");
     const [, , width, height] = VIEW_BOX.split(" ").map(Number);
-    expect(readFileSync(join(root, "src/ui/brand.tsx"), "utf8")).toContain(`export const MARK_ASPECT = ${width} / ${height};`);
+    expect(readFileSync(join(root, "src/ui/brand.tsx"), "utf8")).toContain(`const MARK_ASPECT = ${width} / ${height};`);
     expect(bounds.width / bounds.height).toBeCloseTo(width! / height!, 2);
   });
 });

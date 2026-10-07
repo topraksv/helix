@@ -50,7 +50,7 @@ vi.mock("../../src/services/fx-fetch", () => ({ lookupRate: vi.fn(() => null) })
 vi.mock("../../src/services/markets", () => ({ marketSellRateTry: vi.fn(() => null) }));
 
 import { commitStatementRows, type AcceptedStatementRow } from "../../src/data/repo/statement-import";
-import { createInstallmentPlan } from "../../src/data/repo/installments";
+import { createInstallmentPlan, updateInstallmentPlan } from "../../src/data/repo/installments";
 import { revertExpected } from "../../src/data/repo/expected";
 import type { MonthKey } from "../../src/domain/dates";
 import { statementPlanSpec } from "../../src/domain/statement-import";
@@ -384,6 +384,73 @@ describe("an instalment line becomes the plan behind it", () => {
     });
     expect(liveRows().map((live) => live.installment_no).sort((a, b) => Number(a) - Number(b))).toEqual([3, 4, 5, 6, 7, 8, 9]);
     expect(liveRows().every((live) => live.installment_plan_id === livePlans()[0]?.id)).toBe(true);
+  });
+
+  /**
+   * SPEC §3.1: an edit that keeps the paid count and the start rewrites only the
+   * unpaid months. A title-only save rebuilt the whole 1..count schedule, so the
+   * two instalments the statement never wrote came back as realized spend in
+   * months already past.
+   */
+  it("an edit to the plan does not bring back the instalments the statement left out", async () => {
+    await commitStatementRows(USER, {
+      personId: "person-self",
+      period: "2026-07",
+      paymentSourceId: "card",
+      rows: [instalment()],
+    });
+    const plan = livePlans()[0]!;
+    await updateInstallmentPlan(USER, String(plan.id), {
+      title: "TEKNOSA 2",
+      kind: "card_installment",
+      totalAmountMinor: null,
+      monthlyAmountMinor: 199_573,
+      installmentCount: 9,
+      currency: "TRY",
+      fxRate: null,
+      startMonth: "2026-05",
+      dueDay: null,
+      paymentSourceId: "card",
+      personId: "person-self",
+      personIsSelf: true,
+      categoryId: "cat-1",
+      note: null,
+      tryFactor: 1,
+    }, { reschedule: false });
+
+    expect(livePlans()[0]).toMatchObject({ title: "TEKNOSA 2" });
+    expect(liveRows().map((live) => live.installment_no).sort((a, b) => Number(a) - Number(b))).toEqual([3, 4, 5, 6, 7, 8, 9]);
+  });
+
+  // The months the statement left out still took their share of a total: an
+  // edit to a whole-purchase figure divided it over only the months stored.
+  it("a total set on the plan leaves the left-out months their share", async () => {
+    await commitStatementRows(USER, {
+      personId: "person-self",
+      period: "2026-07",
+      paymentSourceId: "card",
+      rows: [instalment()],
+    });
+    const plan = livePlans()[0]!;
+    await updateInstallmentPlan(USER, String(plan.id), {
+      title: "TEKNOSA",
+      kind: "card_installment",
+      totalAmountMinor: 9 * 199_573,
+      monthlyAmountMinor: null,
+      installmentCount: 9,
+      currency: "TRY",
+      fxRate: null,
+      startMonth: "2026-05",
+      dueDay: null,
+      paymentSourceId: "card",
+      personId: "person-self",
+      personIsSelf: true,
+      categoryId: "cat-1",
+      note: null,
+      tryFactor: 1,
+    }, { reschedule: false });
+
+    expect(liveRows().map((live) => Number(live.amount_minor))).toEqual(Array(7).fill(199_573));
   });
 
   /**

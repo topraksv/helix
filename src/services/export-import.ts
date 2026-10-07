@@ -37,10 +37,27 @@ function throwIfAborted(signal?: AbortSignal): void {
   if (signal?.aborted) throw signal.reason ?? new Error("Operation cancelled");
 }
 
+/** A wait the owner can cancel: a pull on a hanging network has no deadline of its own. */
+function untilAborted<T>(work: Promise<T>, signal?: AbortSignal): Promise<T> {
+  if (!signal) return work;
+  return new Promise<T>((resolve, reject) => {
+    const cancel = () => reject(signal.reason ?? new Error("Operation cancelled"));
+    // An abort that fired before this wait began sends no event to it.
+    if (signal.aborted) return cancel();
+    signal.addEventListener("abort", cancel, { once: true });
+    work.then(resolve, reject).finally(() => signal.removeEventListener("abort", cancel));
+  });
+}
+
 /**
- * Build a restorable JSON file one table at a time. This never retains all
- * SQLite row arrays alongside the final string. The output is rejected if this
- * app could not safely import it back.
+ * Build the JSON backup one table at a time. This never retains all SQLite row
+ * arrays alongside the final string.
+ *
+ * It copies what is stored and checks only size: restore validation is not run
+ * here. The sync-issues screen offers this file as the way out of a quarantine,
+ * so refusing to write it over one bad row would take that way out away.
+ * Restorability is held by keeping the local writers inside what restore
+ * accepts — `backup-round-trip.test.ts` owns each path that drifted.
  */
 export async function buildExportText(userId: string, signal?: AbortSignal): Promise<string> {
   const sqlite = await getSqliteAsync();
@@ -81,9 +98,17 @@ export async function saveFile(filename: string, content: string | Uint8Array<Ar
 }
 
 /**
- * Import a JSON bundle: newer rows win per id (same LWW rule as sync), so a
- * restore never clobbers fresher local edits. The entire bundle is validated
- * before the first write and then committed in one SQLite transaction.
+ * Import a JSON bundle: a backup row is written only where the local copy is
+ * older, and the entire bundle is validated before the first write and then
+ * committed in one SQLite transaction.
+ *
+ * A written row is a new local write — stamped now and pushed — and the server
+ * keeps the last push, so "older" must be judged against everything the other
+ * devices wrote: the restore pulls first. Without that, a device that had not
+ * pulled yet (a fresh install, or one just back online) took back every edit
+ * made elsewhere since the backup. Offline the pull fails and the restore
+ * still runs: it is the way back for a device with nothing else, and the
+ * owner chose it knowing the file's date.
  */
 export async function importBundle(
   userId: string,
@@ -92,6 +117,9 @@ export async function importBundle(
 ): Promise<{ imported: number; skipped: number }> {
   throwIfAborted(options?.signal);
   const parsedBundle = validateExportBundle(input);
+  const { syncNow } = await import("../sync/engine");
+  await untilAborted(syncNow(userId), options?.signal);
+  throwIfAborted(options?.signal);
   // Restore keeps every row's original id, and a large share of those ids are
   // derived from the account that made them. Pointed at a second account they
   // would collide with that account's own rows on a shared device, or simply

@@ -777,7 +777,7 @@ export function DataStateNotice({
   retry: () => void;
 }) {
   const { palette } = useTheme();
-  if (status === "ready" || status === "refreshing") return null;
+  if (status === "ready") return null;
   if (status === "loading") {
     return (
       <DelayedLoading>

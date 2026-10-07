@@ -405,6 +405,20 @@ jobs:
             test-results
             playwright-report
           retention-days: 7
+      # A flaky pass is a failure its retry hid, and the shard still goes green
+      # and deploys: measured, 5 in 30 runs, none with anything to read. The
+      # failed attempt's trace and screenshot are in test-results either way;
+      # a clean run leaves none there, so this uploads nothing then.
+      - if: success()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: e2e-flaky-${{ github.run_id }}-shard${{ matrix.shard }}
+          path: |
+            test-results/**/trace.zip
+            test-results/**/*.png
+            test-results/**/error-context.md
+          if-no-files-found: ignore
+          retention-days: 7
 
   # What both deploys wait on. It is not a branch-protection required check:
   # pushes land on `main` directly, and a required check would refuse every

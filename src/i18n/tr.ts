@@ -430,6 +430,7 @@ export const tr = {
     /* The browser a confirmation mail opens in is often not the one that
        signed up, so it lands here signed out; these say what the link did. */
     emailLinkConfirmed: "E-posta adresin onaylandı. Şimdi e-postan ve şifrenle giriş yapabilirsin.",
+    emailChangeLinkConfirmed: "Onayın alındı. Diğer adrese giden bağlantı da onaylanınca yeni adresinle giriş yaparsın; o zamana kadar eski adresin geçerli.",
     emailLinkUnusable: "Bu e-posta bağlantısı artık geçerli değil. Hesabın zaten onaylandıysa giriş yapabilirsin; değilse e-postanı yazıp yeni bağlantı iste.",
     email: "E-posta", password: "Şifre",
     signIn: "Giriş yap",
@@ -1279,7 +1280,8 @@ export const tr = {
     totalTooSmall: "Bu toplam, ödenmiş taksitlerden sonra kalan aylara yetmiyor. Toplamı artır ya da taksit sayısını azalt.",
     delete: "Bu planı sil",
     noSource: "Ödeme yöntemi yok",
-    deleteBody: (count: number) => `Bu plan ve ona bağlı ${count} taksit kaydı kalıcı olarak silinecek. Geri alınamaz.`,
+    deleteBody: (count: number) => `Bu plan ve ona bağlı ${count} taksit kaydı silinecek.`,
+    deletedNotice: "Plan silindi",
     nthInstallment: (n: number) => `${n}. taksit`,
     defaultTitle: (amount: string) => `${amount} taksitli harcama`,
     allCards: "Tüm kartlar",

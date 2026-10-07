@@ -108,8 +108,8 @@ export function parsePasswordRecoveryUrl(url: string | null, target: RecoveryTar
 }
 
 /**
- * What a sign-up confirmation link carries when it returns to the Site URL:
- * a token for Auth to check, or Auth's refusal.
+ * What a sign-up confirmation or e-mail change link carries when it returns to
+ * the Site URL: a token for Auth to check, or Auth's refusal.
  *
  * A bare `code` is deliberately not an answer. It is what Auth's own verify
  * link hands back, and only the browser that signed up holds the PKCE
@@ -117,7 +117,9 @@ export function parsePasswordRecoveryUrl(url: string | null, target: RecoveryTar
  * "confirmed" let any address carrying `?code=` say so. Read before
  * supabase-js strips the URL.
  */
-export function parseEmailLinkLanding(url: string): { tokenHash: string } | "unusable" | null {
+export function parseEmailLinkLanding(
+  url: string,
+): { tokenHash: string; type: "email" | "email_change" } | "unusable" | null {
   let parsed: URL;
   try {
     parsed = new URL(url);
@@ -128,5 +130,6 @@ export function parseEmailLinkLanding(url: string): { tokenHash: string } | "unu
   const params = linkParams(parsed);
   if (params.has("error") || params.has("error_code")) return "unusable";
   const tokenHash = params.get("token_hash");
-  return tokenHash && params.get("type") === "email" ? { tokenHash } : null;
+  const type = params.get("type");
+  return tokenHash && (type === "email" || type === "email_change") ? { tokenHash, type } : null;
 }

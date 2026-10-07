@@ -24,7 +24,7 @@ import { useReducedMotion } from "./motion";
 import { PALETTES, useTheme } from "./theme";
 
 /** The drawing's width over its height, known before its chunk arrives. */
-export const MARK_ASPECT = 468.6 / 611.38;
+const MARK_ASPECT = 468.6 / 611.38;
 
 type Art = typeof import("./brand-art");
 let art: Art | undefined;

@@ -129,9 +129,9 @@ Deno.serve(async (request: Request): Promise<Response> => {
    * The limit lives in the database (migration 37) rather than here: this
    * function is a public HTTP endpoint, so a bound it enforced in its own
    * memory would last exactly as long as one isolate and would be shared by
-   * none of them. The RPC counts and records in one statement under the
-   * caller's own identity, and the table it writes is unreachable by any
-   * other path.
+   * none of them. The RPC counts and records under a per-account lock
+   * (migration 44) and the caller's own identity, and the table it writes is
+   * unreachable by any other path.
    *
    * Claimed BEFORE the body is parsed and the attachments are decoded, so a
    * caller who is already over the limit cannot make this function do the

@@ -450,6 +450,25 @@ describe("foreign-currency instalments", () => {
     expect(transaction("no-rate")).toEqual({ status: "pending", amount_try_minor: 200_00, fx_rate: "20" });
     expect([rewritten("lira"), rewritten("no-rate")]).toEqual([false, false]);
   });
+
+  it("keeps the figure of a coming instalment on a statement the owner has paid against", async () => {
+    // The payment was made against this figure: restating it at a higher rate
+    // turned a statement paid in full into a partial one and moved its charges
+    // back from the day they were paid to their due date.
+    insert("credit_card_statements", { ...stamps, id: "stmt", payment_source_id: "card", period_month: "2098-12", statement_date: "2098-12-25", due_date: "2099-01-05" });
+    insert("card_statement_payments", { ...stamps, id: "pay", statement_id: "stmt", paid_on: "2020-01-01", amount_minor: 200_00, kind: "full" });
+    insert("transactions", { ...instalmentRow("paid", "USD", "2099-01-05", 200_00), card_statement_id: "stmt" });
+
+    await runMaintenance(USER);
+
+    expect(transaction("paid")).toEqual({ status: "pending", amount_try_minor: 200_00, fx_rate: "20" });
+    expect(rewritten("paid")).toBe(false);
+
+    // Nor when its day comes: it is realized at the figure that was paid.
+    harness.db!.prepare(`UPDATE transactions SET effective_date = '2020-01-05' WHERE id = 'paid'`).run();
+    await runMaintenance(USER);
+    expect(transaction("paid")).toEqual({ status: "realized", amount_try_minor: 200_00, fx_rate: "20" });
+  });
 });
 
 describe("card charges without a statement", () => {

@@ -274,7 +274,9 @@ function acquireSharedLive<T>(
     },
   };
   runner = startLiveQueryRunner<unknown>(query, tables, (transition) => {
-    entry.state = { ...transition(entry.state), retry };
+    const next = transition(entry.state);
+    if (next === entry.state) return;
+    entry.state = { ...next, retry };
     for (const notify of entry.listeners) notify();
   });
   sharedLive.set(key, entry);
@@ -653,6 +655,19 @@ export function useCellNotesState(): LiveResult<typeof s.cellNotes.$inferSelect>
 
 export function settingValue<T>(map: Map<string, string>, key: SettingKey, fallback: T): T {
   return decodeSettingValue(key, map.get(key), fallback);
+}
+
+/**
+ * A setting decoded once per stored string. The map is a new object after any
+ * write — every entry writes `last_entry_at` — so a memo keyed on it re-parsed
+ * the value and handed whatever it feeds a new object on every write in the
+ * app. The fallback is the first render's, so a literal `[]` does not count as
+ * a change.
+ */
+export function useSettingValue<T>(map: Map<string, string>, key: SettingKey, fallback: T): T {
+  const raw = map.get(key);
+  const [initialFallback] = useState(fallback);
+  return useMemo(() => decodeSettingValue(key, raw, initialFallback), [key, raw, initialFallback]);
 }
 
 /** Map DB transaction rows to the domain TxLike shape. */

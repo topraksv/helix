@@ -204,6 +204,7 @@ export default function CatchUpScreen() {
                   <Button
                     size="sm"
                     label={needsAmountEntry(e) ? tr.subs.enterAmount : e.direction === "in" ? tr.dashboard.received : tr.dashboard.markPaid}
+                    subject={nameOf(e)}
                     loading={confirmingId === e.id}
                     disabled={confirmingId != null}
                     haptic="none"
@@ -224,6 +225,7 @@ export default function CatchUpScreen() {
                   <Button
                     size="sm"
                     label={needsAmountEntry(e) ? tr.subs.enterAmount : tr.catchup.fixAmount}
+                    subject={nameOf(e)}
                     variant="secondary"
                     onPress={() => confirmDiscard(() => {
                       setEditing(e.id);
@@ -236,6 +238,7 @@ export default function CatchUpScreen() {
                   <Button
                     size="sm"
                     label={tr.common.skip}
+                    subject={nameOf(e)}
                     variant="ghost"
                     loading={confirmingId === e.id}
                     disabled={confirmingId != null}

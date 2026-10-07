@@ -4,6 +4,7 @@ import { createHash } from "node:crypto";
 const dependencies = vi.hoisted(() => ({
   getAllAsync: vi.fn(),
   writeRowBatchesAtomically: vi.fn(),
+  syncNow: vi.fn(async () => false),
   platform: { OS: "web" },
   /** What the native file system was asked to do, in order. */
   files: [] as string[],
@@ -27,6 +28,8 @@ vi.mock("expo-file-system", () => ({
 vi.mock("../../src/db/client", () => ({
   getSqliteAsync: async () => ({ getAllAsync: dependencies.getAllAsync }),
 }));
+// The catch-up pull a restore makes first; the network is not this file's subject.
+vi.mock("../../src/sync/engine", () => ({ syncNow: () => dependencies.syncNow() }));
 vi.mock("../../src/db/mutations", () => ({
   fromDbShape: (_table: string, row: Record<string, unknown>) => row,
   writeRowBatchesAtomically: dependencies.writeRowBatchesAtomically,
@@ -64,6 +67,7 @@ describe("backup import result counts", () => {
   beforeEach(() => {
     dependencies.getAllAsync.mockReset();
     dependencies.writeRowBatchesAtomically.mockReset();
+    dependencies.syncNow.mockClear();
     dependencies.getAllAsync.mockImplementation(async (sql: string) =>
       sql.includes("FROM settings") ? [{ id: settingId, updated_at: timestamp }] : [],
     );
@@ -132,6 +136,18 @@ describe("backup import result counts", () => {
 
     expect(result).toEqual({ imported: 1, skipped: 1 });
     expect(progress).toEqual([[1, 3], [2, 3], [3, 3]]);
+  });
+
+  it("a cancel during the catch-up pull ends the restore without waiting for the network", async () => {
+    dependencies.syncNow.mockImplementationOnce(() => new Promise<boolean>(() => {}));
+    const controller = new AbortController();
+    const reason = new Error("cancelled");
+    const restore = importBundle(targetUserId, { version: 1, exportedAt: timestamp, tables: {} }, { signal: controller.signal });
+    await vi.waitFor(() => expect(dependencies.syncNow).toHaveBeenCalled());
+    controller.abort(reason);
+
+    await expect(restore).rejects.toBe(reason);
+    expect(dependencies.writeRowBatchesAtomically).not.toHaveBeenCalled();
   });
 
   it("honours cancellation before restore planning or writes", async () => {

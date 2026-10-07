@@ -51,12 +51,6 @@ supabase/.temp/
 # Nothing here is an input to a build or test.
 .codex/
 
-# Source-owned AI control plane. Tool settings remain machine-local, while the
-# check script and the vendored skills are recoverable from Git.
-# Skills are committed rather than restored on demand so that an upstream
-# change is reviewable as a diff instead of arriving silently at install time.
-/.claude/*
-
 
 # TestSprite MCP-flow output: generated Python test scripts and per-run
 # recordings, regenerated fresh whenever that flow runs and never an input to

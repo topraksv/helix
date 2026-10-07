@@ -41,7 +41,7 @@ vi.mock("../../src/db/ids", () => ({
 }));
 vi.mock("../../src/services/fx-fetch", () => ({ lookupRate: vi.fn() }));
 vi.mock("../../src/services/markets", () => ({ marketSellRateTry: vi.fn() }));
-vi.mock("../../src/sync/engine", () => ({ scheduleSync: vi.fn() }));
+vi.mock("../../src/sync/engine", () => ({ scheduleSync: vi.fn(), syncNow: vi.fn(async () => false) }));
 
 import {
   addTransaction,
@@ -451,6 +451,32 @@ describe("backup round trip", () => {
       ).all(TARGET_USER)).toEqual([{ title: "Telefon", installment_count: 3, start_month: "2026-07", monthly_amount_minor: 333_33 }]);
       // The first instalment's rounding kuruş stays in its cell, so every month still totals what it did.
       expect(ownMonths(TARGET_USER)).toEqual(ownMonths(SOURCE_USER));
+    });
+
+    /**
+     * The wizard leaves a card's cycle blank when nobody knows it (1.7.2). That
+     * card made the account's own next backup "Geçersiz yedek dosyası": the
+     * export copies what is stored, and restore refused the card.
+     */
+    it("restores the backup of an import whose card cycle was left blank", async () => {
+      const self = await createPerson(SOURCE_USER, "Ben");
+      const phone = await createCategory(SOURCE_USER, { name: "Elektronik", kind: "expense", isTransfer: false, sortOrder: 0 });
+      const card = await upsertPaymentSource(SOURCE_USER, { name: "Bonus", type: "credit_card", personId: self, statementDay: 20, dueDay: 5 });
+      await createInstallmentPlan(SOURCE_USER, {
+        title: "Telefon", kind: "card_installment", totalAmountMinor: 1_000_00, monthlyAmountMinor: null, installmentCount: 3,
+        currency: "TRY", fxRate: null, startMonth: "2026-07" as never, dueDay: 5, paymentSourceId: card, personId: self,
+        personIsSelf: true, categoryId: phone, note: null, tryFactor: 1,
+      });
+
+      const parsed = await parseWorkbookBytes(await buildWorkbookBytes(SOURCE_USER));
+      const target = await createPerson(TARGET_USER, "Ben");
+      await importSheets(TARGET_USER, { sheets: parsed.sheets, excludedLabels: [], selfId: target, mode: "replace" });
+
+      expect(harness.db!.prepare(
+        `SELECT statement_day, due_day FROM payment_sources WHERE user_id = ? AND type = 'credit_card' AND deleted_at IS NULL`,
+      ).all(TARGET_USER)).toEqual([{ statement_day: null, due_day: null }]);
+      const text = await buildExportText(TARGET_USER);
+      expect(() => parseExportBundleText(text)).not.toThrow();
     });
   });
 });

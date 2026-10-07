@@ -1,6 +1,6 @@
 import { getSqliteAsync } from "../../db/client";
 import { deterministicId, naturalKeys, newId } from "../../db/ids";
-import { assertLiveRow, fromDbShape, nowIso, writeRows, writeRowsValidated, type RowWrite } from "../../db/mutations";
+import { assertLiveRow, fromDbShape, nowIso, restoreRows, writeRows, writeRowsValidated, type RowWrite } from "../../db/mutations";
 import { clampDayToMonth, isISODate, isMonthDay, isMonthKey, monthOf, todayISO, yearOf, type ISODate, type MonthKey } from "../../domain/dates";
 import { isSupportedCurrency } from "../../domain/fx-provider";
 import { generateSchedule, isValidInstallmentCount } from "../../domain/installments";
@@ -179,7 +179,7 @@ function carryStoredDetails(writes: RowWrite[], stored: Record<string, unknown>[
  * or less than nothing — is refused: the count is what is wrong, and no split
  * of it totals the purchase.
  */
-function divideWhatIsLeft(writes: RowWrite[], input: NewPlan, kept: Map<string, Record<string, unknown>>): RowWrite[] {
+function divideWhatIsLeft(writes: RowWrite[], input: NewPlan, kept: Map<string, Record<string, unknown>>, leftOut: number): RowWrite[] {
   if (input.totalAmountMinor == null) return writes;
   // Already in schedule order: `buildPlanRows` writes the months in turn, and
   // the first of them carries the split's rounding.
@@ -191,8 +191,10 @@ function divideWhatIsLeft(writes: RowWrite[], input: NewPlan, kept: Map<string, 
     .reduce((sum, row) => sum + Number(row.amount_minor), 0);
   const leftMinor = input.totalAmountMinor - paidMinor;
   if (unpaid.length === 0) return writes;
-  if (leftMinor < unpaid.length) throw new InstallmentTotalTooSmallError();
-  const shares = splitIntoInstallments(leftMinor, unpaid.length);
+  // The months an import left out were paid before this app saw the plan and
+  // are first in the schedule: they keep their shares, unwritten.
+  if (leftMinor < unpaid.length + leftOut) throw new InstallmentTotalTooSmallError();
+  const shares = splitIntoInstallments(leftMinor, unpaid.length + leftOut).slice(leftOut);
   const shareById = new Map(unpaid.map((write, index) => [String(write.row.id), shares[index]!]));
   return writes.map((write) => {
     const share = shareById.get(String(write.row.id));
@@ -269,12 +271,28 @@ async function writePlanWithSchedule(
   } else if (input.paymentSourceId && !(await livePaymentSource(userId, input.paymentSourceId))) {
     throw new Error("Installment payment source does not exist");
   }
-  const { rows, keepNos } = await buildPlanRows(planId, resolvedInput, todayISO());
+  const { rows: scheduled, keepNos } = await buildPlanRows(planId, resolvedInput, todayISO());
+  // SPEC §3.1: an edit that keeps the schedule rewrites only the unpaid months.
+  // A past instalment with no stored row is one an import deliberately left
+  // out — billed on a statement before this app saw the plan — so the edit
+  // must not invent it as realized spend.
+  const storedNos = new Set(
+    existingPlanTransactions.filter((transaction) => transaction.installment_no != null).map((transaction) => Number(transaction.installment_no)),
+  );
+  const rows = preserveRealized && !reschedule && storedNos.size > 0
+    ? scheduled.filter(
+        (write) =>
+          write.table !== "transactions" ||
+          write.row.status !== "realized" ||
+          storedNos.has(Number(write.row.installmentNo)),
+      )
+    : scheduled;
+  const leftOut = scheduled.length - rows.length;
   let writes = cardCycle && resolvedInput.paymentSourceId
     ? await linkDueRowsToCardStatements(userId, resolvedInput.paymentSourceId, cardCycle, rows)
     : rows;
   const realizedById = new Map(realized.map((transaction) => [String(transaction.id), transaction]));
-  if (realized.length > 0) {
+  if (realized.length > 0 || leftOut > 0) {
     writes = writes.map((write) => {
       if (write.table !== "transactions") return write;
       const historical = realizedById.get(String(write.row.id));
@@ -289,7 +307,7 @@ async function writePlanWithSchedule(
     writes = writes.filter(
       (write) => write.table !== "credit_card_statements" || referencedStatementIds.has(String(write.row.id)),
     );
-    writes = divideWhatIsLeft(writes, resolvedInput, realizedById);
+    writes = divideWhatIsLeft(writes, resolvedInput, realizedById, leftOut);
   }
   writes = await billAtEachDaysRate(userId, writes, resolvedInput.currency, realizedById);
   writes = carryStoredDetails(writes, existingPlanTransactions);
@@ -651,8 +669,8 @@ export async function reopenInstallmentPlan(userId: string, planId: string): Pro
   await writeRowsValidated(userId, writes, (db) => assertLiveRow(db, "installment_plans", userId, planId));
 }
 
-/** Tombstone a plan together with its generated transactions. */
-export async function deletePlan(userId: string, planId: string): Promise<void> {
+/** Tombstones the plan and its live instalments, and returns them for the undo bar; null when there was no live plan. */
+export async function deletePlan(userId: string, planId: string): Promise<RowWrite[] | null> {
   const sqlite = await getSqliteAsync();
   const [plan, transactions] = await Promise.all([
     sqlite.getFirstAsync<Record<string, unknown>>(
@@ -664,13 +682,20 @@ export async function deletePlan(userId: string, planId: string): Promise<void> 
       [planId, userId],
     ),
   ]);
-  if (!plan) return;
+  if (!plan) return null;
   const deletedAt = nowIso();
-  await writeRows(userId, [
+  const writes: RowWrite[] = [
     { table: "installment_plans", row: { ...fromDbShape("installment_plans", plan), deletedAt } },
     ...transactions.map((transaction) => ({
       table: "transactions" as const,
       row: { ...fromDbShape("transactions", transaction), deletedAt },
     })),
-  ]);
+  ];
+  await writeRows(userId, writes);
+  return writes;
+}
+
+/** Undoes `deletePlan`: exactly the rows it tombstoned, live again. */
+export function restorePlan(userId: string, deleted: readonly RowWrite[]): Promise<void> {
+  return restoreRows(userId, deleted.map((write) => ({ table: write.table, row: { ...write.row, deletedAt: null } })));
 }
