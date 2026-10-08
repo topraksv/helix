@@ -9,13 +9,14 @@ import Constants from "expo-constants";
 import { getTableColumns } from "drizzle-orm";
 import type { SQLiteBindValue } from "expo-sqlite";
 import { getSqliteAsync, withTransaction } from "../db/client";
-import { SYNCED_TABLES, type SyncedTableName } from "../db/schema";
+import { SYNCED_TABLES, UNPULLED, type SyncedTableName } from "../db/schema";
 import { getSupabase } from "./supabase";
 import { classifyRefreshFailure, completedSyncState, DEAD_LETTER_COUNT_SQL, useSyncStatus, type RefreshOutcome } from "./status";
 import { tr } from "../i18n/tr";
 import { SessionEpoch, SessionEpochCancelledError, runSessionEpochTask, type SessionEpochToken } from "./session-epoch";
 import {
   cursorIsAtServerHead,
+  cursorInstant,
   formatPullCursor,
   isUuidShaped,
   parsePullCursor,
@@ -92,8 +93,12 @@ for (const table of Object.keys(SYNCED_TABLES) as SyncedTableName[]) {
  *  sends that this client's schema doesn't have (defense-in-depth + forward
  *  compat: a new server column can't inject SQL or crash the pull merge). */
 const KNOWN_COLUMNS = new Map<SyncedTableName, Set<string>>();
+/** What a migration adding each column gives every row it finds: its default, or null. */
+const EMPTY_VALUES = new Map<SyncedTableName, Map<string, unknown>>();
 for (const table of Object.keys(SYNCED_TABLES) as SyncedTableName[]) {
-  KNOWN_COLUMNS.set(table, new Set(Object.values(getTableColumns(SYNCED_TABLES[table])).map((c) => c.name)));
+  const columns = Object.values(getTableColumns(SYNCED_TABLES[table]));
+  KNOWN_COLUMNS.set(table, new Set(columns.map((c) => c.name)));
+  EMPTY_VALUES.set(table, new Map(columns.map((c) => [c.name, c.default ?? null])));
 }
 
 /** PostgREST row → SQLite-storable row (canonical ISO timestamps for LWW). */
@@ -238,6 +243,25 @@ async function upsertLocalRemote(
   if (result.changes !== 1) throw new Error(`pull ${table}: local ownership conflict`);
 }
 
+/** The columns of `table` a migration added before the pull after it, each with the value it gave every row. */
+async function unpulledOf(sqlite: LocalDatabase, table: SyncedTableName): Promise<Map<string, unknown>> {
+  const marked = await sqlite.getFirstAsync<{ last_pulled_at: string }>("SELECT last_pulled_at FROM sync_state WHERE table_name = ?", [UNPULLED + table]);
+  return new Map((marked ? (JSON.parse(marked.last_pulled_at) as string[]) : []).map((column) => [column, EMPTY_VALUES.get(table)!.get(column) ?? null]));
+}
+
+/** Consecutive rows naming the same columns, in the batch's order. */
+function runsOfOneShape(rows: readonly Record<string, unknown>[]): Record<string, unknown>[][] {
+  const runs: Record<string, unknown>[][] = [];
+  let runShape = "";
+  for (const row of rows) {
+    const shape = Object.keys(row).sort().join();
+    if (runs.length > 0 && shape === runShape) runs.at(-1)!.push(row);
+    else runs.push([row]);
+    runShape = shape;
+  }
+  return runs;
+}
+
 async function pushOutbox(userId: string, token: SessionEpochToken): Promise<void> {
   const supabase = getSupabase()!;
   const sqlite = await getSqliteAsync();
@@ -253,6 +277,9 @@ async function pushOutbox(userId: string, token: SessionEpochToken): Promise<voi
   const quarantined = new Map<string, Set<string>>();
   // Push per table in FK-safe declaration order, oldest events first.
   for (const table of Object.keys(SYNCED_TABLES) as SyncedTableName[]) {
+    // Read with the table's first batch: only a migration writes the mark, and
+    // only the pull after this push clears it.
+    let unpulled: Map<string, unknown> | undefined;
     for (;;) {
       assertActive(token);
       const events = await sqlite.getAllAsync<{ id: number; payload: string; row_id: string }>(
@@ -260,26 +287,33 @@ async function pushOutbox(userId: string, token: SessionEpochToken): Promise<voi
         [table],
       );
       if (events.length === 0) break;
+      unpulled ??= await unpulledOf(sqlite, table);
       // Keep only the newest event per row. Invalid/cross-account payloads are
       // quarantined below; they are never silently discarded or sent under the
       // wrong RLS identity.
       const { rejected, pushedEvents, rows } = prepareOutboundBatch(table, events, userId, {
         allowedColumns: KNOWN_COLUMNS.get(table)!,
         booleanColumns: BOOLEAN_COLUMNS.get(table)!,
+        unpulled,
       });
-      let acknowledged: Record<string, unknown>[] = [];
-      if (rows.length > 0) {
+      const acknowledged: Record<string, unknown>[] = [];
+      // One statement gives every row the same columns, and PostgREST writes
+      // null into one a row lacks, so a run of rows of one shape goes at a
+      // time; runs keep the batch's order. Every row has one shape unless a
+      // column is `unpulled`.
+      for (const run of runsOfOneShape(rows)) {
         assertActive(token);
         const { data, error } = await supabase
           .from(table)
           // prepareOutboundBatch performs table-aware runtime validation. This
           // cast is the one dynamic-table bridge into generated Supabase types.
-          .upsert(rows as SyncedInsert[], { onConflict: "id" })
+          .upsert(run as SyncedInsert[], { onConflict: "id" })
           .select("*")
           .abortSignal(token.signal);
         if (error) throw new Error(`push ${table}: ${error.message}`);
-        acknowledged = (data ?? []) as Record<string, unknown>[];
-        if (acknowledged.length !== rows.length) throw new Error(`push ${table}: incomplete acknowledgement`);
+        const answered = (data ?? []) as Record<string, unknown>[];
+        if (answered.length !== run.length) throw new Error(`push ${table}: incomplete acknowledgement`);
+        acknowledged.push(...answered);
       }
       // A sign-out/account switch may have happened while PostgREST was in
       // flight. Never clear the local outbox for a stale session response.
@@ -479,7 +513,7 @@ async function pullAndMerge(userId: string, token: SessionEpochToken): Promise<n
         const last = remoteRows[remoteRows.length - 1];
         if (!last) throw new Error(`pull ${table}: empty validated page`);
         assertActive(token);
-        curTs = new Date(last.updated_at as string).toISOString();
+        curTs = cursorInstant(String((data[data.length - 1] as Record<string, unknown>).updated_at));
         curId = last.id as string;
         await sqlite.runAsync(
           `INSERT INTO sync_state (table_name, last_pulled_at) VALUES (?, ?)
@@ -491,6 +525,13 @@ async function pullAndMerge(userId: string, token: SessionEpochToken): Promise<n
       next = fetchPage(table, { ts: curTs, id: curId });
     }
   }
+  // Every row is now the server's, except one edited since, which the merge
+  // kept, or refused and held to retry: its table stays unpulled until that
+  // edit is sent or let go.
+  await sqlite.runAsync(
+    "DELETE FROM sync_state WHERE table_name LIKE ? AND substr(table_name, ?) NOT IN (SELECT table_name FROM outbox UNION SELECT table_name FROM sync_dead_letters)",
+    [`${UNPULLED}%`, UNPULLED.length + 1],
+  );
   return superseded;
 }
 

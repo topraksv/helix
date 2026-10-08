@@ -191,6 +191,29 @@ describe("boot migration", () => {
     expect(row).toMatchObject({ id: "tx-1", amount_try_minor: 12345, effective_date: "2026-01-15" });
   });
 
+  it("pulls a table again when an update gives it a column, and names the column until then", async () => {
+    // A row pulled before its column existed holds the migration's empty value
+    // with the cursor past it; sent whole, the next edit wrote that over the
+    // value another device had set (Gital's devil round 2026-10-07-2).
+    const added = journal.entries.findIndex((entry) => entry.tag.startsWith("0014_"));
+    visibleEntries = added;
+    await migrateDb();
+    database.prepare("INSERT INTO sync_state (table_name, last_pulled_at) VALUES (?, ?)").run("transactions", "2026-09-01T00:00:00.000Z|x");
+    database.prepare("INSERT INTO sync_state (table_name, last_pulled_at) VALUES (?, ?)").run("categories", "2026-09-01T00:00:00.000Z|y");
+
+    visibleEntries = journal.entries.length;
+    await migrateDb();
+
+    const state = Object.fromEntries((database.prepare("SELECT table_name, last_pulled_at FROM sync_state").all() as { table_name: string; last_pulled_at: string }[])
+      .map((row) => [row.table_name, row.last_pulled_at]));
+    expect(state).toEqual({
+      categories: "2026-09-01T00:00:00.000Z|y",
+      "unpulled:balance_adjustments": JSON.stringify(["declared_minor"]),
+      "unpulled:installment_plans": JSON.stringify(["closed_on", "original_installment_count"]),
+      "unpulled:transactions": JSON.stringify(["refund_of_transaction_id"]),
+    });
+  });
+
   it("retires a legacy installment expected row without deleting its tombstone", async () => {
     // Pinned to the migration under test rather than to "the last one": with
     // `length - 1` this silently stopped exercising 0010 the moment 0011 was

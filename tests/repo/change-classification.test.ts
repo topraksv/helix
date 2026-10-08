@@ -100,6 +100,8 @@ describe("change classification", () => {
     ["dependency lock", "package-lock.json", true],
     ["coverage policy", "vitest.coverage.config.mts", false],
     ["mutation policy", "stryker.config.mjs", false],
+    ["a test behind the coverage floors", "tests/domain/balance.test.ts", false],
+    ["the tests' shared harness", "tests/helpers.ts", false],
     ["database configuration", "drizzle.config.ts", false],
     ["Supabase migration", "supabase/migrations/00000000000029_retire_legacy_expected_kinds.sql", false],
     ["routing infrastructure", "src/app/(tabs)/_layout.tsx", true],
@@ -385,7 +387,7 @@ describe("change classification", () => {
     } finally {
       rmSync(repository, { recursive: true, force: true });
     }
-  });
+  }, 30_000);
 
   /**
    * A diff that resolved and came back empty is an answer, not a missing one.
@@ -415,5 +417,5 @@ describe("change classification", () => {
     } finally {
       rmSync(repository, { recursive: true, force: true });
     }
-  });
+  }, 30_000);
 });

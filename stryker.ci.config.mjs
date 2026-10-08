@@ -1,6 +1,6 @@
 import broadConfig from "./stryker.config.mjs";
 import { execFileSync } from "node:child_process";
-import { existsSync, statSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import { resolve } from "node:path";
 
 /**
@@ -132,6 +132,20 @@ function git(args, cwd) {
   return execFileSync("git", args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
 }
 
+/**
+ * The `src/` modules a test imports — not those it mocks, which it does not
+ * test — by path as written; a deleted test has none. Read from the
+ * checkout, which is `head` on a runner: a `git show` per test made a long
+ * range take seconds.
+ */
+function importedSources(test, cwd) {
+  try {
+    return [...readFileSync(resolve(cwd, test), "utf8").matchAll(/(?:from\s+|import\(\s*)["'](?:\.\.\/)+(src\/[\w./-]+?)["']/g)].map((match) => /** @type {string} */ (match[1]));
+  } catch {
+    return [];
+  }
+}
+
 function isAncestor(ancestor, descendant, cwd) {
   try {
     execFileSync("git", ["merge-base", "--is-ancestor", ancestor, descendant], {
@@ -155,9 +169,15 @@ export function selectMutationScope({ base, head, eventName = "local", cwd = pro
     const effectiveBase = isAncestor(base, CUTOVER_BASE, cwd) && isAncestor(CUTOVER_BASE, head, cwd)
       ? CUTOVER_BASE
       : base;
-    const changed = git(["diff", "--no-renames", "--name-only", `${effectiveBase}..${head}`], cwd)
-      .split("\n")
-      .filter(Boolean)
+    const paths = git(["diff", "--no-renames", "--name-only", `${effectiveBase}..${head}`], cwd).split("\n").filter(Boolean);
+    // A weakened test lowers its sources' scores as surely as an edit to them
+    // (`scripts/classify-changes.mjs` escalates it), so what it imports is
+    // mutated too; its name is no guide, since most here name a behaviour.
+    const tested = paths
+      .filter((file) => file.startsWith("tests/"))
+      .flatMap((file) => importedSources(file, cwd))
+      .flatMap((source) => [source, `${source}.ts`, `${source}.tsx`]);
+    const changed = [...paths, ...tested]
       .filter(isMutationScoped)
       .filter((file) => existsSync(resolve(cwd, file)));
     return changed.length > 0 ? [...new Set(changed)].sort() : PROVEN_SENTINEL_SCOPE;

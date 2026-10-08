@@ -402,6 +402,41 @@ describe("what a pulled page writes", () => {
     expect(cursorOf("categories")).toBe(`2026-09-03T10:00:10.000Z|${uuid(1000)}`);
   });
 
+  // One statement stamps every row it writes with one now(); cut to the
+  // millisecond, `updated_at.gt` matched them all again and a full page of
+  // them sent the pull round the same page for ever.
+  it("keeps the server's microseconds in the cursor", async () => {
+    server.categories = [serverCategory(ID, "2026-09-03T10:00:00.123456+00:00")];
+    const { startSyncSession, syncNow } = await engine();
+    startSyncSession(USER);
+
+    expect(await syncNow(USER, false)).toBe(true);
+
+    expect(category(ID)?.updated_at).toBe("2026-09-03T10:00:00.123Z");
+    expect(cursorOf("categories")).toBe(`2026-09-03T10:00:00.123456Z|${ID}`);
+  });
+
+  it("ends a column's unpulled state with the pull", async () => {
+    db!.prepare("INSERT INTO sync_state (table_name, last_pulled_at) VALUES (?, ?)").run("unpulled:categories", JSON.stringify(["color"]));
+    const { startSyncSession, syncNow } = await engine();
+    startSyncSession(USER);
+
+    await syncNow(USER, false);
+
+    expect(db!.prepare("SELECT table_name FROM sync_state WHERE table_name LIKE 'unpulled:%'").all()).toEqual([]);
+  });
+
+  it("keeps it while a refused edit of the table waits to be retried", async () => {
+    db!.prepare("INSERT INTO sync_state (table_name, last_pulled_at) VALUES (?, ?)").run("unpulled:categories", JSON.stringify(["color"]));
+    db!.prepare("INSERT INTO sync_dead_letters (outbox_id, table_name, row_id, payload, reason, quarantined_at) VALUES (1, 'categories', ?, '{}', 'invalid_row', ?)").run(ID, TS);
+    const { startSyncSession, syncNow } = await engine();
+    startSyncSession(USER);
+
+    await syncNow(USER, false);
+
+    expect(db!.prepare("SELECT table_name FROM sync_state WHERE table_name LIKE 'unpulled:%'").all()).toEqual([{ table_name: "unpulled:categories" }]);
+  });
+
   it("stops after a short page", async () => {
     server.categories = Array.from({ length: 999 }, (_, n) => serverCategory(uuid(n), TS));
     const { startSyncSession, syncNow } = await engine();

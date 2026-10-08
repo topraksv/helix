@@ -437,6 +437,13 @@ export const syncState = sqliteTable("sync_state", {
   lastPulledAt: text("last_pulled_at").notNull(),
 });
 
+/**
+ * The `sync_state` key under which `migrateDb` names the columns an update
+ * added, as a JSON list, until the pull after it has finished: the push leaves
+ * such a column out while it holds the migration's empty value.
+ */
+export const UNPULLED = "unpulled:";
+
 /** Tables that participate in Supabase sync, in FK-safe upsert order. */
 export const SYNCED_TABLES = {
   persons,

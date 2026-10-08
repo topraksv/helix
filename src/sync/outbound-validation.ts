@@ -15,6 +15,13 @@ type OutboundConversion =
 interface OutboundPolicy {
   allowedColumns: ReadonlySet<string>;
   booleanColumns: ReadonlySet<string>;
+  /**
+   * The columns an update added before the pull after it finished, each with
+   * the value the migration gave every row. A row holding that value may hold
+   * it only because it was pulled before the column existed, so the column is
+   * left out and the server keeps its own (`src/db/schema.ts` `UNPULLED`).
+   */
+  unpulled?: ReadonlyMap<string, unknown>;
 }
 
 function finiteNumeric(value: unknown): number | null {
@@ -22,6 +29,12 @@ function finiteNumeric(value: unknown): number | null {
   if (typeof value === "string" && value.trim() === "") return null;
   const number = typeof value === "number" ? value : Number(value);
   return Number.isFinite(number) ? number : null;
+}
+
+function leaveOutUnpulled(row: Record<string, unknown>, unpulled: ReadonlyMap<string, unknown> = new Map()): void {
+  for (const [column, empty] of unpulled) {
+    if (column in row && (row[column] ?? null) === empty) delete row[column];
+  }
 }
 
 /**
@@ -52,6 +65,7 @@ export function convertOutboundRow(
   for (const column of policy.booleanColumns) {
     if (column in out && out[column] !== null) out[column] = Boolean(out[column]);
   }
+  leaveOutUnpulled(out, policy.unpulled);
 
   try {
     if (table === "computed_columns") {

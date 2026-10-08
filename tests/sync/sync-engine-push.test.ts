@@ -310,6 +310,31 @@ describe("what an acknowledgement changes", () => {
   });
 });
 
+describe("a column an update added, before the pull after it", () => {
+  // `migrateDb` names it `unpulled` (tests/db/migration-upgrade.test.ts): a
+  // row holding its empty value may hold it only because it was pulled before
+  // the column existed, and sent whole it wrote that over the server's.
+  it("is left out while empty, and sent once given a value, each shape in an upsert of its own", async () => {
+    harness.db!.prepare("INSERT INTO sync_state (table_name, last_pulled_at) VALUES (?, ?)").run("unpulled:categories", JSON.stringify(["color"]));
+    const sent: Record<string, unknown>[][] = [];
+    harness.onUpsert = (_table, rows) => {
+      sent.push(rows);
+      return { data: rows, error: null };
+    };
+    queueCategory("01a06b2c-0000-7000-8000-000000000001");
+    queueCategory("01a06b2c-0000-7000-8000-000000000002", { color: "blue" });
+    startSyncSession(USER);
+
+    await flushOutbox(USER);
+
+    expect(sent.map((rows) => rows.map((row) => [row.id, "color" in row ? row.color : "left out"]))).toEqual([
+      [["01a06b2c-0000-7000-8000-000000000001", "left out"]],
+      [["01a06b2c-0000-7000-8000-000000000002", "blue"]],
+    ]);
+    expect(outboxCount()).toBe(0);
+  });
+});
+
 describe("what the device refuses to send", () => {
   it("quarantines unsendable rows without asking the server, and says which", async () => {
     queueCategory(ROW, { kind: "bogus" });

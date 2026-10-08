@@ -144,6 +144,17 @@ export function formatPullCursor(cursor: PullCursor): string {
 }
 
 /**
+ * A pull cursor's instant, `…00.123456Z`: the server's own precision in the
+ * device's form. Cut to the millisecond, `updated_at.gt` matched every row of
+ * that millisecond again, and a statement that stamped a page's worth with one
+ * `now()` sent the pull round the same page for ever.
+ */
+export function cursorInstant(value: string): string {
+  const sub = /T[\d:]+\.\d{3}(\d{1,3})/.exec(value)?.[1] ?? "";
+  return new Date(value).toISOString().replace("Z", `${sub}Z`);
+}
+
+/**
  * Whether a cursor already stands on the newest row the server holds, so the
  * table can be skipped without asking PostgREST for a page that would be empty.
  *

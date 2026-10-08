@@ -49,6 +49,10 @@ const HIGH_RISK = [
   /^src\/sync\//,
   /^src\/auth\//,
   /^src\/services\//,
+  // The tests behind the coverage floors and the mutation baseline: a push that
+  // weakens one is the push whose gate must measure it.
+  /^tests\/(?:domain|data|db|sync|auth|services)\//,
+  /^tests\/helpers\.ts$/,
   /^supabase\//,
   /^package(-lock)?\.json$/,
   /^\.npmrc$/,

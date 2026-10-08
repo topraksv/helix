@@ -81,10 +81,18 @@ describe("CI mutation contract", () => {
       const head = execFileSync("git", ["rev-parse", "HEAD"], { cwd: repository, encoding: "utf8" }).trim();
 
       expect(selectMutationScope({ base, head, cwd: repository })).toEqual(["src/domain/money.ts"]);
+
+      // A test is named for a behaviour, not its source: what it imports is mutated.
+      mkdirSync(join(repository, "tests/domain"), { recursive: true });
+      writeFileSync(join(repository, "tests/domain/financial-boundaries.test.ts"), 'import { amount } from "../../src/domain/money";\n');
+      execFileSync("git", ["add", "."], { cwd: repository });
+      execFileSync("git", ["commit", "--quiet", "-m", "fewer cases"], { cwd: repository });
+      const weakened = execFileSync("git", ["rev-parse", "HEAD"], { cwd: repository, encoding: "utf8" }).trim();
+      expect(selectMutationScope({ base: head, head: weakened, cwd: repository })).toEqual(["src/domain/money.ts"]);
     } finally {
       rmSync(repository, { recursive: true, force: true });
     }
-  });
+  }, 30_000);
 
   it("fails closed when an asserted push base cannot be resolved", () => {
     expect(() => selectMutationScope({
