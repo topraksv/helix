@@ -6,6 +6,14 @@ defterinde yazılıdır ve bu depoya dahil değildir.
 
 Notlar kısa tutulur: ne değişti, tek cümle. Sebebi ve ölçümü commit'te.
 
+## 1.9.6
+
+### Patch Changes
+
+- Güncellemeden sonraki ilk eşitlemeden önce yapılan bir düzenleme, başka bir cihazın doldurduğu yeni alanları (örneğin bir iadenin bağlı olduğu işlem) boşaltmıyor.
+- Güncellemeyle yeni alan kazanan kayıtlar sunucudan yeniden alınıyor; eski cihazdaki boş hâlleri kalmıyor.
+- Aynı anda yazılmış çok sayıda kayıtta eşitleme takılıp kalmıyor.
+
 ## 1.9.5
 
 ### Patch Changes

@@ -1,7 +1,7 @@
 {
   "name": "helix",
   "main": "expo-router/entry",
-  "version": "1.9.5",
+  "version": "1.9.6",
   "author": "Ömer Toprak Şavlı",
   "license": "UNLICENSED",
   "engines": {
