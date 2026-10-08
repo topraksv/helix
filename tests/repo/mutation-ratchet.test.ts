@@ -9,7 +9,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
-import { evaluate, scoreOf, scoresFromReport } from "../../scripts/check-mutation-ratchet.mjs";
+import { evaluate, recordedFrom, scoreOf, scoresFromReport } from "../../scripts/check-mutation-ratchet.mjs";
 import { selectMutationScope } from "../../stryker.ci.config.mjs";
 
 const baseline = (files: Record<string, number>) => ({
@@ -36,6 +36,13 @@ describe("mutation score", () => {
     const report = { files: { "a.ts": { mutants: [{ status: "Killed" }, { status: "Survived" }] } } };
     expect(scoresFromReport(report)).toEqual({ "a.ts": 50 });
   });
+
+  it("records the counts behind each score and the tree it was measured on", () => {
+    const mutants = ["Killed", "Timeout", "Survived", "NoCoverage", "CompileError"].map((status) => ({ status }));
+    expect(recordedFrom({ files: { "a.ts": { mutants } } }, "abc", "2026-10-08")).toEqual({
+      "a.ts": { score: 50, killed: 1, timeout: 1, survived: 1, noCoverage: 1, measuredOn: "abc", measuredDate: "2026-10-08" },
+    });
+  });
 });
 
 describe("ratchet", () => {
@@ -47,7 +54,7 @@ describe("ratchet", () => {
   it("fails a file that detects less than it used to", () => {
     const { problems } = evaluate({ "a.ts": 55 }, baseline({ "a.ts": 62.08 }), present);
     expect(problems).toHaveLength(1);
-    expect(problems[0]).toContain("REGRESSED a.ts");
+    expect(problems[0]).toContain("WORSE a.ts");
     expect(problems[0]).toContain("62.08");
     expect(problems[0]).toContain("55.00");
   });
@@ -62,7 +69,7 @@ describe("ratchet", () => {
     expect(evaluate({ "a.ts": 0 }, baseline({ "a.ts": 0 }), present).problems).toEqual([]);
     // There is nothing below zero, so the guard that matters is the next one up.
     const { problems } = evaluate({ "b.ts": 9 }, baseline({ "b.ts": 21.05 }), present);
-    expect(problems[0]).toContain("REGRESSED b.ts");
+    expect(problems[0]).toContain("WORSE b.ts");
   });
 
   // Tolerance is half a point below the recorded score: 62.08 - 0.5 = 61.58.
@@ -75,9 +82,9 @@ describe("ratchet", () => {
   it("refuses a mutated file nobody has measured", () => {
     const { problems } = evaluate({ "new.ts": 91 }, baseline({ "a.ts": 50 }), present);
     expect(problems).toHaveLength(1);
-    expect(problems[0]).toContain("UNBASELINED new.ts");
+    expect(problems[0]).toContain("UNRECORDED new.ts");
     // Adopting it silently at whatever it scores is the failure being prevented.
-    expect(problems[0]).toContain("npm run mutation:baseline");
+    expect(problems[0]).toContain("npm run mutation:record");
   });
 
   it("refuses an entry whose file is gone", () => {

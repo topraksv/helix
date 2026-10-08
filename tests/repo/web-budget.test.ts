@@ -41,6 +41,18 @@ describe("web release budget", () => {
     expect(result.stdout).toContain("sourceMapReferences: 0");
   });
 
+  // Pictures are content, not code: a catalogue of product photos grows on
+  // its own clock, so it carries a ceiling of its own instead of eating the
+  // export's.
+  it("weighs pictures apart from the rest of the export", () => {
+    const { root } = fixture();
+    writeFileSync(join(root, "photo.webp"), "x".repeat(1000));
+    const result = check(root);
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toContain("pictureBytes: 1000 bytes");
+    expect(result.stdout).toContain("totalExport: 18 bytes");
+  });
+
   it("rejects source-map files and bundle references", () => {
     const { root, js } = fixture("console.log('mapped');\n//# sourceMappingURL=entry-test.js.map");
     writeFileSync(join(js, "entry-test.js.map"), "{}");

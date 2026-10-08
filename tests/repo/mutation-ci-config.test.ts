@@ -30,7 +30,7 @@ describe("CI mutation contract", () => {
     expect(ci).toContain("thresholds: { ...broadConfig.thresholds, break: null }");
     expect(ci.match(/thresholds:/g)).toHaveLength(1);
     expect(broad).toContain("break: 98");
-    expect(packageJson.scripts["mutation:baseline"]).toBe("node scripts/write-mutation-baseline.mjs");
+    expect(packageJson.scripts["mutation:record"]).toBe("node scripts/check-mutation-ratchet.mjs --record");
 
     for (const file of [
       "src/auth/recovery.ts",
@@ -89,6 +89,19 @@ describe("CI mutation contract", () => {
       execFileSync("git", ["commit", "--quiet", "-m", "fewer cases"], { cwd: repository });
       const weakened = execFileSync("git", ["rev-parse", "HEAD"], { cwd: repository, encoding: "utf8" }).trim();
       expect(selectMutationScope({ base: head, head: weakened, cwd: repository })).toEqual(["src/domain/money.ts"]);
+
+      // A raised floor is a claim about a file's tests, so the file is mutated
+      // to prove it; a floor that only moved its provenance is not.
+      writeFileSync(join(repository, "src/domain/dates.ts"), "export const day = 1;\n");
+      writeFileSync(join(repository, "mutation-baseline.json"), JSON.stringify({ files: { "src/domain/dates.ts": { score: 80 }, "src/domain/money.ts": { score: 90 } } }));
+      execFileSync("git", ["add", "."], { cwd: repository });
+      execFileSync("git", ["commit", "--quiet", "-m", "floors"], { cwd: repository });
+      const floors = execFileSync("git", ["rev-parse", "HEAD"], { cwd: repository, encoding: "utf8" }).trim();
+      writeFileSync(join(repository, "mutation-baseline.json"), JSON.stringify({ files: { "src/domain/dates.ts": { score: 85 }, "src/domain/money.ts": { score: 90, measuredOn: "later" } } }));
+      execFileSync("git", ["add", "."], { cwd: repository });
+      execFileSync("git", ["commit", "--quiet", "-m", "raise"], { cwd: repository });
+      const raised = execFileSync("git", ["rev-parse", "HEAD"], { cwd: repository, encoding: "utf8" }).trim();
+      expect(selectMutationScope({ base: floors, head: raised, cwd: repository })).toEqual(["src/domain/dates.ts"]);
     } finally {
       rmSync(repository, { recursive: true, force: true });
     }

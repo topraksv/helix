@@ -1,7 +1,23 @@
+#!/usr/bin/env node
+/**
+ * Fail when the web export outgrows its measured weight or carries what a
+ * public site must not: a source map, a server credential, or — with
+ * `--require-supabase-config` — a production bundle without its Supabase
+ * configuration.
+ *
+ * Helix and Gital run this same file; only `limits` and the measurements
+ * written above it differ. Metro does not tree-shake, so one convenient import
+ * can put a whole library in the entry bundle without a line of app code
+ * changing, and a ceiling is the only thing that says so at the commit that
+ * did it. Each ceiling is a measurement plus about 1% of slack (fonts exact);
+ * moving one is a decision recorded in `docs/HEALTH.md` with the before and
+ * after figures, never an edit made to get a push through.
+ */
 import { readFile, readdir, stat } from "node:fs/promises";
 import { extname, join, relative } from "node:path";
 
 const root = process.argv[2] ?? "dist";
+
 // Measured from a production `expo export -p web`, with headroom for ordinary
 // growth. The font budgets were tightened after two faces that no `type.*`
 // scale or fontFamily ever referenced (Inter_800ExtraBold, IBMPlexSerif_300Light)
@@ -373,11 +389,15 @@ const root = process.argv[2] ?? "dist";
 const limits = {
   entryJavaScript: 3_362_700,
   totalJavaScript: 4_066_000,
-  // Fonts are 1_534_728 of this and the rest is one HTML file per route, so it
-  // grows in coarser steps than the JavaScript above it — measured 8_037_112
-  // with ~3% of slack rather than the ~1% the JS ceilings carry.
-  totalExport: 7_823_000,
-  fontFiles: 6,
+  // Everything but pictures, which are weighed apart as Gital weighs its
+  // catalogue (2026-10-08, the shared file): measured 7_266_835 and 53_947.
+  // One HTML file per route makes this grow in coarser steps than the
+  // JavaScript, so it keeps the ~1% slack and moves with a recorded reason.
+  totalExport: 7_339_500,
+  pictureBytes: 54_500,
+  // Exact, so adding a weight has to be a decision: five faces since one was
+  // dropped, and the ceiling had stayed at six.
+  fontFiles: 5,
   fontBytes: 800_000,
   // Pages is public. Symbolication maps belong only in a private crash service,
   // if one is approved later; neither map files nor bundle references ship.
@@ -402,6 +422,10 @@ const files = await walk(root);
 const javaScript = files.filter((file) => extname(file.path) === ".js");
 const entry = javaScript.find((file) => /[/\\]entry-[^/\\]+\.js$/.test(file.path));
 const fonts = files.filter((file) => [".ttf", ".otf", ".woff", ".woff2"].includes(extname(file.path)));
+// Weighed apart from the code: a picture set can grow for a product reason and
+// would otherwise hide a code regression inside the total.
+const pictures = files.filter((file) => [".webp", ".png", ".jpg", ".jpeg", ".gif", ".avif"].includes(extname(file.path)));
+const isPicture = (file) => pictures.includes(file);
 const sourceMaps = files.filter((file) => extname(file.path) === ".map");
 const sourceMapCandidates = files.filter((file) => [".js", ".css"].includes(extname(file.path)));
 const sourceMapReferences = (
@@ -451,7 +475,8 @@ const sum = (items) => items.reduce((total, item) => total + item.size, 0);
 const metrics = {
   entryJavaScript: entry?.size ?? 0,
   totalJavaScript: sum(javaScript),
-  totalExport: sum(files),
+  totalExport: sum(files.filter((file) => !isPicture(file))),
+  pictureBytes: sum(pictures),
   fontFiles: fonts.length,
   fontBytes: sum(fonts),
   sourceMapFiles: sourceMaps.length,

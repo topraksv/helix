@@ -111,7 +111,9 @@ async function enterAmountViaCalculator(page: Page, field: Locator, raw: string,
 }
 
 /**
- * A controlled numeric field, filled and CONFIRMED to have taken the value.
+ * A controlled field, filled and CONFIRMED to have taken the value. Numeric
+ * fields first; the product name dropped the same way on Firefox once the
+ * type radio re-rendered the form (2026-10-08, one run in three).
  *
  * `fill` writes the DOM value and dispatches one `input`. That is enough for an
  * uncontrolled input and not always enough for a controlled one under load: if
@@ -134,7 +136,7 @@ async function enterAmountViaCalculator(page: Page, field: Locator, raw: string,
  * arrived at all. The assertion is the half that matters either way: a genuine
  * drop fails HERE, naming the field and both values.
  */
-async function enterQuantity(field: Locator, value: string) {
+async function enterValue(field: Locator, value: string) {
   await field.fill(value);
   try {
     await expect(field).toHaveValue(value);
@@ -1459,15 +1461,15 @@ test("a mistaken investment journal and its selected ledger refund are removed t
 
   await page.getByRole("button", { name: "Yeni Ürün Tanımla" }).click();
   await page.getByRole("radio", { name: "Borsa", exact: true }).click();
-  await page.getByRole("textbox", { name: "Ürün adı", exact: true }).fill("Yanlış ürün");
+  await enterValue(page.getByRole("textbox", { name: "Ürün adı", exact: true }), "Yanlış ürün");
   await page.getByRole("button", { name: "Ürünü Kaydet", exact: true }).click();
   await page.getByRole("button", { name: "Sahip Olduğumu Ekle" }).click();
-  await enterQuantity(page.getByRole("textbox", { name: "Miktar / adet · zorunlu", exact: true }), "1");
+  await enterValue(page.getByRole("textbox", { name: "Miktar / adet · zorunlu", exact: true }), "1");
   await page.getByRole("textbox", { name: "Birim fiyat · zorunlu", exact: true }).fill("100.000");
   await page.getByRole("button", { name: "Mevcut yatırımı ekle", exact: true }).click();
 
   await page.getByRole("button", { name: "Satış Yap" }).click();
-  await enterQuantity(page.getByRole("textbox", { name: "Miktar / adet · zorunlu", exact: true }), "1");
+  await enterValue(page.getByRole("textbox", { name: "Miktar / adet · zorunlu", exact: true }), "1");
   await page.getByRole("textbox", { name: "Birim fiyat · zorunlu", exact: true }).fill("100.000");
   await page.getByRole("button", { name: "Satış yap", exact: true }).click();
 
@@ -1549,11 +1551,11 @@ test("investment setup, weighted sale, BES contribution and wallet refund form o
 
   await page.getByRole("button", { name: "Yeni Ürün Tanımla" }).click();
   await page.getByRole("radio", { name: "Borsa", exact: true }).click();
-  await page.getByRole("textbox", { name: "Ürün adı", exact: true }).fill("SASA");
+  await enterValue(page.getByRole("textbox", { name: "Ürün adı", exact: true }), "SASA");
   await page.getByRole("button", { name: "Ürünü Kaydet", exact: true }).click();
 
   await page.getByTestId("screen-header").getByRole("button", { name: "İşlem Ekle", exact: true }).click();
-  await enterQuantity(page.getByRole("textbox", { name: "Miktar / adet · zorunlu", exact: true }), "10");
+  await enterValue(page.getByRole("textbox", { name: "Miktar / adet · zorunlu", exact: true }), "10");
   await enterAmountViaCalculator(
     page,
     page.getByRole("textbox", { name: "Birim fiyat · zorunlu", exact: true }),
@@ -1568,7 +1570,7 @@ test("investment setup, weighted sale, BES contribution and wallet refund form o
   await expect(page.getByText("SASA", { exact: true }).first()).toBeVisible();
 
   await page.getByRole("button", { name: "Satış Yap" }).click();
-  await enterQuantity(page.getByRole("textbox", { name: "Miktar / adet · zorunlu", exact: true }), "4");
+  await enterValue(page.getByRole("textbox", { name: "Miktar / adet · zorunlu", exact: true }), "4");
   // Through the calculator seam, for the reason the helper already gives: a
   // controlled MoneyField loses keystrokes on Firefox under CI load. The buy
   // step above was hardened when that was first measured and this one was not,
@@ -1587,7 +1589,7 @@ test("investment setup, weighted sale, BES contribution and wallet refund form o
 
   await page.getByRole("button", { name: "Yeni Ürün Tanımla" }).click();
   await page.getByRole("radio", { name: "BES", exact: true }).click();
-  await page.getByRole("textbox", { name: "Ürün adı", exact: true }).fill("Emeklilik Planım");
+  await enterValue(page.getByRole("textbox", { name: "Ürün adı", exact: true }), "Emeklilik Planım");
   await page.getByRole("button", { name: "Ürünü Kaydet", exact: true }).click();
   await page.getByTestId("screen-header").getByRole("button", { name: "İşlem Ekle", exact: true }).click();
   await pickOption(page, "Ürün", "Emeklilik Planım · BES");
@@ -2038,11 +2040,11 @@ test("investment summary keeps financial meaning grouped on phone and desktop", 
   await page.getByRole("button", { name: "Yatırım Alanını Aç", exact: true }).click();
   await page.getByRole("button", { name: "Yeni Ürün Tanımla" }).click();
   await page.getByRole("radio", { name: "Borsa", exact: true }).click();
-  await page.getByRole("textbox", { name: "Ürün adı", exact: true }).fill("Uzun Vadeli Büyüme Sepeti");
+  await enterValue(page.getByRole("textbox", { name: "Ürün adı", exact: true }), "Uzun Vadeli Büyüme Sepeti");
   await page.getByRole("button", { name: "Ürünü Kaydet", exact: true }).click();
   await page.getByTestId("screen-header").getByRole("button", { name: "İşlem Ekle", exact: true }).click();
   await pickOption(page, "Ürün", "Uzun Vadeli Büyüme Sepeti · Borsa");
-  await enterQuantity(page.getByRole("textbox", { name: "Miktar / adet · zorunlu", exact: true }), "12");
+  await enterValue(page.getByRole("textbox", { name: "Miktar / adet · zorunlu", exact: true }), "12");
   await page.getByRole("textbox", { name: "Birim fiyat · zorunlu", exact: true }).fill("1.250");
 
   const summary = page.getByTestId("investment-operation-summary");

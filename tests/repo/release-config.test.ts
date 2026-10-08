@@ -537,7 +537,7 @@ describe("release contract", () => {
   });
 
   it("shards the whole browser suite, and the nightly only reports", () => {
-    expect(job("e2e")).toContain("npx playwright install chromium firefox --with-deps");
+    expect(job("e2e")).toContain('npx playwright install "$BROWSER" --with-deps');
     const playwright = read("playwright.config.ts");
     expect(playwright).toContain('name: "chromium"');
     expect(playwright).toContain('name: "firefox-critical"');
@@ -546,11 +546,24 @@ describe("release contract", () => {
     // Sharding across runners is the only parallelism: this suite drives one
     // browser against one static server and goes flaky with two workers.
     expect(ci).not.toMatch(/workers:\s*[2-9]/);
-    // The divisor is the matrix's own size, so the two cannot disagree; the
-    // matrix still has to count from one, or a shard index is never run.
-    expect(job("e2e")).toContain('npx playwright test --shard="$SHARD"\n        env:\n          SHARD: ${{ matrix.shard }}/${{ strategy.job-total }}');
-    const shards = job("e2e").match(/shard: \[([\d, ]+)\]/)?.[1]?.split(",").map((value) => Number(value.trim()));
-    expect(shards).toEqual(Array.from({ length: shards!.length }, (_, i) => i + 1));
+    // Each project's rows must run every one of its shards exactly once, and
+    // every project the config names must have rows: a missing index or a
+    // forgotten project is a part of the suite no push ever runs.
+    expect(job("e2e")).toContain('npx playwright test --project="$PROJECT" --shard="$SHARD"');
+    const rows = [...job("e2e").matchAll(/\{ project: ([\w-]+), browser: (\w+), shard: (\d+)\/(\d+) \}/g)];
+    const projects = new Map<string, { indices: number[]; totals: Set<number> }>();
+    for (const [, project, browser, index, total] of rows) {
+      expect(project!.startsWith(browser!), `${project} runs in ${browser}`).toBe(true);
+      const entry = projects.get(project!) ?? { indices: [], totals: new Set<number>() };
+      entry.indices.push(Number(index));
+      entry.totals.add(Number(total));
+      projects.set(project!, entry);
+    }
+    expect([...projects.keys()].sort()).toEqual(["chromium", "firefox-critical"]);
+    for (const [project, { indices, totals }] of projects) {
+      expect(totals.size, `${project} has one shard count`).toBe(1);
+      expect(indices.sort((a, b) => a - b), project).toEqual(Array.from({ length: [...totals][0]! }, (_, i) => i + 1));
+    }
     // Playwright splits by FILE unless `fullyParallel` is set, and this suite's
     // specs are very unevenly sized — measured, two shards took 65 and 10 of
     // the 75 tests. Balance is what makes a shard count worth raising.

@@ -98,7 +98,7 @@
     "test:native:offline:android": "PATH=\"/opt/homebrew/opt/openjdk@17/bin:$PATH\" maestro --platform android test e2e/native-offline",
     "ios:build": "expo run:ios --device \"iPhone 17 Pro\"",
     "audit:unused": "npx --yes knip@6.32.0",
-    "mutation:baseline": "node scripts/write-mutation-baseline.mjs",
+    "mutation:record": "node scripts/check-mutation-ratchet.mjs --record",
     "audit:duplication": "npx --yes jscpd@5.0.16 src",
     "web:preview": "npx expo export -p web --clear && node scripts/serve-web-export.mjs dist",
     "web:serve": "node scripts/serve-web-export.mjs dist"

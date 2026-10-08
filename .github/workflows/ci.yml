@@ -209,10 +209,13 @@ jobs:
     # stopped being enough on 2026-09-15: Helix's 1.8.0 release changed 28
     # files in scope, 9,832 mutants, which ran past this job's 90 minutes on a
     # GitHub runner. `stryker.ci.config.mjs` deals each shard its part.
+    # Five, not three (2026-10-08): a release scope's largest files no longer
+    # share a runner, and the free plan's twenty concurrent jobs still hold
+    # both repositories' runs at once.
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3]
+        shard: [1, 2, 3, 4, 5]
     env:
       # The classifier's base, so mutation covers every change that has not yet
       # passed a gate — a failed run's included — and not only this push's.
@@ -232,7 +235,7 @@ jobs:
           cache: npm
       - run: npm ci
       # A shard dealt no file skips the pass instead of handing Stryker an
-      # empty list, which a change touching one file does to two of the three.
+      # empty list, which a change touching one file does to all but one.
       - id: scope
         run: |
           set -euo pipefail
@@ -353,12 +356,24 @@ jobs:
   # subset: a subset leaves the rest to a nightly that reports after the deploy.
   e2e:
     needs: e2e-build
+    name: e2e (${{ matrix.project }} ${{ matrix.shard }})
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
       fail-fast: false
+      # One row per runner. Firefox runs the `@cross-browser` tests on a runner
+      # of its own: dealt with the rest, a project's tests go to the shards in
+      # order, so every Firefox test landed on the last one — measured on
+      # Helix, 184 s of tests there against 76 s on the others. Helix and Gital
+      # differ only in how many Chromium rows the suite's size earns.
       matrix:
-        shard: [1, 2, 3, 4, 5, 6]
+        include:
+          - { project: chromium, browser: chromium, shard: 1/5 }
+          - { project: chromium, browser: chromium, shard: 2/5 }
+          - { project: chromium, browser: chromium, shard: 3/5 }
+          - { project: chromium, browser: chromium, shard: 4/5 }
+          - { project: chromium, browser: chromium, shard: 5/5 }
+          - { project: firefox-critical, browser: firefox, shard: 1/1 }
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -371,20 +386,23 @@ jobs:
       # The browsers are ~180 MB, and every shard fetched them: measured on
       # 2026-08-19, that step hung past 25 minutes on all three shards while
       # the whole job normally finishes in four to six. Keyed on the resolved
-      # Playwright version, so a bump misses the cache exactly once.
+      # Playwright version and the one browser this row drives, so a bump
+      # misses the cache exactly once and no row downloads a browser it skips.
       - id: playwright-version
         run: echo "value=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
       - id: playwright-cache
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ steps.playwright-version.outputs.value }}
+          key: playwright-${{ runner.os }}-${{ steps.playwright-version.outputs.value }}-${{ matrix.browser }}
       # Only on a miss. The `--with-deps` half is an `apt-get install`, the
       # step that hung (11+ minutes on two shards, 2026-08-19); on a hit the
       # system libraries are already in the runner image, and a missing one
       # fails loudly at browser launch.
-      - run: npx playwright install chromium firefox --with-deps
+      - run: npx playwright install "$BROWSER" --with-deps
         if: steps.playwright-cache.outputs.cache-hit != 'true'
+        env:
+          BROWSER: ${{ matrix.browser }}
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: dist-e2e-${{ github.run_id }}
@@ -392,27 +410,28 @@ jobs:
       # One worker per runner: parallelism comes from sharding, because this
       # suite drives one browser against one static server and got flaky the
       # moment two workers shared it. `fullyParallel` in the Playwright config
-      # balances the shards by test rather than by file. Playwright is invoked
-      # directly so the shared artifact is not rebuilt.
-      - run: npx playwright test --shard="$SHARD"
+      # balances a project's shards by test rather than by file. Playwright is
+      # invoked directly so the shared artifact is not rebuilt.
+      - run: npx playwright test --project="$PROJECT" --shard="$SHARD"
         env:
-          SHARD: ${{ matrix.shard }}/${{ strategy.job-total }}
+          PROJECT: ${{ matrix.project }}
+          SHARD: ${{ matrix.shard }}
       - if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: e2e-failure-${{ github.run_id }}-shard${{ matrix.shard }}
+          name: e2e-failure-${{ github.run_id }}-${{ strategy.job-index }}
           path: |
             test-results
             playwright-report
           retention-days: 7
       # A flaky pass is a failure its retry hid, and the shard still goes green
-      # and deploys: measured, 5 in 30 runs, none with anything to read. The
-      # failed attempt's trace and screenshot are in test-results either way;
-      # a clean run leaves none there, so this uploads nothing then.
+      # and deploys: measured on Helix, 5 in 30 runs, none with anything to
+      # read. The failed attempt's trace and screenshot are in test-results
+      # either way; a clean run leaves none there, so this uploads nothing then.
       - if: success()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: e2e-flaky-${{ github.run_id }}-shard${{ matrix.shard }}
+          name: e2e-flaky-${{ github.run_id }}-${{ strategy.job-index }}
           path: |
             test-results/**/trace.zip
             test-results/**/*.png

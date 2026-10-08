@@ -2,159 +2,120 @@
 /**
  * Fail when a mutated file detects fewer mutants than it did last time.
  *
- * `test:mutation:ci` used to inherit the broad inventory's break threshold of
- * 98 and apply it to whatever high-risk files a push happened to touch. That
- * looked like a gate and never was one. Measured on 2026-08-19 against the
- * first real product diff to reach it, the selected sixteen files scored
- * 54.22, and the three pushes before that had all fallen back to the sentinel
- * scope, so nothing had ever exercised it. The one green run that shipped the
- * previous release was a `workflow_dispatch`, which has no `github.event.before`
- * and therefore also ran sentinels. A threshold no real change can meet is not
- * a standard, it is a step everyone learns to route around — and the route
- * around it was shipping without the gate at all.
+ * Helix and Gital run this same file. It replaced an absolute threshold of 98
+ * that no real change could meet: measured on 2026-08-19 against the first
+ * product diff to reach it, Helix's sixteen selected files scored 54.22, and
+ * the release before it had shipped from a `workflow_dispatch` that ran
+ * sentinels. A gate no change can pass is one everyone routes around. What is
+ * worth enforcing is that a file never gets worse, and that no file enters
+ * unmeasured: a mutated file with no recorded score fails rather than being
+ * adopted at whatever it happens to score.
  *
- * 98 was never reachable here. The broad inventory's own recorded baseline is
- * 79.65, `src/db/schema.ts` is 411 mutants of Drizzle column declarations where
- * renaming `text("user_id")` proves nothing, and the repo layer scores near
- * zero because Stryker's per-test coverage cannot attribute its integration
- * tests. Demanding 98 of those files buys no safety.
- *
- * What is worth enforcing is that a file never gets worse. That is achievable
- * on every file, it catches the regression an absolute threshold was reaching
- * for, and it cannot be satisfied by routing around it.
- *
- * Nothing enters silently, exactly as `check-advisories.mjs` admits no advisory
- * without evidence: a mutated file with no recorded baseline FAILS, rather than
- * being adopted at whatever it happens to score.
+ * `--record` adopts the last run's scores into `mutation-baseline.json`,
+ * merged over what is there, since a run covers only the scope it was given.
+ * It is a decision made after reading what survived, which is why nothing
+ * here adopts on its own.
  */
-import { readFileSync, existsSync } from "node:fs";
-import { resolve } from "node:path";
+import { execFileSync } from "node:child_process";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { pathToFileURL } from "node:url";
 
-const REPORT = "reports/mutation/ci-mutation.json";
+const REPORT = "reports/mutation/mutation.json";
 const BASELINE = "mutation-baseline.json";
 
 /**
- * How far a score may fall before it counts as a regression.
+ * How far a score may fall before it counts. Not slack: Stryker's timeout is
+ * wall-clock and counts as detected, so how many mutants tip over it moves a
+ * score with no code changed. Helix measured 5, 36 and 72 timeouts across
+ * three runs of one tree, and the per-file drift stayed under half a point
+ * once the static-only schema left the scope.
  *
- * Not slack for getting worse. Stryker's `timeoutMS` is wall-clock and it
- * counts a timeout as DETECTED, so how many mutants tip over that line moves
- * the score without any code changing.
- *
- * Measured across three runs of the same tree: 5, 36 and 72 timeouts. The
- * first two produced byte-identical per-file scores for every file except
- * `src/db/schema.ts`, whose 411 static mutants each re-run the whole suite
- * and were the entire source of the drift — which is one more reason it is no
- * longer mutated. Dropping it changed the scheduling of what remained, and
- * three files then scored HIGHER (statement-import 69.37 -> 79.58).
- *
- * So the recorded baselines are deliberately the ones from the 5-timeout run,
- * the least favourable profile. A run with more timeouts can only score at or
- * above them. RE-BASELINING FROM A NOISY RUN WOULD INVERT THAT and leave the
- * gate failing honest commits: read `write-mutation-baseline.mjs` before
- * adopting an improvement.
+ * So record from a quiet machine. A run with more timeouts scores higher, and
+ * adopting it leaves the next quieter run failing an honest commit.
  */
 const TOLERANCE = 0.5;
 
+// A compile or runtime error is not a mutant the tests could have detected.
+const COUNTED = { Killed: "killed", Timeout: "timeout", Survived: "survived", NoCoverage: "noCoverage" };
+
+function countsOf(mutants) {
+  const counts = { killed: 0, timeout: 0, survived: 0, noCoverage: 0 };
+  for (const { status } of mutants) if (status in COUNTED) counts[COUNTED[status]] += 1;
+  return counts;
+}
+
 /** Stryker's own definition: detected over everything that could be detected. */
 export function scoreOf(mutants) {
-  let detected = 0;
-  let valid = 0;
-  for (const mutant of mutants) {
-    if (mutant.status === "Killed" || mutant.status === "Timeout") {
-      detected += 1;
-      valid += 1;
-    } else if (mutant.status === "Survived" || mutant.status === "NoCoverage") {
-      valid += 1;
-    }
-  }
-  return valid === 0 ? 100 : Number(((detected / valid) * 100).toFixed(2));
+  const { killed, timeout, survived, noCoverage } = countsOf(mutants);
+  const valid = killed + timeout + survived + noCoverage;
+  return valid === 0 ? 100 : Number((((killed + timeout) / valid) * 100).toFixed(2));
 }
 
 export function scoresFromReport(report) {
-  const scores = {};
-  for (const [file, entry] of Object.entries(report.files ?? {})) {
-    scores[file] = scoreOf(entry.mutants ?? []);
-  }
-  return scores;
+  return Object.fromEntries(Object.entries(report.files ?? {}).map(([file, entry]) => [file, scoreOf(entry.mutants ?? [])]));
 }
 
 /**
- * The failure modes, as data: a file that got worse, a file nobody has
- * measured, and a baseline entry whose file is gone.
- *
+ * The entries `--record` writes: the counts behind each score, so a number can
+ * be re-derived, and the tree it was measured on, per file, because a run
+ * covers only its scope and one stamp for the document would claim the rest.
+ */
+export function recordedFrom(report, measuredOn, measuredDate) {
+  return Object.fromEntries(Object.entries(report.files ?? {}).map(([file, entry]) => {
+    const mutants = entry.mutants ?? [];
+    return [file, { score: scoreOf(mutants), ...countsOf(mutants), measuredOn, measuredDate }];
+  }));
+}
+
+/**
  * @param {Record<string, number>} measured file -> score from this run
  * @param {{ files: Record<string, { score: number }> }} baseline
- * @param {(file: string) => boolean} [exists] injected so staleness is testable
+ * @param {(file: string) => boolean} exists injected so a stale entry is testable
  */
-export function evaluate(measured, baseline, exists = (file) => existsSync(resolve(file))) {
+export function evaluate(measured, baseline, exists = existsSync) {
   const recorded = baseline.files ?? {};
   const problems = [];
   const improvements = [];
-
   for (const [file, score] of Object.entries(measured)) {
-    const previous = recorded[file];
-    if (previous === undefined) {
-      problems.push(
-        `UNBASELINED ${file} scored ${score.toFixed(2)} and has no recorded baseline.\n` +
-          `  A file enters this gate deliberately, not at whatever it happens to score.\n` +
-          `  Read what survived, decide whether that is acceptable, then run:\n` +
-          `    npm run mutation:baseline`,
-      );
-      continue;
-    }
-    if (score < previous.score - TOLERANCE) {
-      problems.push(
-        `REGRESSED ${file} fell from ${previous.score.toFixed(2)} to ${score.toFixed(2)}.\n` +
-          `  Mutants this file used to detect now survive. Add the tests that kill\n` +
-          `  them, or explain in the commit why the file legitimately covers less.`,
-      );
-    } else if (score > previous.score + TOLERANCE) {
-      improvements.push(`${file}: ${previous.score.toFixed(2)} -> ${score.toFixed(2)}`);
-    }
+    const previous = recorded[file]?.score;
+    if (previous === undefined) problems.push(`UNRECORDED ${file} scored ${score.toFixed(2)}: read what survived, then \`npm run mutation:record\`.`);
+    else if (score < previous - TOLERANCE) problems.push(`WORSE ${file}: ${previous.toFixed(2)} -> ${score.toFixed(2)}. Kill what now survives, or say in the commit why the file covers less.`);
+    else if (score > previous + TOLERANCE) improvements.push(`${file}: ${previous.toFixed(2)} -> ${score.toFixed(2)}`);
   }
-
   for (const file of Object.keys(recorded)) {
-    if (!exists(file)) {
-      problems.push(
-        `STALE ${file} has a baseline but no longer exists.\n` +
-          `  Delete its entry from ${BASELINE}.`,
-      );
-    }
+    if (!exists(file)) problems.push(`STALE ${file} is recorded but gone: delete its entry.`);
   }
-
   return { problems, improvements };
 }
 
-if (process.argv[1] && import.meta.url.endsWith(process.argv[1].split("/").pop())) {
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   if (!existsSync(REPORT)) {
     console.error(`No mutation report at ${REPORT}. Run the mutation gate first.`);
     process.exit(1);
   }
-  const measured = scoresFromReport(JSON.parse(readFileSync(REPORT, "utf8")));
-  const baseline = JSON.parse(readFileSync(BASELINE, "utf8"));
-  const { problems, improvements } = evaluate(measured, baseline);
+  const report = JSON.parse(readFileSync(REPORT, "utf8"));
+  const baseline = existsSync(BASELINE) ? JSON.parse(readFileSync(BASELINE, "utf8")) : { files: {} };
 
-  const names = Object.keys(measured).sort();
-  for (const file of names) {
-    const previous = baseline.files?.[file];
-    const mark = previous === undefined ? "  new" : measured[file] < previous.score - TOLERANCE ? " DOWN" : "   ok";
-    const was = previous === undefined ? "unrecorded" : previous.score.toFixed(2);
-    console.log(`${mark}  ${measured[file].toFixed(2).padStart(6)}  (was ${was})  ${file}`);
+  if (process.argv.includes("--record")) {
+    const head = execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim();
+    const entries = recordedFrom(report, head, new Date().toISOString().slice(0, 10));
+    const merged = Object.entries({ ...baseline.files, ...entries }).sort(([a], [b]) => a.localeCompare(b));
+    writeFileSync(BASELINE, `${JSON.stringify({ files: Object.fromEntries(merged) }, null, 2)}\n`);
+    for (const [file, { score }] of Object.entries(entries)) {
+      const before = baseline.files?.[file]?.score;
+      console.log(`${score.toFixed(2).padStart(6)}  ${before === undefined ? "new" : `was ${before.toFixed(2)}`}  ${file}`);
+    }
+    console.log(`Recorded ${Object.keys(entries).length} file(s) into ${BASELINE}.`);
+    process.exit(0);
   }
 
+  const { problems, improvements } = evaluate(scoresFromReport(report), baseline);
   if (improvements.length > 0) {
-    console.log(
-      `\n${improvements.length} file(s) scored above baseline:\n  ${improvements.join("\n  ")}\n` +
-        `  Lock these in with \`npm run mutation:baseline\` ONLY if the gain came from\n` +
-        `  tests you added. A gain that came from more mutants timing out is a\n` +
-        `  property of the runner, not of the suite, and recording it makes the\n` +
-        `  next quieter run fail an honest commit.`,
-    );
+    console.log(`Above the recorded score, record only if tests you added earned it:\n  ${improvements.join("\n  ")}`);
   }
-
   if (problems.length > 0) {
-    console.error(`\n${problems.join("\n\n")}\n`);
+    console.error(problems.join("\n"));
     process.exit(1);
   }
-  console.log(`\nNo mutated file detects less than its recorded baseline.`);
+  console.log(`No mutated file detects less than ${BASELINE} records.`);
 }
