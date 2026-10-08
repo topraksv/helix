@@ -920,5 +920,20 @@ describe("transaction repository persistence", () => {
       }
       await expect(addTransaction(USER, refundOf(expense, { type: "income", categoryId: "income" }))).rejects.toThrow(refusal);
     });
+
+    // A zero expense arrives only as a stored row, and its refusal had no
+    // test: the mutation gate found it (2026-10-08, `transactions.ts` 97.31).
+    it("counts every earlier refund of an expense, and refuses one of nothing", async () => {
+      const expenseId = await addTransaction(USER, transactionInput({ amountMinor: 1_000_00, amountTryMinor: 1_000_00 }));
+      const refund = (amountMinor: number, of = expenseId) =>
+        transactionInput({ amountMinor: -amountMinor, amountTryMinor: -amountMinor, refundOfTransactionId: of });
+      await addTransaction(USER, refund(400_00));
+      await addTransaction(USER, refund(400_00));
+      await expect(addTransaction(USER, refund(200_01))).rejects.toMatchObject({ remainingMinor: 200_00 });
+
+      const nothing = await addTransaction(USER, transactionInput({ amountMinor: 1_00, amountTryMinor: 1_00 }));
+      harness.db!.prepare("UPDATE transactions SET amount_minor = 0, amount_try_minor = 0 WHERE id = ?").run(nothing);
+      await expect(addTransaction(USER, refund(1_00, nothing))).rejects.toThrow("Refund must be linked to a live single expense in its currency");
+    });
   });
 });
