@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { INPUT_LIMITS, MIN_NEW_PASSWORD_LENGTH, assertInputWithinLimit, isInputWithinLimit, isValidNewPassword, textLength, utf8ByteLength } from "../../src/domain/input";
+import { INPUT_LIMITS, MIN_NEW_PASSWORD_LENGTH, assertInputWithinLimit, isEmail, isInputWithinLimit, isValidNewPassword, textLength, utf8ByteLength } from "../../src/domain/input";
 
 describe("shared input limits", () => {
   it.each(Object.entries(INPUT_LIMITS))("enforces the %s field boundary", (kind, limit) => {
@@ -28,5 +28,15 @@ describe("shared input limits", () => {
     expect(isValidNewPassword("1234567")).toBe(false);
     expect(isValidNewPassword("12345678")).toBe(true);
     expect(isValidNewPassword("x".repeat(INPUT_LIMITS.password + 1))).toBe(false);
+  });
+});
+
+describe("isEmail", () => {
+  it("takes an address of one shape, trimmed, and nothing around it", () => {
+    expect(isEmail(" ayse@ev.com ")).toBe(true);
+    // The pattern `send-feedback` holds a signed-out address to, so a slip is caught before a send is spent.
+    for (const typed of ["", "ayse", "ayse@", "ayse@ev", "@ev.com", "ayse@ev.", "ay se@ev.com", "x y@ev.com", "ayse@ev.com x", "ay@se@ev.com", "\"ayse\"@ev.com", "<ayse>@ev.com", "ayse@e v.com", "ayse@ev.c om"]) {
+      expect(isEmail(typed), typed).toBe(false);
+    }
   });
 });

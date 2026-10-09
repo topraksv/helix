@@ -148,6 +148,7 @@ beforeEach(() => {
   pullError = null;
   reads = [];
   logger.devError.mockClear();
+  logger.devWarning.mockClear();
 });
 
 afterEach(() => {
@@ -260,6 +261,7 @@ describe("when the probe cannot be trusted", () => {
 
     await syncNow(USER, false);
     expect(pulled).toHaveLength(22);
+    expect(logger.devWarning).toHaveBeenCalledWith("sync", "sync_cursors() is not applied; pulling every table");
 
     // A migration that is not applied does not become a round trip per sync.
     pulled = [];
@@ -321,6 +323,19 @@ describe("what a pulled page writes", () => {
       id: OTHER_ID, user_id: USER, created_at: TS, updated_at: TS, deleted_at: null, tombstone_version: 0,
       currency: "USD", rate_date: "2026-09-03", rate_try: 40.5,
     }];
+    // A rate is a decimal string here, and a lira row has none.
+    server.transactions = [uuid(3), uuid(4)].map((id, at) => ({
+      id, user_id: USER, created_at: TS, updated_at: TS, deleted_at: null, tombstone_version: 0,
+      type: "expense", amount_minor: 1000, currency: at === 0 ? "USD" : "TRY", fx_rate: at === 0 ? 40.5 : null,
+      amount_try_minor: at === 0 ? 40500 : 1000, entry_date: "2026-09-03", effective_date: "2026-09-03",
+      status: "realized", person_id: OTHER_ID, is_aggregate: false,
+    }));
+    server.expected_payments = [{
+      id: uuid(5), user_id: USER, created_at: TS, updated_at: TS, deleted_at: null, tombstone_version: 0,
+      direction: "out", kind: "subscription", ref_id: uuid(6), due_date: "2026-09-03", amount_minor: 1000,
+      currency: "TRY", status: "paid", paid_at: "2026-09-03T09:00:00+00:00", auto_confirmed: false,
+      amount_is_estimated: false,
+    }];
     server.computed_columns = [
       { id: uuid(1), user_id: USER, created_at: TS, updated_at: TS, deleted_at: null, tombstone_version: 0,
         name: "Net", definition: { op: "income_minus_expense" }, sort_order: 0 },
@@ -341,6 +356,8 @@ describe("what a pulled page writes", () => {
       tombstone_version: 1,
     }));
     expect(db!.prepare("SELECT rate_try FROM fx_rates").get()).toEqual({ rate_try: "40.5" });
+    expect(db!.prepare("SELECT paid_at FROM expected_payments").get()).toEqual({ paid_at: "2026-09-03T09:00:00.000Z" });
+    expect(db!.prepare("SELECT fx_rate FROM transactions ORDER BY id").all()).toEqual([{ fx_rate: "40.5" }, { fx_rate: null }]);
     expect(db!.prepare("SELECT definition FROM computed_columns ORDER BY sort_order").all()).toEqual([
       { definition: "{\"op\":\"income_minus_expense\"}" },
       { definition: "{\"op\":\"income_minus_expense\"}" },

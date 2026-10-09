@@ -32,6 +32,8 @@ const harness = vi.hoisted(() => ({
   /** The generation the server holds, per id, for the engine's one keyed read. */
   held: new Map<string, number>(),
   heldDeleted: new Set<string>(),
+  /** What the keyed read answers instead of the rows, when set. */
+  heldError: null as { message: string } | null,
   /** How each upsert was asked for: its conflict target and what it read back. */
   upserts: [] as { options: unknown; select: unknown }[],
   rpcs: [] as string[],
@@ -89,14 +91,23 @@ function query(table: string) {
     or: () => self,
     gte: () => self,
     eq: () => self,
-    in: (_column: string, values: string[]) => {
-      ids = values;
+    in: (column: string, values: string[]) => {
+      ids = column === "id" ? values : [];
       return self;
     },
     abortSignal: async (signal: AbortSignal) => {
       if (signal.aborted) throw new Error("aborted");
       if (rows == null && ids) {
-        return { data: ids.filter((id) => harness.held.has(id)).map((id) => ({ id, tombstone_version: harness.held.get(id), deleted_at: harness.heldDeleted.has(id) ? NOW : null })), error: null };
+        if (harness.heldError) return { data: null, error: harness.heldError };
+        // Only the columns asked for, as PostgREST answers.
+        const asked = String(upsert.select).split(", ");
+        return {
+          data: ids.filter((id) => harness.held.has(id)).map((id) => {
+            const row: Record<string, unknown> = { id, tombstone_version: harness.held.get(id), deleted_at: harness.heldDeleted.has(id) ? NOW : null };
+            return Object.fromEntries(asked.map((column) => [column, row[column]]));
+          }),
+          error: null,
+        };
       }
       if (rows == null) return { data: [], error: null };
       harness.calls.push({ table, count: rows.length });
@@ -184,6 +195,7 @@ beforeEach(async () => {
   harness.calls = [];
   harness.held = new Map();
   harness.heldDeleted = new Set();
+  harness.heldError = null;
   harness.upserts = [];
   harness.rpcs = [];
   harness.rpcArgs = [];
@@ -194,6 +206,7 @@ beforeEach(async () => {
   harness.refresh.mockResolvedValue({ data: { session: { user: { id: "u" } } }, error: null });
   harness.diagnostics = { rows: null, options: null, error: null };
   harness.logger.devWarning.mockClear();
+  harness.logger.devError.mockClear();
   harness.uploadDiagnostics.mockClear();
   harness.reconcileAttachments.mockClear();
   useSyncStatus.getState().set({ state: "idle", error: null, lastSyncAt: null, remoteChangeAt: null });
@@ -302,9 +315,24 @@ describe("what leaves the outbox", () => {
     harness.onUpsert = () => ({ data: null, error: { message: "name too long", code: "23514" } });
     startSyncSession(USER);
 
-    await flushOutbox(USER);
+    expect(await syncNow(USER, false)).toBe(false);
 
     expect(harness.calls, "asked, found nothing ahead, and not sent again").toHaveLength(1);
+    expect(harness.logger.devError).toHaveBeenCalledWith("sync", "push categories: name too long");
+    expect(outboxCount()).toBe(1);
+  });
+
+  it("keeps the run when what the server holds cannot be read", async () => {
+    queueCategory("01a06b2c-0000-7000-8000-00000000000a");
+    harness.held.set("01a06b2c-0000-7000-8000-00000000000a", 0);
+    harness.heldError = { message: "canceling statement due to statement timeout" };
+    harness.onUpsert = () => ({ data: null, error: { message: "invalid tombstone generation", code: "23514" } });
+    startSyncSession(USER);
+
+    expect(await syncNow(USER, false)).toBe(false);
+
+    expect(harness.calls).toHaveLength(1);
+    expect(harness.logger.devError).toHaveBeenCalledWith("sync", "push categories: canceling statement due to statement timeout");
     expect(outboxCount()).toBe(1);
   });
 
@@ -314,8 +342,9 @@ describe("what leaves the outbox", () => {
     harness.onUpsert = (_table, rows) => ({ data: rows.slice(0, 1), error: null });
     startSyncSession(USER);
 
-    await flushOutbox(USER);
+    expect(await syncNow(USER, false)).toBe(false);
 
+    expect(harness.logger.devError).toHaveBeenCalledWith("sync", "push categories: incomplete acknowledgement");
     expect(outboxCount(), "a partial ack must not empty the batch").toBe(2);
   });
 
@@ -410,8 +439,9 @@ describe("what an acknowledgement changes", () => {
     harness.onUpsert = (_table, rows) => ({ data: rows.map((row) => ({ ...row, id: "01a06b2c-0000-7000-8000-00000000000f" })), error: null });
     startSyncSession(USER);
 
-    await flushOutbox(USER);
+    expect(await syncNow(USER, false)).toBe(false);
 
+    expect(harness.logger.devError).toHaveBeenCalledWith("sync", "push categories: unknown acknowledgement");
     expect(outboxCount()).toBe(1);
   });
 });
@@ -596,6 +626,19 @@ describe("a failed sync", () => {
     expect(harness.refresh).toHaveBeenCalledTimes(1);
     expect(outboxCount()).toBe(0);
     expect(useSyncStatus.getState().state).toBe("idle");
+  });
+
+  it("renews once: a retry the token still fails asks for a sign-in", async () => {
+    vi.useFakeTimers();
+    queueCategory(ROW);
+    refuse("JWT expired");
+    startSyncSession(USER);
+
+    await syncNow(USER);
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(harness.refresh).toHaveBeenCalledTimes(1);
+    expect(useSyncStatus.getState()).toEqual(expect.objectContaining({ state: "error", error: tr.sync.errReauth }));
   });
 
   it("asks for a sign-in when the session cannot be renewed, and stops retrying", async () => {

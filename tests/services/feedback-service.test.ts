@@ -86,6 +86,8 @@ describe("the three answers", () => {
     expect(harness.invoke).toHaveBeenCalledWith("send-feedback", { body: expect.objectContaining({ images: [], replyTo: "ayse@ev.com" }) });
     await expect(sendFeedback({ ...valid, images: [], replyTo: "ayse" })).resolves.toBe("unauthenticated");
     await expect(sendFeedback({ ...valid, images: [], replyTo: undefined }), "no address to answer").resolves.toBe("unauthenticated");
+    const image = { mimeType: "image/png", filename: "a.png", bytes: new Uint8Array(16) };
+    await expect(sendFeedback({ ...valid, images: [image], replyTo: "ayse@ev.com" }), "a picture waits for a sign-in").resolves.toBe("unauthenticated");
     expect(harness.invoke).toHaveBeenCalledTimes(1);
   });
 

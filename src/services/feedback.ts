@@ -61,9 +61,12 @@ function appVersion(): string {
   return [version, runtimeLabel].filter(Boolean).join(" · ") || "bilinmiyor";
 }
 
-/** Signed out, a report carries an address to answer and no picture. */
+/**
+ * Signed out, a report carries an address to answer and no picture. A missing
+ * address reads as "undefined", which no address pattern takes.
+ */
 function mayGoSignedOut({ replyTo, images }: FeedbackSubmission): boolean {
-  return replyTo != null && isEmail(replyTo) && images.length === 0;
+  return isEmail(String(replyTo)) && images.length === 0;
 }
 
 export async function sendFeedback(submission: FeedbackSubmission): Promise<FeedbackResult> {

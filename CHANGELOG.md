@@ -6,6 +6,17 @@ defterinde yazılıdır ve bu depoya dahil değildir.
 
 Notlar kısa tutulur: ne değişti, tek cümle. Sebebi ve ölçümü commit'te.
 
+## 1.10.0
+
+### Minor Changes
+
+- Giriş yapmadan da geri bildirim gönderebiliyorsun; yanıt yazdığın e-postaya geliyor.
+
+### Patch Changes
+
+- Bir cihazda silinip geri alınan kayıt, eşitlemede reddedilip takılı kalmıyor; başka cihazın sildiği bir kaydı da geri getirmiyor.
+- Android'de klavye açılınca sekme çubuğu gizleniyor; iki renk çifti daha okunur.
+
 ## 1.9.6
 
 ### Patch Changes

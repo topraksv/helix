@@ -25,9 +25,13 @@ export function textLength(value: string): number {
   return length;
 }
 
-/** A shape check on an address: enough to catch a slip, and the server decides the rest. */
+/**
+ * A shape check on an address: enough to catch a slip, and the server decides
+ * the rest. The same pattern `send-feedback` holds a signed-out reply address
+ * to, so nothing passes here that spends a send and is refused there.
+ */
 export function isEmail(value: string): boolean {
-  return /.+@.+\..+/.test(value.trim());
+  return /^[^\s@<>"]+@[^\s@<>"]+\.[^\s@<>"]+$/.test(value.trim());
 }
 
 export function isValidNewPassword(value: string): boolean {
