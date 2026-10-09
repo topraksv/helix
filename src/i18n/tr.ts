@@ -124,7 +124,7 @@ export const tr = {
     transferIntro: "Helix bir hesapla kullanılır; kayıt olmadan kullanılabilen bir sürümü yoktur. Bu nedenle aşağıdaki aktarımların hepsi sizin için geçerlidir. Her satır alıcıyı, aktarılan veriyi ve aktarımın hangi anda yapıldığını söyler:",
     transfers: [
       "**Supabase** — barındırma altyapısı Amazon Web Services, **Frankfurt / Almanya**. Yalnızca hesap açtığınızda. Aktarılan veri: kimlik ve iletişim, finansal veriler, belgeler ve hata kayıtları. Verilerinizin bulunduğu asıl yer burasıdır.",
-      "**Google (Gmail)** — Amerika Birleşik Devletleri. Helix'in e-postalarını gönderen servistir. Şifre yenileme ve e-posta doğrulama iletilerinde aktarılan veri: e-posta adresiniz ve iletideki tek kullanımlık bağlantı. Geri bildirim gönderdiğinizde aktarılan veri: mesajınız, seçtiğiniz kategori, varsa ekran görüntüleriniz, size dönülebilmesi için hesabınızın e-posta adresi ve raporun geldiği cihazın platformu ile uygulama sürümü.",
+      "**Google (Gmail)** — Amerika Birleşik Devletleri. Helix'in e-postalarını gönderen servistir. Şifre yenileme ve e-posta doğrulama iletilerinde aktarılan veri: e-posta adresiniz ve iletideki tek kullanımlık bağlantı. Geri bildirim gönderdiğinizde aktarılan veri: mesajınız, seçtiğiniz kategori, varsa ekran görüntüleriniz, size dönülebilmesi için e-posta adresiniz (giriş yapmadan gönderdiyseniz formda yazdığınız adres) ve raporun geldiği cihazın platformu ile uygulama sürümü.",
       "**GitHub Pages** — Amerika Birleşik Devletleri. Web sürümünü açtığınız her seferde, giriş yapmadan önce de. Aktarılan veri: bağlantı bilgisi (IP adresi, tarayıcı bilgisi). Finansal veri aktarılmaz.",
       "**Expo (EAS)** — Amerika Birleşik Devletleri. Mobil uygulama güncelleme sorduğunda. Aktarılan veri: güncelleme sorgusu. Finansal veri aktarılmaz.",
       "**TCMB** — Türkiye. Mobil uygulamada günlük döviz kurları buradan okunur. Aktarılan veri: yalnızca bağlantı bilgisi. Yurt içinde kaldığı için yurt dışına aktarım değildir.",
@@ -499,7 +499,8 @@ export const tr = {
     errSamePassword: "Yeni şifren eskisiyle aynı olamaz; farklı bir şifre seç.",
     errEmailNotConfirmed: "E-posta adresin henüz doğrulanmamış; gelen kutunu kontrol et.",
     errInvalidEmail: "Geçerli bir e-posta adresi gir.",
-    errEmailDelivery: "E-posta şu anda gönderilemiyor. Birazdan tekrar dene; sürerse Geri bildirim'den haber ver.",
+    errEmailDelivery: "E-posta şu anda gönderilemiyor. Birazdan tekrar dene; sürerse aşağıdan haber ver.",
+    reportProblem: "Sorunu bildir",
     errSessionExpired: "Oturumun doğrulanamadı. Lütfen çıkış yapıp yeniden giriş yap.",
     errService: "Sunucu şu anda yanıt vermiyor. Birazdan tekrar dene.",
     errGeneric: "İşlem tamamlanamadı. Lütfen tekrar dene.",
@@ -2250,6 +2251,8 @@ export const tr = {
     rateLimited: "Kısa sürede çok fazla bildirim gönderildi. Bir süre sonra tekrar dene; yazdıkların burada duruyor.",
     unconfigured: "Bu kurulum buluta bağlı değil, bu yüzden geri bildirim gönderilemiyor.",
     privacy: "Yalnızca yazdığın metin, seçtiğin kategori, varsa eklediğin görsel ve hesabının e-posta adresi gönderilir. Finansal verilerinin hiçbiri gitmez.",
+    privacySignedOut: "Yalnızca yazdığın metin, seçtiğin kategori ve sana dönebilmem için yazdığın e-posta adresi gönderilir.",
+    replyToLabel: "Sana nereden döneyim?",
   },
   months: ["Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran", "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık"],
 } as const;

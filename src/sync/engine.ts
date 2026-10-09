@@ -262,6 +262,45 @@ function runsOfOneShape(rows: readonly Record<string, unknown>[]): Record<string
   return runs;
 }
 
+/**
+ * Gital's `atServerGeneration` (its `src/sync/engine.ts`, 2026-09-30). A
+ * delete taken back and made again before any of it was sent leaves a row
+ * generations ahead of the server, which takes one step at a time
+ * (migration 12): the push was refused, and every sync after it failed on the
+ * same row. Nobody else saw those steps, so the run goes once more with each
+ * such row at the generation the server holds, and the acknowledgement brings
+ * the device back to it. Asked by what the server holds rather than by the
+ * refusal's words, which can be reworded; 23514 is any check, so a run with
+ * no row ahead is refused as before. Stepping a live row down onto a delete
+ * made elsewhere would restore it over that delete (pre-push review, 2026-10-09).
+ */
+async function atServerGeneration(
+  table: SyncedTableName,
+  run: Record<string, unknown>[],
+  token: SessionEpochToken,
+): Promise<Record<string, unknown>[] | null> {
+  const { data, error } = await getSupabase()!
+    .from(table)
+    .select("id, tombstone_version, deleted_at")
+    .in("id", run.map((row) => String(row.id)))
+    .abortSignal(token.signal);
+  if (error) throw new Error(`push ${table}: ${error.message}`);
+  const held = new Map((data ?? []).map((row: Record<string, unknown>) => [String(row.id), row]));
+  let ahead = false;
+  const level = run.map((row) => {
+    const server = held.get(String(row.id));
+    if (server == null) return row;
+    const at = Number(server.tombstone_version);
+    if (at >= Number(row.tombstone_version)) return row;
+    ahead = true;
+    // A delete this device never saw stands: one generation below, the server
+    // answers with what it holds, and the device takes that.
+    const behind = server.deleted_at != null && row.deleted_at == null ? 1 : 0;
+    return { ...row, tombstone_version: at - behind };
+  });
+  return ahead ? level : null;
+}
+
 async function pushOutbox(userId: string, token: SessionEpochToken): Promise<void> {
   const supabase = getSupabase()!;
   const sqlite = await getSqliteAsync();
@@ -301,15 +340,21 @@ async function pushOutbox(userId: string, token: SessionEpochToken): Promise<voi
       // null into one a row lacks, so a run of rows of one shape goes at a
       // time; runs keep the batch's order. Every row has one shape unless a
       // column is `unpulled`.
-      for (const run of runsOfOneShape(rows)) {
-        assertActive(token);
-        const { data, error } = await supabase
+      const send = (run: Record<string, unknown>[]) =>
+        supabase
           .from(table)
           // prepareOutboundBatch performs table-aware runtime validation. This
           // cast is the one dynamic-table bridge into generated Supabase types.
           .upsert(run as SyncedInsert[], { onConflict: "id" })
           .select("*")
           .abortSignal(token.signal);
+      for (const run of runsOfOneShape(rows)) {
+        assertActive(token);
+        let { data, error } = await send(run);
+        if (error?.code === "23514") {
+          const level = await atServerGeneration(table, run, token);
+          if (level) ({ data, error } = await send(level));
+        }
         if (error) throw new Error(`push ${table}: ${error.message}`);
         const answered = (data ?? []) as Record<string, unknown>[];
         if (answered.length !== run.length) throw new Error(`push ${table}: incomplete acknowledgement`);

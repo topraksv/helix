@@ -316,13 +316,13 @@
       "measuredDate": "2026-08-21"
     },
     "src/domain/app-guard.ts": {
-      "score": 99.26,
-      "killed": 134,
+      "score": 99.33,
+      "killed": 149,
       "timeout": 0,
       "survived": 1,
       "noCoverage": 0,
-      "measuredOn": "58570d5bfc79c0eec180fcac4978c97dd5bc66c1",
-      "measuredDate": "2026-09-03"
+      "measuredOn": "5aee814d237dd24dd7d2c1ab6a485f835b974c08",
+      "measuredDate": "2026-10-09"
     },
     "src/domain/attachments.ts": {
       "score": 86.39,
@@ -487,13 +487,13 @@
       "measuredDate": "2026-09-09"
     },
     "src/domain/input.ts": {
-      "score": 100,
-      "killed": 44,
+      "score": 93.88,
+      "killed": 46,
       "timeout": 0,
-      "survived": 0,
+      "survived": 3,
       "noCoverage": 0,
-      "measuredOn": "bac1cd3f15e43c32916b994140dcd6c3ddb11e97",
-      "measuredDate": "2026-09-09"
+      "measuredOn": "5aee814d237dd24dd7d2c1ab6a485f835b974c08",
+      "measuredDate": "2026-10-09"
     },
     "src/domain/installments.ts": {
       "score": 98.82,
@@ -856,13 +856,13 @@
       "measuredDate": "2026-09-19"
     },
     "src/services/feedback.ts": {
-      "score": 100,
-      "killed": 78,
+      "score": 98.95,
+      "killed": 94,
       "timeout": 0,
-      "survived": 0,
+      "survived": 1,
       "noCoverage": 0,
-      "measuredOn": "88fa1e6829d1768dc5f157450b21bd87739cb721",
-      "measuredDate": "2026-09-04"
+      "measuredOn": "5aee814d237dd24dd7d2c1ab6a485f835b974c08",
+      "measuredDate": "2026-10-09"
     },
     "src/services/fx-fetch.ts": {
       "score": 87.67,
@@ -964,13 +964,13 @@
       "measuredDate": "2026-09-23"
     },
     "src/sync/engine.ts": {
-      "score": 83.97,
-      "killed": 410,
-      "timeout": 9,
-      "survived": 73,
-      "noCoverage": 7,
-      "measuredOn": "0d9b2db231ba2d1344b544f9ed592ef91ddb5b5e",
-      "measuredDate": "2026-09-20"
+      "score": 82.22,
+      "killed": 492,
+      "timeout": 12,
+      "survived": 98,
+      "noCoverage": 11,
+      "measuredOn": "5aee814d237dd24dd7d2c1ab6a485f835b974c08",
+      "measuredDate": "2026-10-09"
     },
     "src/sync/merge-policy.ts": {
       "score": 77.3,

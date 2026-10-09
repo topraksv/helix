@@ -69,6 +69,8 @@ describe("root guard state machine", () => {
    */
   it("opens the legal notice in every session state", () => {
     expect(classifyRootRoute(["privacy"])).toBe("public");
+    // Sign-in sends a failure to the feedback form, which needs no account (migration 45).
+    expect(classifyRootRoute(["feedback"])).toBe("public");
     for (const state of [
       { userId: null, onboarded: null, frozen: null },
       { userId: "user-a", onboarded: false, frozen: null },

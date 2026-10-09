@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 /**
  * Decide what a main-branch push has to prove and which surfaces it can ship.
- * Helix and Gital run this same file; only `CI_EXECUTED_SCRIPTS` differs,
- * because it names what each repository's own `ci.yml` reaches.
+ * Helix and Gital run this same file, `CI_EXECUTED_SCRIPTS` included since
+ * 2026-10-09: each repository's own `ci.yml` reaches the same scripts, and a
+ * test in each walks that workflow to hold the list to it.
  *
  * The safe error is a slow run: every unrecognised path receives the full
  * gate, while a missing base receives the full gate and both deploy targets.
@@ -38,7 +39,9 @@ export const CI_EXECUTED_SCRIPTS = [
   // `npm ci` runs it as `postinstall`: it rewrites what every job builds.
   "scripts/patch-dependencies.mjs",
   // Started by `playwright.config.ts`, not by a `run:`.
-  "scripts/serve-static.mjs",
+  "scripts/serve-web-export.mjs",
+  // Loaded by `stryker.config.mjs` as the mutation gate's runner.
+  "scripts/stryker-vitest-files.mjs",
 ];
 
 /** Money, persistence, identity, sync, native, and what builds or checks the app. */
@@ -165,7 +168,7 @@ const E2E_INPUTS = [
   // else in a push that changes only this.
   /^\.nvmrc$/,
   /^playwright\.config\.ts$/,
-  /^scripts\/(export-e2e-web|serve-static|serve-web-export)\.mjs$/,
+  /^scripts\/(export-e2e-web|serve-web-export)\.mjs$/,
 ];
 
 const matches = (path, patterns) => patterns.some((pattern) => pattern.test(path));

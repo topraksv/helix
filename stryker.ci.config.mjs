@@ -7,7 +7,7 @@ import { resolve } from "node:path";
  * The delivery gate's mutation scope: what a push changed, dealt to the
  * runners `.github/workflows/ci.yml` holds. Helix and Gital run this same
  * file; only the three constants below differ, and each says why it is what
- * it is. `npm run test:mutation` keeps the broad inventory for a local audit.
+ * it is. `npm run test:mutation` mutates `stryker.config.mjs`'s list, for a local audit.
  *
  * The whole inventory on every gate was the first choice. On 2026-10-02 it
  * took Gital 16 min 19 s while every other job was done in two, and 339 static

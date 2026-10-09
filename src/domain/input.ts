@@ -25,6 +25,11 @@ export function textLength(value: string): number {
   return length;
 }
 
+/** A shape check on an address: enough to catch a slip, and the server decides the rest. */
+export function isEmail(value: string): boolean {
+  return /.+@.+\..+/.test(value.trim());
+}
+
 export function isValidNewPassword(value: string): boolean {
   const length = textLength(value);
   return length >= MIN_NEW_PASSWORD_LENGTH && length <= INPUT_LIMITS.password;

@@ -59,6 +59,7 @@ jobs:
       actions: read
     outputs:
       base: ${{ steps.base.outputs.sha }}
+      mutation_base: ${{ steps.base.outputs.mutation }}
       full_gate: ${{ steps.raw.outputs.full_gate }}
       run_web_build: ${{ steps.route.outputs.run_web_build }}
       run_e2e: ${{ steps.raw.outputs.run_e2e }}
@@ -77,7 +78,10 @@ jobs:
       # push run that this commit descends from is where production stands. The
       # push's own `before` is the fallback when there is none to find — the
       # first run, an unanswered API call — and a dispatch keeps no base at
-      # all, because its fail-open full gate is the point of dispatching.
+      # all, because its fail-open full gate is the point of dispatching. Its
+      # mutation still measures from that green run: with no base it mutated
+      # the sentinels alone, and a dispatch may publish a commit whose push
+      # run failed (devil round 2026-10-09-2).
       - id: base
         name: Measure from the last run that published
         env:
@@ -87,16 +91,14 @@ jobs:
           HEAD_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
+          # `check-published.mjs green` says why it filters nothing in the query.
+          green=$(node scripts/check-published.mjs green | sed -n 's/^sha=//p') || green=""
+          if [ -n "$green" ] && ! git merge-base --is-ancestor "$green" "$HEAD_SHA"; then green=""; fi
           base=""
+          mutation="$green"
           if [ "$EVENT_NAME" = "push" ]; then
             base="$BEFORE_SHA"
-            # No query filter, filtered here: GitHub answers `branch`, `event`,
-            # `status` and `head_sha` from its run search, which named a run 20
-            # days stale on 2026-09-28 and 24 days stale on 2026-10-02 — each a
-            # 40-odd-commit scope, mutation past 90 minutes, and no deploy.
-            green=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?per_page=100" \
-              --jq '[.workflow_runs[] | select(.event == "push" and .head_branch == "main" and .conclusion == "success")][0].head_sha // ""') || green=""
-            if [ -n "$green" ] && git merge-base --is-ancestor "$green" "$HEAD_SHA"; then
+            if [ -n "$green" ]; then
               base="$green"
             else
               echo "::warning::no green ci push run is an ancestor of $HEAD_SHA; measuring from the push's own base, which cannot see an earlier run that published nothing"
@@ -105,9 +107,11 @@ jobs:
               # itself have failed, so an empty diff runs everything instead.
               if git diff --quiet "$BEFORE_SHA" "$HEAD_SHA" 2>/dev/null; then base=""; fi
             fi
+            mutation="$base"
           fi
           echo "sha=$base" >> "$GITHUB_OUTPUT"
-          echo "base: ${base:-none}"
+          echo "mutation=$mutation" >> "$GITHUB_OUTPUT"
+          echo "base: ${base:-none}, mutation: ${mutation:-none}"
       - id: raw
         name: Classify changed paths
         env:
@@ -217,9 +221,9 @@ jobs:
       matrix:
         shard: [1, 2, 3, 4, 5]
     env:
-      # The classifier's base, so mutation covers every change that has not yet
+      # The last green run, so mutation covers every change that has not yet
       # passed a gate — a failed run's included — and not only this push's.
-      MUTATION_BASE_SHA: ${{ needs.classify.outputs.base }}
+      MUTATION_BASE_SHA: ${{ needs.classify.outputs.mutation_base }}
       MUTATION_HEAD_SHA: ${{ github.sha }}
       MUTATION_EVENT_NAME: ${{ github.event_name }}
       MUTATION_SHARD: ${{ matrix.shard }}/${{ strategy.job-total }}
@@ -229,19 +233,24 @@ jobs:
           persist-credentials: false
           # The selector diffs from the base; a depth-one checkout cannot.
           fetch-depth: 0
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version-file: .nvmrc
-          cache: npm
-      - run: npm ci
       # A shard dealt no file skips the pass instead of handing Stryker an
-      # empty list, which a change touching one file does to all but one.
+      # empty list, which a change touching one file does to all but one. Asked
+      # before setup and install: the config imports nothing installed, and the
+      # runner's own Node reads it, so an idle shard spends seconds, not the
+      # install.
       - id: scope
         run: |
           set -euo pipefail
           files=$(node --input-type=module -e 'const { default: config } = await import("./stryker.ci.config.mjs"); console.log(config.mutate.length)')
           echo "files=$files" >> "$GITHUB_OUTPUT"
           echo "shard $MUTATION_SHARD mutates $files file(s)"
+      - if: steps.scope.outputs.files != '0'
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - if: steps.scope.outputs.files != '0'
+        run: npm ci
       - if: steps.scope.outputs.files != '0'
         run: npm run test:mutation:ci
       # The ratchet names the files that regressed; the surviving mutants that
@@ -558,7 +567,10 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version-file: .nvmrc
-          cache: npm
+          # It runs `npm ci` beside `EXPO_TOKEN`: a package cache any workflow
+          # can write is code this job would run (zizmor cache-poisoning), as
+          # `release.yml` says for its own.
+          package-manager-cache: false
       # Still needed with the bundles prebuilt: the CLI reads the app config,
       # and the SDK version and runtime come from the installed `expo`.
       - run: npm ci

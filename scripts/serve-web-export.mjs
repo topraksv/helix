@@ -1,5 +1,9 @@
 /**
- * Serve a production web export the way GitHub Pages does.
+ * Serve a production web export the way GitHub Pages does: the preview and
+ * the browser suite. Helix and Gital run this same file; Helix's second server
+ * for the suite went on 2026-10-09.
+ *
+ *   node scripts/serve-web-export.mjs <export-dir> [port]
  *
  * WHY THIS EXISTS RATHER THAN `expo start --web`. On SDK 57 the web dev server
  * cannot bundle this app at all: `MetroBundlerDevServer` sets
@@ -7,19 +11,21 @@
  * while `serializeChunks` still sends a Web Worker down the standalone-chunk
  * path and asserts a chunk that was therefore never produced. `expo-sqlite`'s
  * web driver is a worker, so every page answers 500 with "Worker chunk not
- * found". Exporting takes the other branch and works, which is why the shipped
- * site and the E2E suite were never affected.
+ * found" — measured in both applications. Exporting takes the other branch
+ * and works.
  *
  * So this serves the real artifact instead of a development one. What that
  * costs is fast refresh; what it buys is that the thing being looked at is the
  * thing that deploys — same minification, same chunk boundaries, same
  * `baseUrl`. Re-run it after a change.
  *
- * The routing mirrors Pages deliberately: `experiments.baseUrl` is "/helix", a
+ * The routing mirrors Pages deliberately: under `app.json`'s `experiments.baseUrl`, a
  * directory falls back to its `index.html`, an extensionless path tries
- * `<path>.html` first, and anything unresolved falls through to the app shell
- * so a deep link opens the app rather than a 404 page. Getting that wrong
- * locally is how a deep-link bug reaches production unnoticed.
+ * `<path>.html` first, and anything unresolved — a dynamic route's real path
+ * among them — is the export's `404.html` with status 404, which boots the
+ * router at that path. Getting that wrong locally is how a deep-link bug
+ * reaches production unnoticed: Gital's copy answered such a path with the
+ * shell and a 200, which Pages never does.
  */
 
 import { createServer } from "node:http";
@@ -27,8 +33,10 @@ import { readFile, stat } from "node:fs/promises";
 import { extname, join, normalize, resolve, sep } from "node:path";
 
 const root = resolve(process.argv[2] ?? "dist");
-const port = Number(process.env.PORT ?? 4599);
-const baseUrl = "/helix";
+// The port the owner's browser already has open from `expo start --web`.
+const port = Number(process.argv[3] ?? 8082);
+const { name, experiments } = JSON.parse(await readFile(new URL("../app.json", import.meta.url), "utf8")).expo;
+const baseUrl = experiments.baseUrl;
 
 const TYPES = {
   ".html": "text/html; charset=utf-8",
@@ -73,9 +81,8 @@ async function resolveFile(pathname) {
   if (await exists(`${safe}.html`)) return `${safe}.html`;
   const asIndex = join(safe, "index.html");
   if (await exists(asIndex)) return asIndex;
-  // The shell, so a deep link opens the app the way Pages serves it.
-  const shell = join(root, "index.html");
-  return (await exists(shell)) ? shell : null;
+  const missing = join(root, "404.html");
+  return (await exists(missing)) ? missing : null;
 }
 
 if (!(await exists(join(root, "index.html")))) {
@@ -94,7 +101,7 @@ createServer(async (request, response) => {
       response.end("Not found");
       return;
     }
-    response.writeHead(200, {
+    response.writeHead(file === join(root, "404.html") ? 404 : 200, {
       "content-type": TYPES[extname(file)] ?? "application/octet-stream",
       "cache-control": "no-store",
     });
@@ -111,5 +118,5 @@ createServer(async (request, response) => {
     response.end("Internal error");
   }
 }).listen(port, () => {
-  console.log(`Helix web export on http://localhost:${port}${baseUrl}/`);
+  console.log(`${name} web export on http://localhost:${port}${baseUrl}/`);
 });

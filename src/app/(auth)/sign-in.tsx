@@ -6,6 +6,7 @@ import CheckCircle2 from "lucide-react-native/icons/circle-check";
 import CloudOff from "lucide-react-native/icons/cloud-off";
 import Table2 from "lucide-react-native/icons/table-2";
 import WalletCards from "lucide-react-native/icons/wallet-cards";
+import { useRouter } from "expo-router";
 import { useSession } from "../../auth/session";
 import { LegalConsentControl, LegalNoticeSheet } from "../../ui/legal-notice";
 import { isSupabaseConfigured, takeEmailLinkLanding } from "../../sync/supabase";
@@ -18,7 +19,7 @@ import { controlSize, font, maxFontScale, radius, spacing, stateOpacity, type, u
 import { tr } from "../../i18n/tr";
 import { useOperationGuard } from "../../ui/operation-guard";
 import { OperationFlow } from "../../ui/operation-flow";
-import { isValidNewPassword } from "../../domain/input";
+import { isEmail, isValidNewPassword } from "../../domain/input";
 import { shouldSplitAuthHero } from "../../ui/responsive";
 import { useContentWidth } from "../../ui/viewport";
 
@@ -219,7 +220,7 @@ function useAuthForm() {
     };
   }, [landingAnswer]);
 
-  const emailValid = /.+@.+\..+/.test(email.trim());
+  const emailValid = isEmail(email);
   /**
    * The two conditions are deliberately separate.
    *
@@ -354,6 +355,7 @@ function AuthNotice({ tone, text }: { tone: "success" | "error"; text: string })
 
 function AuthFormCard({ form, wide, onOpenNotice }: { form: AuthForm; wide: boolean; onOpenNotice: () => void }) {
   const { palette } = useTheme();
+  const router = useRouter();
   const { mode } = form;
   const text = MODE[mode];
   const primaryLabel = mode === "signIn" ? tr.auth.signIn : mode === "signUp" ? tr.auth.signUpTitle : form.resetSent ? tr.auth.resendResetLink : tr.auth.sendResetLink;
@@ -416,6 +418,8 @@ function AuthFormCard({ form, wide, onOpenNotice }: { form: AuthForm; wide: bool
           the spacing. The notice is not offered here: signing in or repairing a
           password starts no processing an account creation would. */}
       <View style={{ alignItems: "center", marginTop: spacing.sm }}>
+        {/* Under a failure, which may be ours: the report needs no account (migration 45). */}
+        {form.error ? <AuthLink label={tr.auth.reportProblem} onPress={() => router.push({ pathname: "/feedback", params: { email: form.email.trim() } })} /> : null}
         {form.canResend ? <AuthLink label={tr.auth.resendConfirmation} onPress={() => void form.resend()} /> : null}
         {mode === "signIn" ? <AuthLink label={tr.auth.forgotPassword} onPress={form.showForgot} /> : null}
         <AuthLink label={text.other()} onPress={form.switchMode} disabled={form.busy} />

@@ -73,10 +73,8 @@ jobs:
           # mistaken one into a release. A tag pushed before its run finishes
           # stops here too, and re-running this job once that run is green
           # publishes it.
-          # Unfiltered and filtered by jq, as `ci.yml`'s base is: see the note
-          # there. A commit older than the last hundred runs is refused.
-          shipped_in=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?per_page=100" \
-            | jq -r --arg sha "$GITHUB_SHA" '[.workflow_runs[] | select(.head_sha == $sha and .event == "push" and .conclusion == "success")][0].html_url // ""')
+          # A commit older than the last thousand runs is refused.
+          shipped_in=$(node scripts/check-published.mjs green --sha "$GITHUB_SHA" | sed -n 's/^url=//p')
           if [ -z "$shipped_in" ]; then
             echo "::error::$TAG names $GITHUB_SHA, which has no green ci push run; tag the commit that shipped, or re-run this job once its run is green"
             exit 1

@@ -7,6 +7,7 @@
  *   node scripts/check-published.mjs web <base-url> [--entry <path>] [--wait <seconds>]
  *   node scripts/check-published.mjs ota <eas-update.json>
  *   node scripts/check-published.mjs expo-go
+ *   node scripts/check-published.mjs green [--sha <commit>] [--head <commit>]
  *
  * `entry` prints the export's entry bundle as `path=…`, for $GITHUB_OUTPUT.
  * That name is a content hash, so no other build carries it, and `web` asks
@@ -20,6 +21,12 @@
  * `ota` verifies and records one `eas update --json` publication. `expo-go`
  * asks whether the Expo Go the stores carry can open this project at all;
  * `.github/workflows/nightly.yml` records why that is a question.
+ *
+ * `green` prints `sha=…` and `url=…` for the newest green `ci` push run on
+ * `main` — with `--sha`, that commit's — and with `--head`, `open=…`, how many
+ * push runs of that commit are still going. `ci.yml`'s base, the nightly and
+ * the release each asked this with their own query over one unpaged window of
+ * 100 runs of every event.
  */
 import { appendFileSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
@@ -111,6 +118,41 @@ export function otaRecord(updates, sdkMajor) {
     ...list.map((update) => `| ${update.platform} | \`${update.id}\` | ${update.manifestPermalink} |`),
   ];
   return { problems, summary };
+}
+
+/**
+ * The run `green` looks for, among runs newest first. Every filter is applied
+ * here: GitHub answers `branch`, `event`, `status` and `head_sha` from its run
+ * search, which named a run 20 days stale on 2026-09-28 and 24 days stale on
+ * 2026-10-02 — each a 40-odd-commit scope, mutation past 90 minutes, and no
+ * deploy.
+ */
+export function greenRun(runs, sha) {
+  return runs.find((run) => run.event === "push" && run.head_branch === "main" && run.conclusion === "success" && (!sha || run.head_sha === sha)) ?? null;
+}
+
+/** Push runs of `head` on `main` that have not finished. */
+export const openRuns = (runs, head) =>
+  runs.filter((run) => run.event === "push" && run.head_branch === "main" && run.head_sha === head && run.status !== "completed").length;
+
+/** Ten pages: a thousand runs is months of pushes, and a commit older is refused. */
+const RUN_PAGES = 10;
+
+async function checkGreen({ sha, head }) {
+  const runs = [];
+  for (let page = 1; page <= RUN_PAGES && !greenRun(runs, sha); page += 1) {
+    const response = await fetch(
+      `https://api.github.com/repos/${process.env.GITHUB_REPOSITORY}/actions/workflows/ci.yml/runs?per_page=100&page=${page}`,
+      { headers: { authorization: `Bearer ${process.env.GH_TOKEN}`, accept: "application/vnd.github+json" } },
+    );
+    if (!response.ok) return fail(`GitHub answered HTTP ${response.status} for page ${page} of ci's runs`);
+    const { workflow_runs: more = [] } = await response.json();
+    runs.push(...more);
+    if (more.length < 100) break;
+  }
+  const run = greenRun(runs, sha);
+  process.stdout.write(`sha=${run?.head_sha ?? ""}\nurl=${run?.html_url ?? ""}\n`);
+  if (head) process.stdout.write(`open=${openRuns(runs, head)}\n`);
 }
 
 const fail = (message) => {
@@ -213,8 +255,10 @@ async function main() {
     for (const problem of problems) fail(problem);
   } else if (command === "expo-go") {
     await checkExpoGo(projectMajor());
+  } else if (command === "green") {
+    await checkGreen({ sha: option("--sha"), head: option("--head") });
   } else {
-    console.error("usage: check-published.mjs entry <dir> | web <base-url> [--entry <path>] [--wait <seconds>] | ota <file> | expo-go");
+    console.error("usage: check-published.mjs entry <dir> | web <base-url> [--entry <path>] [--wait <seconds>] | ota <file> | expo-go | green [--sha <commit>] [--head <commit>]");
     process.exitCode = 1;
   }
 }

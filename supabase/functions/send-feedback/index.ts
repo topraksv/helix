@@ -109,19 +109,22 @@ Deno.serve(async (request: Request): Promise<Response> => {
   if (!smtpUser || !smtpPass) return json({ error: "not_configured" }, 503);
 
   /**
-   * Only a signed-in account may post. The function runs with the caller's own
-   * bearer token rather than the service role, so an anonymous or expired
-   * session is rejected by Supabase itself rather than by a check here.
+   * The function runs with the caller's own bearer token rather than the
+   * service role, so an account is the one Supabase vouches for. Someone signed
+   * out (migration 45) — sign-up and sign-in send them here when mail fails —
+   * posts with the anon key: they give an address to answer, attach no
+   * picture, and share one bound of ten a day with everyone signed out.
    */
-  const authorization = request.headers.get("Authorization") ?? "";
+  // Forwarded only when sent: an empty one would reach PostgREST as a broken
+  // token, where none lets the client fall back to the anon key.
+  const authorization = request.headers.get("Authorization");
   const supabase = createClient(
     Deno.env.get("SUPABASE_URL") ?? "",
     Deno.env.get("SUPABASE_ANON_KEY") ?? "",
-    { global: { headers: { Authorization: authorization } } },
+    authorization ? { global: { headers: { Authorization: authorization } } } : {},
   );
-  const { data: userData, error: userError } = await supabase.auth.getUser();
-  const user = userData?.user;
-  if (userError || !user) return json({ error: "unauthorized" }, 401);
+  const { data: userData } = await supabase.auth.getUser();
+  const user = userData?.user ?? null;
 
   /**
    * One send, claimed before anything is read.
@@ -139,7 +142,7 @@ Deno.serve(async (request: Request): Promise<Response> => {
    * being malformed still spends its slot, which is the right way round: a
    * client sending malformed bodies at speed is exactly what the limit is for.
    */
-  const { data: allowed, error: limitError } = await supabase.rpc("record_feedback_send");
+  const { data: allowed, error: limitError } = await supabase.rpc(user ? "record_feedback_send" : "record_signed_out_feedback_send");
   if (limitError) {
     console.error("feedback rate check failed", limitError.code ?? limitError.message);
     return json({ error: "send_failed" }, 502);
@@ -179,7 +182,13 @@ Deno.serve(async (request: Request): Promise<Response> => {
     : payload.image
       ? [payload.image]
       : [];
-  if (rawImages.length > MAX_FEEDBACK_IMAGES) return json({ error: "too_many_images" }, 400);
+  if (rawImages.length > (user ? MAX_FEEDBACK_IMAGES : 0)) return json({ error: "too_many_images" }, 400);
+
+  // The address someone signed out gives; an account's is its own.
+  const replyTo = user ? user.email ?? null : String(payload.replyTo ?? "").trim();
+  if (!user && (replyTo!.length > 254 || !/^[^\s@<>"]+@[^\s@<>"]+\.[^\s@<>"]+$/.test(replyTo!))) {
+    return json({ error: "invalid_reply_to" }, 400);
+  }
 
   const attachments: { filename: string; content: string; encoding: "base64"; contentType: string }[] = [];
   let totalBase64 = 0;
@@ -233,7 +242,7 @@ Deno.serve(async (request: Request): Promise<Response> => {
       <td style="padding:7px 0; font-family:${font}; font-size:13px; color:#6D6157; width:96px; vertical-align:top;">${label}</td>
       <td style="padding:7px 0; font-family:${font}; font-size:14px; color:#2A211B; vertical-align:top;">${value}</td>
     </tr>`;
-  const reporter = escapeHtml(user.email ?? user.id);
+  const reporter = escapeHtml(replyTo ?? user!.id);
 
   const html = `<!DOCTYPE html>
 <html lang="tr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="color-scheme" content="light"></head>
@@ -262,7 +271,7 @@ Deno.serve(async (request: Request): Promise<Response> => {
             </td></tr>
             <tr><td style="padding:22px 32px 0 32px;">
               <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="border-top:1px solid #E7DFD7;">
-                ${metaRow("Gönderen", `<a href="mailto:${reporter}" style="color:#A55335; text-decoration:none;">${reporter}</a>`)}
+                ${metaRow("Gönderen", `<a href="mailto:${reporter}" style="color:#A55335; text-decoration:none;">${reporter}</a>${user ? "" : " · giriş yapmadan"}`)}
                 ${metaRow("Tarih", escapeHtml(sentAt))}
                 ${metaRow("Cihaz", `${escapeHtml(platform)} · sürüm ${escapeHtml(appVersion)}`)}
                 ${metaRow("Ekler", attachments.length === 0 ? "Ekran görüntüsü yok" : `📎 ${attachments.length} ekran görüntüsü`)}
@@ -294,7 +303,7 @@ Deno.serve(async (request: Request): Promise<Response> => {
     await transport.sendMail({
       from: { name: FROM_NAME, address: smtpUser },
       to: OWNER_EMAIL,
-      replyTo: user.email ?? undefined,
+      replyTo: replyTo ?? undefined,
       subject: feedbackSubject(category, message),
       html,
       attachments,

@@ -85,15 +85,10 @@ updates:
         update-types: ["version-update:semver-patch", "version-update:semver-minor", "version-update:semver-major"]
       - dependency-name: "typescript"
         update-types: ["version-update:semver-major"]
-      # Vitest 5 breaks the MUTATION gate, which is the one failure a green
-      # test run hides. Measured 2026-09-09 on `src/domain/category-icons.ts`:
-      # 97.37 under vitest 4, 71.05 under vitest 5, with only 20 of 76 mutants
-      # getting per-test coverage attribution. It is the runner and not the
-      # code — a mutant Stryker reported as SURVIVED was applied by hand and
-      # failed two real tests. Both `@stryker-mutator/vitest-runner` 9.6.1 and
-      # 10.0.0 behave the same way and both declare `vitest: ">=2.0.0"`, so npm
-      # gives no warning. Adopting it would have re-baselined 67 files against
-      # a broken instrument. Re-check when the runner names vitest 5 explicitly.
+      # Vitest's major moves with the mutation gate: Stryker reruns a mutant's
+      # tests by name and Vitest 5 joins names differently, so a major here is
+      # re-measured against scripts/stryker-vitest-files.mjs first
+      # (docs/ARCHITECTURE.md, 2026-10-09 "Vitest 5, through Gital's runner").
       - dependency-name: "vitest"
         update-types: ["version-update:semver-major"]
       - dependency-name: "@vitest/coverage-v8"

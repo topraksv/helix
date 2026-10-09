@@ -52,11 +52,11 @@
     "@expo-google-fonts/ibm-plex-serif": "^0.4.1",
     "@expo-google-fonts/inter": "^0.4.2",
     "@playwright/test": "^1.62.1",
-    "@stryker-mutator/core": "9.6.1",
-    "@stryker-mutator/vitest-runner": "9.6.1",
+    "@stryker-mutator/core": "10.0.0",
+    "@stryker-mutator/vitest-runner": "10.0.0",
     "@types/node": "22.20.2",
     "@types/react": "~19.2.10",
-    "@vitest/coverage-v8": "4.1.11",
+    "@vitest/coverage-v8": "5.0.1",
     "babel-plugin-inline-import": "^3.0.0",
     "drizzle-kit": "^0.31.10",
     "eslint": "^9.0.0",
@@ -64,7 +64,7 @@
     "fast-check": "^4.10.0",
     "typescript": "~6.0.3",
     "typescript-7": "npm:typescript@7.0.2",
-    "vitest": "^4.1.9"
+    "vitest": "5.0.1"
   },
   "scripts": {
     "postinstall": "node scripts/patch-dependencies.mjs",
@@ -100,8 +100,8 @@
     "audit:unused": "npx --yes knip@6.32.0",
     "mutation:record": "node scripts/check-mutation-ratchet.mjs --record",
     "audit:duplication": "npx --yes jscpd@5.0.16 src",
-    "web:preview": "npx expo export -p web --clear && node scripts/serve-web-export.mjs dist",
-    "web:serve": "node scripts/serve-web-export.mjs dist"
+    "web:preview": "npx expo export -p web --clear && node scripts/serve-web-export.mjs dist 4599",
+    "web:serve": "node scripts/serve-web-export.mjs dist 4599"
   },
   "private": true,
   "overrides": {

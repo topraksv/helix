@@ -44,7 +44,7 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: "node scripts/serve-static.mjs dist-e2e 4173 helix",
+    command: "node scripts/serve-web-export.mjs dist-e2e 4173",
     url: "http://127.0.0.1:4173/helix/",
     reuseExistingServer: !process.env.CI,
     timeout: 30_000,

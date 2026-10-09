@@ -6,7 +6,7 @@ import { join, resolve } from "node:path";
 import { spawn, spawnSync } from "node:child_process";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { appVersionOf, entryOf, otaRecord, storeSdkMajor } from "../../scripts/check-published.mjs";
+import { appVersionOf, entryOf, greenRun, openRuns, otaRecord, storeSdkMajor } from "../../scripts/check-published.mjs";
 
 const roots: string[] = [];
 const script = resolve(process.cwd(), "scripts/check-web-budget.mjs");
@@ -163,6 +163,27 @@ describe("published surfaces", () => {
       "57.0.0": { expoVersion: "~57.0.26", iosClientVersion: "57.0.9", releaseNoteUrl: notes(57) },
     })).toBe(57);
     expect(storeSdkMajor({})).toBeNull();
+  });
+
+
+  // GitHub's run search answered weeks stale, so every filter is here.
+  it("finds the newest green push run on main, or a commit's, and the head's open runs", () => {
+    const run = (head_sha: string, extra: Record<string, string> = {}) => ({
+      head_sha, event: "push", head_branch: "main", conclusion: "success", status: "completed", html_url: `u/${head_sha}`, ...extra,
+    });
+    const runs = [
+      run("h", { status: "in_progress", conclusion: "" }),
+      run("d", { event: "workflow_dispatch" }),
+      run("f", { conclusion: "failure" }),
+      run("o", { head_branch: "other" }),
+      run("g"),
+      run("e"),
+    ];
+    expect(greenRun(runs)?.head_sha).toBe("g");
+    expect(greenRun(runs, "e")?.html_url).toBe("u/e");
+    expect(greenRun(runs, "d")).toBeNull();
+    expect(openRuns(runs, "h")).toBe(1);
+    expect(openRuns(runs, "g")).toBe(0);
   });
 
   it("accepts one update per platform on the SDK's runtime, and nothing less", () => {

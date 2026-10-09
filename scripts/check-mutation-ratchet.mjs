@@ -72,6 +72,16 @@ export function recordedFrom(report, measuredOn, measuredDate) {
  * @param {{ files: Record<string, { score: number }> }} baseline
  * @param {(file: string) => boolean} exists injected so a stale entry is testable
  */
+/** Read whole, with no look first: a check and a later write was a race code scanning named. */
+function readBaseline() {
+  try {
+    return JSON.parse(readFileSync(BASELINE, "utf8"));
+  } catch (error) {
+    if (error.code === "ENOENT") return { files: {} };
+    throw error;
+  }
+}
+
 export function evaluate(measured, baseline, exists = existsSync) {
   const recorded = baseline.files ?? {};
   const problems = [];
@@ -94,7 +104,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     process.exit(1);
   }
   const report = JSON.parse(readFileSync(REPORT, "utf8"));
-  const baseline = existsSync(BASELINE) ? JSON.parse(readFileSync(BASELINE, "utf8")) : { files: {} };
+  const baseline = readBaseline();
 
   if (process.argv.includes("--record")) {
     const head = execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim();

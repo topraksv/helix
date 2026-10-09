@@ -61,17 +61,18 @@ jobs:
       contents: read
       actions: read
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Compare main with the newest green push run
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           head=$(gh api "repos/$GITHUB_REPOSITORY/branches/main" --jq .commit.sha)
-          # Unfiltered and filtered by jq, as the ci base is: see the note there.
-          runs=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?per_page=100" \
-            --jq '[.workflow_runs[] | select(.event == "push" and .head_branch == "main")]')
-          green=$(jq -r '[.[] | select(.conclusion == "success")][0].head_sha // ""' <<<"$runs")
-          open=$(jq --arg head "$head" '[.[] | select(.head_sha == $head and .status != "completed")] | length' <<<"$runs")
+          answer=$(node scripts/check-published.mjs green --head "$head")
+          green=$(sed -n 's/^sha=//p' <<<"$answer")
+          open=$(sed -n 's/^open=//p' <<<"$answer")
           if [ "$green" != "$head" ] && [ "$open" = "0" ]; then
             echo "::error::main is at $head and the newest green push run is at ${green:-nothing}; what changed since is on no surface"
             exit 1

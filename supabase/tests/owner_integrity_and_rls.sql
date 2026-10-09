@@ -11,7 +11,7 @@ set local role postgres;
 -- first for the assertion helpers.
 set local search_path = extensions, public, pg_catalog;
 
-select extensions.plan(171);
+select extensions.plan(173);
 
 -- A small invoker-rights helper lets tests assert SQLSTATE without coupling to
 -- PostgreSQL's localized/full error text. The dynamic statement still runs as
@@ -2320,6 +2320,19 @@ select ok(
   (select prosrc from pg_proc where oid = 'public.record_feedback_send()'::regprocedure) ~ 'pg_advisory_xact_lock',
   'record_feedback_send serialises the calls of one account'
 );
+-- Migration 45: signed out, ten reports a day between everyone, and an
+-- account cannot spend them.
+select ok(
+  not has_function_privilege('authenticated', 'public.record_signed_out_feedback_send()', 'execute'),
+  'an account sends as itself, not from the shared ten'
+);
+set local role anon;
+select is(
+  (select array_agg(public.record_signed_out_feedback_send()) from generate_series(1, 11)),
+  array[true, true, true, true, true, true, true, true, true, true, false],
+  'ten reports a day reach the owner from people signed out, not an eleventh'
+);
+reset role;
 -- User B: user A deleted their account above.
 select set_config('request.jwt.claim.sub', '20000000-0000-4000-8000-000000000002', true);
 set local role authenticated;

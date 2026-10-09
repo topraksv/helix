@@ -43,6 +43,9 @@ export function classifyRootRoute(segments: readonly string[]): RootRouteArea {
   // `protected`, so the guard bounced a signed-out reader straight back to
   // sign-in and the link on that screen did nothing at all.
   if (first === "privacy") return "public";
+  // So is the feedback form: sign-in sends a failure there, and a report needs
+  // no account (migration 45). Signed in, it sends as the account.
+  if (first === "feedback") return "public";
   if (first === "(onboarding)") return "onboarding";
   if (first === "import-wizard" || first === "bulk-entry") return "setup-helper";
   return "protected";

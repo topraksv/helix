@@ -29,12 +29,17 @@
     ".expo/types/**/*.ts",
     "expo-env.d.ts"
   ],
+  // Expo's generated types exist only where Expo has run, so CI never saw
+  // them: the local gate was looser and stricter than the runner's. Expo CLI
+  // writes both back into `include` and never reads `exclude` (2026-10-09).
   "exclude": [
     "node_modules",
     "dist",
     "dist-e2e",
     "test-results",
     "playwright-report",
-    "supabase/functions"
+    "supabase/functions",
+    "expo-env.d.ts",
+    ".expo"
   ]
 }

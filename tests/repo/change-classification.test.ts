@@ -176,7 +176,7 @@ describe("change classification", () => {
    * Followed rather than listed: that workflow's `run:` lines, each `npm run`
    * target they name resolved through `package.json` (and its own `npm run`
    * chains), and the config files those commands load — which is how
-   * `serve-static.mjs` counts, since nothing runs it by name and
+   * `serve-web-export.mjs` counts, since nothing runs it by name and
    * `playwright.config.ts` starts it as the E2E web server.
    *
    * Only command position matters. A script NAMED in a comment is not a script
@@ -201,7 +201,8 @@ describe("change classification", () => {
 
     const scan = (text: string, depth: number): void => {
       if (depth > 8) return;
-      for (const match of text.matchAll(/node (scripts\/[\w.-]+)/g)) found.add(match[1]!);
+      // A quoted `./scripts/…` is a plugin a config loads, as Stryker's runner is.
+      for (const match of text.matchAll(/(?:node |"\.\/)(scripts\/[\w.-]+\.mjs)/g)) found.add(match[1]!);
       for (const [command, configs] of Object.entries(configFor)) {
         if (!text.includes(command)) continue;
         for (const config of configs) scan(readFileSync(config, "utf8"), depth + 1);

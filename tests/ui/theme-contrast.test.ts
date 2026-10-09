@@ -142,6 +142,8 @@ function expectBodyTextContrast(palette: Palette): void {
     expect(contrastRatio(foreground, background), `${foreground} on ${background}`).toBeGreaterThanOrEqual(4.5);
   }
   expect(contrastRatio(palette.onPrimary, palette.primary)).toBeGreaterThanOrEqual(4.5);
+  // Gital draws a ticked item's mark in it; held at text contrast since 2026-10-09.
+  expect(contrastRatio(palette.onSecondary, palette.secondary)).toBeGreaterThanOrEqual(4.5);
   expect(contrastRatio(palette.onDestructive, palette.destructive)).toBeGreaterThanOrEqual(4.5);
   expect(contrastRatio(palette.focus, palette.surfaceAlt)).toBeGreaterThanOrEqual(3);
   for (const accent of [palette.primary, palette.success, palette.error, palette.destructive, palette.positive, palette.negative, palette.warning]) {

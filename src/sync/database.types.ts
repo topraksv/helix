@@ -517,17 +517,17 @@ export type Database = {
         Row: {
           created_at: string
           id: string
-          user_id: string
+          user_id: string | null
         }
         Insert: {
           created_at?: string
           id?: string
-          user_id: string
+          user_id?: string | null
         }
         Update: {
           created_at?: string
           id?: string
-          user_id?: string
+          user_id?: string | null
         }
         Relationships: []
       }
@@ -1423,6 +1423,7 @@ export type Database = {
       purge_expired_diagnostics: { Args: never; Returns: number }
       purge_usage_counters: { Args: never; Returns: undefined }
       record_feedback_send: { Args: never; Returns: boolean }
+      record_signed_out_feedback_send: { Args: never; Returns: boolean }
       record_usage: { Args: { events: Json }; Returns: undefined }
       sync_cursors: {
         Args: never

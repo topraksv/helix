@@ -20,7 +20,7 @@
 
 import { useState } from "react";
 import { Text, View } from "react-native";
-import { useRouter, type Href } from "expo-router";
+import { useLocalSearchParams, useRouter, type Href } from "expo-router";
 import { Image } from "expo-image";
 import * as DocumentPicker from "expo-document-picker";
 import ImageIcon from "lucide-react-native/icons/image";
@@ -45,6 +45,8 @@ import {
   type FeedbackImageRejection,
 } from "../domain/feedback";
 import { sendFeedback, type FeedbackImage } from "../services/feedback";
+import { useSession } from "../auth/session";
+import { isEmail } from "../domain/input";
 import { readPickedBytes } from "../services/picked-file";
 import { devError } from "../services/logger";
 import { tr } from "../i18n/tr";
@@ -80,6 +82,9 @@ const THUMBNAIL = 84;
 
 export default function FeedbackScreen() {
   const router = useRouter();
+  // Signed out, from sign-in after a failure: an address to answer, and no screenshots.
+  const signedIn = useSession((s) => s.userId != null);
+  const [replyTo, setReplyTo] = useState(useLocalSearchParams<{ email?: string }>().email ?? "");
   const undo = useUndo();
   const { palette } = useTheme();
   const tripleTiles = shouldUseTripleTileGrid(useContentWidth());
@@ -190,10 +195,10 @@ export default function FeedbackScreen() {
 
   const submit = async () => {
     setAttempted(true);
-    if (feedbackMessageRejection(message) !== null) return;
+    if (feedbackMessageRejection(message) !== null || (!signedIn && !isEmail(replyTo))) return;
     setBusy(true);
     try {
-      const result = await sendFeedback({ category, message, images });
+      const result = await sendFeedback(signedIn ? { category, message, images } : { category, message, images: [], replyTo });
       if (result === "sent") {
         undo.show(tr.feedback.sent);
         // The report has left the device, so there is no draft left to lose:
@@ -273,65 +278,85 @@ export default function FeedbackScreen() {
         </Body>
       </Card>
 
-      <SectionHeader description={tr.feedback.imageHint(MAX_FEEDBACK_IMAGES, PER_IMAGE_LABEL, TOTAL_LABEL)}>
-        {tr.feedback.imageTitle}
-      </SectionHeader>
-      <Card>
-        {images.length > 0 ? (
-          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.sm, marginBottom: spacing.md }}>
-            {images.map((image, index) => (
-              <View key={`${image.displayName}-${index}`} style={{ width: THUMBNAIL }}>
-                <View
-                  style={{
-                    width: THUMBNAIL,
-                    height: THUMBNAIL,
-                    borderRadius: radius.sm,
-                    overflow: "hidden",
-                    backgroundColor: palette.surfaceAlt,
-                  }}
-                >
-                  {/* The picture itself, not a filename. A person checking
-                      they attached the right screenshot should not have to
-                      read "IMG_4821.PNG" to find out. */}
-                  <Image
-                    alt=""
-                    source={{ uri: image.uri }}
-                    style={{ width: "100%", height: "100%" }}
-                    contentFit="cover"
-                  />
+      {signedIn ? (
+        <>
+        <SectionHeader description={tr.feedback.imageHint(MAX_FEEDBACK_IMAGES, PER_IMAGE_LABEL, TOTAL_LABEL)}>
+          {tr.feedback.imageTitle}
+        </SectionHeader>
+        <Card>
+          {images.length > 0 ? (
+            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.sm, marginBottom: spacing.md }}>
+              {images.map((image, index) => (
+                <View key={`${image.displayName}-${index}`} style={{ width: THUMBNAIL }}>
+                  <View
+                    style={{
+                      width: THUMBNAIL,
+                      height: THUMBNAIL,
+                      borderRadius: radius.sm,
+                      overflow: "hidden",
+                      backgroundColor: palette.surfaceAlt,
+                    }}
+                  >
+                    {/* The picture itself, not a filename. A person checking
+                        they attached the right screenshot should not have to
+                        read "IMG_4821.PNG" to find out. */}
+                    <Image
+                      alt=""
+                      source={{ uri: image.uri }}
+                      style={{ width: "100%", height: "100%" }}
+                      contentFit="cover"
+                    />
+                  </View>
+                  <Row style={{ alignItems: "center", justifyContent: "space-between", marginTop: 2 }}>
+                    <Body muted style={{ fontSize: type.small.fontSize, flex: 1, minWidth: 0 }}>
+                      {byteSizeLabel(image.bytes.byteLength)}
+                    </Body>
+                    <IconButton
+                      icon={X}
+                      tone="danger"
+                      label={`${tr.feedback.imageRemove} · ${image.displayName}`}
+                      onPress={() => removeImage(index)}
+                    />
+                  </Row>
                 </View>
-                <Row style={{ alignItems: "center", justifyContent: "space-between", marginTop: 2 }}>
-                  <Body muted style={{ fontSize: type.small.fontSize, flex: 1, minWidth: 0 }}>
-                    {byteSizeLabel(image.bytes.byteLength)}
-                  </Body>
-                  <IconButton
-                    icon={X}
-                    tone="danger"
-                    label={`${tr.feedback.imageRemove} · ${image.displayName}`}
-                    onPress={() => removeImage(index)}
-                  />
-                </Row>
-              </View>
-            ))}
-          </View>
-        ) : null}
+              ))}
+            </View>
+          ) : null}
 
-        <Button
-          icon={images.length > 0 ? ImagePlus : ImageIcon}
-          variant="secondary"
-          label={images.length > 0 ? tr.feedback.imageAddMore : tr.feedback.imageAdd}
-          onPress={() => void pickImages()}
-          disabled={busy || full}
-          testID="feedback-add-image"
-        />
-        {images.length > 0 || full ? (
-          <Body muted style={{ marginTop: spacing.xs, fontSize: type.small.fontSize }}>
-            {full
-              ? tr.feedback.imageFull
-              : tr.feedback.imageCount(images.length, MAX_FEEDBACK_IMAGES, byteSizeLabel(usedBytes))}
-          </Body>
-        ) : null}
-      </Card>
+          <Button
+            icon={images.length > 0 ? ImagePlus : ImageIcon}
+            variant="secondary"
+            label={images.length > 0 ? tr.feedback.imageAddMore : tr.feedback.imageAdd}
+            onPress={() => void pickImages()}
+            disabled={busy || full}
+            testID="feedback-add-image"
+          />
+          {images.length > 0 || full ? (
+            <Body muted style={{ marginTop: spacing.xs, fontSize: type.small.fontSize }}>
+              {full
+                ? tr.feedback.imageFull
+                : tr.feedback.imageCount(images.length, MAX_FEEDBACK_IMAGES, byteSizeLabel(usedBytes))}
+            </Body>
+          ) : null}
+        </Card>
+
+        </>
+      ) : (
+        <Card>
+          <Field
+            noMargin
+            label={tr.feedback.replyToLabel}
+            value={replyTo}
+            onChangeText={setReplyTo}
+            autoCapitalize="none"
+            keyboardType="email-address"
+            autoComplete="email"
+            textContentType="emailAddress"
+            placeholder={tr.placeholders.email}
+            error={attempted && !isEmail(replyTo) ? tr.auth.emailInvalid : null}
+          />
+        </Card>
+      )}
 
       {/* Inline, live, and where the person is already looking. It carries the
           alert role so a screen reader is told the moment the refusal appears,
@@ -359,7 +384,7 @@ export default function FeedbackScreen() {
           rather than as a lone ghost button parked under the intro where it
           read as an unrelated control. */}
       <Body muted style={{ marginBottom: spacing.lg, color: palette.textSecondary }}>
-        {tr.feedback.privacy}{" "}
+        {signedIn ? tr.feedback.privacy : tr.feedback.privacySignedOut}{" "}
         <Text
           accessibilityRole="link"
           onPress={() => router.push("/privacy" as Href)}

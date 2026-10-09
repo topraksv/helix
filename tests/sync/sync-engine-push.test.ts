@@ -29,6 +29,9 @@ const harness = vi.hoisted(() => ({
   /** What the fake PostgREST does with each upsert, per table. */
   onUpsert: null as ((table: string, rows: Record<string, unknown>[]) => Reply | Promise<Reply>) | null,
   calls: [] as { table: string; count: number }[],
+  /** The generation the server holds, per id, for the engine's one keyed read. */
+  held: new Map<string, number>(),
+  heldDeleted: new Set<string>(),
   /** How each upsert was asked for: its conflict target and what it read back. */
   upserts: [] as { options: unknown; select: unknown }[],
   rpcs: [] as string[],
@@ -69,6 +72,7 @@ vi.mock("../../src/services/kv", () => ({
 /** A PostgREST that answers only what the engine actually asks it. */
 function query(table: string) {
   let rows: Record<string, unknown>[] | null = null;
+  let ids: string[] | null = null;
   const upsert = { options: undefined as unknown, select: undefined as unknown };
   const self: Record<string, unknown> = {
     upsert: (value: Record<string, unknown>[], options: unknown) => {
@@ -85,8 +89,15 @@ function query(table: string) {
     or: () => self,
     gte: () => self,
     eq: () => self,
+    in: (_column: string, values: string[]) => {
+      ids = values;
+      return self;
+    },
     abortSignal: async (signal: AbortSignal) => {
       if (signal.aborted) throw new Error("aborted");
+      if (rows == null && ids) {
+        return { data: ids.filter((id) => harness.held.has(id)).map((id) => ({ id, tombstone_version: harness.held.get(id), deleted_at: harness.heldDeleted.has(id) ? NOW : null })), error: null };
+      }
       if (rows == null) return { data: [], error: null };
       harness.calls.push({ table, count: rows.length });
       harness.upserts.push(upsert);
@@ -171,6 +182,8 @@ beforeEach(async () => {
   for (const statement of migrationStatements) harness.db.exec(statement);
   harness.onUpsert = null;
   harness.calls = [];
+  harness.held = new Map();
+  harness.heldDeleted = new Set();
   harness.upserts = [];
   harness.rpcs = [];
   harness.rpcArgs = [];
@@ -202,6 +215,99 @@ describe("what leaves the outbox", () => {
    * engine cannot tell which. Clearing the batch anyway would drop the missing
    * one silently and for ever — the outbox is the only record it existed.
    */
+  it("sends a row generations ahead once more at the server's, and clears it", async () => {
+    const ahead = "01a06b2c-0000-7000-8000-000000000009";
+    // Deleted, taken back and deleted again before any of it was sent.
+    queueEvent(ahead, JSON.stringify({
+      id: ahead, user_id: USER, created_at: NOW, updated_at: NOW, deleted_at: NOW,
+      name: "Market", kind: "expense", icon: null, color: null,
+      sort_order: 0, is_column: 0, is_transfer: 0, tombstone_version: 2,
+    }));
+    harness.held.set(ahead, 0);
+    const sent: number[] = [];
+    harness.onUpsert = (_table, rows) => {
+      sent.push(Number(rows[0]!.tombstone_version));
+      return Number(rows[0]!.tombstone_version) > 1
+        ? { data: null, error: { message: "invalid tombstone generation", code: "23514" } }
+        : { data: rows.map((row) => ({ ...row, tombstone_version: 1 })), error: null };
+    };
+    startSyncSession(USER);
+
+    await flushOutbox(USER);
+
+    expect(sent).toEqual([2, 0]);
+    expect(outboxCount(), "the row went, so a later sync is not refused on it again").toBe(0);
+  });
+
+  it("does not bring back, by stepping down, a row another device deleted", async () => {
+    const restored = "01a06b2c-0000-7000-8000-00000000000b";
+    // Live here after two deletes taken back; deleted elsewhere meanwhile.
+    queueEvent(restored, JSON.stringify({
+      id: restored, user_id: USER, created_at: NOW, updated_at: NOW, deleted_at: null,
+      name: "Market", kind: "expense", icon: null, color: null,
+      sort_order: 0, is_column: 0, is_transfer: 0, tombstone_version: 4,
+    }));
+    harness.held.set(restored, 1);
+    harness.heldDeleted.add(restored);
+    const sent: number[] = [];
+    harness.onUpsert = (_table, rows) => {
+      sent.push(Number(rows[0]!.tombstone_version));
+      return Number(rows[0]!.tombstone_version) > 0
+        ? { data: null, error: { message: "invalid tombstone generation", code: "23514" } }
+        : { data: rows.map((row) => ({ ...row, deleted_at: NOW, tombstone_version: 1 })), error: null };
+    };
+    startSyncSession(USER);
+
+    await flushOutbox(USER);
+
+    expect(sent, "one below the server's, which answers with its delete").toEqual([4, 0]);
+  });
+
+  it("steps each row of a refused run down by what the server holds of it", async () => {
+    const row = (id: string, deleted: boolean, version: number) => JSON.stringify({
+      id, user_id: USER, created_at: NOW, updated_at: NOW, deleted_at: deleted ? NOW : null,
+      name: id, kind: "expense", icon: null, color: null,
+      sort_order: 0, is_column: 0, is_transfer: 0, tombstone_version: version,
+    });
+    const bothDeleted = "01a06b2c-0000-7000-8000-00000000000c";
+    const bothLive = "01a06b2c-0000-7000-8000-00000000000d";
+    const unknown = "01a06b2c-0000-7000-8000-00000000000e";
+    queueEvent(bothDeleted, row(bothDeleted, true, 3));
+    queueEvent(bothLive, row(bothLive, false, 2));
+    queueEvent(unknown, row(unknown, false, 0));
+    harness.held.set(bothDeleted, 1);
+    harness.heldDeleted.add(bothDeleted);
+    harness.held.set(bothLive, 0);
+    const sent: Record<string, number>[] = [];
+    harness.onUpsert = (_table, rows) => {
+      sent.push(Object.fromEntries(rows.map((each) => [String(each.id), Number(each.tombstone_version)])));
+      return sent.length === 1
+        ? { data: null, error: { message: "invalid tombstone generation", code: "23514" } }
+        : { data: rows, error: null };
+    };
+    startSyncSession(USER);
+
+    await flushOutbox(USER);
+
+    expect(sent.at(-1), "a delete on both sides and a live row on both go at the server's; one it lacks as it was").toEqual({
+      [bothDeleted]: 1,
+      [bothLive]: 0,
+      [unknown]: 0,
+    });
+  });
+
+  it("keeps the refusal of a check no generation explains", async () => {
+    queueCategory("01a06b2c-0000-7000-8000-00000000000a");
+    harness.held.set("01a06b2c-0000-7000-8000-00000000000a", 0);
+    harness.onUpsert = () => ({ data: null, error: { message: "name too long", code: "23514" } });
+    startSyncSession(USER);
+
+    await flushOutbox(USER);
+
+    expect(harness.calls, "asked, found nothing ahead, and not sent again").toHaveLength(1);
+    expect(outboxCount()).toBe(1);
+  });
+
   it("keeps every row when the acknowledgement is short", async () => {
     queueCategory("01a06b2c-0000-7000-8000-000000000001");
     queueCategory("01a06b2c-0000-7000-8000-000000000002");

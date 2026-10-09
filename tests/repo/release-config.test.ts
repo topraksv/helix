@@ -377,7 +377,7 @@ describe("release contract", () => {
     expect(mutation).toContain("needs: classify\n");
     expect(mutation).toContain("if: needs.classify.outputs.full_gate == 'true'");
     expect(mutation).toContain("npm run test:mutation:ci");
-    expect(mutation).toContain("MUTATION_BASE_SHA: ${{ needs.classify.outputs.base }}");
+    expect(mutation).toContain("MUTATION_BASE_SHA: ${{ needs.classify.outputs.mutation_base }}");
     expect(mutation).toContain("MUTATION_HEAD_SHA: ${{ github.sha }}");
     expect(mutation).toContain("MUTATION_EVENT_NAME: ${{ github.event_name }}");
     expect(mutation).toContain("fetch-depth: 0");
@@ -420,14 +420,7 @@ describe("release contract", () => {
     const classify = job("classify");
     expect(classify).toMatch(/permissions:\n\s+contents: read\n(?:\s+#.*\n)*\s+actions: read/);
     expect(classify).toContain("base: ${{ steps.base.outputs.sha }}");
-    // Unfiltered, then filtered here. GitHub answers `branch`, `event`,
-    // `status` and `head_sha` from its run search: on 2026-09-28 the
-    // `status=success` listing named a run 20 days stale, and on 2026-10-02,
-    // with only `branch` and `event` left, one 24 days stale — each a 40-odd-
-    // commit scope, a mutation shard past 90 minutes, and no deploy.
-    expect(classify).toContain(
-      '[.workflow_runs[] | select(.event == \"push\" and .head_branch == \"main\" and .conclusion == \"success\")][0].head_sha // \"\"',
-    );
+    expect(classify).toContain("green=$(node scripts/check-published.mjs green | sed -n 's/^sha=//p')");
     // Ancestry, not recency: a green run this commit does not descend from is
     // not what production was built from.
     expect(classify).toContain('git merge-base --is-ancestor "$green" "$HEAD_SHA"');
@@ -442,11 +435,11 @@ describe("release contract", () => {
     expect(fallback).toMatch(/^\s+if git diff --quiet "\$BEFORE_SHA" "\$HEAD_SHA"[^\n]*; then base=""; fi$/m);
   });
 
-  it("never asks GitHub's run search, which has answered weeks stale", () => {
+  // `check-published.mjs green` owns the one query, unfiltered and paged.
+  it("asks for the newest green run through one paged query", () => {
     for (const [name, text] of [["ci.yml", ci], ["nightly.yml", nightly], ["release.yml", releaseWorkflow]] as const) {
-      const queries = text.split("/runs?").length - 1;
-      expect(queries, name).toBeGreaterThan(0);
-      expect(text.split('actions/workflows/ci.yml/runs?per_page=100"').length - 1, name).toBe(queries);
+      expect(text, name).not.toContain("/runs?");
+      expect(text, name).toContain("node scripts/check-published.mjs green");
     }
   });
 
@@ -485,7 +478,7 @@ describe("release contract", () => {
 
   it("turns a tag into a release only when the tagged commit shipped", () => {
     expect(releaseWorkflow).toMatch(/contents: write\n(?:\s+#.*\n)*\s+actions: read/);
-    const shipped = releaseWorkflow.indexOf('select(.head_sha == $sha and .event == "push" and .conclusion == "success")');
+    const shipped = releaseWorkflow.indexOf('node scripts/check-published.mjs green --sha "$GITHUB_SHA"');
     expect(shipped).toBeGreaterThan(0);
     expect(shipped).toBeLessThan(releaseWorkflow.indexOf('gh release create "$TAG"'));
   });
@@ -836,9 +829,9 @@ describe("workflow supply chain", () => {
   });
 
   it("pins every remote import of an edge function to one exact version", () => {
-    // Deno resolves these at deploy time with no lockfile and no audit, in the
-    // isolate that holds the mail password: a range there is whatever the
-    // registry serves that day.
+    // Deno resolves these at deploy time with no audit, in the isolate that
+    // holds the mail password. The frozen `deno.lock` refuses bytes that
+    // changed, but a range would leave the lock to choose what is checked.
     const functions = resolve(process.cwd(), "supabase/functions");
     const specifiers = readdirSync(functions, { recursive: true, encoding: "utf8" })
       .filter((name) => name.endsWith(".ts"))

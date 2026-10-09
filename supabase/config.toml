@@ -441,3 +441,10 @@ enabled = true
 # declarative_schema_path = "./database"
 # JSON string passed through to pg-delta SQL formatting.
 # format_options = "{\"keywordCase\":\"upper\",\"indent\":2,\"maxWidth\":80,\"commaStyle\":\"trailing\"}"
+
+# The app holds a publishable key, which is no JWT, so someone signed out
+# reaches the gateway with no bearer at all and its check would refuse them
+# before the function runs. The function asks Auth who the caller is itself,
+# and a caller it cannot name gets only the anon-granted signed-out limit.
+[functions.send-feedback]
+verify_jwt = false

@@ -80,6 +80,15 @@ describe("the three answers", () => {
     expect(harness.invoke).not.toHaveBeenCalled();
   });
 
+  it("sends signed out with the address to answer and no picture (migration 45)", async () => {
+    harness.session = null;
+    await expect(sendFeedback({ ...valid, images: [], replyTo: " ayse@ev.com " })).resolves.toBe("sent");
+    expect(harness.invoke).toHaveBeenCalledWith("send-feedback", { body: expect.objectContaining({ images: [], replyTo: "ayse@ev.com" }) });
+    await expect(sendFeedback({ ...valid, images: [], replyTo: "ayse" })).resolves.toBe("unauthenticated");
+    await expect(sendFeedback({ ...valid, images: [], replyTo: undefined }), "no address to answer").resolves.toBe("unauthenticated");
+    expect(harness.invoke).toHaveBeenCalledTimes(1);
+  });
+
   it("reports a refused request as failed and keeps the draft's problem local", async () => {
     harness.invoke = vi.fn(async () => ({ error: { message: "boom" } }));
     harness.supabase = client();

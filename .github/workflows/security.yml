@@ -14,11 +14,22 @@ name: security
 on:
   push:
     branches: [main]
+    # Everything CodeQL reads that ships or decides what installs: the root
+    # configs shape the bundle (`metro.config.js` swaps whole packages),
+    # `public/` and config plugins are served or built in, `.npmrc` sets the
+    # install policy the audits below check.
     paths:
       - "package.json"
       - "package-lock.json"
+      - ".npmrc"
+      - "*.js"
+      - "*.mjs"
+      - "*.ts"
+      - "*.mts"
       - "src/**"
       - "scripts/**"
+      - "plugins/**"
+      - "public/**"
       - "supabase/**"
       - ".github/workflows/**"
       - ".github/dependabot.yml"

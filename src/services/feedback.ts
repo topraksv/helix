@@ -11,8 +11,9 @@
  *   - `unconfigured` — this build has no Supabase, so there is nothing to post
  *     to. Local-only installs are a supported way to run Helix, and the form
  *     says so instead of offering a button that cannot work.
- *   - `unauthenticated` — signed out. The function refuses anonymous reports,
- *     and finding that out after typing is worse than being told before.
+ *   - `unauthenticated` — signed out without an address to answer, or with a
+ *     screenshot. Signed out, a report carries the address and no picture,
+ *     and shares one bound of ten a day with everyone signed out (migration 45).
  *   - `rateLimited` — the account has sent too many reports too quickly. Told
  *     apart from `failed` because the answer is "wait", not "try again", and a
  *     person who is told to retry a limit will retry it.
@@ -33,6 +34,7 @@ import {
   toBase64,
   type FeedbackCategory,
 } from "../domain/feedback";
+import { isEmail } from "../domain/input";
 import { devError } from "./logger";
 
 export type FeedbackResult = "sent" | "unconfigured" | "unauthenticated" | "rateLimited" | "failed";
@@ -47,6 +49,8 @@ export interface FeedbackSubmission {
   category: FeedbackCategory;
   message: string;
   images: readonly FeedbackImage[];
+  /** Signed out only: where the answer goes. */
+  replyTo?: string;
 }
 
 /** The build a report came from, so a fixed bug is not chased in a stale one. */
@@ -55,6 +59,11 @@ function appVersion(): string {
   const runtime = Constants.expoConfig?.runtimeVersion;
   const runtimeLabel = typeof runtime === "string" ? runtime : null;
   return [version, runtimeLabel].filter(Boolean).join(" · ") || "bilinmiyor";
+}
+
+/** Signed out, a report carries an address to answer and no picture. */
+function mayGoSignedOut({ replyTo, images }: FeedbackSubmission): boolean {
+  return replyTo != null && isEmail(replyTo) && images.length === 0;
 }
 
 export async function sendFeedback(submission: FeedbackSubmission): Promise<FeedbackResult> {
@@ -80,7 +89,8 @@ export async function sendFeedback(submission: FeedbackSubmission): Promise<Feed
   if (!supabase) return "unconfigured";
 
   const { data: sessionData } = await supabase.auth.getSession();
-  if (!sessionData.session) return "unauthenticated";
+  const signedIn = sessionData.session != null;
+  if (!signedIn && !mayGoSignedOut(submission)) return "unauthenticated";
 
   try {
     const { error } = await supabase.functions.invoke("send-feedback", {
@@ -94,6 +104,7 @@ export async function sendFeedback(submission: FeedbackSubmission): Promise<Feed
           filename: image.filename,
           base64: toBase64(image.bytes),
         })),
+        ...(signedIn ? {} : { replyTo: submission.replyTo!.trim() }),
       },
     });
     if (error) {
