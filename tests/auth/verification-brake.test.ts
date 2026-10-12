@@ -46,7 +46,7 @@ describe("verification brake — single account", () => {
   it("clears the streak and any cooldown on success", () => {
     const engaged = fail(IDLE_BRAKE, A, VERIFY_MAX_FAILURES);
     const cleared = recordVerificationSuccess(engaged, A);
-    expect(cleared).toEqual(IDLE_BRAKE);
+    expect(cleared).toEqual({ userId: null, failures: 0, blockedUntil: 0 });
     expect(isVerificationBlocked(cleared, A, T0)).toBe(false);
   });
 });
