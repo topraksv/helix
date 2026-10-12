@@ -1,9 +1,4 @@
-/**
- * Month detail: per-column breakdown; expand a column to see and manage its
- * transactions + cell note. The whole screen is one flattened FlatList so an
- * expanded category with 1.000+ rows mounts lazily instead of all at once;
- * collapsed groups cost one header row each.
- */
+/** Month detail: per-column breakdown with transactions and cell note. One flattened FlatList, so a category with 1.000+ rows mounts lazily. */
 
 import React, { useEffect, useState } from "react";
 import { Animated, FlatList, Pressable, View } from "react-native";
@@ -16,7 +11,7 @@ import { deleteTransaction, restoreTransaction, saveCellNote } from "../../../da
 import { monthFlowTotals } from "../../../domain/balance";
 import { groupBy } from "../../../domain/card-statements";
 import { firstDayOf, isMonthKey, lastDayOf, monthKeyOf, todayISO, yearOf } from "../../../domain/dates";
-import { expectationEffect, type PlannedExpectation } from "../../../domain/expected";
+import { selfCellEffect, type PlannedExpectation } from "../../../domain/expected";
 import {
   useAttachmentsState,
   useAutoConfirmedTransactionIds,
@@ -30,15 +25,16 @@ import {
   useUserId,
 } from "../../../data/hooks";
 import { combineLiveStates } from "../../../data/live-state";
+import { scheduleSync } from "../../../sync/engine";
 import { installmentDisplayTitle } from "../../../domain/installments";
 import { formatMinorCompact } from "../../../domain/money";
-import { isWorkbookRemainderRow, signedBalanceEffectOf } from "../../../domain/transactions";
+import { signedBalanceEffectOf } from "../../../domain/transactions";
 import { transactionDateText } from "../../../ui/transaction-date";
 import { CategoryIcon } from "../../../ui/category-icon";
 import { dateLabel, monthLabel, tr } from "../../../i18n/tr";
 import { Amount, Body, Button, Card, DataGateScreen, DataStateNotice, DisclosureChevron, EmptyState, Field, Heading, Row, Screen, Spread } from "../../../ui/components";
 import { useDrawIn } from "../../../ui/motion-primitives";
-import { ExpectationRow, TransactionRow } from "../../../ui/transaction-row";
+import { ExpectationRow, TransactionRow, transactionBadge } from "../../../ui/transaction-row";
 import { useUndo } from "../../../ui/undo";
 import { selectionTapIfChanged } from "../../../ui/haptics";
 import { interactionBleed, interactionSurface } from "../../../ui/interaction";
@@ -59,11 +55,7 @@ type MonthListItem =
   | { kind: "expected"; categoryId: string; item: PlannedExpectation; last: boolean }
   | { kind: "group-footer"; categoryId: string; category: Categories[number] | undefined };
 
-/**
- * A balance-change marker: the trend is the meaning, not a decorative rule
- * between two figures. It enters in the same direction as the month's net
- * change, so the motion reinforces what the icon already says.
- */
+/** The trend is the meaning: the marker enters in the direction of the month's net change. */
 function BalanceBridge({ token, deltaMinor }: { token: string; deltaMinor: number }) {
   const { palette } = useTheme();
   const draw = useDrawIn(true, motion.draw, token);
@@ -160,10 +152,8 @@ function MonthFlowSummary({
           backgroundColor: palette.surfaceAlt,
         }]
       : []),
-    // A statement paid by hand moves money on the day it was paid, and what a
-    // partial payment left is owed to the card rather than taken from the
-    // account (spec §3.7). Without these two the bridge from opening to
-    // closing would not add up for any month that holds one.
+    // A hand-paid statement moves money on the day paid, and a partial payment leaves the rest owed to the
+    // card (spec §3.7); without these the opening-to-closing bridge would not add up.
     ...(flows.cardPaymentsMinor !== 0
       ? [{
           key: "card-payments",
@@ -246,10 +236,6 @@ function MonthFlowSummary({
 }
 
 export default function MonthDetailScreen() {
-  /**
-   * An undo that fails must say so — the snackbar dismisses on tap either way,
-   * so a swallowed rejection left the row deleted with no message.
-   */
   const { month } = useLocalSearchParams<{ month: string }>();
   const router = useRouter();
   const userId = useUserId();
@@ -259,10 +245,7 @@ export default function MonthDetailScreen() {
   const categories = categoriesState.data;
   const persons = personsState.data;
   const plans = plansState.data;
-  // A dynamic segment carries whatever the URL says, so `/cash-flow/garbage`
-  // reaches this screen and `lastDayOf` throws while the queries below are
-  // being built — a white screen with no chance to handle it. Query a real
-  // month, then leave for the parent list.
+  // A bad URL segment would make lastDayOf throw; query a real month, then leave.
   const validMonth = isMonthKey(month) ? month : null;
   const rangeMonth = validMonth ?? monthKeyOf(todayISO());
   const transactionsState = useSettledTransactionsBetweenState(firstDayOf(rangeMonth), lastDayOf(rangeMonth));
@@ -297,9 +280,7 @@ export default function MonthDetailScreen() {
   const cellNotesState = useCellNotesState();
   const attachmentsState = useAttachmentsState();
   const autoConfirmed = useAutoConfirmedTransactionIds();
-  // Which rows in this list carry a document. One pass over the account's
-  // attachments rather than a query per row: the list is virtualized and a
-  // per-row lookup would run on every scroll frame.
+  // One pass over the attachments, not a query per row: the list is virtualized and a lookup would run every scroll frame.
   const documented = React.useMemo(
     () => new Set(attachmentsState.data.map((attachment) => attachment.transactionId)),
     [attachmentsState.data],
@@ -314,8 +295,9 @@ export default function MonthDetailScreen() {
   const removeTx = async (id: string) => {
     try {
       const snapshot = await deleteTransaction(userId, id);
+      scheduleSync(userId);
       if (snapshot) {
-        undo.show(tr.tx.deletedUndo, () => restoreTransaction(userId, snapshot), "warning");
+        undo.show(tr.tx.deletedUndo, () => restoreTransaction(userId, snapshot).then(() => scheduleSync(userId)), "warning");
       }
     } catch {
       void appAlert(tr.errors.saveFailed, tr.errors.title);
@@ -349,9 +331,7 @@ export default function MonthDetailScreen() {
     switch (item.kind) {
       case "summary": {
         if (!ledgerMonth) return null;
-        // The rows below this card list the month's real and planned entries,
-        // so the card is built from the same set — a future month showed a
-        // carried balance above three zeros while its own list had entries.
+        // Built from the same set as the rows below, or a future month showed a carried balance above three zeros.
         const flows = monthFlowTotals(ledgerMonth);
         return <MonthFlowSummary flows={flows} />;
       }
@@ -360,10 +340,7 @@ export default function MonthDetailScreen() {
       case "group-header": {
         const { categoryId, category, txs, planned, open } = item;
         const title = category?.name ?? tr.common.none;
-        const selfSum = txs.filter((t) => selfIds.has(t.personId)).reduce(
-          (sum, t) => sum + signedBalanceEffectOf(t.type, t.amountTryMinor, category?.kind ?? null),
-          0,
-        ) + planned.reduce((sum, entry) => sum + expectationEffect(entry), 0);
+        const selfSum = selfCellEffect(txs, selfIds, category?.kind ?? null, planned);
         const note = cellNotes.find((n) => n.categoryId === categoryId);
         return (
           <View style={[groupSurface, groupTop, { paddingTop: spacing.lg, paddingBottom: open ? spacing.sm : spacing.lg }, open ? null : groupBottom]}>
@@ -375,10 +352,7 @@ export default function MonthDetailScreen() {
                 selectionTapIfChanged(expanded, open ? "" : categoryId);
                 setExpanded(open ? null : categoryId);
               }}
-              // The row expands a category and is the main way into a month, so
-              // it owes the platform minimum. It measured 28pt tall — the exact
-              // height of its own heading — which on a phone is a target you
-              // have to aim at.
+              // Platform-minimum height: this row is the main way into a month.
               style={(state) => ({
                 minHeight: controlSize.minimumTarget,
                 justifyContent: "center",
@@ -393,11 +367,7 @@ export default function MonthDetailScreen() {
                     {category ? <CategoryIcon category={category} size={iconSize.control} /> : null}
                     <Heading style={{ marginVertical: 0, flex: 1, minWidth: 0 }}>{title}</Heading>
                   </Row>
-                  {/* The note itself is the indicator. A badge saying "Not"
-                      read like a category of its own, and a floating pill
-                      never lined up with the serif heading beside it. Quoting
-                      the user's own words needs no label to be understood,
-                      and it stacks under the title so both share one edge. */}
+                  {/* The quoted note is its own indicator; no badge. */}
                   {note ? (
                     <View
                       style={{
@@ -440,13 +410,7 @@ export default function MonthDetailScreen() {
               pending={t.status === "pending"}
               hasDocuments={documented.has(t.id)}
               automatic={autoConfirmed.has(t.id)}
-              reversalBadge={
-                isWorkbookRemainderRow(t)
-                  ? { text: tr.analysis.remainderBadge, tone: "muted" }
-                  : t.amountTryMinor < 0
-                    ? { text: tr.tx.reversalLabel(t.type), tone: t.type === "income" ? "negative" : "positive" }
-                    : null
-              }
+              reversalBadge={transactionBadge(t)}
               amountMinor={signedBalanceEffectOf(t.type, t.amountTryMinor, category?.kind ?? null)}
               onEdit={() => router.push({ pathname: "/transaction", params: { id: t.id } })}
               onDelete={() => void removeTx(t.id)}
@@ -501,19 +465,12 @@ export default function MonthDetailScreen() {
   }
 
   return (
-    // A month is a summary and a list of single-line category rows: a name on
-    // the left and an amount on the right. Given a workspace column those two
-    // ends stood 500px apart with nothing between them, which is a phone row
-    // stretched, not a desktop layout. The reading measure is the honest width.
+    // Reading measure: a summary of name/amount rows, not a grid.
     <Screen scroll={false} width="form">
       <Stack.Screen options={{ title: monthLabel(rangeMonth) }} />
       <FlatList
         data={items}
-        ListHeaderComponent={(
-          <View>
-            <DataStateNotice status={dataStatus} retry={retryData} />
-          </View>
-        )}
+        ListHeaderComponent={<DataStateNotice status={dataStatus} retry={retryData} />}
         keyExtractor={(item) =>
           item.kind === "summary" || item.kind === "empty"
             ? item.kind
@@ -533,8 +490,7 @@ export default function MonthDetailScreen() {
   );
 }
 
-/** Controlled by the screen: the draft must survive this row being
- *  virtualized out of the window (and the group collapsing). */
+/** Controlled by the screen: the draft must survive this row being virtualized out (and the group collapsing). */
 function CellNoteEditor({
   userId,
   month,
@@ -559,6 +515,7 @@ function CellNoteEditor({
     setSaving(true);
     try {
       await saveCellNote(userId, month, categoryId, text, existing);
+      scheduleSync(userId);
       onSaved();
     } catch {
       void appAlert(tr.errors.saveFailed, tr.errors.title);

@@ -62,7 +62,7 @@ import {
   Screen,
   SectionHeader,
 } from "../ui/components";
-import { placeholderPools, useRotatingPlaceholder } from "../ui/placeholders";
+import { useRotatingPlaceholder } from "../ui/placeholders";
 import { useUndo } from "../ui/undo";
 import { useDirtyExitGuard } from "../ui/dirty-exit";
 import { shouldUseTripleTileGrid } from "../ui/responsive";
@@ -79,6 +79,13 @@ interface PickedImage extends FeedbackImage {
 const PER_IMAGE_LABEL = byteSizeLabel(MAX_FEEDBACK_IMAGE_BYTES);
 const TOTAL_LABEL = byteSizeLabel(MAX_FEEDBACK_TOTAL_IMAGE_BYTES);
 const THUMBNAIL = 84;
+
+const REFUSED: Record<Exclude<Awaited<ReturnType<typeof sendFeedback>>, "sent">, string> = {
+  unconfigured: tr.feedback.unconfigured,
+  unauthenticated: tr.feedback.unauthenticated,
+  rateLimited: tr.feedback.rateLimited,
+  failed: tr.feedback.failed,
+};
 
 export default function FeedbackScreen() {
   const router = useRouter();
@@ -110,7 +117,7 @@ export default function FeedbackScreen() {
   const full = images.length >= MAX_FEEDBACK_IMAGES;
   // The example cycles only while the field is empty — a placeholder nobody can
   // see is movement that costs a re-render and shows nothing.
-  const messagePlaceholder = useRotatingPlaceholder(placeholderPools.feedback, { active: message === "" });
+  const messagePlaceholder = useRotatingPlaceholder(tr.placeholders.feedback, { active: message === "" });
 
   /** Why this file cannot join the ones already picked, said with real figures. */
   const refusalText = (reason: FeedbackImageRejection, mimeType: string, byteLength: number): string => {
@@ -195,7 +202,7 @@ export default function FeedbackScreen() {
 
   const submit = async () => {
     setAttempted(true);
-    if (feedbackMessageRejection(message) !== null || (!signedIn && !isEmail(replyTo))) return;
+    if (rejection !== null || (!signedIn && !isEmail(replyTo))) return;
     setBusy(true);
     try {
       const result = await sendFeedback(signedIn ? { category, message, images } : { category, message, images: [], replyTo });
@@ -207,15 +214,7 @@ export default function FeedbackScreen() {
         allowExit(() => router.back());
         return;
       }
-      setImageError(
-        result === "unauthenticated"
-          ? tr.feedback.unauthenticated
-          : result === "unconfigured"
-            ? tr.feedback.unconfigured
-            : result === "rateLimited"
-              ? tr.feedback.rateLimited
-              : tr.feedback.failed,
-      );
+      setImageError(REFUSED[result]);
     } finally {
       setBusy(false);
     }
@@ -377,12 +376,8 @@ export default function FeedbackScreen() {
         </Card>
       ) : null}
 
-      {/* This form is a collection point: the message, the category and any
-          screenshot leave the device and travel through a third country. So
-          the notice stays reachable from here — but as the last clause of the
-          sentence that already says what is sent, at the moment of sending,
-          rather than as a lone ghost button parked under the intro where it
-          read as an unrelated control. */}
+      {/* This form is a collection point: the message, the category and any screenshot leave the device and travel
+          through a third country. So the notice is the last clause of the sentence that says what is sent, at the moment of sending. */}
       <Body muted style={{ marginBottom: spacing.lg, color: palette.textSecondary }}>
         {signedIn ? tr.feedback.privacy : tr.feedback.privacySignedOut}{" "}
         <Text

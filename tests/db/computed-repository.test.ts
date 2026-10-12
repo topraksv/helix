@@ -12,18 +12,10 @@ vi.mock("../../src/db/client", async () => {
   return sqliteClientMock(() => harness.db!, () => { harness.dbAcquisitions += 1; });
 });
 
-vi.mock("../../src/db/ids", () => ({
+vi.mock("../../src/db/ids", async () => ({
   newId: () => `computed-${String(++harness.nextId).padStart(2, "0")}`,
   deterministicId: async (key: string) => `det:${key}`,
-  naturalKeys: new Proxy(
-    {},
-    {
-      get:
-        (_target, property) =>
-        (...parts: unknown[]) =>
-          `${String(property)}:${parts.join(":")}`,
-    },
-  ),
+  naturalKeys: (await import("../helpers")).naturalKeysProxy(":"),
 }));
 
 import {

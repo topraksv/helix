@@ -8,10 +8,8 @@ import type { CategoryKind, TransactionType, TxLike } from "./types";
  * Whether a stored row is a workbook column's remainder (spec §8.3).
  *
  * Recognised by the three things only the importer writes together: its
- * origin, its month-level shape and its exact note. There is no marker column,
- * and the rows imported since 1.7.2 carry nothing else to recognise them by.
- * An owner who rewrites the note has made the row their own, and it then
- * counts like any other entry.
+ * origin, its month-level shape and its exact note. There is no marker column;
+ * an owner who rewrites the note has made the row their own.
  */
 export function isWorkbookRemainderRow(row: { origin?: string | null; isAggregate: boolean; note?: string | null }): boolean {
   return row.origin === "spreadsheet" && row.isAggregate && row.note === tr.importer.columnRemainder;
@@ -32,11 +30,9 @@ function normalizeFinancialFlow(
 }
 
 /**
- * Older clients could save an income under an expense category (or the
- * reverse). Preserve its cash effect while treating it as a reversal of the
- * referenced category: income +100 in an expense category becomes expense
- * -100. New writes are required to match and can store signed reversals
- * directly.
+ * A row saved under a category of the opposite kind is read as a reversal of
+ * that category, keeping its cash effect: income +100 in an expense category
+ * becomes expense -100.
  */
 export function financialFlow(tx: TxLike): FinancialFlow {
   return normalizeFinancialFlow(tx.type, tx.amountTryMinor, tx.categoryKind);
@@ -55,8 +51,7 @@ export function categoryTableEntryType(category: {
 }
 
 export function signedBalanceEffect(tx: TxLike): Minor {
-  const flow = financialFlow(tx);
-  return flow.type === "income" ? flow.amountTryMinor : -flow.amountTryMinor;
+  return signedBalanceEffectOf(tx.type, tx.amountTryMinor, tx.categoryKind);
 }
 
 export function projectedTransactionFlow(tx: TxLike): {
@@ -76,4 +71,19 @@ export function signedBalanceEffectOf(
 ): Minor {
   const flow = normalizeFinancialFlow(type, amountTryMinor, categoryKind);
   return flow.type === "income" ? flow.amountTryMinor : -flow.amountTryMinor;
+}
+
+/**
+ * What is still refundable on an expense (spec §2.2): its amount plus the
+ * negative refunds linked to it. `exceptId` leaves out the refund being
+ * edited, whose old amount is about to be replaced.
+ */
+export function refundLeftMinor(
+  expense: { id: string; amountMinor: Minor },
+  rows: readonly { id: string; refundOfTransactionId?: string | null; amountMinor: Minor }[],
+  exceptId?: string,
+): Minor {
+  return expense.amountMinor + rows
+    .filter((row) => row.refundOfTransactionId === expense.id && row.id !== exceptId)
+    .reduce((sum, row) => sum + row.amountMinor, 0);
 }

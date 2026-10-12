@@ -42,13 +42,7 @@ function open(): Promise<IDBDatabase> {
   });
 }
 
-/**
- * One connection for the page's lifetime.
- *
- * Opening and closing per operation turned a list of N documents into N
- * database opens, each an async round trip before the first byte is read.
- * The handle is cached and re-opened if the browser ever closes it.
- */
+// One cached connection, re-opened if the browser closes it: a connection per operation costs a round trip each.
 let connection: Promise<IDBDatabase> | null = null;
 function connect(): Promise<IDBDatabase> {
   connection ??= open().catch((error) => {
@@ -88,12 +82,7 @@ async function transact<T>(mode: IDBTransactionMode, run: (store: IDBObjectStore
   try {
     return await runTransaction(await connect(), mode, run);
   } catch (error) {
-    // `onclose` above is the announcement; this is the case where there was
-    // none. A handle closed by a schema upgrade in another tab throws
-    // `InvalidStateError` on every later use, and the cached promise would
-    // keep handing that same dead handle out for the life of the page — which
-    // `presentAttachments` reports as "no documents", permanently. One retry
-    // on a fresh connection is what this file's header already promised.
+    // A handle closed by a schema upgrade in another tab throws InvalidStateError on every later use; retry once on a fresh one.
     if (!isDeadConnection(error)) throw error;
     connection = null;
     return runTransaction(await connect(), mode, run);
@@ -128,13 +117,8 @@ export async function presentAttachments(storedNames: readonly string[]): Promis
   }
 }
 
-/**
- * Open the document in a new tab.
- *
- * The object URL is revoked on the next tick rather than immediately: the tab
- * needs it long enough to start loading, and holding it for the session would
- * pin the whole document in memory.
- */
+/** Open the document in a new tab.
+ *  Revoked after 60 s, not at once: the opened tab may still be loading the blob. */
 export async function openAttachment(storedName: string, mimeType: string): Promise<void> {
   const blob = await transact<Blob | undefined>("readonly", (store) => store.get(storedName));
   if (!blob) throw new Error("Attachment is not on this device");

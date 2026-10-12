@@ -10,8 +10,8 @@ import { useCallback, useEffect, useState } from "react";
 import { Pressable, ScrollView, View } from "react-native";
 import { useFocusEffect } from "expo-router";
 import ArrowDownUp from "lucide-react-native/icons/arrow-down-up";
-import { formatMinorCompact, roundHalfAwayFromZero } from "../domain/money";
-import { todayISO } from "../domain/dates";
+import { formatMinorCompact } from "../domain/money";
+import { converterRate, crossConvertMinor } from "../domain/fx";
 import { ensureFreshRates, loadRateCache, lookupRate, useFxRates, type Currency } from "../services/fx-fetch";
 import { CurrencyPicker } from "./currency-picker";
 import { marketLastKnownRateTry, useMarkets } from "../services/markets";
@@ -28,39 +28,15 @@ export function CurrencyConverter() {
   const [minor, setMinor] = useState<number | null>(null);
   const [from, setFrom] = useState<Currency>("USD");
   const [to, setTo] = useState<Currency>("TRY");
-  // FX rates live in a module cache filled on app open. Subscribe to the cache
-  // version so a background refresh landing after mount re-renders this screen
-  // (a cold start otherwise left it on "rate unavailable"); also kick a load in
-  // case the cache is empty.
+  // Re-render when a background FX refresh lands after mount.
   useFxRates();
   useMarkets((state) => state.prices);
   useEffect(() => {
     void loadRateCache(userId).catch(() => {});
   }, [userId]);
 
-  // Rate resolution mirrors the Summary card exactly: a live quote converts
-  // silently; the card's last-known quote converts with its receipt time shown;
-  // the dated FX cache is only used when it is strictly newer than that quote.
-  // Ledger-writing conversions elsewhere keep the strict 60 s live contract.
-  type ConverterBadge =
-    | { kind: "market"; receivedAt: number }
-    | { kind: "fx"; rateDate: string }
-    | null;
-  const converterRate = (currency: Currency): { rateTry: number; badge: ConverterBadge } | null => {
-    const market = marketLastKnownRateTry(currency);
-    if (market?.live) return { rateTry: market.rateTry, badge: null };
-    const cached = lookupRate(userId, currency);
-    if (market && (cached == null || todayISO(new Date(market.receivedAt)) >= cached.rate.rateDate)) {
-      return { rateTry: market.rateTry, badge: { kind: "market", receivedAt: market.receivedAt } };
-    }
-    if (cached == null) return null;
-    return {
-      rateTry: cached.rate.rateTry,
-      badge: cached.isStale ? { kind: "fx", rateDate: cached.rate.rateDate } : null,
-    };
-  };
-  const rateFrom = converterRate(from);
-  const rateTo = converterRate(to);
+  const rateFrom = converterRate(marketLastKnownRateTry(from), lookupRate(userId, from));
+  const rateTo = converterRate(marketLastKnownRateTry(to), lookupRate(userId, to));
   const ready = rateFrom != null && rateTo != null;
   const fxBadge = [rateFrom?.badge, rateTo?.badge].find((b) => b?.kind === "fx") ?? null;
   const marketBadge = [rateFrom?.badge, rateTo?.badge].find((b) => b?.kind === "market") ?? null;
@@ -73,10 +49,7 @@ export function CurrencyConverter() {
       if (needsRefresh) ensureFreshRates(userId);
     }, [needsRefresh, userId]),
   );
-  const converted = minor != null && ready
-    ? roundHalfAwayFromZero((minor * rateFrom!.rateTry) / rateTo!.rateTry)
-    : null;
-  const resultMinor = converted != null && Number.isSafeInteger(converted) ? converted : null;
+  const resultMinor = minor != null && ready ? crossConvertMinor(minor, rateFrom.rateTry, rateTo.rateTry) : null;
   const resultOutOfRange = minor != null && ready && resultMinor == null;
 
   const swap = () => {

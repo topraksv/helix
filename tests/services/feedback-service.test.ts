@@ -44,7 +44,7 @@ const { sendFeedback } = await import("../../src/services/feedback");
 function client() {
   return {
     auth: { getSession: async () => ({ data: { session: harness.session } }) },
-    functions: { invoke: harness.invoke },
+    functions: { invoke: (...args: unknown[]) => (harness.invoke as (...a: unknown[]) => unknown)(...args) },
   };
 }
 
@@ -80,7 +80,7 @@ describe("the three answers", () => {
     expect(harness.invoke).not.toHaveBeenCalled();
   });
 
-  it("sends signed out with the address to answer and no picture (migration 45)", async () => {
+  it("sends signed out with the address to answer and no picture ", async () => {
     harness.session = null;
     await expect(sendFeedback({ ...valid, images: [], replyTo: " ayse@ev.com " })).resolves.toBe("sent");
     expect(harness.invoke).toHaveBeenCalledWith("send-feedback", { body: expect.objectContaining({ images: [], replyTo: "ayse@ev.com" }) });
@@ -93,7 +93,6 @@ describe("the three answers", () => {
 
   it("reports a refused request as failed and keeps the draft's problem local", async () => {
     harness.invoke = vi.fn(async () => ({ error: { message: "boom" } }));
-    harness.supabase = client();
     await expect(sendFeedback({ ...valid })).resolves.toBe("failed");
   });
 
@@ -101,7 +100,6 @@ describe("the three answers", () => {
     harness.invoke = vi.fn(async () => {
       throw new Error("offline");
     });
-    harness.supabase = client();
     await expect(sendFeedback({ ...valid })).resolves.toBe("failed");
   });
 
@@ -122,7 +120,6 @@ describe("the three answers", () => {
     harness.invoke = vi.fn(async () => ({
       error: { message: "Edge Function returned a non-2xx status code", context: { status: 429 } },
     }));
-    harness.supabase = client();
     await expect(sendFeedback({ ...valid })).resolves.toBe("rateLimited");
   });
 
@@ -133,19 +130,14 @@ describe("the three answers", () => {
       harness.invoke = vi.fn(async () => ({
         error: { message: "non-2xx", context: { status } },
       }));
-      harness.supabase = client();
-      await expect(sendFeedback({ ...valid }), `HTTP ${status}`).resolves.toBe("failed");
+        await expect(sendFeedback({ ...valid }), `HTTP ${status}`).resolves.toBe("failed");
     }
   });
 
   it("does not mistake an error with no context for a limit", async () => {
-    // A transport error carries no `context` at all. Reading `status` straight
-    // off it throws, and the throw is CAUGHT — so the answer is "failed"
-    // either way and the outcome alone cannot tell the two apart. What the
-    // incident log records can: the refusal reaches it as the invoke error it
-    // is, not as a TypeError from this module's own line.
+    // The outcome is "failed" either way; only the incident log tells an invoke error
+    // from a TypeError thrown by reading `status` off a missing `context`.
     harness.invoke = vi.fn(async () => ({ error: { message: "Failed to fetch" } }));
-    harness.supabase = client();
     await expect(sendFeedback({ ...valid })).resolves.toBe("failed");
     expect(devError).toHaveBeenCalledWith("feedback.send", { message: "Failed to fetch" });
   });
@@ -155,7 +147,6 @@ describe("the three answers", () => {
     // would make one failure look like two unrelated ones, and an empty scope
     // would file them under nothing at all.
     harness.invoke = vi.fn(async () => ({ error: { message: "boom", context: { status: 502 } } }));
-    harness.supabase = client();
     await expect(sendFeedback({ ...valid })).resolves.toBe("failed");
     expect(devError).toHaveBeenCalledWith("feedback.send", expect.anything());
 
@@ -164,7 +155,6 @@ describe("the three answers", () => {
     harness.invoke = vi.fn(async () => {
       throw thrown;
     });
-    harness.supabase = client();
     await expect(sendFeedback({ ...valid })).resolves.toBe("failed");
     expect(devError).toHaveBeenCalledWith("feedback.send", thrown);
   });
@@ -236,34 +226,16 @@ describe("the build a report came from", () => {
     expect(harness.invoke.mock.calls[0]![1].body.appVersion).toBe("1.0.0 · 54");
   });
 
-  it("carries the version alone when there is no runtime", async () => {
-    vi.doMock("expo-constants", () => ({ default: { expoConfig: { version: "2.1.0" } } }));
+  it.each([
+    ["carries the version alone when there is no runtime", { expoConfig: { version: "2.1.0" } }, "2.1.0"],
+    ["ignores a non-string runtime rather than printing an object", { expoConfig: { version: "3.0.0", runtimeVersion: { policy: "sdkVersion" } } }, "3.0.0"],
+    ["says so plainly when the manifest carries nothing", { expoConfig: null }, "bilinmiyor"],
+  ])("%s", async (_name, manifest, expected) => {
+    vi.doMock("expo-constants", () => ({ default: manifest }));
     vi.resetModules();
     const fresh = await import("../../src/services/feedback");
     await fresh.sendFeedback({ ...valid });
-    expect(harness.invoke.mock.calls[0]![1].body.appVersion).toBe("2.1.0");
-    vi.doUnmock("expo-constants");
-    vi.resetModules();
-  });
-
-  it("ignores a non-string runtime rather than printing an object", async () => {
-    vi.doMock("expo-constants", () => ({
-      default: { expoConfig: { version: "3.0.0", runtimeVersion: { policy: "sdkVersion" } } },
-    }));
-    vi.resetModules();
-    const fresh = await import("../../src/services/feedback");
-    await fresh.sendFeedback({ ...valid });
-    expect(harness.invoke.mock.calls[0]![1].body.appVersion).toBe("3.0.0");
-    vi.doUnmock("expo-constants");
-    vi.resetModules();
-  });
-
-  it("says so plainly when the manifest carries nothing", async () => {
-    vi.doMock("expo-constants", () => ({ default: { expoConfig: null } }));
-    vi.resetModules();
-    const fresh = await import("../../src/services/feedback");
-    await fresh.sendFeedback({ ...valid });
-    expect(harness.invoke.mock.calls[0]![1].body.appVersion).toBe("bilinmiyor");
+    expect(harness.invoke.mock.calls[0]![1].body.appVersion).toBe(expected);
     vi.doUnmock("expo-constants");
     vi.resetModules();
   });
@@ -276,7 +248,6 @@ describe("what crosses the wire", () => {
     expect(body.message).toBe("Sütun boş kalıyor.");
     expect(body.category).toBe("visual");
     expect(body.platform).toBe("web");
-    expect(body.appVersion).toContain("1.0.0");
     expect(body.images).toEqual([]);
   });
 
@@ -305,10 +276,5 @@ describe("what crosses the wire", () => {
     expect(body.images.map((image: { filename: string }) => image.filename)).toEqual(["bir.png", "iki.png"]);
     expect(body.images[0].base64).toBe("Zm9v");
     expect(body.images[1].base64).toBe("YmFy");
-  });
-
-  it("posts to the one function name the edge deployment provides", async () => {
-    await sendFeedback({ ...valid });
-    expect(harness.invoke.mock.calls[0]![0]).toBe("send-feedback");
   });
 });

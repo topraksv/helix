@@ -39,25 +39,20 @@ export function useModalAccessibility(
 
   useEffect(() => {
     if (!open) return;
-    // Every modal surface suppresses the global web Enter-to-submit handler.
-    // Without one shared owner, a dirty-exit dialog could sit visibly above a
-    // valid form while Enter saved and navigated the hidden form underneath.
+    // One owner suppresses the global Enter-to-submit while any modal is open, or Enter would save the form hidden beneath a dirty-exit dialog.
     const releaseOverlay = pushOverlay();
-    const webPrevious = Platform.OS === "web" && typeof document !== "undefined"
-      ? document.activeElement as HTMLElement | null
-      : null;
-    const webModal = Platform.OS === "web" && typeof document !== "undefined"
+    const web = Platform.OS === "web" && typeof document !== "undefined";
+    const webPrevious = web ? document.activeElement as HTMLElement | null : null;
+    const webModal = web
       ? (titleRef.current as unknown as HTMLElement | null)?.closest<HTMLElement>('[aria-modal="true"]') ?? null
       : null;
     const returnTarget = returnFocusRef?.current;
-    // The web modal already exists by the time this effect runs. Delaying its
-    // focus lets the browser's own modal autofocus win briefly, so a quick Tab
-    // can be followed by the timer stealing focus back to the heading.
+    // The web modal exists by now; a delayed focus would let the browser's autofocus win, then steal focus back from a quick Tab.
     if (focusHeading && Platform.OS === "web") moveAccessibilityFocus(titleRef.current);
     const timer = focusHeading && Platform.OS !== "web"
       ? setTimeout(() => moveAccessibilityFocus(titleRef.current), 40)
       : undefined;
-    const trapFocus = Platform.OS === "web" && typeof document !== "undefined"
+    const trapFocus = web
       ? (event: KeyboardEvent) => {
           if (event.key !== "Tab") return;
           const title = titleRef.current as unknown as HTMLElement | null;
@@ -86,14 +81,9 @@ export function useModalAccessibility(
       if (trapFocus) document.removeEventListener("keydown", trapFocus, true);
       releaseOverlay();
       setTimeout(() => {
-        // Closing a modal normally returns focus to its trigger. Do not steal
-        // focus from a user action that already moved elsewhere in the same
-        // tick; the old unconditional timer could reopen a select when Enter
-        // immediately followed a selection.
-        const active = Platform.OS === "web" && typeof document !== "undefined"
-          ? document.activeElement as HTMLElement | null
-          : null;
-        const focusMoved = Platform.OS === "web"
+        // Do not steal focus from a user action that already moved elsewhere in this tick, or Enter right after a selection reopens the select.
+        const active = web ? document.activeElement as HTMLElement | null : null;
+        const focusMoved = web
           && active != null
           && active !== document.body
           && active !== document.documentElement
@@ -127,56 +117,15 @@ function scrollableNode(instance: ScrollView | null): HTMLElement | null {
 /** Our own mark, so a tab stop this hook added is the only one it removes. */
 const SCROLL_FOCUS_MARK = "data-helix-scroll-focus";
 
-/**
- * Make a scroll region a keyboard can actually move.
- *
- * A browser scrolls an inner container with the arrow keys only when focus is
- * inside it, and Tab reaches a container through something focusable it
- * contains. `/privacy` contains nothing focusable at all: 3594px of KVKK text
- * in a 655px window, one Back button above it, and no control anywhere in the
- * notice itself.
- *
- * WHAT WAS AND WAS NOT MEASURED, because the first version of this comment got
- * it wrong. Current Chromium and Firefox make an overflowing container
- * focusable on their own, so on both of them Tab already reaches this region
- * and End already reaches the end of the notice — checked on 2026-09-05 with
- * the hook removed. The defect is therefore not "a keyboard cannot read the
- * notice in the browsers this app is tested in"; it is that the app was
- * relying on a browser courtesy of the last few releases to make its legal
- * text readable, and said so nowhere. Anything older, and any engine that has
- * not adopted it, gets a notice that stops after one screen —
- * `scrollable-region-focusable` is axe's name for exactly that bet, and it
- * fires on this route in both themes.
- *
- * So the affordance is stated in the markup instead of assumed — on the one
- * screen shaped that way. `enabled` comes from `Screen`'s `readable` prop and
- * is set by `privacy.tsx` alone: a focusable region is a tab stop, and an
- * effect that touches the DOM inside the app's most-used primitive is not
- * something forty screens should carry to fix one. Even then the stop appears
- * only while it is earned — the content overflows AND holds nothing else
- * focusable — and disappears again when either stops being true.
- *
- * Written to the DOM rather than through React state: this changes no layout
- * and must not re-render a screen whose content is still loading.
- */
+/** Makes a text-only scroll region keyboard-reachable on web; set by readable screens only, and only while it overflows with nothing focusable inside. */
 export function useKeyboardReachableScroller(ref: RefObject<ScrollView | null>, enabled: boolean): void {
   useEffect(() => {
-    // Short-circuited together, and in this order, because forty-odd screens
-    // render with `readable` false and must pay nothing at all for it — not
-    // even a `getScrollableNode()` call. Turning the affordance off is handled
-    // by the CLEANUP below, which React runs before this effect re-runs, so a
-    // disabled pass has nothing left to undo.
+    // Checked before touching the DOM: most screens are not `readable` and must pay nothing. The cleanup below undoes a stop when `enabled` goes false.
     if (!enabled || Platform.OS !== "web") return;
 
     const node = scrollableNode(ref.current);
     if (!node) {
-      // `readable` promises a focusable scroll region and there is none: the
-      // screen was rendered `scroll={false}`, or its ref never reached a
-      // ScrollView. Silent before, and the only thing that would ever have
-      // noticed is an axe sweep over a screen already shipped. Development
-      // only — `devWarning` also persists a diagnostic, and the incident ring
-      // holds twelve entries, so a per-mount write in production would evict
-      // real crash breadcrumbs to report a mistake no user can act on.
+      // `readable` promised a scroll region and there is none. Development only: devWarning persists, and per-mount writes would evict real crash breadcrumbs.
       if (typeof __DEV__ !== "undefined" && __DEV__) {
         devWarning("ui.readableScreen", "a readable Screen has no scroll region to make keyboard-reachable");
       }
@@ -209,13 +158,7 @@ export function useKeyboardReachableScroller(ref: RefObject<ScrollView | null>, 
       observer.observe(node);
       for (const child of Array.from(node.children)) observer.observe(child);
     }
-    // Cleanup on EVERY path, including the one with no observer, which used to
-    // return nothing at all after having already written the attribute. It is
-    // also what removes the stop when `readable` goes false on a mounted
-    // screen, and what keeps this scoped to the scroller this pass found: the
-    // affordance belongs to the ScrollView present when the screen mounts, and
-    // a screen that swapped its scroller mid-life would need `Screen` to hand
-    // this hook a callback ref rather than a `RefObject`. None does.
+    // Cleanup on every path, observer or not. Scoped to the scroller found at mount: swapping it later would need a callback ref.
     return () => {
       observer?.disconnect();
       unmark();

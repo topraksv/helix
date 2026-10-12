@@ -1,4 +1,4 @@
-/** Bounded SecureStore adapter for Supabase's potentially large auth session. */
+/** SecureStore under Supabase's session: a keychain value past 2 KB warns and may fail, so the session is kept in chunks, bounded both ways. */
 
 export interface SecureStorageBackend {
   getItemAsync(key: string): Promise<string | null>;

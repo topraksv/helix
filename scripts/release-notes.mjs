@@ -1,22 +1,6 @@
-#!/usr/bin/env node
-/**
- * The release notes for one version, taken from `CHANGELOG.md`.
- *
- * A GitHub Release and a changelog entry are the same text for the same
- * audience, and keeping them as two documents is how they come apart: the tag
- * page ends up either empty or holding a summary nobody updated. So the
- * changelog stays the single source and this reads a section out of it.
- *
- * Exact heading match, not a prefix. `## 1.4.1` must not be found by a search
- * for `## 1.4` — and `## 1.4.10` must not be found by a search for `## 1.4.1`,
- * which is the version of that mistake that survives a review because it is
- * two years away from mattering.
- *
- *   node scripts/release-notes.mjs 1.4.2
- *
- * Exits 1 when the version has no section, because a release published with
- * empty notes is worse than a release that failed loudly.
- */
+// CHANGELOG.md is the single source; a GitHub Release copies its section.
+// Exact heading: 1.4.1 must not match 1.4.10.
+// Exits 1 when the version has no section: empty release notes are worse than a loud failure.
 import { readFileSync } from "node:fs";
 
 /** @param {string} changelog @param {string} version */
@@ -31,7 +15,7 @@ export function notesFor(changelog, version) {
   return body.length > 0 ? body : null;
 }
 
-if (process.argv[1] && import.meta.url.endsWith(process.argv[1].split("/").pop())) {
+if (import.meta.main) {
   const version = (process.argv[2] ?? "").replace(/^v/, "");
   if (!/^\d+\.\d+\.\d+$/.test(version)) {
     console.error("usage: node scripts/release-notes.mjs <version>");

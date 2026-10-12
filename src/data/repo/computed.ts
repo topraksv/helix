@@ -3,6 +3,7 @@ import { newId } from "../../db/ids";
 import { assertLiveRow, restoreRow, softDelete, writeRowsValidated, writeSetting } from "../../db/mutations";
 import { parseDefinition, type ComputedColumnDefinition } from "../../domain/computed-columns";
 import { assertInputWithinLimit } from "../../domain/input";
+import { reorderRows } from "./categories";
 
 type ComputedColumnRow = typeof schema.computedColumns.$inferSelect;
 
@@ -44,23 +45,10 @@ export async function setComputedColumnsHidden(userId: string, ids: string[]): P
   await writeSetting(userId, "computed_columns_hidden", [...new Set(ids)]);
 }
 
-export async function reorderComputedColumns(
+export function reorderComputedColumns(
   userId: string,
   columns: ComputedColumnRow[],
   orderedIds: string[],
 ): Promise<void> {
-  const byId = new Map(columns.map((column) => [column.id, column]));
-  const slots = columns.map((column) => column.sortOrder);
-  const writes = orderedIds.flatMap((id, index) => {
-    const column = byId.get(id);
-    const sortOrder = slots[index];
-    return column && sortOrder != null
-      ? [{ table: "computed_columns" as const, row: { ...column, sortOrder } }]
-      : [];
-  });
-  if (writes.length > 0) {
-    await writeRowsValidated(userId, writes, async (sqlite) => {
-      await Promise.all(writes.map((write) => assertLiveRow(sqlite, "computed_columns", userId, String(write.row.id))));
-    });
-  }
+  return reorderRows(userId, "computed_columns", columns, orderedIds);
 }

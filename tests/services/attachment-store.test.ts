@@ -1,18 +1,5 @@
-/**
- * The two device stores, driven for real.
- *
- * These files decide which of the owner's documents this device keeps and
- * which it DELETES, and the mutation gate scored both at zero with every
- * mutant uncovered: `attachment-mirror.test.ts` replaces the whole module with
- * `vi.mock`, so the real code had never run in a test. A zero is not "safe", it
- * is a gate that cannot fail.
- *
- * So the stand-in stops at the platform boundary — an in-memory filesystem for
- * the sandbox, an in-memory object store for IndexedDB — and everything above
- * it is the shipped module. The two are exercised through ONE contract because
- * the native file's header promises the web file "keeps this exact interface",
- * and a promise nothing checks is a comment.
- */
+// The stand-in stops at the platform boundary; both stores run through one contract
+// because the web store promises the native store's exact interface.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 /** An in-memory stand-in for the app sandbox. */
@@ -574,19 +561,7 @@ describe("browser store specifics", () => {
     expect(handed.revoked).toEqual([thumbnail!.uri]);
   });
 
-  /**
-   * The cached connection has to survive the browser dropping it.
-   *
-   * `attachment-store.web.ts` keeps ONE `IDBDatabase` for the page's lifetime,
-   * and its own comment promises the handle is "re-opened if the browser ever
-   * closes it". It was not: `connect()` clears the cache only when `open()`
-   * itself rejects, so a connection that dies AFTER a successful open stays
-   * cached forever. The browser closes one on storage eviction or when another
-   * tab upgrades the schema, and every later call then throws
-   * `InvalidStateError` — which `presentAttachments` catches and reports as an
-   * empty set. The owner's documents read as missing for the rest of the page,
-   * recoverable only by a reload nothing asks them to do.
-   */
+  // A connection the browser closes after a successful open must leave the cache and reopen.
   it("re-opens a connection the browser closed under it", async () => {
     const store = await load();
     await store.writeAttachmentBytes(NAME, bytes(1));
@@ -600,14 +575,7 @@ describe("browser store specifics", () => {
     expect(webBoundary!.opens()).toBeGreaterThan(opensBefore);
   });
 
-  /**
-   * The same condition without the browser's error class.
-   *
-   * A `DOMException` is what Safari and Chrome throw, and it is what the check
-   * reads first. React Native Web and the test runners do not all provide one,
-   * so the message is the fallback — and a fallback nothing exercises is a
-   * branch that only runs in the environment nobody tested.
-   */
+  // Runtimes without DOMException report the same condition only in the message.
   it("re-opens when the closed connection reports no error class", async () => {
     const store = await load();
     await store.writeAttachmentBytes(NAME, bytes(1));

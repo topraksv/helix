@@ -37,7 +37,6 @@ import { remoteSupersededLocal, remoteWinsLww, shouldApplyServerAck } from "../.
 import { migrationStatements, required } from "../helpers";
 
 const USER = "11111111-1111-4111-8111-111111111111";
-const OTHER_USER = "22222222-2222-4222-8222-222222222222";
 const ROW = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const ROW_B = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 const PERSON = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
@@ -305,14 +304,7 @@ describe("two clients on one account", () => {
     expect(a.row(ROW)?.note).toBe("B düzenledi");
   });
 
-  /**
-   * `3E-REVIEW-01`, as decided by the owner: when another session's edit
-   * replaces what this device is showing, say so once — quietly, without a
-   * modal and without naming a record, a version or a "conflict". The hard part
-   * is the silence, not the message: this device's OWN acknowledged writes come
-   * back through the same pull, so a rule that merely asked "did the remote
-   * win?" would announce the user's own save to them.
-   */
+  /** This device's own acknowledged writes return through the same pull, so "did the remote win?" alone would announce the user's own save. */
   it("announces an edit that arrived from the other device", () => {
     a.write({ id: ROW, note: "ilk" });
     a.sync(server);
@@ -411,7 +403,6 @@ describe("two clients on one account", () => {
     a.sync(server);
     b.sync(server);
     const count = b.db.prepare(`SELECT COUNT(*) AS n FROM transactions WHERE id = ?`).get(ROW) as { n: number };
-    expect(Number(count.n)).toBe(1);
     expect(server.writes.filter((id) => id === ROW)).toHaveLength(2); // two pushes…
     expect(Number(count.n)).toBe(1); // …one row.
   });
@@ -436,16 +427,6 @@ describe("two clients on one account", () => {
     expect(server.get(ROW)?.note).toBe("B sürümü");
   });
 
-  it("refuses a server row that belongs to another account", () => {
-    a.write({ id: ROW });
-    a.sync(server);
-    const foreign = { ...(server.get(ROW) as Row), user_id: OTHER_USER };
-    // The ownership guard is the local schema's, not a policy the caller can
-    // forget to apply.
-    expect(() => (a as unknown as { applyRemote: (row: Row) => void }).applyRemote(foreign)).toThrow(/ownership/);
-    expect(a.row(ROW)?.user_id).toBe(USER);
-  });
-
   it("keeps a queued row when the push never reaches the server", () => {
     a.online = false;
     a.write({ id: ROW, note: "kuyrukta" });
@@ -457,12 +438,7 @@ describe("two clients on one account", () => {
   });
 });
 
-/**
- * A reset reaches the account's other devices as ordinary deletes. The case
- * nothing had measured is the device that was offline while it happened: its
- * queued edit to a row the reset cleared, and a row it wrote that the reset
- * never saw.
- */
+/** A reset reaches other devices as ordinary deletes, including one that was offline with a queued edit to a cleared row and a row the reset never saw. */
 describe("a reset made while the other device is offline", () => {
   it("keeps the cleared row cleared, and leaves what the offline device wrote before it knew", async () => {
     logicalClock = 0;

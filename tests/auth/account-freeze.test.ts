@@ -39,6 +39,8 @@ describe("account freeze lifecycle", () => {
     });
     expect(frozenWrites).toEqual([true, false]);
     expect(deps.signOut).not.toHaveBeenCalled();
+    // The rolled-back flag reaches the server only through the next push.
+    expect(deps.scheduleSync).toHaveBeenCalledTimes(1);
   });
 
   it("refuses to freeze while rows are still queued locally", async () => {
@@ -60,9 +62,7 @@ describe("account freeze lifecycle", () => {
     expect(frozenWrites).toEqual([true, false]);
   });
 
-  // The defect that made the button look broken: a REJECTION rather than a
-  // returned error escaped the screen entirely, so the account stayed frozen
-  // with no message and the app opened locked on the next launch.
+  // A rejection, not a returned error, must still roll the flag back.
   it.each([
     ["network interruption during the push", { syncNow: vi.fn(async () => Promise.reject(new Error("network down"))) }],
     ["an unreadable outbox", { pendingOutboxCount: vi.fn(async () => Promise.reject(new Error("db gone"))) }],

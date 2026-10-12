@@ -37,9 +37,7 @@ export default function BulkEntryModal() {
   const [committing, setCommitting] = useState(false);
   const operation = useTrackedOperation();
   const busy = operation.state.active;
-  // Dirty is "different from what was last saved", not "has anything in it".
-  // The amounts now stay in their fields after a save, so "is it non-empty"
-  // would have asked to discard the very figures it had just written.
+  // Dirty is "different from what was last saved": the amounts stay in their fields after a save.
   const draftSnapshot = JSON.stringify(
     Object.entries(values)
       .map(([id, value]) => [id, value.raw.trim()] as const)
@@ -88,10 +86,7 @@ export default function BulkEntryModal() {
         scheduleSync(userId);
         setSavedMsg(tr.bulk.saved(monthLabel(month)));
         setSavedSnapshot(draftSnapshot);
-        // The amounts stay in their fields. Clearing them made a correct save
-        // look like a lost one, and the month walks backwards on its own — so
-        // the next month opens with the previous one's figures visible, which
-        // is what a person filling a year in one sitting is comparing against.
+        // The amounts stay in their fields: clearing them makes a correct save look lost, and the next month opens with the previous figures to compare against.
         setMonth(addMonthsToKey(month, -1));
       } catch (e) {
         if (e instanceof OperationCancelledError) return;
@@ -164,9 +159,6 @@ export default function BulkEntryModal() {
               label={tr.operation.saving}
               onCancel={committing ? undefined : operation.cancel}
             />
-            {/* Two commit buttons are a cluster, like the transaction form's.
-                Left to fill the card they were a pair of 1100px bands under a
-                grid of 90px amount fields. */}
             <View style={{ gap: spacing.sm, width: "100%" }}>
               <Button label={tr.common.save} onPress={() => void save()} disabled={entries.length === 0 || invalid} loading={busy} />
             </View>

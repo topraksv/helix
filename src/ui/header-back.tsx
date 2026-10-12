@@ -38,14 +38,7 @@ export function HeaderBackButton({ fallback }: { fallback: Href }) {
   );
 }
 
-/**
- * `/transaction` is two screens behind one route: the ordinary entry form,
- * reached from the ledger, and the wallet transfer, reached from Investments.
- * A single static fallback could only be right for one of them, so leaving the
- * transfer without saving walked out into the Financial Table — a different tab
- * from the one the user was in. The intent is already in the URL; the parent
- * follows it.
- */
+/** `/transaction` serves both the ledger entry and the investment transfer, so the fallback follows the URL's intent. */
 export function TransactionBackButton() {
   const { intent } = useLocalSearchParams<{ intent?: string }>();
   return <HeaderBackButton fallback={intent === "investment-refund" ? "/(tabs)/investments" : "/(tabs)/cash-flow"} />;

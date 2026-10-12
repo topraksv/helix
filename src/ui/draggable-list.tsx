@@ -1,20 +1,10 @@
-/**
- * Press-and-drag reorderable list, built on the built-in PanResponder +
- * Animated (no native gesture/reanimated deps, so it ships over-the-air).
- *
- * Only the grip handle starts a drag (its `panHandlers` are spread by the
- * caller onto a grip), so the rest of each row stays tappable. While dragging,
- * the grabbed row floats under the finger and the list reorders live as it
- * crosses neighbours; the new key order is committed on release.
- *
- * Rows are assumed to share one height (measured from the first row) — true for
- * the settings lists that use this, whose rows are structurally identical.
- */
+/** Press-and-drag list on PanResponder + Animated (no native deps, ships over the air). Only the grip starts a drag; rows share the first row's height. */
 
 import React, { useEffect, useRef, useState } from "react";
 import { Animated, PanResponder, View, type GestureResponderHandlers, type LayoutChangeEvent } from "react-native";
 import GripVertical from "lucide-react-native/icons/grip-vertical";
-import { errorNotice, mediumTap, selectionTap } from "./haptics";
+import { mediumTap, selectionTap } from "./haptics";
+import { appAlert } from "./dialog";
 import { controlSize, elevation, layer, spacing, stateOpacity, useTheme } from "./theme";
 import { tr } from "../i18n/tr";
 
@@ -150,7 +140,9 @@ export function DraggableList<T>({
         const source = latestItemsRef.current;
         orderRef.current = source;
         setOrder(source);
-        errorNotice();
+        // The alert is raised here, not by onReorder: a caller that swallowed the
+        // failure left this list showing an order that was never saved.
+        void appAlert(tr.errors.saveFailed, tr.errors.title);
       });
   };
 
@@ -271,8 +263,7 @@ function DraggableRow({
  * accessibility actions — but that role REQUIRES a current value, and omitting
  * it left every settings list failing axe's `aria-required-attr`. Publishing
  * the row's position also makes the announcement useful ("3 of 12") instead of
- * a bare "slider". Both settings lists rendered this block byte-identically
- * before it moved here.
+ * a bare "slider".
  */
 export function ReorderGrip({
   handle,

@@ -10,7 +10,6 @@ import { describe, expect, it } from "vitest";
 import {
   ATTENTION_STATE_LIMIT,
   EMPTY_ATTENTION_STATE,
-  SNOOZE_DAYS,
   buildAttentionInbox,
   groupAttention,
   isAttentionState,
@@ -92,7 +91,6 @@ describe("what the owner already decided", () => {
 
   it("computes a snooze a real week out", () => {
     expect(snoozeUntil(TODAY)).toBe("2026-08-25");
-    expect(SNOOZE_DAYS).toBe(7);
   });
 });
 

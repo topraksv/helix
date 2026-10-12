@@ -21,6 +21,15 @@ function database(rows: Rows, onRead?: () => void): SQLiteDatabase {
   } as unknown as SQLiteDatabase;
 }
 
+function operation(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    id: "operation", user_id: USER, product_id: "product", kind: "buy",
+    operation_date: "2026-07-01", quantity: "1", unit_price_minor: 100,
+    total_minor: 100, cost_basis_minor: 0, realized_profit_loss_minor: 0, deleted_at: null,
+    ...overrides,
+  };
+}
+
 function ownerGraph(): Rows {
   return {
     investment_profiles: [{
@@ -72,16 +81,8 @@ describe("investment owner-graph validation", () => {
 
     const rows = ownerGraph();
     rows.investment_operations = [
-      {
-        id: "holding", user_id: USER, product_id: "product", kind: "existing",
-        operation_date: "2026-07-01", quantity: "10", unit_price_minor: 100,
-        total_minor: 1_000, cost_basis_minor: 0, realized_profit_loss_minor: 0, deleted_at: null,
-      },
-      {
-        id: "sale", user_id: USER, product_id: "product", kind: "sell",
-        operation_date: "2026-07-02", quantity: "5", unit_price_minor: 140,
-        total_minor: 700, cost_basis_minor: 0, realized_profit_loss_minor: 0, deleted_at: null,
-      },
+      operation({ id: "holding", kind: "existing", quantity: "10", total_minor: 1_000 }),
+      operation({ id: "sale", kind: "sell", operation_date: "2026-07-02", quantity: "5", unit_price_minor: 140, total_minor: 700 }),
     ];
     await expect(assertInvestmentWrites(database(rows), USER, [], true)).rejects.toMatchObject({
       code: "quote_inconsistent",
@@ -97,6 +98,9 @@ describe("investment owner-graph validation", () => {
       investment_operations: [{ id: "orphan-operation", deleted_at: null }],
     };
     await expectDomainCode(operationOnly, "unknown_product");
+    await expectDomainCode({
+      investment_products: [{ id: "orphan", user_id: USER, asset_type: "fund", name: "Fon", deleted_at: null }],
+    }, "unknown_product");
 
     for (const table of ["investment_products", "investment_operations"] as const) {
       await expectDomainCode({}, "unknown_product", [{
@@ -220,12 +224,7 @@ describe("investment owner-graph validation", () => {
     ];
     for (const { mutation, code } of cases) {
       const rows = ownerGraph();
-      rows.investment_operations = [{
-        id: "operation", user_id: USER, product_id: "product", kind: "buy",
-        operation_date: "2026-07-01", quantity: "1", unit_price_minor: 100,
-        total_minor: 100, cost_basis_minor: 0, realized_profit_loss_minor: 0,
-        deleted_at: null, ...mutation,
-      }];
+      rows.investment_operations = [operation(mutation)];
       await expect(
         assertInvestmentWrites(database(rows), USER, [], true),
         JSON.stringify(mutation),
@@ -233,12 +232,7 @@ describe("investment owner-graph validation", () => {
     }
 
     const pendingCamelQuote = ownerGraph();
-    pendingCamelQuote.investment_operations = [{
-      id: "operation", user_id: USER, product_id: "product", kind: "buy",
-      operation_date: "2026-07-01", quantity: "1", unit_price_minor: 100,
-      total_minor: 100, cost_basis_minor: 0, realized_profit_loss_minor: 0,
-      deleted_at: null,
-    }];
+    pendingCamelQuote.investment_operations = [operation()];
     await expect(assertInvestmentWrites(database(pendingCamelQuote), USER, [{
       table: "investment_operations",
       row: { id: "operation", unitPriceMinor: 200, totalMinor: 200 },
@@ -310,26 +304,17 @@ describe("investment owner-graph validation", () => {
       { cost_basis_minor: 0, realized_profit_loss_minor: 1 },
     ]) {
       const buy = ownerGraph();
-      buy.investment_operations = [{
-        id: "buy", user_id: USER, product_id: "product", kind: "buy",
-        operation_date: "2026-07-01", quantity: "1", unit_price_minor: 100,
-        total_minor: 100, deleted_at: null, ...cache,
-      }];
+      buy.investment_operations = [operation({ id: "buy", ...cache })];
       await expectDomainCode(buy, "invalid_money");
     }
 
     const sale = ownerGraph();
     sale.investment_operations = [
-      {
-        id: "holding", user_id: USER, product_id: "product", kind: "existing",
-        operation_date: "2026-07-01", quantity: "2", unit_price_minor: 100,
-        total_minor: 200, cost_basis_minor: 0, realized_profit_loss_minor: 0, deleted_at: null,
-      },
-      {
-        id: "sale", user_id: USER, product_id: "product", kind: "sell",
-        operation_date: "2026-07-02", quantity: "1", unit_price_minor: 150,
-        total_minor: 150, cost_basis_minor: 100, realized_profit_loss_minor: 49, deleted_at: null,
-      },
+      operation({ id: "holding", kind: "existing", quantity: "2", total_minor: 200 }),
+      operation({
+        id: "sale", kind: "sell", operation_date: "2026-07-02", unit_price_minor: 150,
+        total_minor: 150, cost_basis_minor: 100, realized_profit_loss_minor: 49,
+      }),
     ];
     await expectDomainCode(sale, "quote_inconsistent");
     sale.investment_operations![1]!.realized_profit_loss_minor = 50;
@@ -338,62 +323,23 @@ describe("investment owner-graph validation", () => {
   });
 
   it("uses persisted transfer semantics and the wallet cutoff, never a category name", async () => {
-    const state = await assertInvestmentWrites(database({
-      investment_profiles: [{
-        id: "profile", user_id: USER, started_on: "2026-07-01",
-        opening_cash_minor: 1_000, deleted_at: null,
-      }],
-      persons: [{ id: "self", user_id: USER, is_self: 1, deleted_at: null }],
-      categories: [
-        { id: "named-only", user_id: USER, name: "Yatırım", is_transfer: 0, deleted_at: null },
-        { id: "actual-transfer", user_id: USER, name: "Birikim", is_transfer: 1, deleted_at: null },
-      ],
-      transactions: [
-        {
-          id: "name-is-not-semantics", user_id: USER, type: "transfer", status: "realized",
-          category_id: "named-only", person_id: "self", effective_date: "2026-07-03", amount_try_minor: 9_000,
-          deleted_at: null,
-        },
-        {
-          id: "before-cutoff", user_id: USER, type: "transfer", status: "realized",
-          category_id: "actual-transfer", person_id: "self", effective_date: "2026-06-30", amount_try_minor: 5_000,
-          deleted_at: null,
-        },
-        {
-          id: "deposit", user_id: USER, type: "transfer", status: "realized",
-          category_id: "actual-transfer", person_id: "self", effective_date: "2026-07-03", amount_try_minor: 200,
-          deleted_at: null,
-        },
-      ],
-    }), USER, [], true);
+    const rows = ownerGraph();
+    rows.investment_profiles![0]!.opening_cash_minor = 1_000;
+    rows.categories = [
+      { id: "named-only", user_id: USER, name: "Yatırım", is_transfer: 0, deleted_at: null },
+      { id: "actual-transfer", user_id: USER, name: "Birikim", is_transfer: 1, deleted_at: null },
+    ];
+    const transfer = (id: string, category_id: string, effective_date: string, amount_try_minor: number) => ({
+      id, user_id: USER, type: "transfer", status: "realized", category_id, person_id: "self",
+      effective_date, amount_try_minor, deleted_at: null,
+    });
+    rows.transactions = [
+      transfer("name-is-not-semantics", "named-only", "2026-07-03", 9_000),
+      transfer("before-cutoff", "actual-transfer", "2026-06-30", 5_000),
+      transfer("deposit", "actual-transfer", "2026-07-03", 200),
+    ];
 
-    expect(state?.cashMinor).toBe(1_200);
-  });
-
-  it("excludes transfer rows owned by a watch-only person", async () => {
-    const state = await assertInvestmentWrites(database({
-      investment_profiles: [{
-        id: "profile", user_id: USER, started_on: "2026-07-01",
-        opening_cash_minor: 1_000, deleted_at: null,
-      }],
-      persons: [
-        { id: "self", user_id: USER, is_self: 1, deleted_at: null },
-        { id: "watch", user_id: USER, is_self: 0, deleted_at: null },
-      ],
-      categories: [{ id: "transfer", user_id: USER, is_transfer: 1, deleted_at: null }],
-      transactions: [
-        {
-          id: "self-deposit", user_id: USER, type: "transfer", status: "realized",
-          category_id: "transfer", person_id: "self", effective_date: "2026-07-03",
-          amount_try_minor: 200, deleted_at: null,
-        },
-        {
-          id: "watch-deposit", user_id: USER, type: "transfer", status: "realized",
-          category_id: "transfer", person_id: "watch", effective_date: "2026-07-03",
-          amount_try_minor: 900, deleted_at: null,
-        },
-      ],
-    }), USER, [], true);
+    const state = await assertInvestmentWrites(database(rows), USER, [], true);
 
     expect(state?.cashMinor).toBe(1_200);
   });
@@ -416,23 +362,5 @@ describe("investment owner-graph validation", () => {
       persons: [{ id: "self", user_id: USER, is_self: 1, deleted_at: null }],
       categories: [{ id: "transfer", user_id: USER, is_transfer: 1, deleted_at: null }],
     }), USER, writes)).rejects.toThrow("insufficient investment cash");
-  });
-
-  it("refuses live products without the account's single wallet profile", async () => {
-    await expect(assertInvestmentWrites(database({
-      investment_products: [{
-        id: "orphan", user_id: USER, asset_type: "fund", name: "Fon",
-        deleted_at: null,
-      }],
-    }), USER, [], true)).rejects.toThrow("does not exist");
-  });
-
-  it("refuses a wallet profile that starts in the future", async () => {
-    await expect(assertInvestmentWrites(database({
-      investment_profiles: [{
-        id: "profile", user_id: USER, started_on: "2999-01-01",
-        opening_cash_minor: 1_000, deleted_at: null,
-      }],
-    }), USER, [], true)).rejects.toThrow("investment date is missing or in the future");
   });
 });

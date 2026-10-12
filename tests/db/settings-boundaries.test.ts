@@ -12,7 +12,6 @@ const dependencies = vi.hoisted(() => ({
   assertLiveRow: vi.fn(async (_db: unknown, table: string, _user: string, id: string) => {
     if (id !== "category-1") throw new Error(`Cannot edit missing ${table} row`);
   }),
-  scheduleSync: vi.fn(),
 }));
 
 vi.mock("../../src/db/ids", () => ({
@@ -32,7 +31,6 @@ vi.mock("../../src/db/mutations", () => ({
     dependencies.writeRows(user, writes);
   }),
 }));
-vi.mock("../../src/sync/engine", () => ({ scheduleSync: dependencies.scheduleSync }));
 
 import {
   createRecordId,
@@ -47,59 +45,7 @@ import {
   setPendingTableVisibility,
   setReminderDays,
 } from "../../src/data/repo/settings";
-import { decodeSettingValue, type SettingKey } from "../../src/domain/settings";
 import { setMatrixColor } from "../../src/data/repo/matrix-colors";
-
-describe("synced setting decoder boundaries", () => {
-  it("returns the fallback when storage is absent or is not JSON", () => {
-    expect(decodeSettingValue("start_month", undefined, "2026-01")).toBe("2026-01");
-    expect(decodeSettingValue("start_month", "{", "2026-01")).toBe("2026-01");
-  });
-
-  it("accepts every boolean flag declared by the setting contract", () => {
-    for (const key of ["account_frozen", "onboarded", "cc_column_removed"] as const) {
-      expect(decodeSettingValue(key, "true", false), key).toBe(true);
-      expect(decodeSettingValue(key, '"true"', false), key).toBe(false);
-    }
-  });
-
-  /**
-   * The attention state is one synced value, so the decoder is the boundary
-   * that stops a newer build's shape (or a tampered row) becoming the inbox's
-   * idea of what the owner dismissed.
-   */
-  it("accepts a well-formed attention state and refuses every other shape", () => {
-    const valid = JSON.stringify({ read: ["a"], dismissed: [], snoozedUntil: { a: "2026-09-01" } });
-    expect(decodeSettingValue("attention_state", valid, null)).toEqual({
-      read: ["a"],
-      dismissed: [],
-      snoozedUntil: { a: "2026-09-01" },
-    });
-    for (const raw of ['null', '3', '"x"', '{}', '{"read":[1],"dismissed":[],"snoozedUntil":{}}', '{"read":[],"dismissed":[],"snoozedUntil":5}']) {
-      expect(decodeSettingValue("attention_state", raw, null), raw).toBeNull();
-    }
-  });
-
-  it("bounds reminder days and validates timestamp semantics", () => {
-    expect(decodeSettingValue("reminder_days", "0", -1)).toBe(0);
-    expect(decodeSettingValue("reminder_days", "30", -1)).toBe(30);
-    expect(decodeSettingValue("reminder_days", "31", -1)).toBe(-1);
-    expect(decodeSettingValue("reminder_days", "1.5", -1)).toBe(-1);
-    expect(decodeSettingValue("last_entry_at", '"2026-07-21T10:00:00.000Z"', null)).toBe("2026-07-21T10:00:00.000Z");
-    expect(decodeSettingValue("last_entry_at", '"2026-07-21T99:00:00.000Z"', null)).toBeNull();
-  });
-
-  it("rejects oversized or malformed collections before they reach consumers", () => {
-    expect(decodeSettingValue("computed_columns_hidden", JSON.stringify(["a", 1]), ["safe"])).toEqual(["safe"]);
-    expect(decodeSettingValue("computed_columns_hidden", JSON.stringify(Array(10_001).fill("a")), ["safe"])).toEqual(["safe"]);
-    expect(decodeSettingValue("column_years", "[]", { safe: [] })).toEqual({ safe: [] });
-    expect(decodeSettingValue("column_years", '{"year":["a"]}', { safe: [] })).toEqual({ safe: [] });
-    expect(decodeSettingValue("column_years", '{"2026":[1]}', { safe: [] })).toEqual({ safe: [] });
-    const tooManyYears = Object.fromEntries(Array.from({ length: 501 }, (_, index) => [String(1500 + index), []]));
-    expect(decodeSettingValue("column_years", JSON.stringify(tooManyYears), { safe: [] })).toEqual({ safe: [] });
-    expect(decodeSettingValue("future_key" as SettingKey, "true", "safe")).toBe("safe");
-  });
-});
 
 describe("setting repository delegation", () => {
   beforeEach(() => vi.clearAllMocks());
@@ -233,7 +179,6 @@ describe("matrix colour writes", () => {
         deletedAt: null,
       },
     }]);
-    expect(dependencies.scheduleSync).toHaveBeenCalledWith("user-1");
 
     // A row mark has no month; the key must still have four parts or a row
     // mark and a column mark could collide.

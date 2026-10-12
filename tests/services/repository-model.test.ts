@@ -34,29 +34,7 @@ const harness = vi.hoisted(() => ({
 // `reset.ts` records a tidy-up it could not finish, and the recorder reaches
 // the device store. Stubbed like the rate services beside it.
 vi.mock("../../src/services/logger", () => ({ devWarning: vi.fn(), devError: vi.fn() }));
-vi.mock("../../src/db/client", () => ({
-  getSqliteAsync: async () => ({
-    getFirstAsync: async (sql: string, args: unknown[] = []) =>
-      harness.db!.prepare(sql).get(...(args as never[])) ?? null,
-    getAllAsync: async (sql: string, args: unknown[] = []) =>
-      harness.db!.prepare(sql).all(...(args as never[])),
-    runAsync: async (sql: string, args: unknown[] = []) => ({
-      changes: Number(
-        harness.db!.prepare(sql).run(...(args as never[])).changes,
-      ),
-    }),
-  }),
-  withTransaction: async (task: () => Promise<void>) => {
-    harness.db!.exec("BEGIN");
-    try {
-      await task();
-      harness.db!.exec("COMMIT");
-    } catch (error) {
-      harness.db!.exec("ROLLBACK");
-      throw error;
-    }
-  },
-}));
+vi.mock("../../src/db/client", async () => (await import("../helpers")).sqliteClientMock(() => harness.db!));
 vi.mock("../../src/db/ids", () => ({
   newId: () => `model-${String(++harness.nextId).padStart(4, "0")}`,
   deterministicId: async (key: string) => `det:${key}`,
@@ -76,9 +54,7 @@ vi.mock("../../src/sync/engine", () => ({ scheduleSync: vi.fn() }));
 
 const USER = "model-user";
 const TODAY = "2026-08-09";
-// The normal quality gate proves all 100 journals. Stryker re-runs this test
-// once per covered mutant, where one deterministic journal exercises the same
-// repository statements without multiplying an 882-mutant run by 100.
+// Stryker re-runs this test once per covered mutant; one journal covers the same statements.
 const JOURNAL_SEEDS = process.env.STRYKER_MUTATOR_WORKER ? 1 : 100;
 
 interface ModelTransaction {
@@ -192,8 +168,16 @@ function walletOracle(
   };
 }
 
+function freshDatabase(): void {
+  harness.db?.close();
+  harness.nextId = 0;
+  harness.db = new DatabaseSync(":memory:");
+  for (const statement of migrationStatements) harness.db.exec(statement);
+}
+
 describe("repository model oracle", () => {
   beforeEach(() => {
+    freshDatabase();
     vi.useFakeTimers();
     vi.setSystemTime(new Date(`${TODAY}T12:00:00.000Z`));
   });
@@ -205,10 +189,7 @@ describe("repository model oracle", () => {
 
   it(`matches balances, category totals, card cycles and investment wallet for ${JOURNAL_SEEDS} seeded 50-step journals`, async () => {
     for (let seed = 0; seed < JOURNAL_SEEDS; seed += 1) {
-      harness.db?.close();
-      harness.nextId = 0;
-      harness.db = new DatabaseSync(":memory:");
-      for (const statement of migrationStatements) harness.db.exec(statement);
+      freshDatabase();
 
       const personId = await createPerson(USER, "Ben");
       const expenseCategoryId = await createCategory(USER, {
@@ -540,10 +521,6 @@ describe("repository model oracle", () => {
   }, 30_000);
 
   it("removes a mistaken product journal and its explicitly selected ledger refund atomically", async () => {
-    harness.db?.close();
-    harness.nextId = 0;
-    harness.db = new DatabaseSync(":memory:");
-    for (const statement of migrationStatements) harness.db.exec(statement);
 
     const personId = await createPerson(USER, "Ben");
     const transferCategoryId = await createCategory(USER, {
@@ -558,7 +535,7 @@ describe("repository model oracle", () => {
       name: "InvestmentDomainError",
       code: "invalid_operation",
     });
-    expect(harness.db.prepare(
+    expect(harness.db!.prepare(
       "SELECT COUNT(*) AS count, opening_cash_minor FROM investment_profiles WHERE user_id = ? AND deleted_at IS NULL",
     ).get(USER)).toMatchObject({ count: 1, opening_cash_minor: 10_000_000 });
 
@@ -618,10 +595,10 @@ describe("repository model oracle", () => {
       name: "InvestmentDomainError",
       code: "insufficient_cash",
     });
-    expect(harness.db.prepare(
+    expect(harness.db!.prepare(
       "SELECT deleted_at FROM investment_products WHERE id = ?",
     ).get(productId)).toMatchObject({ deleted_at: null });
-    expect(harness.db.prepare(
+    expect(harness.db!.prepare(
       "SELECT deleted_at FROM transactions WHERE id = ?",
     ).get(refundId)).toMatchObject({ deleted_at: null });
 
@@ -634,28 +611,24 @@ describe("repository model oracle", () => {
       code: "invalid_operation",
     });
     await expect(removeInvestmentProductHistory(USER, productId, [refundId])).resolves.toBe(true);
-    expect(harness.db.prepare(
+    expect(harness.db!.prepare(
       "SELECT deleted_at FROM investment_products WHERE id = ?",
     ).get(productId)?.deleted_at).toEqual(expect.any(String));
-    expect(harness.db.prepare(
+    expect(harness.db!.prepare(
       "SELECT COUNT(*) AS count FROM investment_operations WHERE product_id = ? AND deleted_at IS NULL",
     ).get(productId)).toMatchObject({ count: 0 });
-    expect(harness.db.prepare(
+    expect(harness.db!.prepare(
       "SELECT deleted_at FROM transactions WHERE id = ?",
     ).get(refundId)?.deleted_at).toEqual(expect.any(String));
-    expect(harness.db.prepare(
+    expect(harness.db!.prepare(
       "SELECT deleted_at FROM transactions WHERE id = ?",
     ).get(unrelatedTransferId)).toMatchObject({ deleted_at: null });
-    expect(harness.db.prepare(
+    expect(harness.db!.prepare(
       "SELECT COUNT(*) AS count FROM investment_operations WHERE id IN (?, ?, ?) AND deleted_at IS NOT NULL",
     ).get(existingId, laterSaleId, earliestSaleId)).toMatchObject({ count: 3 });
   });
 
   it("rewrites an operation in place and keeps the import key that identifies it", async () => {
-    harness.db?.close();
-    harness.nextId = 0;
-    harness.db = new DatabaseSync(":memory:");
-    for (const statement of migrationStatements) harness.db.exec(statement);
 
     await createPerson(USER, "Ben");
     await setupInvestments(USER, { startedOn: "2026-01-01", openingCashMinor: 10_000_000 });
@@ -680,7 +653,7 @@ describe("repository model oracle", () => {
       totalMinor: 3_000_000,
     });
 
-    expect(harness.db.prepare(
+    expect(harness.db!.prepare(
       "SELECT quantity, total_minor, operation_date, import_key FROM investment_operations WHERE id = ?",
     ).get(operationId)).toMatchObject({
       quantity: "3",
@@ -689,7 +662,7 @@ describe("repository model oracle", () => {
       import_key: null,
     });
     // Rewriting must not leave a second row behind.
-    expect(harness.db.prepare(
+    expect(harness.db!.prepare(
       "SELECT COUNT(*) AS count FROM investment_operations WHERE user_id = ? AND deleted_at IS NULL",
     ).get(USER)).toMatchObject({ count: 1 });
   });
@@ -697,10 +670,6 @@ describe("repository model oracle", () => {
   it("records a contribution that has an amount but no quantity", async () => {
     // A pension contribution buys no countable units -- the owner knows only
     // what left the bank. Requiring a quantity would make the flow unusable.
-    harness.db?.close();
-    harness.nextId = 0;
-    harness.db = new DatabaseSync(":memory:");
-    for (const statement of migrationStatements) harness.db.exec(statement);
 
     await createPerson(USER, "Ben");
     await setupInvestments(USER, { startedOn: "2026-01-01", openingCashMinor: 10_000_000 });
@@ -719,7 +688,7 @@ describe("repository model oracle", () => {
       totalMinor: 500_000,
     });
 
-    expect(harness.db.prepare(
+    expect(harness.db!.prepare(
       "SELECT quantity, unit_price_minor, total_minor FROM investment_operations WHERE id = ?",
     ).get(id)).toMatchObject({ quantity: null, unit_price_minor: null, total_minor: 500_000 });
 
@@ -737,10 +706,6 @@ describe("repository model oracle", () => {
   it("answers safely for a product or operation that is not there", async () => {
     // Every one of these is reachable from a stale screen on a second device.
     // None of them may throw something the UI cannot name, or write anything.
-    harness.db?.close();
-    harness.nextId = 0;
-    harness.db = new DatabaseSync(":memory:");
-    for (const statement of migrationStatements) harness.db.exec(statement);
 
     await createPerson(USER, "Ben");
     await setupInvestments(USER, { startedOn: "2026-01-01", openingCashMinor: 10_000_000 });
@@ -763,10 +728,6 @@ describe("repository model oracle", () => {
   it("refuses a refund selection that names the same ledger row twice", async () => {
     // The selected transactions are tombstoned together with the product. A
     // repeated or empty id would make the count of what was removed a lie.
-    harness.db?.close();
-    harness.nextId = 0;
-    harness.db = new DatabaseSync(":memory:");
-    for (const statement of migrationStatements) harness.db.exec(statement);
 
     await createPerson(USER, "Ben");
     await setupInvestments(USER, { startedOn: "2026-01-01", openingCashMinor: 10_000_000 });
@@ -783,10 +744,6 @@ describe("repository model oracle", () => {
   });
 
   it("refuses a wallet or product the rules forbid, and saves a product in place", async () => {
-    harness.db?.close();
-    harness.nextId = 0;
-    harness.db = new DatabaseSync(":memory:");
-    for (const statement of migrationStatements) harness.db.exec(statement);
     await createPerson(USER, "Ben");
 
     await expect(setupInvestments(USER, { startedOn: "2999-01-01", openingCashMinor: 0 })).rejects.toMatchObject({ code: "invalid_date" });
@@ -801,13 +758,26 @@ describe("repository model oracle", () => {
 
     const id = await saveInvestmentProduct(USER, { assetType: "equity", name: " Hisse ", marketCode: " THYAO ", note: " uzun vade " });
     // A value the removed allocation feature left behind is carried, never cleared.
-    harness.db.prepare("UPDATE investment_products SET target_weight_bp = 2500 WHERE id = ?").run(id);
-    expect(harness.db.prepare("SELECT name, market_code, note FROM investment_products WHERE id = ?").get(id))
+    harness.db!.prepare("UPDATE investment_products SET target_weight_bp = 2500 WHERE id = ?").run(id);
+    expect(harness.db!.prepare("SELECT name, market_code, note FROM investment_products WHERE id = ?").get(id))
       .toEqual({ name: "Hisse", market_code: "THYAO", note: "uzun vade" });
 
     expect(await saveInvestmentProduct(USER, { id, assetType: "fund", name: "Fon", marketCode: "", note: "" })).toBe(id);
-    expect(harness.db.prepare("SELECT asset_type, name, market_code, note, target_weight_bp, deleted_at FROM investment_products").all())
+    expect(harness.db!.prepare("SELECT asset_type, name, market_code, note, target_weight_bp, deleted_at FROM investment_products").all())
       .toEqual([{ asset_type: "fund", name: "Fon", market_code: null, note: null, target_weight_bp: 2500, deleted_at: null }]);
+  });
+
+  it("refuses to save over a product another device removed", async () => {
+    const db = harness.db!;
+    await createPerson(USER, "Ben");
+    await setupInvestments(USER, { startedOn: "2026-01-01", openingCashMinor: 0 });
+    const id = await saveInvestmentProduct(USER, { assetType: "equity", name: "Hisse" });
+    db.prepare("UPDATE investment_products SET deleted_at = ? WHERE id = ?").run("2026-01-02T00:00:00.000Z", id);
+
+    await expect(saveInvestmentProduct(USER, { id, assetType: "fund", name: "Fon" }))
+      .rejects.toMatchObject({ code: "unknown_product" });
+    expect(db.prepare("SELECT name, deleted_at FROM investment_products WHERE id = ?").get(id))
+      .toEqual({ name: "Hisse", deleted_at: "2026-01-02T00:00:00.000Z" });
   });
 
   it("refuses to rewrite an operation that is not live in this account", async () => {

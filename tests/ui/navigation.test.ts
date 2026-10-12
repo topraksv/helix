@@ -55,7 +55,7 @@ describe("safe back navigation", () => {
    * A form opened from a screen inside a tab lives on the root stack. Replacing
    * it with that screen mounted a second copy of the tabs holding the screen
    * alone, and the screen's own Back then fell through to the first tab:
-   * Taksitler went back to Durum after a discarded draft (2026-09-15). The
+   * Taksitler went back to Durum after a discarded draft. The
    * browser-history case the guard exists for still never pops to a copy of
    * the form, because `dismissTo` finds the parent or replaces with it.
    */

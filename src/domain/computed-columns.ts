@@ -3,23 +3,17 @@
  * formula engine). Definitions are validated JSON restricted to a whitelisted
  * op set; evaluation only reads pre-aggregated month data.
  *
- * WHY THIS VALIDATOR IS HAND-WRITTEN. It was a Zod schema, and Zod was the only
- * thing in the tree importing Zod — reached from `db/schema.ts`, so it was in
- * the entry bundle for every screen. Measured against the source map it was
- * 388_415 bytes, 11.4% of the web entry chunk and larger than react-dom, to
- * check four object shapes. Everything else that guards a boundary here is
- * already hand-written for the same reason and to the same standard:
- * `sync/outbound-validation.ts`, `services/backup-validation.ts`,
- * `domain/attachments.ts`. This file was the outlier, not the pattern.
+ * The validator is hand-written because a Zod schema here put 11% of the web
+ * entry chunk behind four object shapes; every other boundary guard in the
+ * tree is hand-written for the same reason.
  *
- * The rules below are a LITERAL translation of the schema it replaces, and the
- * order matters: a discriminated union on `op`, then strict keys, then each
+ * The order matters: a discriminated union on `op`, then strict keys, then each
  * field, then the cross-field uniqueness rule. Anything looser is a formula
  * engine with extra steps, which §1.6 forbids by name.
  */
 
+import { monthColumnBasis, type MonthLedger } from "./balance";
 import type { Minor } from "./money";
-import type { MonthKey } from "./dates";
 
 export const MAX_COMPUTED_CATEGORY_IDS = 500;
 
@@ -37,20 +31,9 @@ interface DefinitionIssue {
 }
 
 /**
- * The refusal.
- *
- * Neither this class nor `DefinitionIssue` is exported, and that is the honest
- * shape: every caller of `parseDefinition` catches generically and shows
- * `tr.errors.saveFailed`, so an exported type nothing can name would only
- * advertise an API this module does not actually offer. The sibling validators
- * here throw `UserFacingError` for the same reason — a refusal a user sees
- * needs Turkish copy, not a structured code.
- *
- * `issues` still exists, because it is what makes a refusal debuggable rather
- * than the four-word message `ARCHITECTURE.md` records as a data-loss outcome
- * dressed as validation, and `tests/domain/mutation-survivor-contracts.test.ts` reads
- * its shape. A path names a FIELD, never a value, which is the line every
- * other diagnostic here draws.
+ * The refusal. Not exported: every caller catches generically and shows
+ * `tr.errors.saveFailed`. `issues` exists to make a refusal debuggable, and a
+ * path names a FIELD, never a value.
  */
 class ComputedColumnError extends Error {
   readonly issues: DefinitionIssue[];
@@ -73,12 +56,7 @@ function asRecord(raw: unknown, path: string[]): Record<string, unknown> {
   return raw as Record<string, unknown>;
 }
 
-/**
- * Refuse any key the branch did not declare.
- *
- * This is the `.strict()` the schema carried, and it is the rule that keeps an
- * unknown op's payload from riding along inside a known one.
- */
+/** Refuse any key the branch did not declare, so an unknown op's payload cannot ride along inside a known one. */
 function rejectUnknownKeys(value: Record<string, unknown>, allowed: readonly string[]): void {
   for (const key of Object.keys(value)) {
     if (!allowed.includes(key)) fail("unrecognized_keys", `Unrecognized key: ${key}`, [key]);
@@ -100,11 +78,7 @@ function categoryIdList(raw: unknown, field: string): string[] {
   });
 }
 
-/**
- * The cross-field rule, and the reason it is checked after the shape rather
- * than inside it: a duplicate is only meaningful once both sides are known to
- * be lists of ids.
- */
+/** Checked after the shape: a duplicate only means something once both sides are lists of ids. */
 function requireUniqueIds(ids: readonly string[]): void {
   if (new Set(ids).size !== ids.length) {
     fail("custom", "Computed categories must be unique");
@@ -145,7 +119,6 @@ export function parseDefinition(raw: unknown): ComputedColumnDefinition {
 
 /** Pre-aggregated month slice the evaluator is allowed to see. */
 export interface MonthAggregates {
-  month: MonthKey;
   byCategory: Map<string, Minor>;
   incomeMinor: Minor;
   expenseMinor: Minor;
@@ -167,4 +140,17 @@ export function evaluateComputedColumn(def: ComputedColumnDefinition, data: Mont
     case "cc_split":
       return def.part === "single" ? data.ccSingleMinor : data.ccInstallmentMinor;
   }
+}
+
+/** A month's computed value: its ledger figures plus the credit-card split, if any. */
+export function evaluateMonthColumn(
+  def: ComputedColumnDefinition,
+  month: MonthLedger,
+  card: { singleMinor: Minor; installmentMinor: Minor } | undefined,
+): Minor {
+  return evaluateComputedColumn(def, {
+    ...monthColumnBasis(month),
+    ccSingleMinor: card?.singleMinor ?? 0,
+    ccInstallmentMinor: card?.installmentMinor ?? 0,
+  });
 }

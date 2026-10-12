@@ -1,37 +1,6 @@
-#!/usr/bin/env node
-/**
- * Fail when a lint rule fires more often than it did last time.
- *
- * `npx expo lint` exits 0 on warnings, so 262 of them accumulated with nothing
- * recording that the number was supposed to be going down rather than up. Two
- * of the rules involved are not style: `react-hooks/set-state-in-effect` costs
- * a second render pass and is how a screen comes to flash the wrong value
- * before correcting it, and `complexity` is at 100 occurrences. Neither is
- * worth failing the build over TODAY — that would stop every commit until 262
- * findings were cleared — but a new one is worth failing over, which is what a
- * ratchet says and a threshold cannot.
- *
- * Per rule rather than per file. A per-file baseline would have to be rewritten
- * every time a file moved, and the question worth asking is "did this commit
- * introduce a kind of problem", not "which line is it on".
- *
- * `--record` adopts the current counts. That is a decision made after reading
- * the diff, exactly as `mutation-baseline.json` is, and it is why nothing here
- * adopts automatically.
- *
- * WHY IT SHELLS OUT TO `expo lint` rather than importing ESLint: `expo lint`
- * is what `npm run verify` and the CI gate run, and it resolves the flat config
- * through Expo's own loader. A direct `npx eslint .` in this repository reports
- * a different set — measured on 2026-09-05 — so a ratchet built on it would be
- * counting something the gate does not.
- *
- * ALSO WHY THE CACHE MATTERS. `expo lint` passes `--cache`, and a warm
- * `.eslintcache` reports nothing for unchanged files: the same tree read 262
- * warnings on one run and 407-plus-one-error on the next, and the error was
- * mine, in a scratch file the cache had never seen. A ratchet fed by a partial
- * run would ratchet down to whatever happened to be cached. So this always
- * lints cold.
- */
+// Fails when a lint rule fires more often than lint-baseline.json records; errors fail outright.
+// Per rule, not per file: a file-level baseline would be rewritten whenever a file moved. `--record` adopts the counts by hand.
+// Shells out to `expo lint` cold: a warm .eslintcache reports nothing for unchanged files, so the ratchet would fall to whatever was cached.
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 
@@ -84,8 +53,7 @@ export function evaluate(measured, baseline) {
 }
 
 function runLint() {
-  // Cold, for the reason in the header. `expo lint` exits non-zero on a real
-  // error, and the report still has to be read in that case.
+  // `expo lint` exits non-zero on a real error; the report is still read.
   rmSync(".eslintcache", { force: true });
   try {
     return execFileSync("npx", ["expo", "lint", "--", "--format", "json"], {
@@ -98,48 +66,16 @@ function runLint() {
   }
 }
 
-if (process.argv[1] && import.meta.url.endsWith(process.argv[1].split("/").pop())) {
+if (import.meta.main) {
   const report = parseLintReport(runLint());
   const { rules, errors } = countsFrom(report);
   const total = Object.values(rules).reduce((sum, count) => sum + count, 0);
-
   const record = process.argv.includes("--record");
-  if (record) {
-    // Printed before the decision, because `runLint` deletes `.eslintcache`
-    // first: an operator sent away without the measurement pays a second full
-    // cold lint of the tree to find out what it was.
-    for (const rule of Object.keys(rules).sort()) {
-      console.log(`  ${String(rules[rule]).padStart(4)}  ${rule}`);
-    }
-    console.log(`\n${total} warning(s), ${errors} error(s).`);
-    // The same partial-run hazard the header describes for `.eslintcache`,
-    // on the other path. A file ESLint cannot parse arrives as one fatal
-    // message with no rule results, so its warnings go uncounted; adopting
-    // that undercount writes a floor nobody measured, and every run after the
-    // parse error is fixed then fails `WORSE` on a tree nobody made worse.
-    // The old order wrote first and reported the errors afterwards, by which
-    // time the file was already on disk.
-    if (errors > 0) {
-      const failing = report.filter((file) => (file.errorCount ?? 0) > 0).map((file) => file.filePath);
-      console.error(
-        `\nLint reported ${errors} error(s), so this run did not measure the whole tree:\n` +
-          `  ${failing.join("\n  ")}\n\n` +
-          `Fix them and record again: a partial run must not become the baseline.`,
-      );
-      process.exit(1);
-    }
-    writeFileSync(BASELINE, `${JSON.stringify({ total, rules }, null, 2)}\n`);
-    console.log(`Recorded ${total} warning(s) across ${Object.keys(rules).length} rule(s) in ${BASELINE}.`);
-    process.exit(0);
-  }
-
-  if (!existsSync(BASELINE)) {
-    console.error(`No ${BASELINE}. Read the current findings, then run \`npm run lint:record\`.`);
-    process.exit(1);
-  }
-  const baseline = JSON.parse(readFileSync(BASELINE, "utf8"));
+  const baselineExists = existsSync(BASELINE);
+  const baseline = baselineExists ? JSON.parse(readFileSync(BASELINE, "utf8")) : { rules: {} };
   const { problems, improvements } = evaluate(rules, baseline);
 
+  // Printed before any decision: `runLint` deleted .eslintcache, so a run that prints nothing costs a second cold lint.
   for (const rule of Object.keys({ ...baseline.rules, ...rules }).sort()) {
     const now = rules[rule] ?? 0;
     const was = baseline.rules?.[rule];
@@ -148,16 +84,29 @@ if (process.argv[1] && import.meta.url.endsWith(process.argv[1].split("/").pop()
   }
   console.log(`\n${total} warning(s), ${errors} error(s).`);
 
+  // A parse error hides that file's warnings; recording it would set a floor nobody measured.
+  if (errors > 0) {
+    const failing = report.filter((file) => (file.errorCount ?? 0) > 0).map((file) => file.filePath);
+    console.error(
+      `\nLint reported ${errors} error(s), which are not ratcheted: they fail outright.\n  ${failing.join("\n  ")}\n` +
+        (record ? "\nFix them and record again: a partial run must not become the baseline." : ""),
+    );
+    process.exit(1);
+  }
+  if (record) {
+    writeFileSync(BASELINE, `${JSON.stringify({ total, rules }, null, 2)}\n`);
+    console.log(`Recorded ${total} warning(s) across ${Object.keys(rules).length} rule(s) in ${BASELINE}.`);
+    process.exit(0);
+  }
+  if (!baselineExists) {
+    console.error(`No ${BASELINE}. Read the current findings, then run \`npm run lint:record\`.`);
+    process.exit(1);
+  }
   if (improvements.length > 0) {
     console.log(
       `\n${improvements.length} rule(s) fired less than the baseline:\n  ${improvements.join("\n  ")}\n` +
         `  Lock them in with \`npm run lint:record\` once the fix is committed.`,
     );
-  }
-
-  if (errors > 0) {
-    console.error("\nLint reported errors, which are not ratcheted: they fail outright.");
-    process.exit(1);
   }
   if (problems.length > 0) {
     console.error(`\n${problems.join("\n")}\n\nFix the new findings, or explain in the commit why the count legitimately grew.`);

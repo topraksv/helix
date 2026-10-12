@@ -73,13 +73,7 @@ export function restoreCategoryBudget(userId: string, snapshot: Record<string, u
 export interface CategoryDeleteSnapshot {
   category: Record<string, unknown>;
   budgets: Record<string, unknown>[];
-  /**
-   * Original rows are retained so undo restores every reassigned reference.
-   *
-   * Required, not optional: the only producer initialises both to `[]`, so
-   * every `?.` and `?? []` this type used to force was code that could not
-   * run. The type now says what is actually true.
-   */
+  /** Original rows are retained so undo restores every reassigned reference. */
   reassigned: CategoryReferenceSnapshot[];
   /** Cell notes receive their natural target id when they move to a new column. */
   created: CategoryReferenceSnapshot[];
@@ -88,12 +82,8 @@ export interface CategoryDeleteSnapshot {
 /** Count every live row that would otherwise keep a deleted column alive. */
 export async function categoryReferenceUsage(userId: string, categoryId: string): Promise<CategoryReferenceUsage> {
   const sqlite = await getSqliteAsync();
-  // Every key is initialised here and then ADDED to, rather than each read
-  // carrying its own `?? 0`. `CATEGORY_REFERENCE_TABLES` is derived from
-  // `RELATIONS` at runtime, so a `get` that missed used to be reported as zero
-  // references — which is the one answer that lets a delete cascade past a row
-  // still pointing at the column. It cannot miss now: a table with no key here
-  // fails to compile.
+  // Every key starts at zero and is added to: a missed lookup must not read as "no references",
+  // which would let a delete cascade past a row still pointing at the column.
   const usage: CategoryReferenceUsage = {
     transactions: 0,
     subscriptions: 0,
@@ -122,10 +112,8 @@ export async function categoryReferenceUsage(userId: string, categoryId: string)
 }
 
 /**
- * Deleting a category cascades to its monthly budget targets in the SAME
- * atomic write: a budget is a derived target for a live expense category, so a
- * tombstoned category must never leave nameless budget rows in lists or
- * totals. Returns the pre-delete snapshot; undo restores both together.
+ * Deleting a category cascades to its monthly budgets in the same atomic write, so no nameless
+ * budget row survives. Returns the pre-delete snapshot; undo restores both together.
  */
 export async function deleteCategoryWithBudgets(
   userId: string,
@@ -150,10 +138,7 @@ export async function deleteCategoryWithBudgets(
     created: [],
   };
 
-  // An omitted third argument is the legacy uncategorized delete path used by
-  // older callers. The settings screen passes null explicitly when the user
-  // chooses “Kategorisiz”; that distinction lets the old API remain safe while
-  // the new reassignment path can atomically move every reference.
+  // `undefined` deletes without reassigning; `null` reassigns to Kategorisiz.
   const hasReassignmentChoice = replacementId !== undefined;
   let references: CategoryReferenceSnapshot[] = [];
   const writes: RowWrite[] = [
@@ -182,10 +167,8 @@ export async function deleteCategoryWithBudgets(
       ),
     })));
     const referencesByTable = sourceRows.flatMap(({ table, rows }) => rows.map((row) => ({ table, row: fromDbShape(table, row) })));
-    // A subscription or income rule with no column cannot be confirmed later
-    // (`confirmExpected` requires a live category), so those are the only
-    // references that genuinely need a replacement. Transactions, plans and
-    // cell notes all have a safe answer without one.
+    // A rule with no column cannot be confirmed later (`confirmExpected` needs a live category),
+    // so only rules require a replacement.
     const blockingNullReferences = referencesByTable.some(({ table }) =>
       replacementId == null && (table === "subscriptions" || table === "recurring_incomes"));
     if (blockingNullReferences) {
@@ -209,10 +192,8 @@ export async function deleteCategoryWithBudgets(
         }
         const targetNote = targetNoteByMonth.get(String(original.month));
         if (!targetNote) {
-          // Cell notes are naturally keyed by (month, category). Keeping the
-          // source id after a move would make the next edit create a duplicate
-          // target note on Postgres, whose natural-key index is stricter than
-          // the local SQLite schema.
+          // Notes are keyed by (month, category); keeping the source id would make the next edit
+          // duplicate the target note on Postgres, whose natural-key index is stricter than SQLite's.
           const targetId = await deterministicId(naturalKeys.cellNote(userId, String(original.month), replacementId));
           const movedNote = { ...original, id: targetId, categoryId: replacementId, deletedAt: null };
           writes.push({ table: "cell_notes", row: { ...original, deletedAt } });
@@ -231,17 +212,11 @@ export async function deleteCategoryWithBudgets(
         writes.push({ table: "cell_notes", row: { ...original, deletedAt } });
       }
     } else {
-      // `transactions.category_id` is `not null` at the Postgres boundary
-      // (initial schema, reinforced by the category-kind trigger): nulling it
-      // here would pass local SQLite and then dead-letter forever on sync.
-      // Leaving the row untouched reproduces the pre-existing orphan behavior
-      // that the cash-flow matrix already reconciles as "uncategorized".
+      // `transactions.category_id` is NOT NULL in Postgres: nulling it would pass SQLite and
+      // dead-letter forever on sync. The untouched row is reconciled as "uncategorized" by the matrix.
       references = references.filter((reference) => reference.table !== "transactions");
       for (const reference of references) {
-        // A cell note is keyed by (month, category) and its column is going
-        // away, so there is no cell left for it to annotate and its own
-        // `category_id` is not null either. It is tombstoned with the
-        // category and comes back with it on undo.
+        // A note's column is going away and its `category_id` is NOT NULL, so it is tombstoned with the category.
         writes.push(reference.table === "cell_notes"
           ? { table: "cell_notes", row: { ...reference.row, deletedAt } }
           : { table: reference.table, row: { ...reference.row, categoryId: null } });
@@ -281,10 +256,6 @@ export async function restoreCategoryWithBudgets(userId: string, snapshot: Categ
     table: reference.table,
     row: { ...reference.row, deletedAt: nowIso() },
   }));
-  // No `?? []` after the map: `snapshot.reassigned` is required on the type and
-  // `Array.prototype.map` returns an array, so the fallback was a branch no
-  // input could reach — the same dead defence the snapshot's own doc comment
-  // says was removed from the type.
   await writeRowsValidated(userId, [...categoryWrites, ...snapshot.reassigned.map((reference) => ({
     table: reference.table,
     row: { ...reference.row, deletedAt: null },

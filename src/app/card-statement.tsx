@@ -17,6 +17,7 @@ import Trash from "lucide-react-native/icons/trash";
 import Wallet from "lucide-react-native/icons/wallet";
 import { addStatementPayment, deleteStatementPayment, restoreStatementPayment, StatementPaymentTooLargeError } from "../data/repo";
 import {
+  useAllTransactionsState,
   useCardSettlement,
   useCategoriesState,
   useCreditCardStatementsState,
@@ -26,7 +27,7 @@ import {
   useUserId,
 } from "../data/hooks";
 import { combineLiveStates } from "../data/live-state";
-import type { StatementSettlement } from "../domain/card-statements";
+import { statementTotals, type StatementSettlement } from "../domain/card-statements";
 import { todayISO, type ISODate, type MonthKey } from "../domain/dates";
 import { formatMinorCompact } from "../domain/money";
 import { financialFlow } from "../domain/transactions";
@@ -130,9 +131,7 @@ function StatementDetail({
   const operationGuard = useOperationGuard();
   const { byStatement } = useCardSettlement();
   const today = todayISO();
-  const chargesMinor = charges.reduce((sum, tx) => sum + financialFlow(tx).amountTryMinor, 0);
-  const paidMinor = payments.reduce((sum, payment) => sum + payment.amountMinor, 0);
-  const remainingMinor = Math.max(0, chargesMinor - paidMinor);
+  const { chargesMinor, paidMinor, remainingMinor } = statementTotals(charges, payments);
   const settled = byStatement.get(statement.id);
 
   const [kind, setKind] = useState<StatementPaymentKind>("full");
@@ -337,8 +336,9 @@ export default function CardStatementScreen() {
   const statementsState = useCreditCardStatementsState();
   const paymentsState = useStatementPaymentsState();
   const categoriesState = useCategoriesState();
+  const transactionsState = useAllTransactionsState();
   const { transactions } = useCardSettlement();
-  const { status, ready, retry } = combineLiveStates([sourcesState, personsState, statementsState, paymentsState, categoriesState]);
+  const { status, ready, retry } = combineLiveStates([sourcesState, personsState, statementsState, paymentsState, categoriesState, transactionsState]);
   const [cardChoice, setCardChoice] = useState<string | null>(null);
   const [monthChoice, setMonthChoice] = useState<MonthKey | null>(null);
 

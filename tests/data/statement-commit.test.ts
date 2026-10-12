@@ -220,13 +220,7 @@ describe("committing accepted statement rows", () => {
   });
 });
 
-/**
- * A statement bills one period, and every line on it is settled on one day.
- *
- * Dating each line by the day printed beside it was how one July statement
- * wrote charges into every month its purchases had been made in — months the
- * owner had already reconciled.
- */
+// A statement bills one period; every line settles on one day.
 describe("a statement reaches exactly one month", () => {
   beforeEach(() => {
     harness.db = new DatabaseSync(":memory:");
@@ -279,11 +273,6 @@ describe("a statement reaches exactly one month", () => {
   });
 });
 
-/**
- * An instalment line is not a charge. It is one payment of a plan, and the
- * Taksitler screen is built on the plan — so a line reading `3/9` used to
- * arrive as a loose expense and the plan behind it never existed.
- */
 /**
  * A subscription paid on the card reaches the statement as an ordinary line.
  * Imported while its expected payment is still open, the line IS that payment;
@@ -345,6 +334,7 @@ describe("a line that settles an expected subscription payment", () => {
   });
 });
 
+/** An instalment line is one payment of a plan, so it writes the plan, not a loose expense. */
 describe("an instalment line becomes the plan behind it", () => {
   const instalment = (over: Partial<AcceptedStatementRow> = {}) => row({
     importKey: "teknosa|3",

@@ -35,13 +35,7 @@ function operation(
 }
 
 function expectDomainError(run: () => unknown, code: InvestmentDomainError["code"]): void {
-  let thrown: unknown;
-  try {
-    run();
-  } catch (error) {
-    thrown = error;
-  }
-  expect(thrown).toMatchObject({ name: "InvestmentDomainError", code });
+  expect(run).toThrow(expect.objectContaining({ name: "InvestmentDomainError", code }));
 }
 
 describe("investment decimal and quote rules", () => {

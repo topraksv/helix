@@ -10,13 +10,10 @@
  *     A new build has new names, so the cache can't shadow an update.
  *   - Every other same-origin file (favicon, icons, manifest, social card):
  *     network-first, the cache only offline. Their names never change, so
- *     cache-first kept the first copy forever — the old mark's favicon outlived
- *     the new one's deploy (2026-09-28).
+ *     cache-first kept the first copy forever.
  *   - Cross-origin (Supabase, FX feeds, favicons): never intercepted or cached.
  */
-// v2 drops any shell entry an older worker may have replaced with a navigated
-// JS/image response before the content-type boundary below existed.
-// v3 drops the icons v2 cached for good.
+// Bump the version when the strategy changes; `activate` drops this app's other caches.
 const CACHE = "helix-v3";
 // Absolute so the offline fallback matches regardless of the navigated path
 // (a relative "./index.html" resolved against the request, not the shell).

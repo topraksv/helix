@@ -8,6 +8,7 @@
  * itself (spawning ESLint) is not tested here; it is what the gate does every
  * run and a test that repeated it would only be slower.
  */
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { countsFrom, evaluate, parseLintReport } from "../../scripts/check-lint-ratchet.mjs";
 
@@ -77,13 +78,12 @@ describe("lint ratchet decisions", () => {
 });
 
 describe("the recorded baseline", () => {
-  it("matches the shape the script writes and reads", async () => {
-    const baseline = JSON.parse(await import("node:fs").then((fs) => fs.readFileSync("lint-baseline.json", "utf8")));
+  it("matches the shape the script writes and reads", () => {
+    const baseline = JSON.parse(readFileSync("lint-baseline.json", "utf8"));
     expect(Object.keys(baseline).sort()).toEqual(["rules", "total"]);
     expect(baseline.total).toBe(Object.values(baseline.rules).reduce((sum: number, n) => sum + Number(n), 0));
-    // A floor: an empty baseline would make every later run "new rule" and an
-    // all-zero one would make every run pass.
-    expect(Object.keys(baseline.rules).length).toBeGreaterThan(0);
+    // A floor: an empty or all-zero baseline would make every later run "new
+    // rule" or pass.
     expect(baseline.total).toBeGreaterThan(0);
   });
 });

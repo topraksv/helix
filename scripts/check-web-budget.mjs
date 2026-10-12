@@ -1,409 +1,27 @@
-#!/usr/bin/env node
 /**
- * Fail when the web export outgrows its measured weight or carries what a
- * public site must not: a source map, a server credential, or — with
- * `--require-supabase-config` — a production bundle without its Supabase
+ * Fail when the web export outgrows its ceilings or carries what a public site
+ * must not: a source map, a server credential, or (with
+ * `--require-supabase-config`) a production bundle without its Supabase
  * configuration.
- *
- * Helix and Gital run this same file; only `limits` and the measurements
- * written above it differ. Metro does not tree-shake, so one convenient import
- * can put a whole library in the entry bundle without a line of app code
- * changing, and a ceiling is the only thing that says so at the commit that
- * did it. Each ceiling is a measurement plus about 1% of slack (fonts exact);
- * moving one is a decision recorded in `docs/HEALTH.md` with the before and
- * after figures, never an edit made to get a push through.
  */
+// Metro does not tree-shake: a ceiling is what names the commit that pulled a library into the entry bundle.
 import { readFile, readdir, stat } from "node:fs/promises";
 import { extname, join, relative } from "node:path";
 
 const root = process.argv[2] ?? "dist";
 
-// Measured from a production `expo export -p web`, with headroom for ordinary
-// growth. The font budgets were tightened after two faces that no `type.*`
-// scale or fontFamily ever referenced (Inter_800ExtraBold, IBMPlexSerif_300Light)
-// were removed: 8 files / 1_935_428 bytes -> 6 files / 1_518_000 bytes. Keep
-// fontFiles exact so adding a weight has to be a deliberate decision. The
-// Investments V1 route set was measured against main before recalibrating the
-// JavaScript ceilings: entry 4_870_467 -> 4_964_522 bytes and total JavaScript
-// 5_499_676 -> 5_593_704 bytes. The new limits cover that shipped feature with
-// narrow headroom; total export, fonts and public source-map limits stay fixed.
-//
-// The adaptive-layout work measured 5_022_450 entry / 5_651_632 total: a
-// measured chart frame, a container-measuring donut, the axis's real-value
-// ticks, per-operation lifecycle waiting copy and the rail's second gesture
-// axis. That is +58k entry and +58k total against the line above, which the
-// entry ceiling still covered and the total ceiling missed by 1_632 bytes.
-// Both move once, together, keeping the same narrow headroom.
-//
-// The reported-defects pass measured 5_068_245 entry / 5_697_427 total: a live
-// plan-state panel on the instalment editor, the shared segmented progress bar,
-// the month-end control, the ranked allocation bars, the web view-transition
-// path and 49 more brands in the subscription catalogue. That left 2_573 bytes
-// under the total ceiling — narrow is the point, but a ceiling the next
-// one-line change trips is a ceiling that stops being read. Total moves to
-// 5_760_000, which is the measured figure plus the same ~1% of slack the entry
-// ceiling carries; entry stays where it is because it did not move much.
-//
-// Then the icon barrel came out. `lucide-react-native` ships ~1_757 icons and
-// the app draws 106 of them, but Metro does not tree-shake, so importing from
-// the package root put all of them in the entry bundle — measured directly in
-// the shipped file, which contained Aperture, Rocket, Telescope and every
-// other icon nothing renders. Moving to the package's own `lucide-react-native
-// /icons/<name>` deep paths measured entry 5_085_159 -> 3_318_684 and total
-// JavaScript 5_714_924 -> 3_948_449: 1_766_475 bytes, 34.7% of the entry
-// bundle. The ceilings come down with it, or the barrel could come back in one
-// convenient import and nothing would say so. `tests/architecture-contract`
-// holds the import rule; these hold the weight.
-//
-// Then the fonts were subset. Five faces carried ~2_849 codepoints each —
-// Cyrillic, Greek, Vietnamese, IPA, Latin Extended Additional — for a Turkish
-// product: 1_534_728 bytes, 19.1% of the export. `scripts/subset-fonts.mjs`
-// cuts them to the Latin scripts plus the punctuation, currency, arrow, math
-// and symbol blocks the UI draws, measured 791_272 and total export 8_037_750
-// -> 7_269_039. Advance widths, OpenType features and the measured digit
-// spreads are unchanged; `tests/repo/font-coverage.test.ts` holds all three.
-//
-// Then variable-amount subscriptions shipped: a per-occurrence invoice entry
-// sheet shared by the dashboard, upcoming list and reconciliation screens, a
-// subscription-rule toggle that forecasts instead of auto-paying, and a
-// category-delete flow that reassigns every live subscription/income/note/
-// installment reference (or merges cell notes) instead of only counting
-// transactions. Measured 3_364_521 entry / 3_994_286 total, both past the
-// line below. Ceilings move once, together, to the measured figures plus the
-// same ~1% of slack every prior line here carries.
-//
-// Then this pass shipped five surfaces and a document reader: the attention
-// inbox, the card-statement import and its review, transaction attachments,
-// the contextual-colour sheet and the allocation-target panel, plus the
-// provenance/duplicate/matching model behind them. Measured 3_468_079 entry /
-// 4_097_844 total / 7_505_655 export.
-//
-// Then this pass removed three features and rebuilt four surfaces. Out went
-// the allocation-target panel, the duplicate review and the expected-to-ledger
-// matching model; in came the statement review with per-row edit and delete,
-// the four-slot colour sheet with renameable labels, the shared card-cycle and
-// import-journey components, and drag-to-dismiss on the undo bar. Net +9_013
-// bytes on every figure: measured 3_477_092 entry / 4_106_857 total /
-// 7_514_668 export. The removals landed — knip reports no orphaned module —
-// so this is the new UI paying for itself and a little more. Entry and total
-// move back to measured plus the same ~1% every line above them carries; they
-// had been left at 0.74%, which is a ceiling the next one-line change trips.
-// Total export keeps its existing ceiling: it still clears by 65_332 bytes.
-//
-// SheetJS is NOT part of that growth and must not become part of it. The PDF
-// reader borrows its inflate, and importing it statically measured 3_958_250
-// entry — 490_171 bytes for a module the overwhelming majority of sessions
-// never need. `src/services/pdf-text.ts` loads it with `await import` exactly
-// as `spreadsheet-import.ts` does, and these ceilings are set below what a
-// static import would cost, so putting it back trips this check rather than
-// shipping quietly.
-//
-// Then feedback and payment-source marks shipped. The in-app report form (its
-// category grid, screenshot picker and the domain rules all three of its
-// parties re-check), and every payment source resolving a real mark through
-// the same `Logo` the subscriptions use — which is a ~70-entry Turkish bank,
-// card-programme and wallet catalogue. Measured 3_519_901 entry / 4_149_666
-// total / 7_602_477 export: +7_901 entry for two features, which is the
-// catalogue and one route rather than anything structural.
-//
-// The edge function that actually sends the mail is NOT in any of these
-// figures and must not become so: it is Deno, it lives in
-// `supabase/functions/`, and `tsconfig.json` and `eslint.config.js` both
-// exclude it. Nothing in `src/` may import it.
-//
-// Entry and total move to measured plus the same ~1% every line above them
-// carries. Total export moves to measured plus ~1.5% rather than the ~3% the
-// note below it describes: fonts are the coarse part of that figure and they
-// did not change, so the looser step is not earned here.
-//
-// Then the data reset shipped: one route under Hesap Güvenliği that empties a
-// chosen part of the workspace by scope and date range, the repository module
-// that plans and performs it, and the Turkish copy in which each scope says
-// what it takes and what it leaves.
-//
-// Measured HEAD first, because the ceiling above had drifted to within 1_908
-// bytes of the tree it was guarding and an unattributed rise would have been
-// billed to this feature: HEAD 3_553_092 entry / 4_182_857 total / 7_660_024
-// export. With the reset, 3_572_068 / 4_201_833 / 7_700_044 — so the feature
-// itself is +18_976 on both JavaScript figures and +40_020 on the export,
-// which is that one route's HTML on top of its share of the JavaScript.
-//
-// Total export moves as well this time. It still cleared by 16_956 bytes, but
-// that is 0.22% — the next route would trip a ceiling nobody had reason to
-// re-read, which is the failure the note above already warned about once.
-//
-// Then the market feed stopped being a socket. The dealer stream it read is
-// gone, and with it `socket.io-client`: prices are now polled from a public
-// exchange's market-data host and derived by arithmetic. The ceilings come DOWN
-// with the dependency, or it could come back in one convenient import and
-// nothing would say so — the same rule the icon-barrel note above set.
-//
-// That removal outweighed a whole new route: an instrument-history screen with
-// its own chart, its four ranges and the candle model behind them. Measured
-// 3_527_386 entry / 4_157_151 total / 7_676_406 export — 44_682 bytes BELOW the
-// line above it on both JavaScript figures, feature included.
-// Then six packages landed together and the export measured 7_879_811, past a
-// ceiling of 7_791_000 by 88_811 bytes. What added them: the attachment mirror
-// and its Storage client path, the diagnostics error shape and the global crash
-// handlers, the sync change probe and its cursor policy, the rebuilt
-// boot-failure screen, and the social card at `public/og-cover.jpg`. The card
-// is 37_822 of the 88_811 and is the only part no user of the app ever
-// downloads — a crawler does — which is why it is a JPEG rather than the
-// 99_725-byte PNG it started as, and why it is still counted rather than
-// exempted: an asset that is deployed is an asset this budget is for. Removing
-// it entirely would still leave the export 50_989 over, so the ceiling moves to
-// the measured figure plus ~1% of slack.
-//
-// The JavaScript ceilings are NOT moved. Both still pass, on 21_185 and 27_420
-// bytes — about 0.6%, narrower than this file likes. Moving a limit that passed
-// is loosening it for no measured reason; the next feature that trips one
-// measures it then.
-//
-// `assets/brand/symbol-{light,dark}-t.png` were left unmeasured here for a
-// year, on the reasoning that resampling brand art is a judgement about how the
-// mark looks rather than about bytes. That reasoning was right and the question
-// was wrong: the files did not need resampling, they needed CROPPING.
-//
-// Measured 2026-09-09 on the alpha channel: a 1024x1024 canvas carrying 606x789
-// of ink, with 210px of transparency down each side and 118 across the top. So
-// `contentFit` was scaling the padding as though it were part of the drawing —
-// a 40pt mark drew at 30.8pt — and 128_002 bytes of the export were empty
-// pixels. Cropped losslessly (decode, take the rectangle, re-encode; every ink
-// pixel byte-identical, resolution untouched at 606x789), the export measured
-// 7_606_608 -> 7_478_730 and the mark finally fills the box it is given.
-//
-// The saving is a side effect and is not the reason. `tests/domain/brand-domains.test.ts`
-// holds the property that matters: the ink must touch all four edges, because
-// re-exporting a logo from a design tool is exactly how the padding comes back.
-//
-// `totalExport` COMES DOWN to measured plus ~1.5%.
-//
-// 2026-09-03, and the largest single drop this file has recorded: removing Zod
-// took 397_764 bytes off all three JavaScript figures at once. It was reached
-// from `db/schema.ts`, so it sat in the entry chunk for every screen, and the
-// source map attributed 388_415 bytes to it — 11.4% of the entry, more than
-// react-dom — to validate four object shapes for one settings screen. The
-// replacement in `src/domain/computed-columns.ts` is hand-written, which is
-// what every other boundary in this tree already was.
-//
-// All three ceilings COME DOWN with it. Lowering after a measured improvement
-// is this file working; leaving them would have banked 400_000 bytes of silent
-// headroom and stopped the budget catching anything for a year. The slack is
-// the usual ~1% on JavaScript and ~3% on the export.
-//
-// Then, the same day, Expo SDK 54 -> 57: React Native 0.81.5 -> 0.86.3, React
-// 19.1 -> 19.2.3, expo-router 6 -> 57. Measured 3_226_086 entry / 3_855_749
-// total / 7_599_936 export, so the two JavaScript figures went UP by 34_086 and
-// 27_749 while the export came DOWN by 159_064.
-//
-// The rise is attributed, not assumed. The source map puts `expo-router` at
-// 465_686 bytes, 14.43% of the entry chunk and the largest single dependency in
-// it after this app's own screens. That is the upgrade's own doing: SDK 56 cut
-// the router's dependency on React Navigation by vendoring that code inside
-// itself, which is also why `@react-navigation/native` and
-// `@react-navigation/bottom-tabs` could leave `package.json` in the same
-// change. The weight did not appear, it moved — and ~34_000 bytes for three SDK
-// majors is the whole bill.
-//
-// The JavaScript ceilings move to measured plus the usual ~1%. The export
-// ceiling COMES DOWN, to measured plus ~1.5% rather than ~3%, on the rule the
-// note above it already set: fonts are the coarse part of that figure and they
-// did not change, so the looser step is not earned. Ratcheting down after an
-// unasked-for 159_064-byte improvement is the same discipline as the Zod line.
-//
-// Not taken, and named so it is not re-derived: `@supabase/realtime-js` and
-// `@supabase/phoenix` are 69_343 bytes of the entry chunk and this app opens no
-// socket — `createClient` builds a realtime client whether or not anything
-// subscribes. That is the largest remaining lead in this file, and it is a
-// change to how the Supabase client is constructed, which is a sync decision
-// and not a bundle one. Measure it there, not here.
-//
-// 2026-09-08, and the first rise this file records that no feature caused.
-// Routine dependency maintenance: the four SDK 57 patches `expo install
-// --check` asked for by name (expo 57.0.19 -> 57.0.20, expo-router .18 -> .19,
-// expo-notifications .16 -> .17, expo-sharing .17 -> .18), plus
-// `@supabase/supabase-js` 2.114 -> 2.116, `lucide-react-native` 1.39 -> 1.42
-// and `@playwright/test` 1.62 -> 1.63. Everything the Expo matrix owns stayed
-// where `.github/dependabot.yml` holds it.
-//
-// Attributed one variable at a time, because an unattributed rise is what the
-// note above already had to warn about once. HEAD measured 3_253_933 entry /
-// 3_883_596 total; the Expo patches and the icons together are +9_072 on both,
-// and supabase-js alone is +6_436 on both — measured by reverting it and
-// re-exporting, not by subtraction. None of it is this app's own code, which
-// changed only by the icon rename below.
-//
-// `lucide-react-native` 1.42 merged `trash-2` into `trash`, so the deep path
-// `icons/trash-2` stopped existing and sixteen imports moved to `icons/trash`.
-// The drawn glyph is unchanged, and that was checked rather than assumed:
-// 1.39's `trash-2.mjs` and 1.42's `trash.mjs` carry the same five paths with
-// the same keys. `tests/ui/design-system-contract.test.ts` caught the dead
-// specifier before the export did, which is exactly the job it was added for.
-//
-// Both JavaScript ceilings move to measured plus the usual ~1%. Total export
-// measured 7_638_765 and its ceiling does NOT move: it clears by 75_235 bytes,
-// and a limit that passed is not loosened for a rise it absorbed.
-//
-// 2026-09-09: the lead this file named above and left for the sync layer was
-// taken there. `metro.config.js` now resolves `@supabase/realtime-js` to
-// `src/sync/realtime-absent.js`, because `createClient` builds a socket client
-// whether or not anything subscribes and nothing in this app ever calls
-// `.channel()` — checked in `tests/repo/release-config.test.ts` rather than
-// remembered. Measured entry 3_268_575 -> 3_202_806, total JavaScript
-// 3_898_238 -> 3_832_469, export 7_637_899 -> 7_572_130: 65_769 bytes off all
-// three, against the 65_134 the source map attributed to realtime-js and
-// phoenix together. The 635-byte difference is the module wrapper.
-//
-// All three ceilings COME DOWN, on the rule the Zod line set: measured plus
-// ~1% on JavaScript and ~1.5% on the export.
-//
-// Then `services/pdf-text.ts` stopped estimating. It had been inflating PDF
-// streams with SheetJS's `_inflateRaw`, which needs a size it cannot know, and
-// the estimate silently truncated well-compressed statements — measured, 96% of
-// a 291:1 text layer. `fflate` replaces it, and the interesting number is not
-// the one that went up.
-//
-// Statically imported it measured entry 3_237_142, which is 2_142 bytes PAST
-// the ceiling above for a feature most sessions never open. Loaded on demand
-// instead — the shape the SheetJS it replaced already had — the entry chunk
-// stays at 3_203_391 and fflate becomes a 33_893-byte chunk of its own. So
-// opening a statement now downloads 34 KB where it used to download the 493 KB
-// `xlsx` chunk for one utility function.
-//
-// `totalJavaScript` measured 3_866_947 and PASSES by 4_053 bytes. It moves
-// anyway, to measured plus the usual ~1%, on the rule the reported-defects line
-// already set: a ceiling the next one-line change trips is a ceiling that stops
-// being read. `entryJavaScript` and `totalExport` do NOT move — the entry rose
-// by 133 bytes and the export clears by 79_392.
-//
-// 2026-09-13, 1.8.0: the first rise here that is entirely this app's own
-// feature code. Instalment refunds (a new route with a purchase picker), a
-// category chart on the instalments tab, an amount mode and an editable paid
-// count on the plan form, and a reset screen that can open beside a tab that
-// holds the database. Attributed with source maps against HEAD, not by
-// subtraction: entry +21_882 including the source-map comment, of which the
-// refund screen is 7_283, the plan form 3_267, the instalments tab 3_192, the
-// new strings 2_748 and the refund repository 2_209; one lucide icon (`search`,
-// 244) is the only dependency byte in it, and `ui/charts.tsx` is not in the
-// delta because Analiz already carried it in the entry chunk.
-//
-// Both JavaScript ceilings move to measured plus the usual ~1%: entry measured
-// 3_249_092, total 3_912_648. Total export measured 7_547_551 and does NOT move.
-//
-// 2026-09-14, still 1.8.0: the rest of the release, again all this app's own
-// code. Card statements with recorded payments, declared month openings, early
-// loan closure and restructure, refunds linked to an expense, and the lock
-// keeping its place. Attributed with source maps against HEAD — the same two
-// exports, same empty Supabase env, a clean `git archive` of HEAD beside the
-// tree — so the line above is inside the figure: entry +79_444 over HEAD, 47
-// files grew, none shrank, and the only dependency bytes are that line's
-// `search` icon. Beyond what the line above already attributed, the loan cards
-// in the plan form are ~7_540, the new strings ~7_390, the statement screen
-// 9_019, closure and FX in the instalment repository ~4_790, refund mode and
-// the card-bill warning in the entry form 5_154, statement payments,
-// declarations and refund links in the transaction repository 3_826, the
-// declaration editor 2_041 and settlement in the statement domain 1_988.
-//
-// Measured from the gate's own export: entry 3_306_932, total JavaScript
-// 3_970_488, total export 7_651_879 — all three past their ceilings. The
-// JavaScript ceilings move to measured plus the usual ~1%, the export to
-// measured plus ~1.5%, the rule the realtime line set for it.
-//
-// 2026-09-17, still 1.8.1: two movements that pull opposite ways, attributed
-// against a source-mapped export of HEAD.
-//
-// Down: `services/pdf-text.ts` and `services/backup-remap.ts` load on demand —
-// the first with the first statement picked, the second with a restore — which
-// took 20_477 bytes out of the entry chunk. The statement reader had grown by
-// the AFP font decoding a real bank's statement needed.
-//
-// Up: eleven screens whose one component ran past a complexity of 45 were split
-// into a form hook and cards. None of the old components was compiled by the
-// React Compiler — measured, not one carried a `c(n)` cache — and every split
-// one is: 236 compiled functions became 316. That memoisation is the bytes
-// (dashboard +11_860, transaction +9_846, investment operation +7_323, down to
-// incomes +3_269) and it is what stops a keystroke re-rendering a whole screen.
-//
-// Measured entry 3_401_637 / total 4_086_391 / export 7_767_782. Entry moves to
-// 3_415_000, deliberately under the 1% step: putting either on-demand reader
-// back measures 3_422_000 and must trip it. Total moves to measured plus ~1%,
-// the export to measured plus ~1.5%.
-// 2026-09-21, 1.8.4: re-measured because the figure above had stopped
-// describing the tree, not because a ceiling was in danger. Two clean exports
-// of `git archive` copies, same empty Supabase env, against the working tree:
-//
-//   2026-09-17 recorded   entry 3_401_637  total 4_086_391  export 7_767_782
-//   cd2b1f6 (1.8.3)       entry 3_405_954  total 4_090_714  export 7_768_989
-//   this tree (1.8.4)     entry 3_408_265  total 4_093_025  export 7_774_416
-//
-// The first step is 1.8.3 itself (`cb6844f`, twenty-two source files) and cost
-// 4_317 entry bytes that nobody recorded, because the gate stayed green and so
-// nobody had to look. The second is this round: five form screens took the
-// dirty-exit guard and four controls took `interactionSurface`, 2_311 bytes,
-// which is about 460 per guarded screen once the React Compiler has memoised
-// the hook; the shared fill is smaller than the ternaries it replaced, so the
-// four controls gave 57 bytes back.
-//
-// NO CEILING MOVES. Raising entry to measured-plus-1% would be 3_442_000, and
-// that is precisely the number the paragraph above refused: putting either
-// on-demand reader back is +20_477, which from 3_408_265 measures 3_428_742 —
-// under a 1% ceiling and over this one. The 6_735 bytes left are the guard, not
-// slack, and the next thing that wants them has to argue for them.
-// 2026-09-22: `expo-notifications` leaves the web. Every call the app makes
-// into it already returned early there, and `metro.config.js` now resolves it
-// to `src/services/notifications-absent.js` on the web only. Measured on the
-// same tree with and without the substitution: entry 3_409_194 -> 3_348_694,
-// total 4_093_954 -> 4_033_454, export 7_775_345 -> 7_714_845 — 60_500 bytes
-// off each, more than the 44_488 the source map attributed to the package and
-// the two it alone pulled in.
-//
-// ALL THREE COME DOWN, or the package could come back in one import and still
-// clear by 60_500. Entry keeps the guard the paragraph above set rather than
-// the 1% step: measured plus 6_306, that 6_735 rounded down to a thousand, so
-// an on-demand reader coming back (+20_477) still trips it. Total moves to measured plus ~1%, the export to
-// measured plus ~1.5%, the steps each already carried.
-// 2026-09-27: the second-tab screen was redrawn and sign-in learned to resend
-// a confirmation and say what a confirmation link did — entry 3_354_606 ->
-// 3_357_795. Paid for by `expo/devtools`, which `expo-sqlite` requires only
-// under `__DEV__` and a release now resolves to `src/db/devtools-absent.js`:
-// entry 3_341_132, total 4_025_892, export 7_707_283. ALL THREE COME DOWN by
-// the steps above — entry measured plus 6_868, so an on-demand reader coming
-// back (+20_477) still trips it; total ~1%, export ~1.5%.
-// 2026-10-02, 1.9.3: the launch screen, the mark drawing itself over the
-// boot. Attributed with source maps against a `git archive` of HEAD: HEAD
-// measured 3_345_824, so 1.9.2's mark had already added 4_692 unrecorded; the
-// launch adds `ui/launch.tsx` 2_052 and `app/_layout.tsx` 1_332, no
-// dependency byte. The gate measured entry 3_349_422, total 4_052_396, export
-// 7_338_456. Entry moves to measured plus 6_578, the guard above, so an
-// on-demand reader coming back (+20_477) still trips it; total and export
-// pass and do NOT move.
-// 2026-10-07, 1.9.5: devil round 2026-10-07-1 and its pre-push review, every
-// byte a defect fix and no dependency byte: undo for a deleted plan and a
-// refund, row actions named by their record, the stored-rate rule on an
-// edited foreign row, the catch-up pull before a restore and its cancel, one
-// hook for decoded settings, and the e-mail change landing. The gate measured
-// entry 3_356_149 (1.9.4's ceiling 3_356_000), total 4_060_964, export
-// 7_318_978. Entry moves to measured plus 6_578, the guard above, so an
-// on-demand reader coming back (+20_477) still trips it; total and export pass
-// and do NOT move.
 const limits = {
   entryJavaScript: 3_362_700,
   totalJavaScript: 4_066_000,
-  // Everything but pictures, which are weighed apart as Gital weighs its
-  // catalogue (2026-10-08, the shared file): measured 7_266_835 and 53_947.
-  // One HTML file per route makes this grow in coarser steps than the
-  // JavaScript, so it keeps the ~1% slack and moves with a recorded reason.
+  // Everything but pictures, which are weighed apart; one HTML file per route makes it grow in coarse steps.
   totalExport: 7_339_500,
   pictureBytes: 54_500,
-  // Exact, so adding a weight has to be a decision: five faces since one was
-  // dropped, and the ceiling had stayed at six.
+  // Exact, so adding a weight has to be a decision.
   fontFiles: 5,
   fontBytes: 800_000,
-  // Pages is public. Symbolication maps belong only in a private crash service,
-  // if one is approved later; neither map files nor bundle references ship.
+  // Pages is public: no source maps, no references to them.
   sourceMapFiles: 0,
   sourceMapReferences: 0,
-  // Nothing a server holds may reach a public site. See `CREDENTIAL_SHAPES`.
   serverCredentialReferences: 0,
 };
 
@@ -422,36 +40,26 @@ const files = await walk(root);
 const javaScript = files.filter((file) => extname(file.path) === ".js");
 const entry = javaScript.find((file) => /[/\\]entry-[^/\\]+\.js$/.test(file.path));
 const fonts = files.filter((file) => [".ttf", ".otf", ".woff", ".woff2"].includes(extname(file.path)));
-// Weighed apart from the code: a picture set can grow for a product reason and
-// would otherwise hide a code regression inside the total.
-const pictures = files.filter((file) => [".webp", ".png", ".jpg", ".jpeg", ".gif", ".avif"].includes(extname(file.path)));
-const isPicture = (file) => pictures.includes(file);
+const PICTURE_EXTENSIONS = new Set([".webp", ".png", ".jpg", ".jpeg", ".gif", ".avif"]);
+// Weighed apart: a picture set can grow for a product reason and would hide a code regression in the total.
+const pictures = files.filter((file) => PICTURE_EXTENSIONS.has(extname(file.path)));
+const isPicture = (file) => PICTURE_EXTENSIONS.has(extname(file.path));
 const sourceMaps = files.filter((file) => extname(file.path) === ".map");
-const sourceMapCandidates = files.filter((file) => [".js", ".css"].includes(extname(file.path)));
-const sourceMapReferences = (
-  await Promise.all(sourceMapCandidates.map(async (file) => (
-    (await readFile(file.path, "utf8")).includes("sourceMappingURL=") ? file : null
-  )))
-).filter(Boolean);
-/**
- * Server credentials, by the shapes their issuers give them.
- *
- * The export is a public site, and the likeliest way a secret reaches it
- * bypasses everything that scans the repository: an `EXPO_PUBLIC_*` value fed
- * from a CI secret or a build environment never passes through a commit, so
- * push protection never sees it. This is the one place that does. A finding
- * names the shape and the file, never the value, because this output is a
- * public log. Measured against the production and E2E exports when this was
- * written: no match, and no JWT-shaped string at all.
- */
+const SCANNED = new Set([".js", ".css", ".html", ".json", ".txt", ".xml", ".svg", ".webmanifest"]);
+const texts = await Promise.all(files
+  .filter((file) => SCANNED.has(extname(file.path)))
+  .map(async (file) => ({ file, body: await readFile(file.path, "utf8") })));
+const sourceMapReferences = texts
+  .filter(({ file, body }) => [".js", ".css"].includes(extname(file.path)) && body.includes("sourceMappingURL="))
+  .map(({ file }) => file);
+// An EXPO_PUBLIC_* value fed from CI never passes a commit, so push protection cannot see it; findings name the shape and file, never the value.
 const CREDENTIAL_SHAPES = [
   ["Supabase secret key", /\bsb_secret_[\w-]{16,}/],
   ["Supabase access token", /\bsbp_[A-Za-z0-9]{40}\b/],
   ["GitHub token", /\b(?:gh[pousr]_[A-Za-z0-9]{36}|github_pat_\w{40,})\b/],
   ["private key", /-----BEGIN [A-Z ]*PRIVATE KEY-----\s+[A-Za-z0-9+/=\s]{64,}/],
 ];
-// A JWT is a leak only when it carries the server role: the legacy anon key is
-// a JWT too, and it ships by design.
+// The anon key is a JWT too and ships by design; only the server role is a leak.
 const carriesServiceRole = (payload) => {
   try {
     return JSON.parse(Buffer.from(payload, "base64url").toString("utf8")).role === "service_role";
@@ -459,17 +67,12 @@ const carriesServiceRole = (payload) => {
     return false;
   }
 };
-const credentialFindings = (
-  await Promise.all(files
-    .filter((file) => [".js", ".css", ".html", ".json", ".txt", ".xml", ".svg", ".webmanifest"].includes(extname(file.path)))
-    .map(async (file) => {
-      const body = await readFile(file.path, "utf8");
-      const found = CREDENTIAL_SHAPES.filter(([, shape]) => shape.test(body)).map(([name]) => name);
-      const jwts = [...body.matchAll(/\beyJ[\w-]{8,}\.(eyJ[\w-]{8,})\.[\w-]{8,}/g)];
-      if (jwts.some((match) => carriesServiceRole(match[1]))) found.push("service-role JWT");
-      return found.map((name) => `${name} in ${relative(root, file.path)}`);
-    }))
-).flat();
+const credentialFindings = texts.flatMap(({ file, body }) => {
+  const found = CREDENTIAL_SHAPES.filter(([, shape]) => shape.test(body)).map(([name]) => name);
+  const jwts = [...body.matchAll(/\beyJ[\w-]{8,}\.(eyJ[\w-]{8,})\.[\w-]{8,}/g)];
+  if (jwts.some((match) => carriesServiceRole(match[1]))) found.push("service-role JWT");
+  return found.map((name) => `${name} in ${relative(root, file.path)}`);
+});
 if (credentialFindings.length > 0) console.error(`Server credentials found: ${credentialFindings.join(", ")}`);
 const sum = (items) => items.reduce((total, item) => total + item.size, 0);
 const metrics = {
@@ -494,47 +97,23 @@ if (!entry) {
   console.error(`No Expo entry bundle found under ${relative(process.cwd(), root) || root}`);
   process.exitCode = 1;
 }
-// Metro's transform cache is shared by `expo export` and `eas update`, and its
-// key does not include EXPO_PUBLIC_* values. A cache left behind by the
-// local-only E2E export therefore yields a bundle where isSupabaseConfigured is
-// false — sign-in and sync silently gone, with nothing in the export, the
-// budget or the OTA evidence to show it. `--clear` prevents that; this proves
-// it, because remembering a flag is not a control.
-// Opt-in, because only a real production export makes this claim. CI puts the
-// values in the job environment; locally only Expo reads `.env`, so the check
-// reads it too — one that quietly skips itself is the failure mode it exists to
-// catch, which is why the skip is printed rather than assumed.
+// Metro's cache key ignores EXPO_PUBLIC_*, so a cache left by the E2E export silently drops sign-in and sync; --clear prevents it, this proves it.
+// Opt-in because only a production export makes this claim; the skip is printed, never assumed.
 if (entry && process.argv.includes("--require-supabase-config")) {
   if (!process.env.EXPO_PUBLIC_SUPABASE_URL) {
     try {
       process.loadEnvFile(".env");
     } catch {
-      // Neither environment nor .env: a local-only build, which is a legitimate
-      // configuration with nothing to inline.
+      // No environment and no .env: a local-only build, with nothing to inline.
     }
   }
   const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL;
   if (!supabaseUrl) {
     console.log("supabaseConfigInlined: skipped (no EXPO_PUBLIC_SUPABASE_URL configured)");
   } else {
-    let trustedOrigin = null;
-    try {
-      const parsed = new URL(supabaseUrl);
-      if (
-        parsed.protocol === "https:" &&
-        !parsed.username &&
-        !parsed.password &&
-        !parsed.port &&
-        parsed.pathname === "/" &&
-        !parsed.search &&
-        !parsed.hash &&
-        /^[a-z0-9-]+\.supabase\.co$/i.test(parsed.hostname)
-      ) trustedOrigin = parsed.origin;
-    } catch {
-      // The explicit failure below is the release result.
-    }
-    console.log(`supabaseOriginTrusted: ${trustedOrigin != null} (expected true)`);
-    if (!trustedOrigin) {
+    const trusted = /^https:\/\/[a-z0-9-]+\.supabase\.co\/?$/i.test(supabaseUrl);
+    console.log(`supabaseOriginTrusted: ${trusted} (expected true)`);
+    if (!trusted) {
       console.error("EXPO_PUBLIC_SUPABASE_URL must be a bare HTTPS Supabase project origin.");
       process.exitCode = 1;
     }

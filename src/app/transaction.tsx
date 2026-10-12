@@ -37,7 +37,7 @@ import { installmentSplitText } from "../ui/installment-text";
 import { currencyLabel } from "../domain/fx-provider";
 import { deriveStartMonth, isValidInstallmentCount } from "../domain/installments";
 import { lookupRate, useFxRates } from "../services/fx-fetch";
-import { categoryIconComponent,  } from "../ui/category-icon";
+import { categoryIconComponent } from "../ui/category-icon";
 import { PaymentSourceLogo } from "../ui/logo";
 import { CurrencyPicker } from "../ui/currency-picker";
 import { scheduleSync } from "../sync/engine";
@@ -47,12 +47,13 @@ import { useSubmitOnEnter } from "../ui/keyboard";
 import { appAlert } from "../ui/dialog";
 import { DateField } from "../ui/calendar";
 import { kv } from "../services/kv";
-import { placeholderPools, useRotatingPlaceholder } from "../ui/placeholders";
+import { useRotatingPlaceholder } from "../ui/placeholders";
 import { radius, spacing, type, useTheme } from "../ui/theme";
 import { selectionTapIfChanged } from "../ui/haptics";
 import { navigateBack } from "../ui/navigation";
 import { buildSaveSummary, type SavedTransaction, type SaveSummary } from "../domain/save-summary";
 import { provenanceOf } from "../domain/provenance";
+import { refundLeftMinor } from "../domain/transactions";
 import { AttachmentPanel } from "../ui/attachment-panel";
 import { devError } from "../services/logger";
 import { useOperationGuard } from "../ui/operation-guard";
@@ -126,11 +127,7 @@ export default function TransactionModal() {
   if (!record) return <Redirect href="/(tabs)/cash-flow" />;
   if (record.mode === "edit" && !existing) {
     if (!answeredForThisId) {
-      return (
-        <Screen scroll={false}>
-          <DataStateNotice status={txState.status} retry={txState.retry} />
-        </Screen>
-      );
+      return <DataGateScreen status={txState.status} retry={txState.retry} scroll={false} />;
     }
     return <Redirect href="/(tabs)/cash-flow" />;
   }
@@ -142,11 +139,7 @@ export default function TransactionModal() {
   }
   const refund = refundTargetOf(txState, record, refundOf, intent);
   if (refund.waiting) {
-    return (
-      <Screen scroll={false}>
-        <DataStateNotice status={txState.status} retry={txState.retry} />
-      </Screen>
-    );
+    return <DataGateScreen status={txState.status} retry={txState.retry} scroll={false} />;
   }
   return (
     <TransactionForm
@@ -182,7 +175,7 @@ function InvestmentRefundForm({ transactionsState }: { transactionsState: Return
   const [monthKey, setMonthKey] = useState<MonthKey>(monthKeyOf(todayISO()));
   const [dateStr, setDateStr] = useState(todayISO());
   const [busy, setBusy] = useState(false);
-  const amountPlaceholder = useRotatingPlaceholder(placeholderPools.amount, { active: amountRaw.length === 0 });
+  const amountPlaceholder = useRotatingPlaceholder(tr.placeholders.amount, { active: amountRaw.length === 0 });
   React.useEffect(() => {
     if (categoryId || transferCategories.length !== 1) return;
     setCategoryId(transferCategories[0]!.id);
@@ -245,10 +238,9 @@ function InvestmentRefundForm({ transactionsState }: { transactionsState: Return
 
   if (!ready) {
     return (
-      <Screen>
+      <DataGateScreen status={status} retry={retry}>
         <Stack.Screen options={{ title: tr.investments.refundTitle }} />
-        <DataStateNotice status={status} retry={retry} />
-      </Screen>
+      </DataGateScreen>
     );
   }
   if (!profile) return <Redirect href="/(tabs)/investments" />;
@@ -336,8 +328,8 @@ function ExpenseRefunds({ expense }: { expense: ExistingTx }) {
   const refunds = transactionsState.data
     .filter((row) => row.refundOfTransactionId === expense.id)
     .sort((a, b) => a.effectiveDate.localeCompare(b.effectiveDate));
-  const refundedTryMinor = -refunds.reduce((sum, row) => sum + row.amountTryMinor, 0);
-  const leftMinor = expense.amountMinor + refunds.reduce((sum, row) => sum + row.amountMinor, 0);
+  const refundsTryMinor = refunds.reduce((sum, row) => sum + row.amountTryMinor, 0);
+  const leftMinor = refundLeftMinor(expense, refunds);
   return (
     <>
       <Card>
@@ -346,8 +338,8 @@ function ExpenseRefunds({ expense }: { expense: ExistingTx }) {
           <MetricStrip
             items={[
               { label: tr.tx.refundsPurchase, minor: expense.amountTryMinor },
-              { label: tr.tx.refundsTotal, minor: -refundedTryMinor },
-              { label: tr.tx.refundsNet, minor: expense.amountTryMinor - refundedTryMinor },
+              { label: tr.tx.refundsTotal, minor: refundsTryMinor },
+              { label: tr.tx.refundsNet, minor: expense.amountTryMinor + refundsTryMinor },
             ]}
           />
         ) : (
@@ -468,7 +460,7 @@ function useEntryDefaults({ fresh, ready, entry, patch, categories, sources }: {
 
   React.useEffect(() => {
     if (!fresh || entry.entryType !== "transfer" || !ready || entry.categoryId) return;
-    const investmentCategories = categories.filter((category) => category.kind === "expense" && category.isTransfer);
+    const investmentCategories = categories.filter((category) => acceptsEntry(category, "transfer"));
     if (investmentCategories.length === 1) patch({ categoryId: investmentCategories[0]!.id });
   }, [categories, entry.categoryId, ready, entry.entryType, fresh, patch]);
 }
@@ -565,12 +557,8 @@ function useTransactionForm({ existing, refundOf, investmentRefund }: { existing
   // The expense this row refunds: the one it was opened from, or the one an
   // existing refund is already linked to.
   const refundLink = refundOf ?? transactionsState.data.find((row) => existing?.refundOfTransactionId != null && row.id === existing.refundOfTransactionId);
-  const refundLeftMinor = refundLink
-    ? refundLink.amountMinor + transactionsState.data
-      .filter((row) => row.refundOfTransactionId === refundLink.id && row.id !== existing?.id)
-      .reduce((sum, row) => sum + row.amountMinor, 0)
-    : 0;
-  const refundProblem = refundProblemOf(entry, refundLink, refundLeftMinor, refundOf != null);
+  const leftMinor = refundLink ? refundLeftMinor(refundLink, transactionsState.data, existing?.id) : 0;
+  const refundProblem = refundProblemOf(entry, refundLink, leftMinor, refundOf != null);
   const canSave = saveable != null && refundProblem == null;
   const cardStatementPreview = isCreditCardExpense && isValidCardCycle(cardCycle) && dateValid
     ? dateless ? statementPeriod(entry.monthKey, cardCycle) : statementForPurchase(entry.dateStr, cardCycle)
@@ -679,7 +667,7 @@ function useTransactionForm({ existing, refundOf, investmentRefund }: { existing
   return {
     existing, refundOf, isEdit, data, entry, patch, busy, save, canSave, chooseEntryType, userId,
     categories, sources, persons, personId, historicalRateTry, rate, isCreditCardExpense, cardCycleValid, looksLikeCardBill,
-    dateless, installmentValid, count, cardStatementPreview, refundLink, refundLeftMinor, refundProblem,
+    dateless, installmentValid, count, cardStatementPreview, refundLink, refundLeftMinor: leftMinor, refundProblem,
     tryMinor: previewTryMinor(entry.amountMinor, entry.isReversal, effectiveRateTry),
   };
 }
@@ -832,7 +820,7 @@ function AssignmentFields({ form }: { form: TransactionFormModel }) {
 function AmountCard({ form }: { form: TransactionFormModel }) {
   const { entry, patch } = form;
   // Only while the field is actually showing one. See `placeholders.ts`.
-  const amountPlaceholder = useRotatingPlaceholder(placeholderPools.amount, { active: entry.amountRaw.length === 0 });
+  const amountPlaceholder = useRotatingPlaceholder(tr.placeholders.amount, { active: entry.amountRaw.length === 0 });
   const transfer = entry.entryType === "transfer";
   return (
     <HeroCard>
@@ -929,7 +917,7 @@ function InstallmentFields({ form }: { form: TransactionFormModel }) {
 function CompletionFields({ form }: { form: TransactionFormModel }) {
   const { entry, existing } = form;
   const attachmentsState = useAttachmentsState();
-  const notePlaceholder = useRotatingPlaceholder(placeholderPools.note, { active: entry.note.length === 0 });
+  const notePlaceholder = useRotatingPlaceholder(tr.placeholders.note, { active: entry.note.length === 0 });
   return (
     <>
       <Divider />

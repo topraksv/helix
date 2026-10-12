@@ -3,7 +3,6 @@ import { deterministicId, naturalKeys, newId } from "../../db/ids";
 import { assertLiveRow, writeRows, writeRowsValidated, type RowWrite } from "../../db/mutations";
 import { assertInputWithinLimit } from "../../domain/input";
 import { suggestCategoryIcon } from "../../domain/category-icons";
-import type { TemplateCategory } from "./onboarding";
 import { assertInvestmentWrites } from "./investment-validation";
 
 type CategoryRow = typeof schema.categories.$inferSelect;
@@ -16,6 +15,38 @@ function validateCategory(input: Pick<CategoryRow, "name" | "kind" | "isTransfer
   if (input.kind === "income" && input.isTransfer) throw new Error("Income category cannot be a transfer");
 }
 
+export interface TemplateCategory {
+  name: string;
+  kind: "expense" | "income";
+  isColumn: boolean;
+  isTransfer?: boolean;
+  icon?: string;
+}
+
+export function categoryRow(
+  id: string,
+  category: {
+    name: string;
+    kind: "expense" | "income";
+    icon: string | null;
+    sortOrder: number;
+    isColumn: boolean;
+    isTransfer?: boolean;
+  },
+) {
+  return {
+    id,
+    name: category.name,
+    kind: category.kind,
+    icon: category.icon,
+    color: null,
+    sortOrder: category.sortOrder,
+    isColumn: category.isColumn,
+    isTransfer: category.kind === "expense" && category.isTransfer === true,
+    deletedAt: null,
+  };
+}
+
 export async function createCategory(
   userId: string,
   input: { name: string; kind: "expense" | "income"; isTransfer: boolean; sortOrder: number },
@@ -24,17 +55,14 @@ export async function createCategory(
   const id = newId();
   await writeRows(userId, [{
     table: "categories",
-    row: {
-      id,
+    row: categoryRow(id, {
       name: input.name.trim(),
       kind: input.kind,
       icon: suggestCategoryIcon(input.name, input.kind),
-      color: null,
       sortOrder: input.sortOrder,
       isColumn: true,
-      isTransfer: input.kind === "expense" && input.isTransfer,
-      deletedAt: null,
-    },
+      isTransfer: input.isTransfer,
+    }),
   }]);
   return id;
 }
@@ -57,27 +85,34 @@ export async function updateCategory(
   );
 }
 
-export async function reorderCategoryGroup(
+/** Hand the rows' existing sort slots to `orderedIds` in order; ids not among the rows are ignored. */
+export async function reorderRows<Row extends { id: string; sortOrder: number }>(
+  userId: string,
+  table: "categories" | "computed_columns",
+  rows: readonly Row[],
+  orderedIds: readonly string[],
+): Promise<void> {
+  const byId = new Map(rows.map((row) => [row.id, row]));
+  const slots = rows.map((row) => row.sortOrder);
+  const writes: RowWrite[] = orderedIds.flatMap((id, index) => {
+    const row = byId.get(id);
+    const sortOrder = slots[index];
+    return row && sortOrder != null ? [{ table, row: { ...row, sortOrder } }] : [];
+  });
+  if (writes.length > 0) {
+    await writeRowsValidated(userId, writes, async (sqlite) => {
+      await Promise.all(writes.map((write) => assertLiveRow(sqlite, table, userId, String(write.row.id))));
+    });
+  }
+}
+
+export function reorderCategoryGroup(
   userId: string,
   categories: CategoryRow[],
   kind: "expense" | "income",
   orderedIds: string[],
 ): Promise<void> {
-  const group = categories.filter((category) => category.kind === kind);
-  const slots = group.map((category) => category.sortOrder);
-  const byId = new Map(group.map((category) => [category.id, category]));
-  const writes = orderedIds.flatMap((id, index) => {
-    const category = byId.get(id);
-    const sortOrder = slots[index];
-    return category && sortOrder != null
-      ? [{ table: "categories" as const, row: { ...category, sortOrder } }]
-      : [];
-  });
-  if (writes.length > 0) {
-    await writeRowsValidated(userId, writes, async (sqlite) => {
-      await Promise.all(writes.map((write) => assertLiveRow(sqlite, "categories", userId, String(write.row.id))));
-    });
-  }
+  return reorderRows(userId, "categories", categories.filter((category) => category.kind === kind), orderedIds);
 }
 
 export async function addTemplateCategories(
@@ -87,17 +122,11 @@ export async function addTemplateCategories(
 ): Promise<void> {
   const writes: RowWrite[] = await Promise.all(templates.map(async (category, index) => ({
     table: "categories" as const,
-    row: {
-      id: await deterministicId(naturalKeys.seedCategory(userId, category.name)),
-      name: category.name,
-      kind: category.kind,
+    row: categoryRow(await deterministicId(naturalKeys.seedCategory(userId, category.name)), {
+      ...category,
       icon: category.icon ?? null,
-      color: null,
       sortOrder: sortOrderStart + index,
-      isColumn: category.isColumn,
-      isTransfer: category.kind === "expense" && category.isTransfer === true,
-      deletedAt: null,
-    },
+    }),
   })));
   if (writes.length > 0) await writeRows(userId, writes);
 }

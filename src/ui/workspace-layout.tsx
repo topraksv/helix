@@ -32,7 +32,6 @@ export function workspaceSplitShares(width: number): [number, number] | null {
 export function WorkspaceSplit({
   primary,
   secondary,
-  breakpoint = WORKSPACE_SPLIT.breakpoint,
   primaryWeight = WORKSPACE_SPLIT.primaryWeight,
   secondaryWeight = WORKSPACE_SPLIT.secondaryWeight,
   wideLayout = "split",
@@ -40,7 +39,6 @@ export function WorkspaceSplit({
 }: {
   primary: ReactNode;
   secondary: ReactNode;
-  breakpoint?: number;
   primaryWeight?: number;
   secondaryWeight?: number;
   /** Empty context panes can return their width to the active editor. */
@@ -48,7 +46,7 @@ export function WorkspaceSplit({
   testID?: string;
 }) {
   const width = useContentWidth();
-  const wide = width >= breakpoint && wideLayout === "split";
+  const wide = width >= WORKSPACE_SPLIT.breakpoint && wideLayout === "split";
   return (
     <View
       testID={testID}
@@ -80,33 +78,24 @@ export function WorkspaceSplit({
  */
 export function WorkspaceGrid({
   children,
-  breakpoint = 900,
   layout = "grid",
   masses,
   grow = true,
   testID,
 }: {
   children: ReactNode;
-  breakpoint?: number;
   /** Independent peers may share a desktop row; sequential work stays one stream. */
   layout?: "grid" | "stack";
   /** Relative content weight per child (row counts, usually). Extreme
    *  imbalance keeps the stream rather than pairing. */
   masses?: number[];
-  /**
-   * Whether a child may take the width its row has left over.
-   *
-   * True for cards, which are panels and should fill their row. False for a
-   * grid of identical controls: an odd last one grew to the full width and its
-   * amount box went with it, to the far edge of the page, out of the column
-   * every box above it stands in.
-   */
+  /** False for grids of identical controls, so an odd last one keeps the column width. */
   grow?: boolean;
   testID?: string;
 }) {
   const width = useContentWidth();
   const balanced = masses == null || shouldPairByMass(masses);
-  const wide = layout === "grid" && balanced && width >= breakpoint;
+  const wide = layout === "grid" && balanced && width >= WORKSPACE_SPLIT.breakpoint;
   return (
     <View
       testID={testID}

@@ -1,9 +1,4 @@
-/**
- * Computed columns: bounded, whitelisted calculation set (spec §1.6 — no
- * free-form formula engine). Redesigned as picture-book setup: pick a
- * calculation type card, choose categories, watch a live preview for the
- * current month, then save.
- */
+/** Computed columns: a bounded, whitelisted set (spec §1.6), no free-form formulas. */
 
 import { useMemo, useState, type ReactNode } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
@@ -18,11 +13,9 @@ import Trash from "lucide-react-native/icons/trash";
 import type { LucideIcon } from "lucide-react-native";
 import {
   settingValue,
-  useAllTransactionsState,
   useCategoriesState,
   useComputedColumnsState,
   useLedgerState,
-  usePersonsState,
   useSettingsMapState,
   useTxLike,
   useSourcesState,
@@ -31,14 +24,13 @@ import {
 import { combineLiveStates } from "../../../data/live-state";
 import { deleteComputedColumn, reorderComputedColumns, restoreComputedColumn, saveComputedColumn, setComputedColumnsHidden } from "../../../data/repo";
 import { creditCardSplit } from "../../../domain/analytics";
-import { monthColumnBasis } from "../../../domain/balance";
-import { evaluateComputedColumn, parseDefinition, type ComputedColumnDefinition } from "../../../domain/computed-columns";
+import { evaluateMonthColumn, parseDefinition, type ComputedColumnDefinition } from "../../../domain/computed-columns";
 import { monthKeyOf, todayISO, yearOf } from "../../../domain/dates";
 import { formatMinorCompact } from "../../../domain/money";
 import { scheduleSync } from "../../../sync/engine";
 import { tr } from "../../../i18n/tr";
 import { categoryIconComponent } from "../../../ui/category-icon";
-import { Amount, Body, Button, Card, ChipPicker, CardListSkeleton, DataGateScreen, DataStateNotice, Divider, EmptyState, FadeIn, Field, IconButton, Label, PanelHeader, Row, Screen, SelectionGrid, Spread, Toggle } from "../../../ui/components";
+import { Amount, Body, Button, Card, ChipPicker, CardListSkeleton, DataGateScreen, DataStateNotice, Divider, EmptyState, FadeIn, Field, IconButton, Label, PanelHeader, Row, Screen, SelectionGrid, Spread, ToggleRow } from "../../../ui/components";
 import { DraggableList, ReorderGrip } from "../../../ui/draggable-list";
 import { useUndo } from "../../../ui/undo";
 import { interactionSurface } from "../../../ui/interaction";
@@ -108,12 +100,7 @@ function CalculationFlow({
   );
 }
 
-
 export default function ComputedColumnsScreen({ header }: { header?: ReactNode } = {}) {
-  /**
-   * An undo that fails must say so — the snackbar dismisses on tap either way,
-   * so a swallowed rejection left the row deleted with no message.
-   */
   const userId = useUserId();
   const columnsState = useComputedColumnsState();
   const categoriesState = useCategoriesState();
@@ -125,8 +112,6 @@ export default function ComputedColumnsScreen({ header }: { header?: ReactNode }
   const today = todayISO();
   const ledgerState = useLedgerState(yearOf(today));
   const sourcesState = useSourcesState();
-  const transactionsState = useAllTransactionsState();
-  const personsState = usePersonsState();
   const settingsState = useSettingsMapState();
   const bundle = ledgerState.data;
   const sources = sourcesState.data;
@@ -168,7 +153,7 @@ export default function ComputedColumnsScreen({ header }: { header?: ReactNode }
     ? name.trim() !== editingColumn.name || JSON.stringify(definition) !== JSON.stringify(storedDefinition)
     : Boolean(name.trim() || plus.length || minus.length || op !== "sum" || ccPart !== "single");
   const { confirmDiscard } = useDirtyExitGuard(computedDraftDirty && !busy);
-  const { status: dataStatus, ready: dataReady, retry: retryData } = combineLiveStates([columnsState, categoriesState, ledgerState, sourcesState, transactionsState, personsState, settingsState]);
+  const { status: dataStatus, ready: dataReady, retry: retryData } = combineLiveStates([columnsState, categoriesState, ledgerState, sourcesState, settingsState]);
 
   // Live preview against the current month, so setup is never a guess. The
   // split scans the whole ledger, so it follows the definition and the data —
@@ -179,12 +164,7 @@ export default function ComputedColumnsScreen({ header }: { header?: ReactNode }
     try {
       const creditCardIds = new Set(sources.filter((source) => source.type === "credit_card").map((source) => source.id));
       const cc = creditCardSplit(txLike, creditCardIds, month.month, today);
-      return evaluateComputedColumn(definition, {
-        month: month.month,
-        ...monthColumnBasis(month),
-        ccSingleMinor: cc.singleMinor,
-        ccInstallmentMinor: cc.installmentMinor,
-      });
+      return evaluateMonthColumn(definition, month, cc);
     } catch {
       return null;
     }
@@ -206,12 +186,11 @@ export default function ComputedColumnsScreen({ header }: { header?: ReactNode }
     await operationGuard.run(async () => {
       setBusy(true);
       try {
-        const existing = editingId ? columns.find((c) => c.id === editingId) : null;
-        await saveComputedColumn(userId, {
+                await saveComputedColumn(userId, {
           id: editingId ?? undefined,
           name,
           definition: definition!,
-          sortOrder: existing?.sortOrder ?? columns.length,
+          sortOrder: editingColumn?.sortOrder ?? columns.length,
         });
         scheduleSync(userId);
         resetForm();
@@ -223,7 +202,6 @@ export default function ComputedColumnsScreen({ header }: { header?: ReactNode }
     });
   };
 
-  // Load an existing column back into the form for editing.
   const startEdit = (c: (typeof columns)[number]) => {
     confirmDiscard(() => {
       setEditingId(c.id);
@@ -245,7 +223,7 @@ export default function ComputedColumnsScreen({ header }: { header?: ReactNode }
       const snapshot = await deleteComputedColumn(userId, c.id);
       scheduleSync(userId);
       if (editingId === c.id) resetForm();
-      if (snapshot) undo.show(`${c.name} · ${tr.common.deleted}`, () => restoreComputedColumn(userId, snapshot), "warning");
+      if (snapshot) undo.show(`${c.name} · ${tr.common.deleted}`, () => restoreComputedColumn(userId, snapshot).then(() => scheduleSync(userId)), "warning");
     } catch {
       void appAlert(tr.errors.saveFailed, tr.errors.title);
     }
@@ -262,12 +240,8 @@ export default function ComputedColumnsScreen({ header }: { header?: ReactNode }
   };
 
   const applyOrder = async (orderedIds: string[]) => {
-    try {
-      await reorderComputedColumns(userId, columns, orderedIds);
-      scheduleSync(userId);
-    } catch {
-      void appAlert(tr.errors.saveFailed, tr.errors.title);
-    }
+    await reorderComputedColumns(userId, columns, orderedIds);
+    scheduleSync(userId);
   };
 
   const categoryChips = categories.map((c) => ({ value: c.id, label: c.name, icon: categoryIconComponent(c) }));
@@ -442,10 +416,7 @@ export default function ComputedColumnsScreen({ header }: { header?: ReactNode }
                             <IconButton icon={Trash} tone="danger" label={`${tr.common.delete} · ${column.name}`} haptic="none" onPress={() => void remove(column)} />
                           </Row>
                         </Spread>
-                        <Spread style={{ marginTop: spacing.xs }}>
-                          <Body muted style={{ fontSize: type.small.fontSize, flex: 1, paddingRight: spacing.sm }}>{tr.computed.showInTable}</Body>
-                          <Toggle label={`${column.name} · ${tr.computed.showInTable}`} value={visible} onValueChange={(value) => void toggleVisible(column.id, value)} />
-                        </Spread>
+                        <ToggleRow name={column.name} text={tr.computed.showInTable} value={visible} onValueChange={(value) => void toggleVisible(column.id, value)} />
                       </View>
                       {index < columns.length - 1 ? <Divider flush /> : null}
                     </View>

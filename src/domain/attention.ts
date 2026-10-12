@@ -25,7 +25,8 @@ const ATTENTION_KINDS = ["late", "dueToday", "trialEnding", "driftedBalance", "f
 type AttentionKind = (typeof ATTENTION_KINDS)[number];
 
 /** Where an item sits in the inbox. One group per decision the owner makes. */
-export type AttentionGroup = "overdue" | "today" | "soon" | "watch";
+const ATTENTION_GROUPS = ["overdue", "today", "soon", "watch"] as const;
+type AttentionGroup = (typeof ATTENTION_GROUPS)[number];
 
 export interface AttentionItem {
   /**
@@ -118,9 +119,6 @@ function groupFor(kind: AttentionKind, date: ISODate, today: ISODate): Attention
   return days <= 7 ? "soon" : "watch";
 }
 
-const KIND_ORDER = new Map(ATTENTION_KINDS.map((kind, index) => [kind, index]));
-const GROUP_ORDER: Record<AttentionGroup, number> = { overdue: 0, today: 1, soon: 2, watch: 3 };
-
 /**
  * Turn candidates into the inbox, applying what the owner already decided.
  *
@@ -155,25 +153,18 @@ export function buildAttentionInbox(
       }];
     })
     .sort((a, b) =>
-      GROUP_ORDER[a.group] - GROUP_ORDER[b.group]
+      ATTENTION_GROUPS.indexOf(a.group) - ATTENTION_GROUPS.indexOf(b.group)
       || a.date.localeCompare(b.date)
-      || (KIND_ORDER.get(a.kind) ?? 0) - (KIND_ORDER.get(b.kind) ?? 0)
+      || ATTENTION_KINDS.indexOf(a.kind) - ATTENTION_KINDS.indexOf(b.kind)
       || a.id.localeCompare(b.id));
 }
 
 /** Items per group, in group order, skipping groups with nothing in them. */
 export function groupAttention(items: readonly AttentionItem[]): { group: AttentionGroup; items: AttentionItem[] }[] {
-  const byGroup = new Map<AttentionGroup, AttentionItem[]>();
-  for (const item of items) {
-    const bucket = byGroup.get(item.group);
-    if (bucket) bucket.push(item);
-    else byGroup.set(item.group, [item]);
-  }
-  return (["overdue", "today", "soon", "watch"] as const)
-    .flatMap((group) => {
-      const bucket = byGroup.get(group);
-      return bucket && bucket.length > 0 ? [{ group, items: bucket }] : [];
-    });
+  return ATTENTION_GROUPS.flatMap((group) => {
+    const bucket = items.filter((item) => item.group === group);
+    return bucket.length > 0 ? [{ group, items: bucket }] : [];
+  });
 }
 
 /** How many items are still unread — the only number the tab bar needs. */

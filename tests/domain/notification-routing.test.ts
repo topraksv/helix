@@ -7,12 +7,15 @@
  */
 import { describe, expect, it } from "vitest";
 import {
+  createNotificationReplacementQueue,
+  normalizeReminderDays,
   notificationRoute,
   notificationTapRoute,
+  type NotificationTarget,
   notificationTargetPayload,
   privateNotificationTarget,
   readNotificationTarget,
-  type NotificationTarget,
+  uniqueNotifications,
 } from "../../src/domain/notifications";
 
 const SUBSCRIPTION: NotificationTarget = { kind: "subscription", id: "sub-42" };
@@ -80,5 +83,33 @@ describe("notification tap targets", () => {
     expect(serialized).toBe('{"helixTarget":{"kind":"subscription","id":"sub-42"}}');
     expect(Object.keys(readNotificationTarget(notificationTargetPayload(PLAN)) ?? {}).sort())
       .toEqual(["id", "kind"]);
+  });
+
+  it("keeps the notification queue live after a failed replacement", async () => {
+    const replace = createNotificationReplacementQueue();
+    await expect(replace(async () => { throw new Error("first failed"); })).rejects.toThrow("first failed");
+    await expect(replace(async () => "second ran")).resolves.toBe("second ran");
+  });
+});
+
+describe("reminder normalisation and de-duplication", () => {
+  it("normalizes reminders only for finite integers and de-duplicates by every content field", () => {
+    expect(normalizeReminderDays(0, 30)).toBe(0);
+    expect(normalizeReminderDays(30, 30)).toBe(30);
+    expect(normalizeReminderDays(Number.NaN, 30)).toBe(3);
+    expect(normalizeReminderDays(1.5, 30)).toBe(3);
+    expect(normalizeReminderDays("1", 30)).toBe(3);
+    expect(uniqueNotifications([
+      { date: "d", title: "t", body: "b" },
+      { date: "d", title: "t", body: "b" },
+      { date: "d2", title: "t", body: "b" },
+      { date: "d", title: "t2", body: "b" },
+      { date: "d", title: "t", body: "b2" },
+    ])).toEqual([
+      { date: "d", title: "t", body: "b" },
+      { date: "d2", title: "t", body: "b" },
+      { date: "d", title: "t2", body: "b" },
+      { date: "d", title: "t", body: "b2" },
+    ]);
   });
 });

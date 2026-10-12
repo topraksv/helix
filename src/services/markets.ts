@@ -1,21 +1,4 @@
-/**
- * Live gold and currency prices, derived from public exchange order books.
- *
- * No API key, no account, no scraping: one keyless request to the exchange's
- * public market-data host returns three order books, and `domain/market.ts`
- * turns them into the six prices the card shows. See that file for why the
- * prices are computed rather than read, and what was measured against the
- * dealer feed this replaced.
- *
- * Polled rather than streamed. The dealer socket pushed on every tick and the
- * service spent most of its length taming that — a three-second throttle with a
- * trailing edge, a merge buffer for payloads it had deferred, and a rule for
- * re-stamping symbols that had stopped ticking because their price had not
- * moved. A poll has none of those problems: every response carries every
- * symbol, so there is nothing to merge, nothing to defer and nothing to
- * re-stamp. The UI keeps an explicit unavailable state instead of silently
- * hiding the feed.
- */
+// Live gold and currency prices, derived from public exchange order books and polled, not streamed.
 
 import { create } from "zustand";
 import {
@@ -38,13 +21,7 @@ import { kv } from "./kv";
 import { getSupabase } from "../sync/supabase";
 import { MARKET_SYMBOLS } from "../domain/investment-catalog";
 
-/**
- * How often the books are re-read.
- *
- * Six requests a minute against an endpoint whose published budget is in the
- * thousands, for 372 bytes a time. Well inside the staleness deadline below, so
- * a single dropped response never ages a quote out of the conversion contract.
- */
+// Polled every 10 s; well inside the staleness deadline, so one dropped response never ages a quote out.
 const POLL_MS = 10_000;
 const MARKET_STALE_MS = 60_000;
 const LIFECYCLE_GRACE_MS = 5000;
@@ -137,8 +114,7 @@ function markStaleAfterSilence(): void {
   if (staleTimer) clearTimeout(staleTimer);
   staleTimer = setTimeout(() => {
     staleTimer = null;
-    // Keep showing the last-known quotes with their timestamp; only the
-    // conversion path (per-quote `receivedAt`) treats them as expired.
+    // After a silence, quotes stay on screen marked stale or error; nothing is dropped.
     const hasData = Object.keys(useMarkets.getState().prices).length > 0;
     useMarkets.setState({ status: hasData ? "stale" : "error" });
   }, MARKET_STALE_MS);
@@ -153,10 +129,7 @@ function markStaleAfterSilence(): void {
  * stale quotes are still removed after one minute.
  */
 export function markMarketConnectionInterrupted(): void {
-  // Written only when it actually changes. A socket reported an interruption
-  // once, per disconnection; the poll reports one every ten seconds for as long
-  // as the network is away, and an unconditional `setState` re-rendered the
-  // whole markets card on each of them to say exactly what it already said.
+  // Written only on change: the poll reports every ten seconds, and each setState re-renders the card.
   const { prices, status } = useMarkets.getState();
   if (Object.keys(prices).length === 0) {
     if (status !== "error") useMarkets.setState({ status: "error" });
@@ -202,26 +175,17 @@ export function applyQuotes(quotes: readonly DerivedQuote[], now = Date.now()): 
   persistSnapshot(prices, now);
 }
 
-/** Read the books once. Exported for tests and for the manual retry. */
+/** Direct first, then the proxy; throws when neither answers. */
+async function marketJson(url: string, signal: AbortSignal, proxyBody: Record<string, string | number>): Promise<unknown> {
+  const direct = await fetch(url, { signal })
+    .then((response) => (response.ok ? response.json() : null))
+    .catch(() => null);
+  const payload = direct ?? await viaProxy(proxyBody);
+  if (!payload) throw new Error("unreachable");
+  return payload;
+}
 
-/**
- * The same public request, made from Supabase instead of from this device.
- *
- * `data-api.binance.vision` does not resolve on some networks — reported on two
- * devices and two connections while the identical requests succeeded from
- * elsewhere — and a client cannot route around a name that does not resolve.
- * `supabase/functions/market-proxy` can, because it runs somewhere else.
- *
- * Used ONLY after a direct request has already failed, so a device that can
- * reach the source never pays for the hop and the function costs nothing for
- * almost everyone. If the function is not deployed, or the workspace has no
- * Supabase at all, this returns null and the caller fails exactly as it did
- * before: the fallback can never be worse than no fallback.
- *
- * `functions.invoke` rather than a hand-built URL, so the project's origin and
- * the session token stay the SDK's business — the same reason `feedback.ts`
- * uses it.
- */
+/** Through `supabase/functions/market-proxy`, for networks where the source host does not resolve; null when absent. */
 async function viaProxy(body: Record<string, string | number>): Promise<unknown | null> {
   const supabase = getSupabase();
   if (!supabase) return null;
@@ -233,16 +197,13 @@ async function viaProxy(body: Record<string, string | number>): Promise<unknown 
   }
 }
 
+/** Read the books once. Exported for tests and for the manual retry. */
 export async function pollMarkets(): Promise<void> {
   const attempt = generation;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   try {
-    const direct = await fetch(MARKET_TICKER_URL, { signal: controller.signal })
-      .then((response) => (response.ok ? response.json() : null))
-      .catch(() => null);
-    const payload = direct ?? await viaProxy({ kind: "ticker" });
-    if (!payload) throw new Error("unreachable");
+    const payload = await marketJson(MARKET_TICKER_URL, controller.signal, { kind: "ticker" });
     const books = parseMarketBooks(payload);
     // A response that arrived after a teardown or a restart belongs to a feed
     // that no longer exists; applying it would resurrect a disconnected card.
@@ -383,11 +344,12 @@ export async function fetchMarketHistory(
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   try {
     const closes = await Promise.all(source.symbols.map(async (symbol) => {
-      const direct = await fetch(marketKlineUrl(symbol, spec.interval, spec.limit), {
-        signal: controller.signal,
-      }).then((response) => (response.ok ? response.json() : null)).catch(() => null);
-      const payload = direct ?? await viaProxy({ kind: "klines", symbol, interval: spec.interval, limit: spec.limit });
-      if (!payload) throw new Error("unreachable");
+      const payload = await marketJson(marketKlineUrl(symbol, spec.interval, spec.limit), controller.signal, {
+        kind: "klines",
+        symbol,
+        interval: spec.interval,
+        limit: spec.limit,
+      });
       return parseKlineCloses(payload);
     }));
     const usable = closes.filter((series): series is Map<number, number> => series !== null);

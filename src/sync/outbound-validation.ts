@@ -1,5 +1,6 @@
+import { getTableColumns } from "drizzle-orm";
 import { parseDefinition } from "../domain/computed-columns";
-import type { SyncedTableName } from "../db/schema";
+import { SYNCED_TABLES, type SyncedTableName } from "../db/schema";
 import { isValidImportRow } from "../services/backup-validation";
 import {
   classifyOutboxBatch,
@@ -22,6 +23,22 @@ interface OutboundPolicy {
    * left out and the server keeps its own (`src/db/schema.ts` `UNPULLED`).
    */
   unpulled?: ReadonlyMap<string, unknown>;
+}
+
+const POLICIES = new Map<SyncedTableName, OutboundPolicy>();
+
+/** The columns and booleans of `table` in this build's schema; the push and a dead letter's retry judge by the same sets. */
+export function outboundPolicy(table: SyncedTableName): OutboundPolicy {
+  let policy = POLICIES.get(table);
+  if (!policy) {
+    const columns = Object.values(getTableColumns(SYNCED_TABLES[table]));
+    policy = {
+      allowedColumns: new Set(columns.map((column) => column.name)),
+      booleanColumns: new Set(columns.filter((column) => column.columnType === "SQLiteBoolean").map((column) => column.name)),
+    };
+    POLICIES.set(table, policy);
+  }
+  return policy;
 }
 
 function finiteNumeric(value: unknown): number | null {
@@ -55,13 +72,8 @@ export function convertOutboundRow(
   if (!isValidImportRow(table, out, { enforceInputLimits: true })) {
     return { ok: false, reason: "invalid_row" };
   }
-  // SQLite stores booleans as 0/1 and PostgREST wants real booleans, so this
-  // COERCES rather than validates. It does not re-check the value because it
-  // cannot fail: `isValidImportRow` above refuses any `SQLiteBoolean` column
-  // that is not 0, 1 or a boolean, and `booleanColumnsOf` derives this set from
-  // the same `getTableColumns` source. The old rejection branch was therefore
-  // unreachable, which is exactly why no test ever covered it; the property
-  // that makes removing it safe is pinned in `tests/sync/sync-outbound.test.ts`.
+  // PostgREST wants real booleans. No re-check: `isValidImportRow` above already
+  // refuses a boolean column that is not 0, 1 or a boolean.
   for (const column of policy.booleanColumns) {
     if (column in out && out[column] !== null) out[column] = Boolean(out[column]);
   }
@@ -88,9 +100,6 @@ export function convertOutboundRow(
     if (rate == null || rate <= 0) return { ok: false, reason: "invalid_row" };
     out.rate_try = rate;
   }
-  // Nothing `isValidImportRow` already refuses is re-checked here. It runs
-  // above and is now strictly stronger on every table this pushes, including
-  // the negative cost basis that used to be this function's one exception.
   return { ok: true, row: out };
 }
 

@@ -34,12 +34,7 @@ vi.mock("../../src/db/mutations", () => ({
   fromDbShape: (_table: string, row: Record<string, unknown>) => row,
   writeRowBatchesAtomically: dependencies.writeRowBatchesAtomically,
 }));
-// `importBundle` now runs every bundle through the cross-account id remap
-// (`backup-remap.ts`), which calls the real `deterministicId`/`naturalKeys`
-// from `../src/db/ids` — previously unreachable from this test because
-// `../src/db/mutations` (the only other importer) was fully mocked above.
-// Mirrors the mock in `backup-round-trip.test.ts`: a real SHA-256 mirror of
-// `deterministicId` so a genuinely-deterministic fixture id round-trips.
+// A real SHA-256 deterministicId, so deterministic fixture ids round-trip through the remap.
 vi.mock("../../src/db/ids", () => ({
   deterministicId: async (naturalKey: string) => {
     const hex = createHash("sha256").update(naturalKey).digest("hex");
@@ -54,7 +49,8 @@ vi.mock("../../src/db/ids", () => ({
   }),
 }));
 
-import { importBundle, saveFile } from "../../src/services/export-import";
+import { SYNCED_TABLES } from "../../src/db/schema";
+import { buildExportText, buildWorkbookBytes, importBundle, saveFile } from "../../src/services/export-import";
 
 // A backup restores into the account that wrote it — a bundle from another
 // account is refused outright (see backup-round-trip.test.ts), so these
@@ -290,14 +286,16 @@ describe("what a restore writes", () => {
   });
 
   it("decides the transfer flag of a category written before it existed", async () => {
-    const [moved, invest, income, declared] = [31, 32, 33, 34].map((n) => `00000000-0000-4000-8000-0000000000${n}`);
+    const [moved, invest, income, declared, market] = [31, 32, 33, 34, 35].map((n) => `00000000-0000-4000-8000-0000000000${n}`);
     await importBundle(targetUserId, bundle({
       categories: [
         category(moved!, { name: "Birikim" }),
         category(invest!, { name: "YATIRIM hesabı" }),
         category(income!, { name: "Yatırım geliri", kind: "income" }),
         category(declared!, { name: "Yatırım", is_transfer: 0 }),
+        category(market!, { name: "Market" }),
       ],
+      settings: [setting(0)],
       persons: [{ id: "00000000-0000-4000-8000-000000000040", user_id: targetUserId, created_at: timestamp, updated_at: timestamp,
         deleted_at: null, tombstone_version: 0, name: "Ben", is_self: 1 }],
       transactions: [{
@@ -306,11 +304,22 @@ describe("what a restore writes", () => {
         amount_try_minor: 1_000, entry_date: "2026-07-15", purchase_date: null, effective_date: "2026-07-15",
         status: "realized", category_id: moved, payment_source_id: null, person_id: "00000000-0000-4000-8000-000000000040",
         installment_plan_id: null, installment_no: null, card_statement_id: null, subscription_id: null, is_aggregate: 0, note: null,
+      }, {
+        // An expense says nothing about its category being a transfer.
+        id: "00000000-0000-4000-8000-000000000042", user_id: targetUserId, created_at: timestamp, updated_at: timestamp,
+        deleted_at: null, tombstone_version: 0, type: "expense", amount_minor: 1_000, currency: "TRY", fx_rate: null,
+        amount_try_minor: 1_000, entry_date: "2026-07-15", purchase_date: null, effective_date: "2026-07-15",
+        status: "realized", category_id: market, payment_source_id: null, person_id: "00000000-0000-4000-8000-000000000040",
+        installment_plan_id: null, installment_no: null, card_statement_id: null, subscription_id: null, is_aggregate: 0, note: null,
       }],
     }));
 
+    // The category and colour rules touch their own tables only.
+    const written = batches.flat().find((row) => row.id === setting(0).id)!;
+    expect(written).not.toHaveProperty("isTransfer");
+    expect(written).not.toHaveProperty("token");
     const flags = Object.fromEntries(batches.flat().filter((row) => "kind" in row).map((row) => [row.id, row.isTransfer ?? row.is_transfer]));
-    expect(flags).toEqual({ [moved!]: true, [invest!]: true, [income!]: false, [declared!]: 0 });
+    expect(flags).toEqual({ [moved!]: true, [invest!]: true, [income!]: false, [declared!]: 0, [market!]: false });
   });
 
   it("passes on a failure that is not about the investment wallet unchanged", async () => {
@@ -356,6 +365,7 @@ describe("handing a file to the platform", () => {
     ]);
     expect(anchor).toEqual(expect.objectContaining({ href: "blob:helix", download: "helix.xlsx" }));
     expect(anchor.click).toHaveBeenCalledTimes(2);
+    expect(document.createElement).toHaveBeenCalledWith("a");
     expect(revoke).toHaveBeenCalledWith("blob:helix");
     expect(dependencies.files).toEqual([]);
   });
@@ -374,3 +384,35 @@ describe("handing a file to the platform", () => {
   });
 });
 
+describe("building what leaves the device", () => {
+  const userId = targetUserId;
+  beforeEach(() => {
+    dependencies.getAllAsync.mockReset().mockResolvedValue([]);
+  });
+
+  it("asks nothing of the database once the owner has cancelled", async () => {
+    const controller = new AbortController();
+    controller.abort(new Error("cancelled"));
+    await expect(buildExportText(userId, controller.signal)).rejects.toThrow("cancelled");
+    await expect(buildWorkbookBytes(userId, controller.signal)).rejects.toThrow("cancelled");
+    expect(dependencies.getAllAsync).not.toHaveBeenCalled();
+  });
+
+  it("stops after the last table's read when the cancel lands during it", async () => {
+    const controller = new AbortController();
+    const last = Object.keys(SYNCED_TABLES).at(-1)!;
+    dependencies.getAllAsync.mockImplementation(async (sql: string) => {
+      if (sql.includes(`FROM ${last} `)) controller.abort(new Error("cancelled"));
+      return [];
+    });
+    await expect(buildExportText(userId, controller.signal)).rejects.toThrow("cancelled");
+  });
+
+  it("reads only the owner's rows for every sheet", async () => {
+    await buildWorkbookBytes(userId);
+    for (const [sql, params] of dependencies.getAllAsync.mock.calls as [string, unknown[]][]) {
+      expect(params.at(-1), sql.slice(0, 40)).toBe(userId);
+    }
+    expect(dependencies.getAllAsync).toHaveBeenCalledTimes(4);
+  });
+});

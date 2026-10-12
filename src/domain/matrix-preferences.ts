@@ -5,18 +5,9 @@ export function resolveMatrixMode(value: string | null): MatrixMode {
 }
 
 /**
- * The two balance columns are the owner's, not the app's.
- *
- * Every other column in the Mali Tablo is something the owner named. These two
- * were not: "Ay Başı" and "Güncel Bakiye" were fixed, and a workbook that
- * called them "Ay Sonu" and "Toplam" — or did not carry a month-opening figure
- * at all — had no way to say so. A reset cannot remove them either, because
- * they are structure rather than entries, which is what made a cleared
- * workspace still look as though it were holding something.
- *
- * Stored as ONE value rather than three keys: the labels and the visibility
- * are one decision, made on one card, and splitting them would let a device
- * sync half of it.
+ * The two balance columns are the owner's to name, like every other Mali Tablo
+ * column. Stored as ONE value, not three keys: the labels and the visibility
+ * are one decision, and splitting them would let a device sync half of it.
  */
 export interface StoredBalanceColumns {
   /** null means "use the app's own name". */
@@ -45,13 +36,7 @@ export function parseBalanceColumns(value: unknown): StoredBalanceColumns | null
   return { openingLabel, closingLabel, showOpening: record.showOpening };
 }
 
-/**
- * The heading to draw, given what was stored and what the app calls it.
- *
- * A stored name of only spaces is not a name; it falls back rather than
- * printing a blank column header nobody can identify.
- */
+/** The heading to draw: a stored name of only spaces is not a name and falls back. */
 export function balanceColumnLabel(stored: string | null | undefined, fallback: string): string {
-  const trimmed = stored?.trim() ?? "";
-  return trimmed === "" ? fallback : trimmed;
+  return stored?.trim() || fallback;
 }

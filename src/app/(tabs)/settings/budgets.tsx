@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { View } from "react-native";
 import Pencil from "lucide-react-native/icons/pencil";
 import Target from "lucide-react-native/icons/target";
@@ -24,26 +24,23 @@ function BudgetMeter({ spentMinor, limitMinor }: { spentMinor: number; limitMino
   const { palette } = useTheme();
   const ratio = Math.max(0, limitMinor > 0 ? spentMinor / limitMinor : 0);
   const over = spentMinor > limitMinor;
+  const progress = tr.budgets.progress(formatMinorCompact(spentMinor), formatMinorCompact(limitMinor));
   return (
     <View
       accessible
       accessibilityRole="image"
-      accessibilityLabel={tr.budgets.progress(formatMinorCompact(spentMinor), formatMinorCompact(limitMinor))}
+      accessibilityLabel={progress}
       style={{ marginBottom: spacing.lg }}
     >
       <SegmentBar ratio={ratio} tone={over ? palette.negative : palette.positive} />
       <Body muted style={{ fontSize: type.caption.fontSize, textAlign: "center", marginTop: spacing.sm }}>
-        {tr.budgets.progress(formatMinorCompact(spentMinor), formatMinorCompact(limitMinor))}
+        {progress}
       </Body>
     </View>
   );
 }
 
 export default function BudgetsScreen() {
-  /**
-   * An undo that fails must say so — the snackbar dismisses on tap either way,
-   * so a swallowed rejection left the row deleted with no message.
-   */
   const userId = useUserId();
   const categoriesState = useCategoriesState();
   const budgetsState = useCategoryBudgetsState();
@@ -72,7 +69,7 @@ export default function BudgetsScreen() {
   const monthBudgets = budgets.filter((budget) => budget.month === month);
   const categoryId = categoryChoice ?? expenseCategories.find((category) => !monthBudgets.some((budget) => budget.categoryId === category.id))?.id ?? null;
   const editing = categoryChoice ? monthBudgets.find((budget) => budget.categoryId === categoryChoice) : null;
-  const progress = useMemo(() => budgetProgress(monthBudgets, txLike, month, todayISO()), [monthBudgets, txLike, month]);
+  const progress = budgetProgress(monthBudgets, txLike, month, todayISO());
   const progressById = new Map(progress.map((row) => [row.id, row]));
   const editingProgress = editing ? progressById.get(editing.id) : null;
   const categoryById = new Map(categories.map((category) => [category.id, category]));
@@ -91,17 +88,21 @@ export default function BudgetsScreen() {
       setMonth(next);
     });
   };
+  const loadAmount = (minor: number | null) => {
+    const loaded = minor == null ? "" : formatMinorInput(minor);
+    setAmountRaw(loaded);
+    setLoadedAmountRaw(loaded);
+    setAmountMinor(minor);
+  };
   const startEdit = (budget: (typeof budgets)[number]) => {
     confirmDiscard(() => {
-      const loaded = formatMinorInput(budget.amountMinor);
       setCategoryChoice(budget.categoryId);
-      setAmountRaw(loaded);
-      setLoadedAmountRaw(loaded);
-      setAmountMinor(budget.amountMinor);
+      loadAmount(budget.amountMinor);
     });
   };
+  const canSave = !!categoryId && amountMinor != null && amountMinor > 0;
   const save = async () => {
-    if (!categoryId || amountMinor == null || amountMinor <= 0) return;
+    if (!canSave) return;
     await guard.run(async () => {
       setBusy(true);
       try {
@@ -153,11 +154,7 @@ export default function BudgetsScreen() {
           placeholder={tr.budgets.pickCategory}
           onChange={(value) => confirmDiscard(() => {
             setCategoryChoice(value);
-            const existing = monthBudgets.find((budget) => budget.categoryId === value);
-            const loaded = existing ? formatMinorInput(existing.amountMinor) : "";
-            setAmountRaw(loaded);
-            setLoadedAmountRaw(loaded);
-            setAmountMinor(existing?.amountMinor ?? null);
+            loadAmount(monthBudgets.find((budget) => budget.categoryId === value)?.amountMinor ?? null);
           })}
         />
         <MoneyField
@@ -170,7 +167,7 @@ export default function BudgetsScreen() {
         />
         <Row>
           <View style={{ flex: 1 }}>
-            <Button label={editing ? tr.common.save : tr.budgets.add} onPress={() => void save()} disabled={!categoryId || amountMinor == null || amountMinor <= 0 || busy} loading={busy} />
+            <Button label={editing ? tr.common.save : tr.budgets.add} onPress={() => void save()} disabled={!canSave || busy} loading={busy} />
           </View>
           {editing ? <Button label={tr.common.cancel} variant="ghost" onPress={reset} /> : null}
         </Row>

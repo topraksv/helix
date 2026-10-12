@@ -10,6 +10,14 @@ import { selectionTapIfChanged } from "../../ui/haptics";
 import { TabBar } from "../../ui/tab-bar";
 import { useTheme } from "../../ui/theme";
 
+const TAB_SCREENS = [
+  { name: "index", label: tr.tabs.dashboard, Icon: ChartPie, popToTopOnBlur: undefined },
+  { name: "cash-flow", label: tr.tabs.cashflow, Icon: WalletCards, popToTopOnBlur: true },
+  { name: "subscriptions", label: tr.tabs.subscriptions, Icon: RefreshCw, popToTopOnBlur: undefined },
+  { name: "investments", label: tr.tabs.investments, Icon: Landmark, popToTopOnBlur: undefined },
+  { name: "settings", label: tr.tabs.settings, Icon: Settings, popToTopOnBlur: true },
+];
+
 export default function TabsLayout() {
   const reducedMotion = useReducedMotion();
   const { palette } = useTheme();
@@ -31,10 +39,7 @@ export default function TabsLayout() {
         // A tab change is a change of place; a hard cut reads as a repaint.
         // `fade`, not `shift`: the tabs are peers, not a sequence. On native it
         // relies on expo/expo#49778, applied by `scripts/patch-dependencies.mjs`.
-        //
-        // The navigator does not consult `AccessibilityInfo`, so this was the
-        // one motion in the app that Reduce Motion never reached — every other
-        // family short-circuits through `useReducedMotion`. Measured 2026-09-20.
+        // The navigator ignores Reduce Motion, so it is applied here.
         animation: reducedMotion ? "none" : "fade",
         // A keyboard is an editing state, not navigation. Hiding the floating
         // bar gives the active field room and avoids a second opaque strip
@@ -48,53 +53,18 @@ export default function TabsLayout() {
         sceneStyle: { backgroundColor: palette.background },
       }}
     >
-      <Tabs.Screen
-        name="index"
-        options={{
-          title: tr.tabs.dashboard,
-          tabBarLabel: tr.tabBar.dashboard,
-          tabBarAccessibilityLabel: tr.tabs.dashboard,
-          tabBarIcon: ({ color, size }) => <ChartPie color={color} size={size - 2} strokeWidth={2} />,
-        }}
-      />
-      <Tabs.Screen
-        name="cash-flow"
-        options={{
-          title: tr.tabs.cashflow,
-          tabBarLabel: tr.tabBar.cashflow,
-          tabBarAccessibilityLabel: tr.tabs.cashflow,
-          popToTopOnBlur: true,
-          tabBarIcon: ({ color, size }) => <WalletCards color={color} size={size - 2} strokeWidth={2} />,
-        }}
-      />
-      <Tabs.Screen
-        name="subscriptions"
-        options={{
-          title: tr.tabs.subscriptions,
-          tabBarLabel: tr.tabBar.subscriptions,
-          tabBarAccessibilityLabel: tr.tabs.subscriptions,
-          tabBarIcon: ({ color, size }) => <RefreshCw color={color} size={size - 2} strokeWidth={2} />,
-        }}
-      />
-      <Tabs.Screen
-        name="investments"
-        options={{
-          title: tr.tabs.investments,
-          tabBarLabel: tr.tabBar.investments,
-          tabBarAccessibilityLabel: tr.tabs.investments,
-          tabBarIcon: ({ color, size }) => <Landmark color={color} size={size - 2} strokeWidth={2} />,
-        }}
-      />
-      <Tabs.Screen
-        name="settings"
-        options={{
-          title: tr.tabs.settings,
-          tabBarLabel: tr.tabBar.settings,
-          tabBarAccessibilityLabel: tr.tabs.settings,
-          popToTopOnBlur: true,
-          tabBarIcon: ({ color, size }) => <Settings color={color} size={size - 2} strokeWidth={2} />,
-        }}
-      />
+      {TAB_SCREENS.map(({ name, label, Icon, popToTopOnBlur }) => (
+        <Tabs.Screen
+          key={name}
+          name={name}
+          options={{
+            title: label,
+            tabBarAccessibilityLabel: label,
+            popToTopOnBlur,
+            tabBarIcon: ({ color, size }) => <Icon color={color} size={size - 2} strokeWidth={2} />,
+          }}
+        />
+      ))}
     </Tabs>
   );
 }

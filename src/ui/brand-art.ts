@@ -1,6 +1,4 @@
-// Generated from the Claude Design kit's animation artifact (2026-09-28);
-// coordinates rounded to a tenth of a unit, which is a hundredth of a point at
-// any size the app draws. Regenerate from the kit, never by hand.
+// Generated from the Claude Design kit's animation artifact; coordinates rounded to a tenth of a unit. Regenerate from the kit, never by hand.
 
 export const VIEW_BOX = "23.54 24.86 468.6 611.38";
 
@@ -28,7 +26,7 @@ export const RUNG_DRAW: readonly Stroke[] = [
 /** The left vine is drawn from strand B, the right one from strand A. */
 export const VINE_DRAW: readonly Stroke[] = [{ d: "M152 345C151 346.2 149.7 346.2 146 352C142.3 357.8 136.8 371.2 130 380C123.2 388.8 113.3 398 105 405C96.7 412 88.3 416.8 80 422C71.7 427.2 59.2 433.7 55 436", width: 44, length: 136 }, { d: "M352 335C353.7 332.2 357 326.3 362 318C367 309.7 374 294.3 382 285C390 275.7 400.3 268.5 410 262C419.7 255.5 431.3 250 440 246C448.7 242 458.3 239.3 462 238", width: 44, length: 152 }];
 
-export type Leaf = { d: string; fill: "clay" | "sage"; pivot: readonly [number, number]; turn: 1 | -1 };
+type Leaf = { d: string; fill: "clay" | "sage"; pivot: readonly [number, number]; turn: 1 | -1 };
 
 /** In the order they open; `turn` is the side they swing in from. */
 export const LEAVES: readonly Leaf[] = [

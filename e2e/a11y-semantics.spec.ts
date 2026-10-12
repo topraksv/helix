@@ -1,20 +1,8 @@
-/**
- * Rendered accessibility semantics.
- *
- * These properties used to be "verified" by `tests/ui/accessibility-contract.test.ts`,
- * which read `src/ui/components.tsx` as TEXT and asserted `toContain(...)` on the
- * prop names. That passes when the string sits in a comment and fails when a prop
- * is renamed, and it never proves the attribute reached an element — the whole
- * point of an accessibility contract. Each assertion below drives the real DOM
- * that React Native Web produces, so a prop that is applied to the wrong node,
- * dropped by a refactor, or shadowed by a spread is caught.
- *
- * Only genuinely STATIC invariants (no truncation props, no font-scaling opt-out)
- * stay in the vitest file, where they belong.
- */
+// Drives the real DOM React Native Web produces: a vitest file that reads `src/ui/components.tsx`
+// as text passes on a comment and never proves the attribute reached an element.
+// Only static invariants (no truncation props, no font-scaling opt-out) stay there.
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import {
-  assertNoRuntimeErrors,
   collectRuntimeErrors,
   isolateExternalData,
   onboard,
@@ -43,7 +31,7 @@ async function expectKeyboardFocusVisible(page: Page, target: Locator): Promise<
   expect(focus.outlineWidth, "keyboard focus outline must have measurable width").toBeGreaterThan(0);
 }
 
-test("canonical interactive primitives retain visible keyboard focus @cross-browser", async ({ page }, testInfo) => {
+test("canonical interactive primitives retain visible keyboard focus @cross-browser", async ({ page }) => {
   const errors = collectRuntimeErrors(page);
   await onboard(page);
 
@@ -63,19 +51,17 @@ test("canonical interactive primitives retain visible keyboard focus @cross-brow
   await page.getByRole("radio", { name: "Yatırım", exact: true }).click();
   await expect(page.getByRole("switch", { name: "Gider iadesi" })).toHaveCount(0);
 
-  await assertNoRuntimeErrors(errors, testInfo);
+  expect(errors).toEqual([]);
 });
 
-test("form fields expose a programmatic label and announce their errors @cross-browser", async ({ page }, testInfo) => {
+test("form fields expose a programmatic label and announce their errors @cross-browser", async ({ page }) => {
   const errors = collectRuntimeErrors(page);
   await onboard(page);
   await page.goto("/helix/transaction");
   await expect(page.getByRole("heading", { name: "Yeni İşlem" })).toBeVisible();
 
-  // `accessibilityLabelledBy` → aria-labelledby, and the id it names must exist
-  // and carry the visible label text. Hydration can expose the labelled input's
-  // aria-label a few milliseconds before aria-labelledby, so wait on the exact
-  // contract this probe measures instead of sampling that transition.
+  // aria-labelledby must name an existing id with label text. Hydration can expose aria-label before
+  // aria-labelledby, so wait on the contract itself.
   const labelledFields = page.locator("input[aria-labelledby], textarea[aria-labelledby]");
   await expect(labelledFields.first()).toBeVisible();
   const labelled = await labelledFields.evaluateAll((fields) =>
@@ -90,29 +76,21 @@ test("form fields expose a programmatic label and announce their errors @cross-b
     expect(field.text.length, `label ${field.id} is empty`).toBeGreaterThan(0);
   }
 
-  // Amount over the ceiling renders the inline error, which must be an assertive
-  // live region so a screen reader announces it without moving focus.
+  // An amount over the ceiling renders an assertive live region, announced without moving focus.
   await page.getByRole("textbox", { name: "Tutar · TRY" }).fill("9999999999999");
   const alert = page.locator('[role="alert"]').first();
   await expect(alert).toBeVisible();
   await expect(alert).toHaveAttribute("aria-live", "assertive");
 
-  await assertNoRuntimeErrors(errors, testInfo);
+  expect(errors).toEqual([]);
 });
 
-test("busy controls, spinners and decorative art are correctly exposed", async ({ page }, testInfo) => {
+test("busy controls, spinners and decorative art are correctly exposed", async ({ page }) => {
   const errors = collectRuntimeErrors(page);
   await onboard(page);
 
-  // Decorative brand art must be OUT of the accessibility tree: an empty
-  // accessible name on a visible img is an axe violation, so the element has to
-  // be hidden rather than merely unlabelled.
-  //
-  // The hiding is checked on the element OR any ancestor, which is what ARIA
-  // actually specifies — `aria-hidden` removes a whole subtree. It also has to
-  // be checked that way here: `expo-image` renders its own web `<img>` and
-  // forwards only `alt`, `src` and `style`, so an image component physically
-  // cannot carry the attribute itself and a wrapper is the only place it fits.
+  // Decorative art must be aria-hidden on the element or an ancestor (ARIA hides the subtree);
+  // `expo-image` forwards only `alt`, `src` and `style`, so a wrapper is the only place it fits.
   await page.goto("/helix/settings");
   await expect(page.getByRole("heading", { name: "Ayarlar", exact: true })).toBeVisible();
   const decorative = await page.evaluate(() => {
@@ -138,38 +116,33 @@ test("busy controls, spinners and decorative art are correctly exposed", async (
     expect(art.hidden, `decorative ${art.tag} (role=${art.role}) is exposed to the a11y tree`).toBe(true);
   }
 
-  // A loading data screen exposes a polite live region and a NAMED spinner:
-  // an unnamed ActivityIndicator is an anonymous "busy" node to a screen reader.
+  // Live regions must be polite or assertive.
   await page.goto("/helix/cash-flow");
   await expect(page.getByRole("heading", { name: "Mali Tablo", exact: true })).toBeVisible();
   const liveRegions = await page.evaluate(() =>
     Array.from(document.querySelectorAll<HTMLElement>("[aria-live]")).map((el) => el.getAttribute("aria-live")));
   expect(liveRegions.every((v) => v === "polite" || v === "assertive"), `unexpected aria-live values: ${liveRegions}`).toBe(true);
 
-  await assertNoRuntimeErrors(errors, testInfo);
+  expect(errors).toEqual([]);
 });
 
-test("an open dialog is a real modal that owns focus @cross-browser", async ({ page }, testInfo) => {
+test("an open dialog is a real modal that owns focus @cross-browser", async ({ page }) => {
   const errors = collectRuntimeErrors(page);
   await onboard(page);
   await page.goto("/helix/settings");
 
-  // Force the export failure path, which opens the shared dialog host.
+  // The export failure path opens the shared dialog host.
   await page.evaluate(() => {
     URL.createObjectURL = () => {
       throw new Error("E2E dialog semantics");
     };
   });
   await page.getByRole("button", { name: /Yedek Oluştur/ }).click();
-  // The dialog reports the outcome in the user's own language. A platform
-  // exception's text is developer material and must never reach the screen —
-  // this assertion is what previously proved the opposite.
+  // A platform exception's text is developer material and must not reach the screen.
   await expect(page.getByText(/İşlem tamamlanamadı/)).toBeVisible();
   await expect(page.getByText(/E2E dialog semantics/)).toHaveCount(0);
 
-  // Wait for the shared modal owner to focus the heading itself. Merely
-  // observing focus somewhere inside the modal can sample the browser's
-  // temporary autofocus and let a delayed heading focus steal the next Tab.
+  // Wait for the heading itself: browser autofocus inside the modal can be sampled, then stolen by a delayed heading focus.
   await expect
     .poll(() => page.evaluate(() => {
       const el = document.querySelector('[aria-modal="true"]');
@@ -192,9 +165,7 @@ test("an open dialog is a real modal that owns focus @cross-browser", async ({ p
   expect(modal!.headingText.length, "modal has no heading to focus").toBeGreaterThan(0);
   expect(modal!.focusInside, "focus is outside the open modal").toBe(true);
 
-  // The heading is intentionally programmatically focusable but not a Tab
-  // stop. Tab enters the action row, then cycles inside the modal instead of
-  // exposing the Settings controls behind the scrim.
+  // The heading is focusable but not a Tab stop; Tab enters the action row and cycles inside the modal.
   await page.keyboard.press("Tab");
   await expect(page.getByRole("button", { name: "Tamam", exact: true })).toBeFocused();
   await page.keyboard.press("Tab");
@@ -206,10 +177,10 @@ test("an open dialog is a real modal that owns focus @cross-browser", async ({ p
   await page.getByRole("button", { name: "Tamam", exact: true }).click();
   await expect(page.locator('[aria-modal="true"]')).toHaveCount(0);
 
-  await assertNoRuntimeErrors(errors, testInfo);
+  expect(errors).toEqual([]);
 });
 
-test("a dirty-exit dialog isolates the form's Enter shortcut", async ({ page }, testInfo) => {
+test("a dirty-exit dialog isolates the form's Enter shortcut", async ({ page }) => {
   const errors = collectRuntimeErrors(page);
   await onboard(page);
   await page.goto("/helix/transaction");
@@ -224,25 +195,22 @@ test("a dirty-exit dialog isolates the form's Enter shortcut", async ({ page }, 
     (document.activeElement?.textContent ?? "").trim(),
   )).toBe("Kaydedilmemiş değişiklikler var");
 
-  // Enter belongs to the visible overlay. It must not reach the valid form's
-  // window-level submit shortcut, save a transaction, change route, and leave
-  // the discard dialog orphaned over the next screen.
+  // Enter belongs to the overlay: it must not reach the form's window-level submit and orphan the dialog.
   await page.keyboard.press("Enter");
   await expect(page).toHaveURL(/\/helix\/transaction$/);
   await expect(dialogTitle).toBeVisible();
 
-  // Shift+Tab from the heading wraps to the final dialog action, never to the
-  // header/back button or a field behind the scrim.
+  // Shift+Tab from the heading wraps to the final dialog action.
   await page.keyboard.press("Shift+Tab");
   await expect(page.getByRole("button", { name: "Değişiklikleri sil", exact: true })).toBeFocused();
   await page.getByRole("button", { name: "Vazgeç", exact: true }).click();
   await expect(dialogTitle).toHaveCount(0);
   await expect(page.getByRole("textbox", { name: "Tutar · TRY" })).toHaveValue("125,00");
 
-  await assertNoRuntimeErrors(errors, testInfo);
+  expect(errors).toEqual([]);
 });
 
-test("dirty drafts guard browser unload and same-screen context changes", async ({ page }, testInfo) => {
+test("dirty drafts guard browser unload and same-screen context changes", async ({ page }) => {
   const errors = collectRuntimeErrors(page);
   await onboard(page);
 
@@ -277,9 +245,7 @@ test("dirty drafts guard browser unload and same-screen context changes", async 
   await expect(amount).toHaveValue("");
   await expect(monthHeading).not.toHaveText(monthBefore ?? "");
 
-  // Bulk entry has one way out — the back control. It used to carry a "Tamam"
-  // button beside it that did exactly the same thing, which is one more way to
-  // leave than there are ways to leave.
+  // Bulk entry has one way out, the back control (a duplicate "Tamam" was removed).
   await page.goto("/helix/bulk-entry");
   const bulkAmount = page.getByRole("textbox").first();
   await bulkAmount.fill("750");
@@ -289,8 +255,7 @@ test("dirty drafts guard browser unload and same-screen context changes", async 
   await page.getByRole("button", { name: "Vazgeç", exact: true }).click();
   await expect(page).toHaveURL(/\/helix\/bulk-entry$/);
   await expect(bulkAmount).toHaveValue("750");
-  // Clearing the field puts the form back where it started, so leaving is no
-  // longer a discard at all — the guard must not ask, and must never trap.
+  // A cleared field is no longer a discard: the guard must not ask, and must never trap.
   await bulkAmount.fill("");
   await back.click();
   await expect(dialogTitle).toHaveCount(0);
@@ -304,10 +269,10 @@ test("dirty drafts guard browser unload and same-screen context changes", async 
   await expect(newCategory).toHaveValue("Yeni taslak");
   await expect(page.getByRole("textbox", { name: "Düzenle · Market" })).toBeVisible();
 
-  await assertNoRuntimeErrors(errors, testInfo);
+  expect(errors).toEqual([]);
 });
 
-test("Enter belongs to the focused control, not the form's primary save", async ({ page }, testInfo) => {
+test("Enter belongs to the focused control, not the form's primary save", async ({ page }) => {
   const errors = collectRuntimeErrors(page);
   await onboard(page);
   await page.goto("/helix/transaction");
@@ -317,17 +282,14 @@ test("Enter belongs to the focused control, not the form's primary save", async 
   await amount.fill("250,00");
   await pickOption(page, "Kategori", /Market/);
 
-  // 1 · The secondary action. Enter used to run the primary Save from here, so
-  // the entry was written AND the screen closed — the opposite of what the
-  // focused "save and add another" button promises.
+  // 1 · The secondary action: Enter must not also run the primary Save and close the screen.
   await page.getByRole("button", { name: "Kaydet ve Yeni Ekle", exact: true }).focus();
   await page.keyboard.press("Enter");
   await expect(page).toHaveURL(/\/helix\/transaction$/);
   const notice = page.getByText("İşlem kaydedildi.");
   await expect(notice).toBeVisible();
   await expect(amount).toHaveValue("");
-  // A cleared field alone reads as "my input was discarded", and a screen
-  // reader sees nothing at all — the confirmation has to be announced.
+  // A cleared field alone reads as discarded input: the confirmation must be announced.
   await expect(
     notice.locator("xpath=ancestor-or-self::*[@aria-live][1]"),
   ).toHaveAttribute("aria-live", "polite");
@@ -357,28 +319,14 @@ test("Enter belongs to the focused control, not the form's primary save", async 
   await page.keyboard.press("Enter");
   await expect(page).toHaveURL(/\/helix\/cash-flow$/);
 
-  await assertNoRuntimeErrors(errors, testInfo);
+  expect(errors).toEqual([]);
 });
 
-/**
- * A screen that is only text states its own keyboard affordance.
- *
- * The honest version of this test, after the first one was written against a
- * measurement that did not hold. `/helix/privacy` holds 3594px of KVKK text
- * with nothing focusable in it, and current Chromium and Firefox make such a
- * container focusable by themselves — so a test that tabs to the region and
- * presses End passes with this app's fix removed, which makes it worth
- * nothing. It was written, it passed against a build with the fix reverted,
- * and it is not in this file for that reason.
- *
- * What the app actually decides is whether the affordance is its own or
- * borrowed. `visual-a11y.spec.ts` is what fails when it is borrowed: axe's
- * `scrollable-region-focusable` fires on this route, and that route is in the
- * sweep now. This test states the other half — that the notice is reachable
- * and readable in the browsers the suite drives — so a regression that breaks
- * the reading rather than the attribute is still caught.
- */
-test("the legal notice can be read to the end with a keyboard @cross-browser", async ({ page }, testInfo) => {
+// A test that tabs to the region and presses End passes with the app's fix removed, because Chromium and
+// Firefox make a text-only scroller focusable themselves; `visual-a11y.spec.ts` (axe
+// `scrollable-region-focusable`) fails when the affordance is borrowed. This states the other half:
+// the notice is reachable and readable in the browsers the suite drives.
+test("the legal notice can be read to the end with a keyboard @cross-browser", async ({ page }) => {
   const errors = collectRuntimeErrors(page);
   await onboard(page);
   await page.goto("/helix/privacy");
@@ -394,12 +342,9 @@ test("the legal notice can be read to the end with a keyboard @cross-browser", a
       ? { visible: region.clientHeight, total: region.scrollHeight, tabIndex: region.getAttribute("tabindex") }
       : null;
   });
-  // A floor: if the notice ever stopped overflowing, everything below would
-  // pass while proving nothing about a keyboard.
+  // A floor: without overflow everything below passes while proving nothing about a keyboard.
   expect(geometry, "the notice must have a scroll region to test").not.toBeNull();
   expect(geometry!.total, "the notice must be taller than one screen").toBeGreaterThan(geometry!.visible * 2);
-  // The app's own affordance, not the engine's. This is the assertion that
-  // fails when the conditional tab stop is removed.
   expect(geometry!.tabIndex, "the notice's scroll region must carry its own tab stop").toBe("0");
 
   let focused = false;
@@ -421,27 +366,14 @@ test("the legal notice can be read to the end with a keyboard @cross-browser", a
   await page.keyboard.press("PageDown");
   await expect.poll(scrollTop, { message: "PageDown must advance the notice" }).toBeGreaterThan(0);
 
-  await assertNoRuntimeErrors(errors, testInfo);
+  expect(errors).toEqual([]);
 });
 
-/**
- * And the stop is only where it is needed.
- *
- * A focusable scroll region is a tab stop, so handing one to every screen
- * would put an unexplained stop in front of every form. These four all have
- * focusable content of their own and must therefore have gained nothing.
- */
-test("screens with their own controls gain no extra tab stop", async ({ page }, testInfo) => {
-  // A count of zero is also what a BROKEN screen produces, and the console
-  // alone cannot tell them apart: `ErrorBoundary` catches the throw, and its
-  // `devError` only reaches `console.error` while `__DEV__` is true — which
-  // the production export these tests drive is not. So each route asserts a
-  // heading of its own. That is what makes the zero mean "this screen rendered
-  // and gained no stop" rather than "something rendered". The runtime-error
-  // collector stays for what it does catch, an uncaught throw.
-  //
-  // The dashboard's own first heading is a time-of-day greeting, so a section
-  // heading is used there: a title read off the clock is a flake by 21:00.
+// A focusable scroll region is a tab stop; these four have focusable content of their own and must gain none.
+test("screens with their own controls gain no extra tab stop", async ({ page }) => {
+  // A zero count is also what a BROKEN screen produces (`ErrorBoundary` swallows the throw and its `devError`
+  // is silent in the production export), so each route asserts a heading of its own. The dashboard uses a
+  // section heading because its greeting is read off the clock.
   const errors = collectRuntimeErrors(page);
   await onboard(page);
   for (const [route, heading] of [
@@ -455,5 +387,5 @@ test("screens with their own controls gain no extra tab stop", async ({ page }, 
     await expect(page.locator("[data-helix-scroll-focus]"), route).toHaveCount(0);
     expect(routeRedirectProblem(page, route), route).toBeNull();
   }
-  await assertNoRuntimeErrors(errors, testInfo);
+  expect(errors).toEqual([]);
 });

@@ -1,11 +1,8 @@
 /**
- * Async migration runner over the drizzle-kit journal. Uses the same table
- * and timestamp bookkeeping as drizzle's own migrator (`__drizzle_migrations`,
- * compared by the journal's `when`) so installs created by the previous sync
- * migrator continue seamlessly. The `hash` column exists only for schema
- * compatibility with drizzle's migrator and is intentionally left empty —
- * applied-migration content is never re-verified against it.
- */
+ * The migration runner over drizzle-kit's journal: asynchronous, with the same
+ * bookkeeping as Drizzle's own migrator (the `__drizzle_migrations` table,
+ * compared by the journal's `when`). Its `hash` column exists for that
+ * compatibility and is left empty. */
 
 import { getSqliteAsync, withTransaction } from "./client";
 import migrations from "./migrations/migrations";
@@ -29,7 +26,8 @@ export async function migrateDb(): Promise<void> {
   const held = (await Promise.all(tables.map(async (table) => ((await columnsOf(table)).size > 0 ? [table] : [])))).flat();
 
   for (const entry of due) {
-    const sqlBundle = migrations.migrations[`m${String(entry.idx).padStart(4, "0")}` as keyof typeof migrations.migrations];
+    const key = `m${String(entry.idx).padStart(4, "0")}` as keyof typeof migrations.migrations;
+    const sqlBundle = migrations.migrations[key];
     if (!sqlBundle) throw new Error(`Missing migration: ${entry.tag}`);
     // Each migration, its bookkeeping row and what it leaves to pull land
     // together, so a failure part way leaves the database at the previous

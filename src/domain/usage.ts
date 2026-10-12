@@ -1,16 +1,8 @@
 /**
  * A route turned into a name that can be counted, with nothing in it that
- * belongs to anybody.
- *
- * `usage_counters` answers one question — which screens get opened — and the
- * database refuses anything that does not match its shape. This is where that
- * shape is produced, and it is deliberately subtractive: a segment that could
- * be an identifier is DROPPED rather than replaced with a placeholder, because
- * `cash-flow.2026-09` and `cash-flow.:month` both leak the fact that a month
- * was opened while only one of them is short. What survives is the screen.
- *
- * Group markers lose their parentheses (`(tabs)` → `tabs`) because the shape
- * rule has no room for them and because a group is a real place in the app.
+ * belongs to anybody. Subtractive: a segment that could be an identifier is
+ * DROPPED, not replaced by a placeholder (`cash-flow.:month` still leaks that a
+ * month was opened). Group markers lose their parentheses to fit the shape rule.
  */
 
 /** Matches the CHECK constraint in migration 41. Enforced here too, so a bad
@@ -64,16 +56,6 @@ export type UsageDelta = {
   screen: string;
   count: number;
 };
-
-/** The device's local day, which is the day the visit happened for the person
- *  who made it. A server-side `current_date` would move an evening visit into
- *  tomorrow for anyone west of UTC. */
-export function localDay(at: Date = new Date()): string {
-  const year = at.getFullYear();
-  const month = String(at.getMonth() + 1).padStart(2, "0");
-  const day = String(at.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
 
 /** Whether a stored delta still matches what the server will accept. Storage
  *  survives an app upgrade, so a shape that changed between versions must be

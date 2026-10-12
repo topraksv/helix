@@ -1,16 +1,8 @@
 /**
- * What a feedback report is allowed to be (spec §13.1).
- *
- * Pure, and in the domain layer, because three parties have to agree about the
- * same rules and none of them can see the others: the form that enables its
- * send button, the service that refuses to post, and the edge function that
- * receives it and must not trust either. A rule that lives only in the form is
- * a rule a replayed request walks straight around.
- *
- * The categories are deliberately the SHARED vocabulary — they are the words
- * the person reporting and the person fixing have to mean the same thing by.
- * "Görsel hata" and "Çalışmayan özellik" are different repairs by different
- * people on different days, which is the whole reason to ask.
+ * What a feedback report is allowed to be (spec §13.1). The form, the posting
+ * service and the edge function must agree and cannot see each other; a rule
+ * only the form holds is one a replayed request walks around. The categories
+ * are the vocabulary reporter and fixer must mean the same thing by.
  */
 
 export const FEEDBACK_CATEGORIES = [
@@ -30,17 +22,10 @@ export const FEEDBACK_CATEGORIES = [
 
 export type FeedbackCategory = (typeof FEEDBACK_CATEGORIES)[number];
 
-/**
- * Short enough that "buton çalışmıyor" gets through, long enough that an
- * accidental tap on the send button does not.
- */
+/** Short enough that "buton çalışmıyor" gets through, long enough that an accidental tap does not. */
 export const FEEDBACK_MESSAGE_MIN = 10;
 
-/**
- * A ceiling rather than a limit anyone will meet. It exists so a paste of an
- * entire log cannot become an email nobody can open, and so the edge function
- * has a bound it can check before it allocates.
- */
+/** A ceiling, so a pasted log cannot become an unopenable email and the edge function can bound before it allocates. */
 export const FEEDBACK_MESSAGE_MAX = 4000;
 
 /** Screenshots. A PDF is not what "ekran görüntüsü" means, so it is refused. */
@@ -51,38 +36,22 @@ export const FEEDBACK_IMAGE_MIME_TYPES = [
   "image/heic",
 ] as const;
 
-export type FeedbackImageMimeType = (typeof FEEDBACK_IMAGE_MIME_TYPES)[number];
+type FeedbackImageMimeType = (typeof FEEDBACK_IMAGE_MIME_TYPES)[number];
 
-/**
- * 5 MB, not the 25 MB an attachment may be.
- *
- * This one leaves the device as a base64 email attachment, which inflates it
- * by a third, and common mail hosts reject a message over about 10 MB whole.
- * A screenshot from any phone sold this decade is well under 5.
- */
+/** 5 MB, not an attachment's 25: this leaves the device as a base64 email attachment, a third larger, and mail hosts reject about 10 MB whole. */
 export const MAX_FEEDBACK_IMAGE_BYTES = 5 * 1024 * 1024;
 
-/**
- * How many screenshots one report may carry.
- *
- * One was not enough: a person showing a flow that goes wrong needs the screen
- * before and the screen after, and "Görseli değiştir" asked them to choose
- * which half of the evidence to throw away.
- */
+/** How many screenshots one report may carry: a flow that goes wrong needs the screen before and after. */
 export const MAX_FEEDBACK_IMAGES = 4;
 
 /**
- * What every attachment on ONE report may weigh together.
- *
- * The per-image cap alone does not bound the email: four 5 MB screenshots are
- * 20 MB, and base64 makes that about 27 — several times what a mail host will
- * accept, so the report would be refused after it was written rather than
- * before. Seven decoded megabytes inflate to about 9.3, which clears the
- * common 10 MB ceiling with room for the message and the headers.
+ * What every attachment on ONE report may weigh together. The per-image cap
+ * alone does not bound the email (four 5 MB screenshots are about 27 MB in
+ * base64); 7 MB decoded is about 9.3 encoded, under the common 10 MB ceiling.
  */
 export const MAX_FEEDBACK_TOTAL_IMAGE_BYTES = 7 * 1024 * 1024;
 
-export type FeedbackMessageRejection = "empty" | "tooShort" | "tooLong";
+type FeedbackMessageRejection = "empty" | "tooShort" | "tooLong";
 export type FeedbackImageRejection = "type" | "size" | "count" | "total";
 
 export function isFeedbackCategory(value: unknown): value is FeedbackCategory {
@@ -94,10 +63,8 @@ export function isFeedbackImageMimeType(value: unknown): value is FeedbackImageM
 }
 
 /**
- * Why this message cannot be sent, or `null` when it can.
- *
- * Length is measured on the TRIMMED message, so twenty spaces is empty rather
- * than long enough.
+ * Why this message cannot be sent, or `null` when it can. Length is measured
+ * on the TRIMMED message, so twenty spaces is empty.
  */
 export function feedbackMessageRejection(message: string): FeedbackMessageRejection | null {
   const trimmed = message.trim();
@@ -133,18 +100,14 @@ export function feedbackAttachmentRejection(
   const own = feedbackImageRejection(candidate.mimeType, candidate.byteLength);
   if (own) return own;
   if (attached.length >= MAX_FEEDBACK_IMAGES) return "count";
-  const used = attached.reduce((sum, image) => sum + image.byteLength, 0);
-  if (used + candidate.byteLength > MAX_FEEDBACK_TOTAL_IMAGE_BYTES) return "total";
+  if (feedbackImagesBytes(attached) + candidate.byteLength > MAX_FEEDBACK_TOTAL_IMAGE_BYTES) return "total";
   return null;
 }
 
 /**
- * A byte count said the way a person reads a file size, in Turkish.
- *
- * Every refusal about size has to name the real number — "Görsel 5 MB'ı aşıyor"
- * without saying what the file actually was leaves the person guessing whether
- * they missed by a little or a lot. Below a megabyte it rounds to whole
- * kilobytes, above it keeps one decimal with the comma this locale uses.
+ * A byte count as a person reads a file size, in Turkish, so a size refusal can
+ * name the real number: whole kilobytes below a megabyte, else one decimal with
+ * the locale's comma.
  */
 export function byteSizeLabel(bytes: number): string {
   const safe = Math.max(0, Math.round(bytes));
@@ -162,14 +125,9 @@ export function feedbackImagesBytes(images: readonly { byteLength: number }[]): 
 }
 
 /**
- * Bytes as base64, without a platform API.
- *
- * `btoa` is a browser global that bare Hermes does not provide, and
- * `expo-file-system`'s `base64()` reads a native file URI — which a web
- * document-picker asset is not (it hands back a blob URL). Both halves of this
- * app have to produce the same string from the same bytes, so it is written
- * once, here, where it can be tested against known vectors rather than against
- * whichever runtime happens to be loaded.
+ * Bytes as base64, without a platform API: `btoa` is absent from bare Hermes,
+ * and `expo-file-system`'s `base64()` cannot read a web picker's blob URL. One
+ * implementation, testable against known vectors.
  */
 const BASE64_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 

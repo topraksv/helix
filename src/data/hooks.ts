@@ -5,7 +5,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { addDatabaseChangeListener } from "expo-sqlite";
-import { and, asc, desc, eq, getTableColumns, isNull } from "drizzle-orm";
+import { and, asc, desc, eq, getTableColumns, isNull, type SQL } from "drizzle-orm";
+import type { SQLiteColumn, SQLiteTable } from "drizzle-orm/sqlite-core";
 import { getDb } from "../db/client";
 import * as s from "../db/schema";
 import { useSession } from "../auth/session";
@@ -44,24 +45,11 @@ interface LiveResult<T> extends LiveSnapshot<T[]> {
 }
 
 /**
- * Whether a live query has answered the question a screen is asking about ONE
- * id — not merely whether it has ever run.
- *
- * `updatedAt` proves the query completed. For a query parameterised by its
- * subject those are the same statement, and `useLive` clears it when the
- * parameters change. The record screens read a query that is NOT parameterised
- * by the id they look up — every transaction, every plan, every subscription —
- * so a completion recorded BEFORE a row was written still reads as a
- * completion after it, and the screen concluded a brand-new row did not exist
- * and redirected to the list. Measured on the save confirmation's "Düzenle":
- * eight attempts, eight landings on Mali Tablo, and the push never reached
- * `/transaction` at all — which is why looking at the router found nothing.
- *
- * So the proof is dated against the moment the screen began asking. The single
- * request is what keeps that terminating: a row that never existed writes
- * nothing, so no change event is coming and no later completion would arrive
- * on its own — waiting for dated proof without asking for it would restore the
- * permanent blank screen the redirect was introduced to end.
+ * Whether a live query has answered the question a screen is asking about ONE id, not merely
+ * whether it has ever run. Record screens read an unparameterised query (every transaction), so a
+ * completion from BEFORE a row was written would read as "the row does not exist". The proof is
+ * therefore dated against the moment the screen began asking; the single `retry` keeps that
+ * terminating, since a row that never existed triggers no change event.
  */
 export function useAnsweredForId(
   state: { updatedAt: Date | undefined; retry: () => void },
@@ -71,10 +59,8 @@ export function useAnsweredForId(
   found: boolean,
 ): boolean {
   const id = record?.mode === "edit" ? record.id : null;
-  // Dated against the query's OWN completions rather than a clock: every
-  // completion stamps a fresh `Date`, so "a completion this screen had not
-  // already seen when it started asking" is an identity comparison — and one
-  // that stays pure during render, which `Date.now()` would not.
+  // Dated against the query's own completions, not a clock: each stamps a fresh `Date`, so this is
+  // an identity comparison that stays pure during render.
   const [asked, setAsked] = useState<{ id: string | null; seen: Date | undefined }>(
     { id, seen: state.updatedAt },
   );
@@ -97,33 +83,17 @@ interface LiveValueResult<T> extends LiveSnapshot<T> {
 /** Local-only tables that never sync to Supabase but still emit SQLite
  *  change events the live-query invalidation below listens for. */
 type LocalTableName = "outbox" | "sync_dead_letters" | "sync_state";
-/** Every table name a live query can scope its invalidation to. A raw
- *  `string` here still compiled on a typo'd table name, and a typo'd name
- *  never matches a change event — the screen silently stopped refreshing
- *  after a write. */
+/** A raw `string` would compile with a typo'd name, which never matches a change event. */
 type TableScope = s.SyncedTableName | LocalTableName;
 
 /**
- * The engine both live hooks run on: execute the query, re-run it (debounced)
- * when a relevant local table changes, and retry forever with capped backoff
- * instead of silently freezing a screen on empty data.
+ * The engine both live hooks run on: execute the query, re-run it (debounced) when a relevant
+ * table changes, and retry forever with capped backoff. Retrying forever is deliberate: giving up
+ * left screens blank behind a wedged sqlite worker. A failure keeps the last good data and exposes
+ * an error/stale state rather than an empty result.
  *
- * Retrying forever is a deliberate decision, not an oversight: abandoning
- * after N tries left screens frozen on empty data (a wedged sqlite worker
- * never recovered, and route guards keyed off this query showed a permanent
- * blank screen). A failure preserves the last good data and exposes an
- * explicit error/stale state rather than asserting an empty result.
- *
- * `tables` scopes invalidation: only change events for those tables re-run the
- * query, so one write no longer re-executes every mounted live query (a
- * dashboard mounts ~10). Omit it to re-run on any change (safe fallback, also
- * used when the platform doesn't report the changed table).
- *
- * `apply` takes one of the pure transitions from `live-state.ts` and is the
- * *only* thing that differs between the two callers — React state for a
- * per-screen query, a module entry plus a notify for a shared one. They ran
- * two copies of everything above before, which is two places to fix a backoff
- * or a leak in.
+ * `tables` scopes invalidation to those tables; omit it to re-run on any change.
+ * `apply` takes a pure transition from `live-state.ts`; it is all that differs between callers.
  */
 function startLiveQueryRunner<T>(
   query: () => PromiseLike<T[]>,
@@ -147,15 +117,14 @@ function startLiveQueryRunner<T>(
         if (attempt < 3) devError("live-query", error);
         attempt += 1;
         apply((previous) => failLiveQuery(previous, attempt, new Date()));
+        if (timer) clearTimeout(timer);
         timer = setTimeout(run, retryDelayMs(attempt));
       },
     );
   };
 
   const listener = addDatabaseChangeListener((event) => {
-    // Unknown table (or platform without table info) → conservative re-run.
-    // event.tableName is a raw string from SQLite's update hook, not our
-    // closed TableScope union, so the membership check must widen it back.
+    // Unknown table (or platform without table info) re-runs; `tableName` is a raw string, so widen the union.
     if (tables && event?.tableName && !(tables as readonly string[]).includes(event.tableName)) return;
     if (timer) clearTimeout(timer);
     timer = setTimeout(run, 60); // coalesce bursts of change events
@@ -181,26 +150,14 @@ function useLive<T>(query: PromiseLike<T[]>, deps: unknown[], tables?: readonly 
   const retryRef = useRef<() => void>(() => {});
   const retry = useCallback(() => retryRef.current(), []);
   const [state, setState] = useState<LiveResult<T>>({ ...initialLiveSnapshot<T[]>([]), retry });
-  // Which question the snapshot in `state` actually answers. The effect below
-  // also resets it, but effects run AFTER the render that changed `deps`, so
-  // for exactly one render `state` would still hold the previous parameters'
-  // answer — resolved `updatedAt` and all.
+  // Which question `state` answers: the effect below resets it too late, one render after `deps` change.
   const depsKey = JSON.stringify(deps ?? []);
   const [answeredDeps, setAnsweredDeps] = useState(depsKey);
 
-  // The builder object is recreated every render, but it only *changes*
-  // when deps change — the effect closure capturing it is deps-accurate,
-  // and drizzle builders are re-executable.
+  // The builder is recreated every render but only changes with `deps`, and drizzle builders are re-executable.
   useEffect(() => {
-    // This effect re-runs only when `deps` change, which means the query now
-    // asks a DIFFERENT question (another user, month or account). The previous
-    // answer is not a "last good snapshot" of it, so drop it: keeping it left
-    // `updatedAt` reporting a completion that never happened for the new
-    // parameters, and every consumer treating `updatedAt == null` as "still
-    // resolving" then trusted a value belonging to the old parameters. The
-    // route guard did exactly that and flashed onboarding at an existing
-    // account after logout → login. Re-runs over the SAME parameters (local
-    // writes, retries) still keep their data via `startLiveQuery`.
+    // New `deps` ask a different question: drop the old answer, or `updatedAt` would claim a
+    // completion that never happened for them. Re-runs over the same parameters keep their data.
     setState({ ...initialLiveSnapshot<T[]>([]), retry });
 
     const runner = startLiveQueryRunner<T>(
@@ -216,10 +173,7 @@ function useLive<T>(query: PromiseLike<T[]>, deps: unknown[], tables?: readonly 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, deps);
 
-  // Report "not resolved yet" for the new parameters in the same render that
-  // changed them, and adjust the stored state so the next one agrees. React
-  // sanctions this shape for deriving state from changed inputs, and it keeps
-  // the rule out of a ref that the compiler must not see read during render.
+  // Report "not resolved yet" in the render that changed the parameters, and adjust the stored state to agree.
   const pending: LiveResult<T> = { ...initialLiveSnapshot<T[]>([]), retry };
   const readable = snapshotForParameters(state, answeredDeps, depsKey, pending) as LiveResult<T>;
   if (readable !== state) {
@@ -236,13 +190,10 @@ export function useUserId(): string {
 }
 
 /**
- * Shared live queries for the identity-stable hooks below. Several screens
- * stay mounted at once under the tab navigator, and before sharing each of
- * them ran its OWN copy of the same query — one write re-executed the full
- * transactions scan once per mounted screen. An entry is created by the first
- * subscriber, reference-counted, and torn down with the last one (the
- * `motion.ts` pattern). Parametric queries (month windows) stay on `useLive` —
- * caching per-argument results here would grow without bound.
+ * Shared live queries for the identity-stable hooks below: the tab navigator keeps several
+ * screens mounted, and each would otherwise re-run the same query. An entry is created by the
+ * first subscriber, reference-counted, and torn down with the last. Parametric queries stay on
+ * `useLive`; caching per argument here would grow without bound.
  */
 interface SharedLiveEntry {
   state: LiveResult<unknown>;
@@ -261,8 +212,7 @@ function acquireSharedLive<T>(
 ): SharedLiveEntry {
   const existing = sharedLive.get(key);
   if (existing) return existing;
-  // The runner emits its first transition synchronously, so both handles are
-  // reached through the entry rather than captured from its return value.
+  // The runner emits its first transition synchronously, so the handles are reached through the entry.
   let runner: { retry: () => void; stop: () => void } | null = null;
   const retry = () => runner?.retry();
   const entry: SharedLiveEntry = {
@@ -293,8 +243,7 @@ function useSharedLive<T>(key: string, query: () => PromiseLike<T[]>, tables: re
         if (entry.listeners.size === 0) entry.teardown();
       };
     },
-    // query/tables are fixed for a given key (first subscriber wins), so the
-    // key alone drives resubscription — mirroring useLive's deps contract.
+    // query/tables are fixed for a key (first subscriber wins), so the key alone drives resubscription.
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [key],
   );
@@ -305,37 +254,37 @@ function useSharedLive<T>(key: string, query: () => PromiseLike<T[]>, tables: re
   );
 }
 
-export function usePersonsState() {
+type LiveTable = SQLiteTable & { userId: SQLiteColumn; deletedAt: SQLiteColumn };
+
+/** A user's live rows of one table, shared under `${key}:${userId}`; `key` defaults to the table name. */
+function useLiveTable<T extends LiveTable>(
+  table: T,
+  name: s.SyncedTableName,
+  order: SQL[] = [],
+  key: string = name,
+): LiveResult<T["$inferSelect"]> {
   const userId = useUserId();
   return useSharedLive(
-    `persons:${userId}`,
-    () => getDb().select().from(s.persons).where(and(eq(s.persons.userId, userId), isNull(s.persons.deletedAt))),
-    ["persons"],
+    `${key}:${userId}`,
+    () => {
+      const rows = getDb().select().from(table as LiveTable)
+        .where(and(eq(table.userId, userId), isNull(table.deletedAt)));
+      return (order.length ? rows.orderBy(...order) : rows) as PromiseLike<T["$inferSelect"][]>;
+    },
+    [name],
   );
+}
+
+export function usePersonsState() {
+  return useLiveTable(s.persons, "persons");
 }
 
 export function useCategoriesState() {
-  const userId = useUserId();
-  return useSharedLive(
-    `categories:${userId}`,
-    () =>
-      getDb()
-        .select()
-        .from(s.categories)
-        .where(and(eq(s.categories.userId, userId), isNull(s.categories.deletedAt)))
-        .orderBy(asc(s.categories.sortOrder)),
-    ["categories"],
-  );
+  return useLiveTable(s.categories, "categories", [asc(s.categories.sortOrder)]);
 }
 
 export function useInvestmentProfilesState() {
-  const userId = useUserId();
-  return useSharedLive(
-    `investment_profiles:${userId}`,
-    () => getDb().select().from(s.investmentProfiles)
-      .where(and(eq(s.investmentProfiles.userId, userId), isNull(s.investmentProfiles.deletedAt))),
-    ["investment_profiles"],
-  );
+  return useLiveTable(s.investmentProfiles, "investment_profiles");
 }
 
 /** Includes tombstoned categories because their stable IDs still classify
@@ -350,24 +299,11 @@ export function useInvestmentCategoriesState() {
 }
 
 export function useInvestmentProductsState() {
-  const userId = useUserId();
-  return useSharedLive(
-    `investment_products:${userId}`,
-    () => getDb().select().from(s.investmentProducts)
-      .where(and(eq(s.investmentProducts.userId, userId), isNull(s.investmentProducts.deletedAt))),
-    ["investment_products"],
-  );
+  return useLiveTable(s.investmentProducts, "investment_products");
 }
 
 export function useInvestmentOperationsState() {
-  const userId = useUserId();
-  return useSharedLive(
-    `investment_operations:${userId}`,
-    () => getDb().select().from(s.investmentOperations)
-      .where(and(eq(s.investmentOperations.userId, userId), isNull(s.investmentOperations.deletedAt)))
-      .orderBy(asc(s.investmentOperations.operationDate), asc(s.investmentOperations.id)),
-    ["investment_operations"],
-  );
+  return useLiveTable(s.investmentOperations, "investment_operations", [asc(s.investmentOperations.operationDate), asc(s.investmentOperations.id)]);
 }
 
 /** Local-only sync quarantine; userId scopes the shared subscription lifecycle. */
@@ -375,9 +311,7 @@ export function useSyncDeadLettersState() {
   const userId = useUserId();
   return useSharedLive(
     `sync_dead_letters:${userId}`,
-    // The payload comes along so the list can name the RECORD and not just its
-    // table: "hücre notu kaydı" tells a person nothing they can place, and the
-    // one thing they can place is the month or the name inside it.
+    // The payload lets the list name the record, not just its table.
     () => getDb().select({
       id: s.syncDeadLetters.id,
       tableName: s.syncDeadLetters.tableName,
@@ -390,119 +324,38 @@ export function useSyncDeadLettersState() {
 }
 
 export function useSourcesState() {
-  const userId = useUserId();
-  return useSharedLive(
-    `payment_sources:${userId}`,
-    () =>
-      getDb()
-        .select()
-        .from(s.paymentSources)
-        .where(and(eq(s.paymentSources.userId, userId), isNull(s.paymentSources.deletedAt))),
-    ["payment_sources"],
-  );
+  return useLiveTable(s.paymentSources, "payment_sources");
 }
 
 export function useSubscriptionsState() {
-  const userId = useUserId();
-  return useSharedLive(
-    `subscriptions:${userId}`,
-    () =>
-      getDb()
-        .select()
-        .from(s.subscriptions)
-        .where(and(eq(s.subscriptions.userId, userId), isNull(s.subscriptions.deletedAt))),
-    ["subscriptions"],
-  );
+  return useLiveTable(s.subscriptions, "subscriptions");
 }
 
-/**
- * Stored price changes for the cost summary.
- *
- * `upsertSubscription` has appended to this table on every price edit since it
- * existed; nothing read it back until the subscriptions screen reported what a
- * rule has cost over time.
- */
+/** Stored price changes for the cost summary. */
 export function usePriceHistoryState() {
-  const userId = useUserId();
-  return useSharedLive(
-    `price_history:${userId}`,
-    () =>
-      getDb()
-        .select()
-        .from(s.priceHistory)
-        .where(and(eq(s.priceHistory.userId, userId), isNull(s.priceHistory.deletedAt)))
-        .orderBy(asc(s.priceHistory.effectiveFrom)),
-    ["price_history"],
-  );
+  return useLiveTable(s.priceHistory, "price_history", [asc(s.priceHistory.effectiveFrom)]);
 }
 
 /** Documents kept beside a transaction. Metadata only — bytes stay local. */
 export function useAttachmentsState() {
-  const userId = useUserId();
-  return useSharedLive(
-    `attachments:${userId}`,
-    () =>
-      getDb()
-        .select()
-        .from(s.attachments)
-        .where(and(eq(s.attachments.userId, userId), isNull(s.attachments.deletedAt)))
-        .orderBy(asc(s.attachments.createdAt)),
-    ["attachments"],
-  );
+  return useLiveTable(s.attachments, "attachments", [asc(s.attachments.createdAt)]);
 }
 
 /** Contextual colours placed on Mali Tablo rows, columns and cells. */
 export function useMatrixColorsState() {
-  const userId = useUserId();
-  return useSharedLive(
-    `matrix_colors:${userId}`,
-    () =>
-      getDb()
-        .select()
-        .from(s.matrixColors)
-        .where(and(eq(s.matrixColors.userId, userId), isNull(s.matrixColors.deletedAt))),
-    ["matrix_colors"],
-  );
+  return useLiveTable(s.matrixColors, "matrix_colors");
 }
 
 export function usePlansState() {
-  const userId = useUserId();
-  return useSharedLive(
-    `installment_plans:${userId}`,
-    () =>
-      getDb()
-        .select()
-        .from(s.installmentPlans)
-        .where(and(eq(s.installmentPlans.userId, userId), isNull(s.installmentPlans.deletedAt))),
-    ["installment_plans"],
-  );
+  return useLiveTable(s.installmentPlans, "installment_plans");
 }
 
 export function useCreditCardStatementsState() {
-  const userId = useUserId();
-  return useSharedLive(
-    `credit_card_statements:${userId}`,
-    () =>
-      getDb()
-        .select()
-        .from(s.creditCardStatements)
-        .where(and(eq(s.creditCardStatements.userId, userId), isNull(s.creditCardStatements.deletedAt)))
-        .orderBy(asc(s.creditCardStatements.dueDate)),
-    ["credit_card_statements"],
-  );
+  return useLiveTable(s.creditCardStatements, "credit_card_statements", [asc(s.creditCardStatements.dueDate)]);
 }
 
 export function useRecurringIncomesState() {
-  const userId = useUserId();
-  return useSharedLive(
-    `recurring_incomes:${userId}`,
-    () =>
-      getDb()
-        .select()
-        .from(s.recurringIncomes)
-        .where(and(eq(s.recurringIncomes.userId, userId), isNull(s.recurringIncomes.deletedAt))),
-    ["recurring_incomes"],
-  );
+  return useLiveTable(s.recurringIncomes, "recurring_incomes");
 }
 
 export function useCategoryBudgetsState() {
@@ -510,9 +363,7 @@ export function useCategoryBudgetsState() {
   return useSharedLive(
     `category_budgets:${userId}`,
     () =>
-      // Budgets exist only for live categories: a soft-deleted category's
-      // budgets are cascade-deleted, and any orphan arriving out-of-order via
-      // sync must never surface as a nameless "budget" or join a total.
+      // Only budgets of live categories: an orphan arriving out of order via sync must not surface nameless or join a total.
       getDb()
         .select({ ...getTableColumns(s.categoryBudgets) })
         .from(s.categoryBudgets)
@@ -531,31 +382,11 @@ export function useCategoryBudgetsState() {
 }
 
 export function useComputedColumnsState() {
-  const userId = useUserId();
-  return useSharedLive(
-    `computed_columns:${userId}`,
-    () =>
-      getDb()
-        .select()
-        .from(s.computedColumns)
-        .where(and(eq(s.computedColumns.userId, userId), isNull(s.computedColumns.deletedAt)))
-        .orderBy(asc(s.computedColumns.sortOrder)),
-    ["computed_columns"],
-  );
+  return useLiveTable(s.computedColumns, "computed_columns", [asc(s.computedColumns.sortOrder)]);
 }
 
 export function usePendingExpectedState() {
-  const userId = useUserId();
-  return useSharedLive(
-    `expected_payments:${userId}`,
-    () =>
-      getDb()
-        .select()
-        .from(s.expectedPayments)
-        .where(and(eq(s.expectedPayments.userId, userId), isNull(s.expectedPayments.deletedAt)))
-        .orderBy(asc(s.expectedPayments.dueDate)),
-    ["expected_payments"],
-  );
+  return useLiveTable(s.expectedPayments, "expected_payments", [asc(s.expectedPayments.dueDate)]);
 }
 
 /** See `autoConfirmedTransactionIds`. */
@@ -565,30 +396,11 @@ export function useAutoConfirmedTransactionIds(): ReadonlySet<string> {
 }
 
 export function useAllTransactionsState() {
-  const userId = useUserId();
-  return useSharedLive(
-    `transactions:${userId}`,
-    () =>
-      getDb()
-        .select()
-        .from(s.transactions)
-        .where(and(eq(s.transactions.userId, userId), isNull(s.transactions.deletedAt)))
-        .orderBy(asc(s.transactions.effectiveDate)),
-    ["transactions"],
-  );
+  return useLiveTable(s.transactions, "transactions", [asc(s.transactions.effectiveDate)]);
 }
 
 export function useAdjustmentsState() {
-  const userId = useUserId();
-  return useSharedLive(
-    `balance_adjustments:${userId}`,
-    () =>
-      getDb()
-        .select()
-        .from(s.balanceAdjustments)
-        .where(and(eq(s.balanceAdjustments.userId, userId), isNull(s.balanceAdjustments.deletedAt))),
-    ["balance_adjustments"],
-  );
+  return useLiveTable(s.balanceAdjustments, "balance_adjustments");
 }
 
 type SyncedBooleanSetting = "onboarded" | "account_frozen";
@@ -610,47 +422,25 @@ function useSyncedBooleanSettingState(
   return { ...res, data: readSyncedFlag(res, true) };
 }
 
-/**
- * Live onboarded flag for the route guard. Reactive on purpose: on a second
- * device the flag arrives via sync after sign-in, and the guard must lift
- * without an app restart. `null` = still resolving (or signed out).
- */
+/** Live onboarded flag for the route guard; reactive because a second device receives it via sync. `null` = resolving or signed out. */
 export function useOnboardedState(userId: string | null): LiveValueResult<boolean | null> {
   return useSyncedBooleanSettingState(userId, "onboarded");
 }
 
-/**
- * Live "account frozen" flag. Synced setting so a freeze on one device gates
- * every device. `null` while still resolving (or signed out) so the gate never
- * flashes before the real value is known.
- */
+/** Live "account frozen" flag, synced so a freeze gates every device. `null` while resolving or signed out. */
 export function useAccountFrozenState(userId: string | null): LiveValueResult<boolean | null> {
   return useSyncedBooleanSettingState(userId, "account_frozen");
 }
 
 export function useSettingsMapState(): LiveValueResult<Map<string, string>> {
-  const userId = useUserId();
-  const result = useSharedLive(
-    `settings:${userId}`,
-    () => getDb().select().from(s.settings).where(and(eq(s.settings.userId, userId), isNull(s.settings.deletedAt))),
-    ["settings"],
-  );
-  // Keyed on the rows, not on the render. A fresh Map per render is a fresh
-  // identity, and every consumer memo that lists `settings` as a dependency —
-  // `column_years`, the hidden-column set, the matrix model behind them — was
-  // therefore guaranteed to miss.
+  const result = useLiveTable(s.settings, "settings");
+  // Keyed on the rows: a fresh Map per render would defeat every consumer memo listing it.
   const data = useMemo(() => new Map(result.data.map((row) => [row.key, row.value])), [result.data]);
   return { ...result, data };
 }
 
-export function useCellNotesState(): LiveResult<typeof s.cellNotes.$inferSelect> {
-  const userId = useUserId();
-  return useSharedLive(
-    `cell-notes:${userId}`,
-    () => getDb().select().from(s.cellNotes)
-      .where(and(eq(s.cellNotes.userId, userId), isNull(s.cellNotes.deletedAt))),
-    ["cell_notes"],
-  );
+export function useCellNotesState() {
+  return useLiveTable(s.cellNotes, "cell_notes", [], "cell-notes");
 }
 
 export function settingValue<T>(map: Map<string, string>, key: SettingKey, fallback: T): T {
@@ -658,16 +448,18 @@ export function settingValue<T>(map: Map<string, string>, key: SettingKey, fallb
 }
 
 /**
- * A setting decoded once per stored string. The map is a new object after any
- * write — every entry writes `last_entry_at` — so a memo keyed on it re-parsed
- * the value and handed whatever it feeds a new object on every write in the
- * app. The fallback is the first render's, so a literal `[]` does not count as
- * a change.
+ * A setting decoded once per stored string: the map is a new object after any write, so a memo
+ * keyed on it would hand out a new value every time. The fallback is the first render's, so a
+ * literal `[]` does not count as a change.
  */
 export function useSettingValue<T>(map: Map<string, string>, key: SettingKey, fallback: T): T {
   const raw = map.get(key);
   const [initialFallback] = useState(fallback);
   return useMemo(() => decodeSettingValue(key, raw, initialFallback), [key, raw, initialFallback]);
+}
+
+function selfPersonIds(persons: readonly (typeof s.persons.$inferSelect)[]): Set<string> {
+  return new Set(persons.filter((p) => p.isSelf).map((p) => p.id));
 }
 
 /** Map DB transaction rows to the domain TxLike shape. */
@@ -676,7 +468,7 @@ function toTxLike(
   persons: (typeof s.persons.$inferSelect)[],
   categories: (typeof s.categories.$inferSelect)[],
 ): TxLike[] {
-  const selfIds = new Set(persons.filter((p) => p.isSelf).map((p) => p.id));
+  const selfIds = selfPersonIds(persons);
   const categoryKinds = new Map(categories.map((category) => [category.id, category.kind]));
   return rows.map((r) => ({
     id: r.id,
@@ -697,20 +489,15 @@ function toTxLike(
   }));
 }
 
+export function useStatementPaymentsState() {
+  return useLiveTable(s.cardStatementPayments, "card_statement_payments");
+}
+
 /**
- * The account's transactions in domain shape — one owner, one identity.
- *
- * Every whole-account derivation (the ledger, the matrix model, the upcoming
- * timeline, budget progress) starts from this list, and each screen used to
- * build its own copy inline: one O(N) mapping per screen per RENDER, and a
- * fresh array identity that defeated every memo downstream of it.
- *
- * The cache is a module value rather than a `useMemo` because the tab
- * navigator keeps five screens mounted at once and they all ask the same
- * question. Its three inputs are shared live-query results, so identity
- * comparison is exact, and holding one entry means the answer is literally the
- * same array everywhere — a per-hook memo would still map the list once per
- * mounted screen and hand each one a different identity.
+ * The account's transactions in domain shape, one identity for every whole-account derivation.
+ * A module value rather than a `useMemo`: the tab navigator keeps several screens mounted, and a
+ * per-hook memo would map the list once per screen and hand each a different identity. Its inputs
+ * are shared live-query results, so identity comparison is exact.
  */
 let txLikeCache: {
   rows: unknown;
@@ -722,28 +509,10 @@ let txLikeCache: {
   settlement: CardSettlement;
 } | null = null;
 
-export function useStatementPaymentsState() {
-  const userId = useUserId();
-  return useSharedLive(
-    `card_statement_payments:${userId}`,
-    () =>
-      getDb()
-        .select()
-        .from(s.cardStatementPayments)
-        .where(and(eq(s.cardStatementPayments.userId, userId), isNull(s.cardStatementPayments.deletedAt))),
-    ["card_statement_payments"],
-  );
-}
-
 /**
- * The ledger as recorded statement payments leave it, cached in the same entry
- * as the list it starts from and for the same reason: one module value, so the
- * list and its settlement can never be from two different reads.
- *
- * Every whole-account derivation reads `useTxLike`, so settling here is what
- * makes a fully paid statement's charges land on the day they were paid in
- * the table, the charts, the budgets and the dashboard alike — not in one of
- * them. With no payment recorded the list keeps its identity.
+ * The ledger as recorded statement payments leave it, cached in the same entry as the list it
+ * starts from so the two never come from different reads. Settling here puts a fully paid
+ * statement's charges on their payment day everywhere. With no payment the list keeps its identity.
  */
 export function useCardSettlement(): CardSettlement {
   const rows = useAllTransactionsState().data;
@@ -769,14 +538,9 @@ export function useTxLike(): TxLike[] {
 }
 
 /**
- * A date range's rows as the ledger counts them.
- *
- * A statement paid in full puts its charges on the day it was paid
- * (`settleCardStatements`), so the month holding them in the table is not the
- * month their stored date names. Read by stored date, the due month's list
- * showed rows its cell had already let go, and the payment month's cell
- * counted rows its list did not have. A moved row keeps every stored field;
- * `settledOn` says where the ledger put it, and its status follows.
+ * A date range's rows as the ledger counts them: a fully paid statement's charges sit on the
+ * payment day (`settleCardStatements`), not their stored date. A moved row keeps every stored
+ * field; `settledOn` says where the ledger put it, and its status follows.
  */
 export function useSettledTransactionsBetweenState(from: string, to: string) {
   const state = useAllTransactionsState();
@@ -802,29 +566,16 @@ function settledRowsBetween(rows: readonly StoredTransaction[], settlement: Card
 }
 
 /**
- * The investment wallet as it stands right now.
- *
- * Two screens project it from the same six sources — the wallet itself and
- * the refund form that spends from it — and both had the same twenty lines
- * inline. A projection that drifts between them is a wallet that shows one
- * cash figure and refuses a refund for a different one.
- *
- * A projection that throws is a wallet whose history cannot be replayed
- * (a sale before its purchase arrived, say). The snapshot keeps the last
- * verified wallet visible while the live sources converge and exposes the
- * failure so money-changing forms can pause honestly.
+ * The investment wallet right now. A projection that throws is a history that cannot be replayed
+ * (a sale before its purchase arrived): the last verified wallet stays visible and the failure is
+ * exposed so money-changing forms can pause.
  */
-export interface InvestmentWalletSnapshot {
+interface InvestmentWalletSnapshot {
   data: InvestmentState | null;
   error: unknown | null;
 }
 
-/**
- * Project the wallet without allowing a transient multi-query snapshot to
- * blank the screen. A valid previous projection remains visible while the six
- * live sources converge; the error is still returned so a caller can show a
- * stale notice and disable money-changing actions until retry succeeds.
- */
+/** Project the wallet from its six live sources, one projection for every screen that shows or spends from it. */
 export function useInvestmentWalletSnapshot(): InvestmentWalletSnapshot {
   const userId = useUserId();
   const profile = useInvestmentProfilesState().data[0];
@@ -837,7 +588,7 @@ export function useInvestmentWalletSnapshot(): InvestmentWalletSnapshot {
   const snapshot = useMemo(() => {
     if (lastGood.current?.userId !== userId) lastGood.current = null;
     if (!profile) return { data: null, error: null };
-    const selfPersonIds = new Set(persons.filter((person) => person.isSelf).map((person) => person.id));
+    const selfIds = selfPersonIds(persons);
     try {
       const data = projectInvestmentState(
         profile,
@@ -845,7 +596,7 @@ export function useInvestmentWalletSnapshot(): InvestmentWalletSnapshot {
         operations,
         transactions.map((transaction) => ({
           ...transaction,
-          personIsSelf: selfPersonIds.has(transaction.personId),
+          personIsSelf: selfIds.has(transaction.personId),
         })),
         categories,
       );
@@ -865,40 +616,18 @@ export function useInvestmentWalletSnapshot(): InvestmentWalletSnapshot {
 }
 
 /**
- * Same rationale as `txLikeCache` just above: the tab navigator keeps
- * Dashboard, Mali Tablo, item breakdown, `[month]` and others mounted at
- * once, and a per-hook `useMemo` rebuilt the whole chain once per mounted
- * screen on every write AND handed each screen a different `LedgerBundle`
- * identity, which invalidated every downstream memo built on it too. Keyed
- * on the exact inputs `buildLedgerChain` receives — note that's the raw
- * `adjustments` array (stable identity from the shared live query), not the
- * `{ date, amountMinor }` array mapped from it below, which is a fresh
- * identity every render and would never hit.
+ * Same rationale as `txLikeCache`: a per-hook memo would rebuild the chain per mounted screen and
+ * hand each a different `LedgerBundle`. Keyed on the exact inputs `buildLedgerChain` receives (the
+ * raw `adjustments` array, not the mapped copy, whose identity changes every render).
  *
- * Keyed by END YEAR rather than by the year on screen. The chain does not
- * depend on which year is being looked at: `buildLedger` walks every
- * transaction and chains every month from the anchor forward, and for any year
- * at or before the current one the result is identical whichever year the
- * screen shows — only the twelve-month slice differs. Keying by the year on
- * screen meant every step through history rebuilt the whole chain: measured at
- * 6x CPU throttle on a five-year, 3.000-row workspace, moving one year back
- * blocked the main thread for 208ms redoing arithmetic it already had.
- *
- * Bounded to the handful of end years that can be on screen at once (Dashboard
- * pins the current year while Mali Tablo's is selectable, and a user looking
- * ahead extends the chain) so it stays a cache, not a leak.
+ * Keyed by END YEAR, not the year on screen: the chain is identical for any year up to the end
+ * year and only the twelve-month slice differs. Bounded so it stays a cache, not a leak.
  */
 const LEDGER_CACHE_LIMIT = 4;
 type LedgerCacheEntry = { inputs: readonly unknown[]; value: LedgerChain };
 const ledgerChainCache = new Map<number, LedgerCacheEntry>();
 
-/**
- * Per-chain year slices, so stepping back to a year already visited returns
- * the SAME bundle object. A fresh identity would invalidate every memo the
- * screens build on it, which is the cost this cache exists to avoid.
- * `WeakMap`, so a chain that falls out of the cache above takes its slices
- * with it.
- */
+/** Per-chain year slices, so revisiting a year returns the same bundle; a chain evicted above takes its slices with it. */
 const ledgerSliceCache = new WeakMap<LedgerChain, Map<number, LedgerBundle>>();
 
 function sliceCacheFor(chain: LedgerChain): Map<number, LedgerBundle> {
@@ -910,13 +639,8 @@ function sliceCacheFor(chain: LedgerChain): Map<number, LedgerBundle> {
 }
 
 /**
- * The expectations the chain draws, one list for every screen reading it.
- *
- * A module value for the reason `txLikeCache` is one: a list built per mounted
- * screen would hand the chain cache a new identity from each of them and
- * rebuild the chain on every render of either. The rate is read when an input
- * changes rather than on every render, so the Summary card's forecast and the
- * Mali Tablo's close are made of the same converted amounts.
+ * The expectations the chain draws, one list for every screen. A module value for the reason
+ * `txLikeCache` is one; the rate is read when an input changes, so every screen converts the same amounts.
  */
 let plannedCache: { inputs: readonly unknown[]; value: PlannedExpectation[] } | null = null;
 
@@ -977,12 +701,7 @@ export function useLedgerState(year: number): LiveValueResult<LedgerBundle | nul
     incomesState,
   ]);
 
-  // `null` means ONE thing now: the queries have not answered yet. It used to
-  // mean that AND "no opening month is configured", and a screen cannot tell
-  // those apart — which is how a workspace with a perfectly readable database
-  // ended up showing a permanent skeleton. Returning before the build also
-  // keeps the loading pass out of the chain cache, whose inputs would all be
-  // the empty arrays a pending query reports.
+  // `null` means only that the queries have not answered; returning here also keeps the loading pass out of the chain cache.
   if (!ready) return { data: null, status, error, updatedAt, retry };
 
   const today = todayISO();
@@ -994,7 +713,7 @@ export function useLedgerState(year: number): LiveValueResult<LedgerBundle | nul
   const endYear = ledgerChainEndYear(year, today);
   const cached = ledgerChainCache.get(endYear);
   let chain: LedgerChain;
-  if (cached && cached.inputs.length === inputs.length && cached.inputs.every((input, index) => input === inputs[index])) {
+  if (cached && cached.inputs.every((input, index) => input === inputs[index])) {
     chain = cached.value;
   } else {
     chain = buildLedgerChain({
@@ -1018,8 +737,7 @@ export function useLedgerState(year: number): LiveValueResult<LedgerBundle | nul
       ledgerChainCache.delete(oldest.value);
     }
   }
-  // The slice is a filter over months already computed, and it has to keep a
-  // stable identity or every memo built on the bundle is invalidated again.
+  // The slice keeps a stable identity or every memo built on the bundle is invalidated.
   const sliceCache = sliceCacheFor(chain);
   let data = sliceCache.get(year);
   if (!data) {
@@ -1029,13 +747,7 @@ export function useLedgerState(year: number): LiveValueResult<LedgerBundle | nul
   return { data, status, error, updatedAt, retry };
 }
 
-/**
- * What the two balance columns are called here, and whether both are drawn.
- *
- * A hook rather than three reads per screen: the Mali Tablo, its month detail
- * and the editor that sets them all have to agree, and a heading that differs
- * between the table and the card opened from a cell reads as two figures.
- */
+/** What the two balance columns are called, and whether both are drawn; one hook so every screen agrees. */
 export function useBalanceColumns(): { openingLabel: string; closingLabel: string; showOpening: boolean } {
   const settings = useSettingsMapState().data;
   const stored = settingValue<StoredBalanceColumns | null>(settings, "balance_columns", null);

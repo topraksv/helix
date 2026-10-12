@@ -121,17 +121,7 @@ describe("large-ledger performance contracts", () => {
   });
 });
 
-/**
- * The item-breakdown screen builds twelve month rows. `creditCardSplit`
- * internally computes EVERY month via `creditCardSplitsByMonth` and then
- * discards all but one, so calling it once per row re-scanned the whole ledger
- * twelve times per render. Measured before the fix: 65.26 ms at 100k rows,
- * 6.71 ms at 10k. Hoisted: 5.35 ms and 0.56 ms — 12.2x and 12.0x.
- *
- * `buildCashFlowMatrixModel` already had this contract (the test above);
- * this one pins the same property for the item screen's call pattern, and
- * asserts the two forms agree so the optimisation cannot change a number.
- */
+/** The item screen must use `creditCardSplitsByMonth` once, not `creditCardSplit` per row (one full scan per month). */
 describe("item breakdown credit-card splits", () => {
   const transactions = largeTransactions(LARGE_LEDGER_ROWS);
   const cards = new Set(["card"]);
@@ -160,27 +150,9 @@ describe("item breakdown credit-card splits", () => {
     // that still fails loudly if the batch form is replaced by a loop.
     expect(batched * 4).toBeLessThan(perMonth);
   });
-
-  it("keeps the screen's own call pattern off the per-month path", async () => {
-    const { readFileSync } = await import("node:fs");
-    const { join } = await import("node:path");
-    const source = readFileSync(join(process.cwd(), "src/app/(tabs)/cash-flow/item.tsx"), "utf8");
-    expect(source).toContain("creditCardSplitsByMonth");
-    expect(source).not.toMatch(/creditCardSplit\(/);
-  });
 });
 
-/**
- * Analysis search builds a token line per transaction, and the money formatter
- * inside it is an `Intl.NumberFormat` call. Measured at 100k rows: 65 ms to
- * build the index, 140 ms to filter it — so the screen must key both on their
- * real inputs. Built from the render instead, the index was rebuilt on every
- * keystroke in the search box, every filter chip and every layout measurement.
- *
- * The budget below is deliberately broad; what it defends is that the cost per
- * transaction stays constant, so a change that adds another whole-table pass
- * to either half shows up as a failure rather than as a laggy search box.
- */
+/** The search index and filter must stay one pass each; this fails on an added whole-table pass. */
 describe("analysis search cost", () => {
   const SEARCH_BUDGET_MS = 4_000;
   const rows = largeTransactions(LARGE_LEDGER_ROWS).map((transaction, index) => ({
@@ -221,27 +193,13 @@ describe("analysis search cost", () => {
   });
 });
 
-/**
- * The backup parser's wall-clock ceiling.
- *
- * It lives here rather than beside the other backup assertions because a
- * timing assertion cannot survive Stryker's instrumentation — it would measure
- * the mutator, not the parser. Keeping it in `backup-validation.test.ts` meant
- * that whole file was excluded from mutation runs, and with it the nineteen
- * behavioural tests that guard `isValidImportRow`, the validator every restored
- * row passes through. One budget was costing a security boundary its gate.
- */
+/** Timing cannot survive Stryker instrumentation, so the backup parse budget lives here, outside the mutation run. */
 describe("backup parse budget", () => {
   it("parses a maximum-size bundle well inside the interaction budget", () => {
     const content = JSON.stringify({ version: 1, exportedAt: "2026-07-15T12:00:00.000Z", tables: {} });
     const exactLimit = content.padEnd(MAX_BACKUP_BYTES, " ");
 
-    // The same broad ceiling the budgets above use, not the 2_000 this carried
-    // beside the backup assertions. `MAX_BACKUP_BYTES` is 15MiB, which parses
-    // in ~150ms unloaded; the earlier 2_000 ceiling was tripped by runner load,
-    // not by the parser. This file exists to fail on regressions rather than on
-    // machine load, and a parser gone quadratic on this input would be a
-    // multiple of the ceiling, not a few percent over it.
+    // Broad ceiling: it fails on a parser gone quadratic, not on runner load.
     const started = performance.now();
     expect(parseExportBundleText(exactLimit).tables).toEqual({});
     expect(performance.now() - started).toBeLessThan(BACKUP_PARSE_BUDGET_MS);

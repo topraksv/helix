@@ -1,4 +1,4 @@
-# Row-level security, asserted. Helix and Gital run this same file.
+# Row-level security, asserted.
 #
 # `supabase/tests/*.sql` is the pgTAP suite, the only executable proof that
 # one account cannot read or write another's rows. The client's checks are

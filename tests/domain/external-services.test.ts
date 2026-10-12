@@ -1,7 +1,21 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { CURRENCY_INFO, FETCHED_FX_CURRENCIES, currencyLabel, parseOpenExchangeRates, parseTcmbRates } from "../../src/domain/fx-provider";
+import {
+  CURRENCY_INFO,
+  currencyLabel,
+  FETCHED_FX_CURRENCIES,
+  isSupportedCurrency,
+  isValidRateDate,
+  parseOpenExchangeRates,
+  parseTcmbRates,
+} from "../../src/domain/fx-provider";
 import { MARKET_SYMBOLS } from "../../src/domain/investment-catalog";
-import { normalizeLogoDomain, remoteFaviconUrl } from "../../src/domain/logo-domain";
+import {
+  foldForMatch,
+  nameMentions,
+  nameStartsWord,
+  normalizeLogoDomain,
+  remoteFaviconUrl,
+} from "../../src/domain/logo-domain";
 import {
   buildHistorySeries,
   COIN_FINE_GRAMS,
@@ -102,13 +116,8 @@ describe("external FX provider validation", () => {
    * fallback.
    */
   it("offers a curated set both providers carry", () => {
-    // The pure list is asserted here rather than `SUPPORTED_CURRENCIES`, which
-    // lives in the service layer and pulls React Native into a node-env suite.
-    // TRY leads that one by construction — it is `["TRY", ...this]`.
-    expect([...FETCHED_FX_CURRENCIES].sort()).toEqual(
-      ["AED", "ALL", "AUD", "AZN", "BGN", "CAD", "CHF", "CNY", "DKK", "EUR", "GBP",
-       "GEL", "JPY", "KRW", "KWD", "NOK", "RON", "RUB", "SAR", "SEK", "USD"],
-    );
+    // The ordered list is pinned in the catalogue test below; the service-layer
+    // `SUPPORTED_CURRENCIES` pulls React Native in, and is `["TRY", ...this]`.
     expect(FETCHED_FX_CURRENCIES).not.toContain("TRY");
   });
 
@@ -119,11 +128,7 @@ describe("external FX provider validation", () => {
    * yesterday's number as today's.
    */
   it("keeps the live market rate to the two pairs the socket actually carries", () => {
-    // Behaviour, not a grep over the service's own source. The old assertion
-    // matched `currency === "USD"` in `markets.ts`, which stops matching the
-    // moment that file is instrumented for mutation testing — so the rule had
-    // no proof during precisely the run meant to prove it, and the whole
-    // mutation gate failed in its dry run rather than reporting a score.
+    // Asserted on behaviour: a grep over markets.ts stops matching once Stryker instruments it.
     expect(liveMarketSymbol("USD")).toBe("USDTRY");
     expect(liveMarketSymbol("EUR")).toBe("EURTRY");
     for (const currency of FETCHED_FX_CURRENCIES) {
@@ -154,6 +159,148 @@ describe("external FX provider validation", () => {
     expect(() => parseOpenExchangeRates({ result: "error", time_last_update_unix: published, rates: { USD: 0.025 } })).toThrow();
     expect(() => parseOpenExchangeRates({ result: "success", rates: { USD: 0.025 } })).toThrow();
     expect(() => parseOpenExchangeRates({ result: "success", time_last_update_unix: published, rates: { USD: 0 } })).toThrow();
+  });
+
+  it("pins the complete curated currency identity catalog", () => {
+    expect(FETCHED_FX_CURRENCIES).toEqual([
+      "USD", "EUR", "GBP", "CHF", "JPY", "AUD", "CAD", "SEK", "NOK", "DKK", "CNY", "KRW", "RON",
+      "RUB", "AED", "SAR", "AZN", "KWD", "ALL", "BGN", "GEL",
+    ]);
+    expect(CURRENCY_INFO).toEqual({
+      TRY: { flag: "🇹🇷", name: "Türk Lirası" },
+      USD: { flag: "🇺🇸", name: "Amerikan Doları" },
+      EUR: { flag: "🇪🇺", name: "Euro" },
+      GBP: { flag: "🇬🇧", name: "İngiliz Sterlini" },
+      CHF: { flag: "🇨🇭", name: "İsviçre Frangı" },
+      JPY: { flag: "🇯🇵", name: "Japon Yeni" },
+      AUD: { flag: "🇦🇺", name: "Avustralya Doları" },
+      CAD: { flag: "🇨🇦", name: "Kanada Doları" },
+      SEK: { flag: "🇸🇪", name: "İsveç Kronu" },
+      NOK: { flag: "🇳🇴", name: "Norveç Kronu" },
+      DKK: { flag: "🇩🇰", name: "Danimarka Kronu" },
+      CNY: { flag: "🇨🇳", name: "Çin Yuanı" },
+      KRW: { flag: "🇰🇷", name: "Güney Kore Wonu" },
+      RON: { flag: "🇷🇴", name: "Rumen Leyi" },
+      RUB: { flag: "🇷🇺", name: "Rus Rublesi" },
+      AED: { flag: "🇦🇪", name: "BAE Dirhemi" },
+      SAR: { flag: "🇸🇦", name: "Suudi Riyali" },
+      AZN: { flag: "🇦🇿", name: "Azerbaycan Manatı" },
+      KWD: { flag: "🇰🇼", name: "Kuveyt Dinarı" },
+      ALL: { flag: "🇦🇱", name: "Arnavut Leki" },
+      BGN: { flag: "🇧🇬", name: "Bulgar Levası" },
+      GEL: { flag: "🇬🇪", name: "Gürcistan Larisi" },
+    });
+    for (const currency of [...FETCHED_FX_CURRENCIES, "TRY"] as const) expect(isSupportedCurrency(currency)).toBe(true);
+  });
+
+  it("anchors provider dates and XML attributes exactly", () => {
+    expect(isValidRateDate("2026-07-18")).toBe(true);
+    expect(isValidRateDate("x2026-07-18")).toBe(false);
+    expect(isValidRateDate("2026-07-18x")).toBe(false);
+    for (const xml of [
+      '<Tarih_DateX Date="07/18/2026"><Currency CurrencyCode="USD"><Unit>1</Unit><ForexSelling>40</ForexSelling></Currency></Tarih_DateX>',
+      '<Tarih_Date Date="7/18/2026"><Currency CurrencyCode="USD"><Unit>1</Unit><ForexSelling>40</ForexSelling></Currency></Tarih_Date>',
+      '<Tarih_Date Date="07/8/2026"><Currency CurrencyCode="USD"><Unit>1</Unit><ForexSelling>40</ForexSelling></Currency></Tarih_Date>',
+      '<Tarih_Date Date="07/18/26"><Currency CurrencyCode="USD"><Unit>1</Unit><ForexSelling>40</ForexSelling></Currency></Tarih_Date>',
+    ]) expect(() => parseTcmbRates(xml)).toThrow("TCMB response has no valid rate date");
+    expect(parseTcmbRates('<Tarih_Date Date="07/18/2026"><Currency CurrencyCode="USD"><Unit>1</Unit><ForexSelling>40</ForexSelling></Currency></Tarih_Date>'))
+      .toEqual({ rateDate: "2026-07-18", rates: [{ currency: "USD", rateTry: 40 }] });
+    expect(parseTcmbRates('<Tarih_Date Tarih="18.07.2026"><Currency CurrencyCode="USD"><Unit>2</Unit><ForexSelling>80</ForexSelling></Currency></Tarih_Date>'))
+      .toEqual({ rateDate: "2026-07-18", rates: [{ currency: "USD", rateTry: 40 }] });
+    expect(parseTcmbRates('<Tarih_Date Source="TCMB" Date="07/18/2026"><Currency CurrencyCode="USD"><Unit>1</Unit><ForexSelling>40</ForexSelling></Currency></Tarih_Date>'))
+      .toEqual({ rateDate: "2026-07-18", rates: [{ currency: "USD", rateTry: 40 }] });
+    expect(parseTcmbRates('<Tarih_Date Source="TCMB" Tarih="18.07.2026"><Currency CurrencyCode="USD"><Unit>1</Unit><ForexSelling>40</ForexSelling></Currency></Tarih_Date>'))
+      .toEqual({ rateDate: "2026-07-18", rates: [{ currency: "USD", rateTry: 40 }] });
+    expect(parseTcmbRates('<Tarih_Date Date="07/18/2026" CurrencyCode="EUR"><Unit>1</Unit><ForexSelling>50</ForexSelling><Currency CurrencyCode="USD"><Unit>1</Unit><ForexSelling>40</ForexSelling></Currency></Tarih_Date>'))
+      .toEqual({ rateDate: "2026-07-18", rates: [{ currency: "USD", rateTry: 40 }] });
+    for (const xml of [
+      '<Tarih_Date Date="07/18/2026"><Currency><ForexSelling>40</ForexSelling></Currency></Tarih_Date>',
+      '<Tarih_Date Date="07/18/2026"><Currency Foo="bar"><ForexSelling>40</ForexSelling></Currency></Tarih_Date>',
+      '<Tarih_Date Date="07/18/2026"><Currency CurrencyCode="USD"><Unit>0</Unit><ForexSelling>40</ForexSelling></Currency></Tarih_Date>',
+      '<Tarih_Date Date="07/18/2026"><Currency CurrencyCode="USD"><Unit>1</Unit></Currency></Tarih_Date>',
+      '<Tarih_Date Date="07/18/2026"><Currency CurrencyCode="USD"><Unit>1</Unit><ForexSelling>1000001</ForexSelling></Currency></Tarih_Date>',
+    ]) expect(() => parseTcmbRates(xml)).toThrow("TCMB response has no supported rates");
+    expect(parseTcmbRates('<Tarih_Date Date="07/18/2026"><Currency CurrencyCode="USD"><Unit>1</Unit><ForexSelling>1000000</ForexSelling></Currency></Tarih_Date>'))
+      .toEqual({ rateDate: "2026-07-18", rates: [{ currency: "USD", rateTry: 1_000_000 }] });
+  });
+
+  it("rejects a decimal TCMB Unit instead of treating it as the implicit unit", () => {
+    expect(() => parseTcmbRates(
+      '<Tarih_Date Date="07/18/2026"><Currency CurrencyCode="USD"><Unit>1.5</Unit><ForexSelling>60</ForexSelling></Currency></Tarih_Date>',
+    )).toThrow("TCMB response has no supported rates");
+  });
+
+  /**
+   * A missing `<Unit>` is refused for the same reason a malformed one is.
+   * TCMB quotes JPY, KRW and RUB per hundred, and all three are fetched, so
+   * reading an absent element as "one" is not a harmless default — it is a
+   * hundredfold error on the currencies most likely to carry the element that
+   * went missing.
+   */
+  it("refuses a currency block that declares no unit at all", () => {
+    expect(() => parseTcmbRates(
+      '<Tarih_Date Date="07/18/2026"><Currency CurrencyCode="JPY"><ForexSelling>60</ForexSelling></Currency></Tarih_Date>',
+    )).toThrow("TCMB response has no supported rates");
+  });
+
+  it("enforces quote boundaries rather than accepting zero or over-limit rates", () => {
+    const published = 1_784_332_800;
+    const batch = (rate: number) => parseOpenExchangeRates({ result: "success", time_last_update_unix: published, rates: { USD: rate } });
+    expect(batch(0.000001).rates).toEqual([{ currency: "USD", rateTry: 1_000_000 }]);
+    expect(() => batch(0)).toThrow("FX response has no supported rates");
+    expect(() => batch(0.0000009)).toThrow("FX response has no supported rates");
+    expect(() => parseOpenExchangeRates({ result: "success", time_last_update_unix: 0, rates: { USD: 0.025 } })).toThrow("Invalid FX response");
+    for (const invalidPublished of [null, "1", Number.NaN, Number.POSITIVE_INFINITY, -1]) {
+      expect(() => parseOpenExchangeRates({ result: "success", time_last_update_unix: invalidPublished, rates: { USD: 0.025 } }))
+        .toThrow("Invalid FX response");
+    }
+    for (const rates of [null, [], "rates"]) {
+      expect(() => parseOpenExchangeRates({ result: "success", time_last_update_unix: published, rates }))
+        .toThrow("Invalid FX response");
+    }
+    for (const rate of ["0.025", Number.NaN, Number.POSITIVE_INFINITY, -1, 0]) {
+      expect(() => parseOpenExchangeRates({ result: "success", time_last_update_unix: published, rates: { USD: rate } }))
+        .toThrow("FX response has no supported rates");
+    }
+    expect(() => batch(Number.MIN_VALUE)).toThrow("FX response has no supported rates");
+    expect(isSupportedCurrency("toString")).toBe(false);
+    expect(isSupportedCurrency({ toString: () => "TRY" })).toBe(false);
+    expect(() => parseOpenExchangeRates({ result: "failure" })).toThrow("FX provider reported a failure");
+  });
+
+  it("accepts only real provider calendar dates in the supported era", () => {
+    expect(isValidRateDate("2000-02-29")).toBe(true);
+    expect(isValidRateDate("2200-12-31")).toBe(true);
+    for (const invalid of ["1999-12-31", "2201-01-01", "2026-00-01", "2026-13-01", "2026-02-29", "2026-01-00"]) {
+      expect(isValidRateDate(invalid), invalid).toBe(false);
+    }
+  });
+
+  it("parses the Turkish TCMB date and discards unsupported or invalid quotes", () => {
+    const batch = parseTcmbRates(`
+      <Tarih_Date Tarih="18.07.2026">
+        <Currency CurrencyCode="USD"><Unit>1</Unit><ForexSelling>40.5</ForexSelling></Currency>
+        <Currency CurrencyCode="EUR"><Unit>0</Unit><ForexSelling>47</ForexSelling></Currency>
+        <Currency CurrencyCode="GBP"><Unit>1</Unit><ForexSelling>0</ForexSelling></Currency>
+        <Currency CurrencyCode="XXX"><Unit>1</Unit><ForexSelling>10</ForexSelling></Currency>
+      </Tarih_Date>
+    `);
+    expect(batch).toEqual({ rateDate: "2026-07-18", rates: [{ currency: "USD", rateTry: 40.5 }] });
+  });
+
+  it("rejects malformed open-feed containers and ignores bad quotes beside a valid one", () => {
+    for (const invalid of [null, [], "success", { result: "success", time_last_update_unix: 1, rates: [] }]) {
+      expect(() => parseOpenExchangeRates(invalid), JSON.stringify(invalid)).toThrow("Invalid FX response");
+    }
+    expect(parseOpenExchangeRates({
+      result: "success",
+      time_last_update_unix: 1_784_332_800,
+      rates: { USD: 0.025, EUR: Number.NaN, GBP: -1, CHF: "0.02" },
+    }).rates).toEqual([{ currency: "USD", rateTry: 40 }]);
+    expect(isSupportedCurrency("TRY")).toBe(true);
+    expect(isSupportedCurrency("USD")).toBe(true);
+    expect(isSupportedCurrency("BTC")).toBe(false);
+    expect(isSupportedCurrency(null)).toBe(false);
   });
 });
 
@@ -197,6 +344,72 @@ describe("remote logo boundary", () => {
       expect(normalizeLogoDomain(value)).toBeNull();
     }
   });
+
+  it("pins Turkish folding and public-host validation details", () => {
+    expect(foldForMatch("ıİşŞğĞüÜöÖçÇ")).toBe("iissgguuoocc");
+    expect(normalizeLogoDomain("example.com")).toBe("example.com");
+    expect(normalizeLogoDomain("127.0.0.1.example.com")).toBe("127.0.0.1.example.com");
+    expect(normalizeLogoDomain("127.0.0.1")).toBeNull();
+    expect(normalizeLogoDomain("example.com.attacker")).toBe("example.com.attacker");
+    expect(normalizeLogoDomain(" example.com ")).toBe("example.com");
+    expect(normalizeLogoDomain("https://:password@example.com")).toBeNull();
+    expect(normalizeLogoDomain("local")).toBeNull();
+    expect(normalizeLogoDomain("example")).toBeNull();
+    expect(normalizeLogoDomain("x.local")).toBeNull();
+    expect(normalizeLogoDomain("11.22.33.x")).toBe("11.22.33.x");
+    expect(normalizeLogoDomain("11.22.33.44")).toBeNull();
+    const maxHost = `${"a".repeat(63)}.${"b".repeat(63)}.${"c".repeat(63)}.${"d".repeat(61)}`;
+    expect(maxHost).toHaveLength(253);
+    expect(normalizeLogoDomain(maxHost)).toBe(maxHost);
+    const oversizedHost = `${"a".repeat(63)}.${"b".repeat(63)}.${"c".repeat(63)}.${"d".repeat(62)}`;
+    expect(oversizedHost).toHaveLength(254);
+    expect(normalizeLogoDomain(oversizedHost)).toBeNull();
+    expect(normalizeLogoDomain("h2://example.com")).toBe("example.com");
+    const exactRawLimit = `https://example.com/${"a".repeat(492)}`;
+    expect(exactRawLimit).toHaveLength(512);
+    expect(normalizeLogoDomain(exactRawLimit)).toBe("example.com");
+    expect(normalizeLogoDomain(`${exactRawLimit}a`)).toBeNull();
+  });
+
+  it("folds Turkish text and matches only complete words", () => {
+    expect(foldForMatch("  İŞ GÜÇ  ")).toBe("is guc");
+    expect(nameMentions("İSKİ faturası", "iski")).toBe(true);
+    expect(nameMentions("Netflix", "net")).toBe(false);
+    expect(nameMentions("Netflix", "flix")).toBe(false);
+    expect(nameMentions("Netflix", "")).toBe(false);
+    expect(nameMentions("Müzik", "video")).toBe(false);
+    expect(nameMentions("", "")).toBe(false);
+    expect(nameMentions("", "video")).toBe(false);
+  });
+
+  it("rejects absent, oversized, malformed, and invalid-label favicon domains", () => {
+    expect(normalizeLogoDomain(undefined)).toBeNull();
+    expect(normalizeLogoDomain("x".repeat(513))).toBeNull();
+    expect(normalizeLogoDomain("https://bad_label.example.com")).toBeNull();
+    expect(normalizeLogoDomain("https://-bad.example.com")).toBeNull();
+    expect(normalizeLogoDomain("https://example.com:444")).toBeNull();
+    expect(normalizeLogoDomain("://not a url")).toBeNull();
+    expect(remoteFaviconUrl("localhost")).toBeNull();
+  });
+
+  /**
+   * The scheme test is ANCHORED, and an anchor is invisible until something
+   * matches in the wrong place.
+   *
+   * The IP test is anchored too, but nothing can reach past it: WHATWG parses
+   * any host whose last label is numeric as IPv4, so `a1.2.3.4` is refused by
+   * `new URL` before the pattern is ever consulted. That anchor cannot be
+   * demonstrated from the outside, and a test that pretended otherwise would
+   * be asserting the parser rather than this guard.
+   */
+  it("looks for a scheme only where a scheme can be", () => {
+    // "://" inside a path does not make the string a URL of its own. Read
+    // unanchored, the value is handed to `new URL` unprefixed, which throws,
+    // and a perfectly good domain resolves to nothing.
+    expect(normalizeLogoDomain("example.com/a://b")).toBe("example.com");
+    expect(normalizeLogoDomain("1.2.3.4")).toBeNull();
+    expect(normalizeLogoDomain("https://1.2.3.4")).toBeNull();
+  });
 });
 
 describe("live market freshness", () => {
@@ -224,6 +437,17 @@ describe("live market freshness", () => {
     expect(freshMarketQuote(1_000, 1_500, 600)).toBe(true);
     expect(freshMarketQuote(1_000, 1_601, 600)).toBe(false);
     expect(freshMarketQuote(2_000, 1_500, 600)).toBe(false);
+  });
+
+  it("accepts both exact market ceilings and exact freshness age", () => {
+    expect(validMarketQuote(1_000_000, 1_000_000)).toBe(true);
+    expect(validMarketQuote(1_000_001, 1)).toBe(false);
+    expect(validMarketQuote(1, 1_000_001)).toBe(false);
+    expect(validMarketQuote(Number.POSITIVE_INFINITY, 1)).toBe(false);
+    expect(validMarketQuote(-1, 1)).toBe(false);
+    expect(validMarketQuote(0, 1)).toBe(false);
+    expect(freshMarketQuote(1_000, 1_600, 600)).toBe(true);
+    expect(freshMarketQuote(1_000, 1_601, 600)).toBe(false);
   });
 });
 
@@ -938,5 +1162,25 @@ describe("notification planning guards", () => {
     expect(limited).toHaveLength(60);
     expect(limited[0]?.fireAt.getTime()).toBe(1);
     expect(limited.at(-1)?.fireAt.getTime()).toBe(60);
+  });
+});
+
+describe("word-prefix matching", () => {
+  it("matches a word's own beginning and never mid-word", () => {
+    expect(nameStartsWord("Worldeko", "world")).toBe(true);
+    expect(nameStartsWord("eko world", "world")).toBe(true);
+    expect(nameStartsWord("Yapıkredi", "kredi")).toBe(false);
+    expect(nameStartsWord("", "world")).toBe(false);
+    expect(nameStartsWord("Worldeko", "")).toBe(false);
+  });
+
+  it("keeps looking past a mid-word hit rather than giving up on it", () => {
+    // "kredi" appears inside "yapikredi" first and as its own word second.
+    expect(nameStartsWord("Yapıkredi kredi kartı", "kredi")).toBe(true);
+  });
+
+  it("folds Turkish letters on both sides, as every other match here does", () => {
+    expect(nameStartsWord("İŞBANKASI kartım", "isbank")).toBe(true);
+    expect(nameStartsWord("Bonusflaş", "BONUS")).toBe(true);
   });
 });

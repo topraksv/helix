@@ -4,7 +4,7 @@ const harness = vi.hoisted(() => {
   const callbacks: ((event: string, session: unknown) => void)[] = [];
   const client = {
     auth: {
-      verifyOtp: vi.fn(async (_request: { token_hash: string; type: string }) => ({ error: null as { message: string } | null })),
+      verifyOtp: vi.fn(async (_request: { token_hash: string; type: string }) => ({ error: null as { name?: string; message: string } | null })),
       signOut: vi.fn(async (_options: { scope: string }) => ({ error: null })),
       onAuthStateChange: (callback: (event: string, session: unknown) => void) => {
         callbacks.push(callback);
@@ -116,6 +116,13 @@ describe("password recovery session binding", () => {
       const refused = await load();
       refused.getSupabase();
       await expect(refused.takeEmailLinkLanding()).resolves.toBe("unusable");
+
+      // Never reached Auth: nothing was spent, so the link goes back for a reload.
+      harness.client.auth.verifyOtp.mockResolvedValueOnce({ error: { name: "AuthRetryableFetchError", message: "Failed to fetch" } });
+      const offline = await load();
+      offline.getSupabase();
+      await expect(offline.takeEmailLinkLanding()).resolves.toBe("offline");
+      expect(replaceState).toHaveBeenLastCalledWith({ key: 1 }, "", "https://topraksv.github.io/helix/?token_hash=pkce_0b6f&type=email");
 
       vi.stubGlobal("location", { href: "https://topraksv.github.io/helix/?token_hash=pkce_7c1d&type=email_change" });
       const change = await load();

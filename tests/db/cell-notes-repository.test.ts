@@ -18,7 +18,6 @@ const dependencies = vi.hoisted(() => {
     }),
     deterministicId: vi.fn(async () => "note-1"),
     nowIso: vi.fn(() => "2026-08-02T00:00:00.000Z"),
-    scheduleSync: vi.fn(),
   };
 });
 
@@ -32,7 +31,6 @@ vi.mock("../../src/db/mutations", () => ({
   writeRows: dependencies.writeRows,
   writeRowsValidated: dependencies.writeRowsValidated,
 }));
-vi.mock("../../src/sync/engine", () => ({ scheduleSync: dependencies.scheduleSync }));
 
 import { saveCellNote } from "../../src/data/repo/cell-notes";
 
@@ -56,7 +54,6 @@ describe("cell-note repository boundary", () => {
         deletedAt: null,
       },
     }]);
-    expect(dependencies.scheduleSync).toHaveBeenCalledWith("user-1");
   });
 
   it("rejects a stale category before local persistence", async () => {
@@ -65,7 +62,6 @@ describe("cell-note repository boundary", () => {
     );
 
     expect(dependencies.writeRows).not.toHaveBeenCalled();
-    expect(dependencies.scheduleSync).not.toHaveBeenCalled();
   });
 
   it("rejects an invalid month before local persistence", async () => {
@@ -74,6 +70,41 @@ describe("cell-note repository boundary", () => {
     );
 
     expect(dependencies.writeRows).not.toHaveBeenCalled();
-    expect(dependencies.scheduleSync).not.toHaveBeenCalled();
+  });
+
+  it("tombstones a legacy random-id row before writing its canonical replacement", async () => {
+    await saveCellNote("user-1", "2026-08", "category-1", " yeni ", { id: "legacy-note", body: "eski" });
+
+    expect(dependencies.writeRows).toHaveBeenCalledWith("user-1", [
+      {
+        table: "cell_notes",
+        row: {
+          id: "legacy-note",
+          month: "2026-08",
+          categoryId: "category-1",
+          body: "eski",
+          deletedAt: "2026-08-02T00:00:00.000Z",
+        },
+      },
+      {
+        table: "cell_notes",
+        row: { id: "note-1", month: "2026-08", categoryId: "category-1", body: "yeni", deletedAt: null },
+      },
+    ]);
+  });
+
+  it("uses a tombstone for an empty canonical note without duplicating its id", async () => {
+    await saveCellNote("user-1", "2026-08", "category-1", "   ", { id: "note-1", body: "eski" });
+
+    expect(dependencies.writeRows).toHaveBeenCalledWith("user-1", [{
+      table: "cell_notes",
+      row: {
+        id: "note-1",
+        month: "2026-08",
+        categoryId: "category-1",
+        body: "",
+        deletedAt: "2026-08-02T00:00:00.000Z",
+      },
+    }]);
   });
 });

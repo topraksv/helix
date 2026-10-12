@@ -16,8 +16,9 @@ import User from "lucide-react-native/icons/user";
 import Wallet from "lucide-react-native/icons/wallet";
 import Zap from "lucide-react-native/icons/zap";
 import { normalizedMonthlyLoadMinor } from "../../domain/analytics";
-import { subscriptionCostSummary, variableAmountBand } from "../../domain/subscriptions";
+import { lastRealizedCharges, subscriptionCostSummary, variableAmountBand } from "../../domain/subscriptions";
 import { addDaysISO, daysBetweenISO, todayISO, type ISODate } from "../../domain/dates";
+import { groupBy } from "../../domain/card-statements";
 import { formatMinorCompact } from "../../domain/money";
 import { shortDateLabel, tr } from "../../i18n/tr";
 import { useAllTransactionsState, usePersonsState, usePriceHistoryState, useSubscriptionsState, useUserId } from "../../data/hooks";
@@ -50,36 +51,22 @@ function SubscriptionScheduleOverview({
   const upcoming = active
     .filter((subscription) => subscription.nextDueDate <= horizonEnd)
     .sort((a, b) => a.nextDueDate.localeCompare(b.nextDueDate));
-  const scheduleStops = [...upcoming.reduce((groups, subscription) => {
-    const current = groups.get(subscription.nextDueDate) ?? [];
-    current.push(subscription);
-    groups.set(subscription.nextDueDate, current);
-    return groups;
-  }, new Map<ISODate, typeof active>()).entries()].map(([date, payments]) => ({ date, payments }));
+  const scheduleStops = [...groupBy(upcoming, (subscription) => subscription.nextDueDate)]
+    .map(([date, payments]) => ({ date: date as ISODate, payments }));
   const visibleStops = scheduleStops.slice(0, 3);
   const autoPayCount = active.filter((subscription) => subscription.autoPay).length;
   const manualCount = active.length - autoPayCount;
   const nextStop = scheduleStops[0] ?? null;
   const nextDate = nextStop?.date ?? null;
   const nextPayments = nextStop?.payments ?? [];
-  // A variable rule stores 0 until its invoice is entered. Summing that zero
-  // into a stop printed "₺0,00" beside a bill that is simply not known yet —
-  // the one thing `occurrenceAmountText` exists to prevent, bypassed because
-  // this card sums rules rather than occurrences. When history has samples the
-  // band is shown instead, which is more than either previous answer gave.
+  // A variable rule stores 0 until invoiced; show the history band or "unknown", never ₺0,00.
   const historyBySubscription = React.useMemo(() => {
-    const grouped = new Map<string, typeof priceHistory>();
-    for (const row of priceHistory) {
-      const bucket = grouped.get(row.subscriptionId);
-      if (bucket) bucket.push(row);
-      else grouped.set(row.subscriptionId, [row]);
-    }
-    return grouped;
+    return groupBy(priceHistory, (row) => row.subscriptionId);
   }, [priceHistory]);
 
   const stopAmountText = React.useCallback((payments: typeof active): string | null => {
     const currencies = new Set(payments.map((payment) => payment.currency));
-    if (currencies.size !== 1 || payments.length === 0) return null;
+    if (currencies.size !== 1) return null;
     const currency = payments[0]!.currency;
     const unknown = payments.filter((payment) => payment.amountMode === "variable" && payment.amountMinor === 0);
     const known = payments.reduce((total, payment) => total + payment.amountMinor, 0);
@@ -98,11 +85,10 @@ function SubscriptionScheduleOverview({
 
   const nextAmount = stopAmountText(nextPayments);
   const nextDayOffset = nextDate == null ? null : Math.max(0, daysBetweenISO(today, nextDate));
-  const nextLabel = nextPayments.length === 1
-    ? nextPayments[0]!.name
-    : tr.subs.sameDayPayments(nextPayments.length);
-
-  const stopAmount = stopAmountText;
+  const stopLabel = (payments: typeof active) => payments.length === 1
+    ? payments[0]!.name
+    : tr.subs.sameDayPayments(payments.length);
+  const nextLabel = stopLabel(nextPayments);
 
   return (
     <Card
@@ -113,9 +99,6 @@ function SubscriptionScheduleOverview({
         borderTopColor: palette.primary,
       }}
     >
-      {/* When, not how much. The monthly figure used to sit here too, computed
-          a second time and from a different set of rules than the cost card
-          below — two answers to one question, a scroll apart. */}
       <PanelHeader
         icon={CalendarClock}
         title={tr.subs.scheduleOverview}
@@ -174,13 +157,7 @@ function SubscriptionScheduleOverview({
                       borderColor: palette.primary + "70",
                     }}
                   >
-                    {/* One size, whatever the disc says. It used to pick
-                        between 18, 12 and 11 depending on whether the answer
-                        was a number, "Bugün" or "Yarın" — three type sizes for
-                        one control, none of them on the scale, and an 11pt
-                        word lost inside a 54pt circle. A word is a word: it
-                        takes the label role, a figure takes the figure role,
-                        and both fill the same disc. */}
+                    {/* One type role per kind: a word takes label, a figure takes heading. */}
                     {nextDayOffset === 0 || nextDayOffset === 1 ? (
                       <Text style={[type.label, { color: palette.primaryText, fontFamily: font.semibold, textAlign: "center" }]}>
                         {nextDayOffset === 0 ? tr.subs.todayShort : tr.subs.tomorrowShort}
@@ -226,13 +203,7 @@ function SubscriptionScheduleOverview({
             <View style={{ marginTop: spacing.lg }}>
               <Text style={[type.small, { color: palette.textSecondary, marginBottom: spacing.sm }]}>{tr.subs.paymentPath}</Text>
               <View accessible={false} style={{ flexDirection: "row", alignItems: "flex-start" }}>
-                {/* `replayToken={visit}` replays these on return, like the
-                    charts beside them. `FadeIn` is mount-only by default and
-                    must stay that way — making every one of them visit-aware
-                    would re-animate whole screens on every glance back, which
-                    is the reload feeling `useCountUp` was just cured of. Only
-                    the stops opt in, because they are this card's one piece of
-                    motion and the thing the eye came back for. */}
+                {/* Only the stops replay on return (replayToken); FadeIn stays mount-only elsewhere. */}
                 {visibleStops.map((stop, index) => (
                   <FadeIn key={stop.date} replayToken={visit} delay={index * 90} style={{ flex: 1, minWidth: 0 }}>
                     <View style={{ height: 18, flexDirection: "row", alignItems: "center" }}>
@@ -242,10 +213,7 @@ function SubscriptionScheduleOverview({
                     </View>
                     <View style={{ paddingHorizontal: spacing.xs, alignItems: "center" }}>
                       <Text style={[type.label, { color: palette.textStrong, textAlign: "center" }]}>{shortDateLabel(stop.date)}</Text>
-                      {/* The three stops sit at equal distances because three
-                          labels need equal room, so the line cannot be read as
-                          a time axis — 8 days and 5 days were drawn the same
-                          length. The interval is stated instead of implied. */}
+                      {/* Stops are evenly spaced, so the interval is stated, not implied. */}
                       <Text style={[type.small, { color: palette.textSecondary, textAlign: "center", marginTop: 1, fontSize: type.caption.fontSize }]}>
                         {tr.dashboard.inDays(Math.max(0, daysBetweenISO(today, stop.date)))}
                       </Text>
@@ -253,11 +221,11 @@ function SubscriptionScheduleOverview({
                         <Text
                           style={[type.small, { color: palette.textSecondary, textAlign: "center", marginTop: 2 }]}
                         >
-                          {stop.payments.length === 1 ? stop.payments[0]!.name : tr.subs.sameDayPayments(stop.payments.length)}
+                          {stopLabel(stop.payments)}
                         </Text>
                       ) : null}
-                      {stopAmount(stop.payments) ? (
-                        <Text style={[type.amountSm, { color: palette.text, fontSize: type.caption.fontSize, textAlign: "center", marginTop: 2 }]}>{stopAmount(stop.payments)}</Text>
+                      {stopAmountText(stop.payments) ? (
+                        <Text style={[type.amountSm, { color: palette.text, fontSize: type.caption.fontSize, textAlign: "center", marginTop: 2 }]}>{stopAmountText(stop.payments)}</Text>
                       ) : null}
                     </View>
                   </FadeIn>
@@ -283,17 +251,7 @@ function SubscriptionScheduleOverview({
 }
 
 
-/**
- * What the active rules cost, and what their prices have done.
- *
- * Deliberately small, and deliberately built on what is already stored: the
- * monthly figure is the one the schedule card already showed, the annual one
- * applies the same rules over a year, and the changes come from
- * `price_history` rows that `upsertSubscription` has been writing since the
- * table existed with no surface ever reading them. No new store, no new chart engine.
- *
- * Direction is carried by a glyph AND by a word, never by the colour alone.
- */
+/** Cost of the active rules, and recent changes from price_history. Direction is a glyph and a word, never colour alone. */
 function SubscriptionCostSummary({
   subscriptions,
   priceHistory,
@@ -306,24 +264,9 @@ function SubscriptionCostSummary({
   const { palette } = useTheme();
   const summary = React.useMemo(
     () => subscriptionCostSummary(
-      subscriptions.map((subscription) => ({
-        id: subscription.id,
-        name: subscription.name,
-        amountMinor: subscription.amountMinor,
-        currency: subscription.currency,
-        intervalMonths: subscription.intervalMonths,
-        nextDueDate: subscription.nextDueDate,
-        isActive: subscription.isActive,
-        amountMode: subscription.amountMode,
-      })),
-      priceHistory.map((row) => ({
-        subscriptionId: row.subscriptionId,
-        amountMinor: row.amountMinor,
-        currency: row.currency,
-        effectiveFrom: row.effectiveFrom,
-      })),
+      subscriptions,
+      priceHistory,
       today,
-      normalizedMonthlyLoadMinor,
     ),
     [subscriptions, priceHistory, today],
   );
@@ -331,11 +274,7 @@ function SubscriptionCostSummary({
   return (
     <Card testID="subscription-cost-summary" style={{ marginBottom: spacing.lg }}>
       <PanelHeader icon={Wallet} title={tr.subs.costSummary} description={tr.subs.costSummaryHint} />
-      {/* The market card's two-rate block, for the two figures that are one
-          fact. They used to share a rail as equal columns, which reads as two
-          independent numbers to compare — and they are not: the annual one is
-          the same rules over a year. Same shape as Alış/Satış: the supporting
-          figure muted above, the one being answered in full ink below. */}
+      {/* The annual figure is the monthly one over a year, so it sits muted above, not as a peer column. */}
       <View testID="subscription-cost-figures" style={{ marginTop: spacing.sm, gap: 3 }}>
         <Spread style={{ alignItems: "baseline" }}>
           <Text style={[type.small, { color: palette.textSecondary }]}>{tr.subs.annualCost}</Text>
@@ -355,10 +294,7 @@ function SubscriptionCostSummary({
           {tr.subs.costExcluded(summary.excludedCurrencyCount)}
         </Text>
       ) : null}
-      {/* A variable bill with no invoice yet enters this total as zero. The
-          total said ₺1.853,23 with an electricity bill inside it and nothing
-          on screen admitted the omission — the same reason foreign-currency
-          rules are declared one line above. */}
+      {/* A variable bill with no invoice enters the total as zero, so the omission is declared. */}
       {summary.unknownAmountCount > 0 ? (
         <Text style={[type.small, { color: palette.textSecondary, marginTop: spacing.sm }]}>
           {tr.subs.costUnknownExcluded(summary.unknownAmountCount)}
@@ -422,25 +358,10 @@ export default function SubscriptionsScreen() {
   const router = useRouter();
   const undo = useUndo();
   const today = todayISO();
-  const { status: dataStatus, ready: dataReady, retry: retryData } = combineLiveStates([subscriptionsState, personsState, transactionsState]);
+  const { status: dataStatus, ready: dataReady, retry: retryData } = combineLiveStates([subscriptionsState, personsState, transactionsState, priceHistoryState]);
 
-  // The date of the last realized charge per rule, so "Sıradaki: 20 Ağu"
-  // cannot be read as "nothing has been paid yet" when auto-pay already
-  // settled this cycle and only advanced the rule to the next one.
-  //
-  // Memoized: this walks the whole transaction table, and the screen
-  // re-renders on every filter, undo and live-query tick.
-  const lastChargeBySubscription = React.useMemo(() => {
-    const latest = new Map<string, ISODate>();
-    for (const transaction of transactionsState.data) {
-      if (!transaction.subscriptionId || transaction.status !== "realized") continue;
-      const current = latest.get(transaction.subscriptionId);
-      if (!current || transaction.effectiveDate > current) {
-        latest.set(transaction.subscriptionId, transaction.effectiveDate);
-      }
-    }
-    return latest;
-  }, [transactionsState.data]);
+  // Last realized charge per rule, so an auto-paid cycle is not read as unpaid. Memoized: it walks every transaction.
+  const lastChargeBySubscription = React.useMemo(() => lastRealizedCharges(transactionsState.data), [transactionsState.data]);
 
   if (!dataReady) {
     return <DataGateScreen status={dataStatus} retry={retryData} title={tr.subs.title} skeleton={<CardListSkeleton />} />;
@@ -470,11 +391,7 @@ export default function SubscriptionsScreen() {
     const inTrial = s.trialEndDate != null && s.trialEndDate >= today;
     const lastCharge = lastChargeBySubscription.get(s.id);
     const amountUnknown = s.amountMode === "variable" && s.amountMinor === 0;
-    // A watched rule is somebody else's subscription, and the list groups them
-    // under one heading — which says that they are watched, not WHOSE they
-    // are. Two people's Netflix rows were indistinguishable. The name rides in
-    // the same badge strip as the due date because that strip is already where
-    // a row answers "which one is this".
+    // A watched row names its owner in the badge strip.
     const watchedPersonName = selfIds.has(s.personId)
       ? null
       : persons.find((person) => person.id === s.personId)?.name ?? null;
@@ -513,9 +430,7 @@ export default function SubscriptionsScreen() {
   return (
     <Screen
       title={tr.subs.title}
-      // Every primary tab shares one measure, so moving between them does not
-      // move the page. The rows do not stretch to fill it — the groups pair
-      // into columns at desktop width instead.
+      // One shared measure across primary tabs; groups pair into columns on desktop.
       width="workspace"
       right={<Button icon={Plus} size="sm" label={tr.subs.add} onPress={() => router.push("/subscription-form")} />}
     >
@@ -535,7 +450,6 @@ export default function SubscriptionsScreen() {
       ) : null}
       <WorkspaceGrid
         testID="subscription-groups"
-        breakpoint={900}
         masses={[active.length, watched.length, passive.length]}
       >
         {active.length > 0 ? (

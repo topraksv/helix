@@ -1,7 +1,7 @@
 {
   "name": "helix",
   "main": "expo-router/entry",
-  "version": "1.9.7",
+  "version": "1.9.8",
   "author": "Ömer Toprak Şavlı",
   "license": "UNLICENSED",
   "engines": {
@@ -71,13 +71,12 @@
     "start": "expo start",
     "android": "expo run:android",
     "ios": "expo run:ios",
-    "web": "node scripts/web-dev-notice.mjs && npm run web:preview",
+    "web": "echo \"Expo's web dev server cannot bundle this app; serving the export instead. Re-run after a change.\" && npm run web:preview",
     "lint": "expo lint",
     "lint:ratchet": "node scripts/check-lint-ratchet.mjs",
     "lint:record": "node scripts/check-lint-ratchet.mjs --record",
     "test": "vitest run",
-    "test:watch": "vitest",
-    "test:coverage": "vitest run --config vitest.coverage.config.mts",
+    "test:coverage": "vitest run --coverage",
     "test:mutation": "stryker run",
     "test:mutation:ci": "stryker run stryker.ci.config.mjs && node scripts/check-mutation-ratchet.mjs",
     "test:e2e:export": "node scripts/export-e2e-web.mjs",
@@ -100,8 +99,7 @@
     "audit:unused": "npx --yes knip@6.32.0",
     "mutation:record": "node scripts/check-mutation-ratchet.mjs --record",
     "audit:duplication": "npx --yes jscpd@5.0.16 src",
-    "web:preview": "npx expo export -p web --clear && node scripts/serve-web-export.mjs dist 4599",
-    "web:serve": "node scripts/serve-web-export.mjs dist 4599"
+    "web:preview": "npx expo export -p web --clear && node scripts/serve-web-export.mjs dist 4599"
   },
   "private": true,
   "overrides": {

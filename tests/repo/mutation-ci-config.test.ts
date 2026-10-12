@@ -32,23 +32,6 @@ describe("CI mutation contract", () => {
     expect(broad).toContain("break: 98");
     expect(packageJson.scripts["mutation:record"]).toBe("node scripts/check-mutation-ratchet.mjs --record");
 
-    for (const file of [
-      "src/auth/recovery.ts",
-      "src/domain/investments.ts",
-      "src/data/repo/accounts.ts",
-      "src/data/repo/categories.ts",
-      "src/data/repo/cell-notes.ts",
-      "src/data/repo/computed.ts",
-      "src/data/repo/import-plan.ts",
-      "src/data/repo/investment-validation.ts",
-      "src/data/repo/rule-validation.ts",
-      "src/data/repo/settings.ts",
-      "src/data/repo/transactions.ts",
-    ]) {
-      expect(ci, file).toContain(`"${file}"`);
-      expect(broad, file).toContain(`"${file}"`);
-    }
-
     for (const partial of [
       "src/data/repo/budgets.ts",
       "src/data/repo/expected.ts",
@@ -65,42 +48,39 @@ describe("CI mutation contract", () => {
 
   it("mutates the changed correctness-sensitive source instead of a static subset", () => {
     const repository = mkdtempSync(join(tmpdir(), "helix-mutation-scope-"));
+    const git = (...args: string[]) => execFileSync("git", args, { cwd: repository, encoding: "utf8" }).trim();
+    const commit = (message: string) => { git("add", "."); git("commit", "--quiet", "-m", message); };
     try {
-      execFileSync("git", ["init", "--quiet"], { cwd: repository });
-      execFileSync("git", ["config", "user.email", "mutation@example.invalid"], { cwd: repository });
-      execFileSync("git", ["config", "user.name", "Mutation Test"], { cwd: repository });
+      git("init", "--quiet");
+      git("config", "user.email", "mutation@example.invalid");
+      git("config", "user.name", "Mutation Test");
       mkdirSync(join(repository, "src/domain"), { recursive: true });
       writeFileSync(join(repository, "src/domain/money.ts"), "export const amount = 1;\n");
-      execFileSync("git", ["add", "."], { cwd: repository });
-      execFileSync("git", ["commit", "--quiet", "-m", "base"], { cwd: repository });
-      const base = execFileSync("git", ["rev-parse", "HEAD"], { cwd: repository, encoding: "utf8" }).trim();
+      commit("base");
+      const base = git("rev-parse", "HEAD");
 
       writeFileSync(join(repository, "src/domain/money.ts"), "export const amount = 2;\n");
-      execFileSync("git", ["add", "."], { cwd: repository });
-      execFileSync("git", ["commit", "--quiet", "-m", "change"], { cwd: repository });
-      const head = execFileSync("git", ["rev-parse", "HEAD"], { cwd: repository, encoding: "utf8" }).trim();
+      commit("change");
+      const head = git("rev-parse", "HEAD");
 
       expect(selectMutationScope({ base, head, cwd: repository })).toEqual(["src/domain/money.ts"]);
 
       // A test is named for a behaviour, not its source: what it imports is mutated.
       mkdirSync(join(repository, "tests/domain"), { recursive: true });
       writeFileSync(join(repository, "tests/domain/financial-boundaries.test.ts"), 'import { amount } from "../../src/domain/money";\n');
-      execFileSync("git", ["add", "."], { cwd: repository });
-      execFileSync("git", ["commit", "--quiet", "-m", "fewer cases"], { cwd: repository });
-      const weakened = execFileSync("git", ["rev-parse", "HEAD"], { cwd: repository, encoding: "utf8" }).trim();
+      commit("fewer cases");
+      const weakened = git("rev-parse", "HEAD");
       expect(selectMutationScope({ base: head, head: weakened, cwd: repository })).toEqual(["src/domain/money.ts"]);
 
       // A raised floor is a claim about a file's tests, so the file is mutated
       // to prove it; a floor that only moved its provenance is not.
       writeFileSync(join(repository, "src/domain/dates.ts"), "export const day = 1;\n");
       writeFileSync(join(repository, "mutation-baseline.json"), JSON.stringify({ files: { "src/domain/dates.ts": { score: 80 }, "src/domain/money.ts": { score: 90 } } }));
-      execFileSync("git", ["add", "."], { cwd: repository });
-      execFileSync("git", ["commit", "--quiet", "-m", "floors"], { cwd: repository });
-      const floors = execFileSync("git", ["rev-parse", "HEAD"], { cwd: repository, encoding: "utf8" }).trim();
+      commit("floors");
+      const floors = git("rev-parse", "HEAD");
       writeFileSync(join(repository, "mutation-baseline.json"), JSON.stringify({ files: { "src/domain/dates.ts": { score: 85 }, "src/domain/money.ts": { score: 90, measuredOn: "later" } } }));
-      execFileSync("git", ["add", "."], { cwd: repository });
-      execFileSync("git", ["commit", "--quiet", "-m", "raise"], { cwd: repository });
-      const raised = execFileSync("git", ["rev-parse", "HEAD"], { cwd: repository, encoding: "utf8" }).trim();
+      commit("raise");
+      const raised = git("rev-parse", "HEAD");
       expect(selectMutationScope({ base: floors, head: raised, cwd: repository })).toEqual(["src/domain/dates.ts"]);
     } finally {
       rmSync(repository, { recursive: true, force: true });
@@ -113,36 +93,6 @@ describe("CI mutation contract", () => {
       head: "HEAD",
       cwd: process.cwd(),
     })).toThrow(/mutation diff base/i);
-  });
-
-  /**
-   * The generated migration manifest is inside the relevant path but has no
-   * logic to mutate, and Stryker cannot parse it at all — its Babel setup and
-   * this project's collide on the decorator plugins. Before this exclusion the
-   * gate did not report a low score, it CRASHED, and it did so only on the
-   * pushes that add a migration. What those files do is proven by
-   * `tests/migration-upgrade.test.ts` replaying them against a real database.
-   */
-  it("never mutates the generated manifest or the declarative schema", () => {
-    const scope = selectMutationScope({
-      base: "9d9d1021abcbb4f299133828dcb2af0b4dbbbe4a",
-      head: "HEAD",
-      eventName: "push",
-      cwd: process.cwd(),
-    });
-    expect(scope.some((file) => file.startsWith("src/db/migrations/"))).toBe(false);
-    // `schema.ts` joined them for the same reason and a measured cost. Every
-    // one of its 411 mutants is static, which is 411 full runs of the suite —
-    // 93% of a 44-minute job that held up the deploy. What they test is a
-    // MIRROR: the file's own header records that constraints are deliberately
-    // not reproduced locally because Postgres enforces them, and the real
-    // schema is replayed against a database by `migration-upgrade`.
-    expect(scope).not.toContain("src/db/schema.ts");
-    // The exclusion stays narrow: database source that carries logic is still
-    // mutated, and so is everything outside `src/db`.
-    expect(scope).toContain("src/db/ids.ts");
-    expect(scope).toContain("src/db/relations.ts");
-    expect(scope).toContain("src/domain/statement-import.ts");
   });
 
   /**

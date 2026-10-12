@@ -1,6 +1,6 @@
 /** PII-free classification for local diagnostic events. */
 
-export type DiagnosticCode = "network" | "auth" | "database" | "validation" | "cancelled" | "unknown";
+type DiagnosticCode = "network" | "auth" | "database" | "validation" | "cancelled" | "unknown";
 
 export interface SafeDiagnosticEvent {
   at: string;
@@ -25,22 +25,14 @@ export function classifyDiagnostic(error: unknown): DiagnosticCode {
   return "unknown";
 }
 
-
 /**
- * Everything below turns a failure into something that names a CLASS of bug
- * without carrying a value.
+ * Everything below turns a failure into a CLASS of bug without carrying a
+ * value. Reject an unexpected shape rather than sanitize it, since a masked
+ * message keeps the shape of what was masked: a message is kept whole or
+ * refused whole, and a stack frame is rebuilt from an allowlist.
  *
- * The rule this file already applied to `scope` — reject an unexpected shape
- * rather than sanitize it into a persisted identifier — is the rule these
- * follow too, because sanitizing is where redaction quietly fails: a masked
- * message still has the shape of what was masked, and one missed pattern is a
- * permanent record. So a message is kept whole or refused whole, and a stack
- * frame is rebuilt from an allowlist rather than filtered.
- *
- * What that costs is real and worth stating: an all-ASCII message that happens
- * to contain a person or category name written without Turkish letters
- * survives as tokens. The residual is bounded by this being the owner's own
- * incident log, in the owner's own project, behind RLS that only they can read.
+ * Residual: an all-ASCII message containing a name written without Turkish
+ * letters survives as tokens, bounded by the log being private behind RLS.
  */
 
 /** Any of these means the text may be carrying an identifier rather than a

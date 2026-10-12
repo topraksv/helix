@@ -29,7 +29,7 @@ import { paymentSourceIconComponent } from "./category-icon";
 import type { PaymentSourceType } from "../domain/types";
 import { font, useTheme } from "./theme";
 import { BRAND, brandPlate } from "./brand-colors";
-import { MIN_PREFIX_MATCH, foldForMatch, nameMentions, nameStartsWord, normalizeLogoDomain, remoteFaviconUrl } from "../domain/logo-domain";
+import { catalogueKey, foldForMatch, normalizeLogoDomain, remoteFaviconUrl } from "../domain/logo-domain";
 
 /** One shared frameless tile: near-square, rounded, no border — every variant
  *  (favicon, utility icon, brand chip, initials) renders in this exact shape
@@ -45,42 +45,9 @@ function tileStyle(size: number) {
   };
 }
 
-/**
- * How much of the tile a remote favicon fills.
- *
- * Favicons are not a uniform set: some are full-bleed app icons that reach
- * every edge (iCloud), others a centred mark on transparency (YouTube). The
- * mismatch people actually see is the FILL RATIO, not the colour behind it —
- * so every mark is inset to the same fraction and the tile itself paints
- * nothing. A plate cannot win here: the theme surface turned a transparent
- * margin into a dark band, and a constant white one put a hard white square
- * behind every logo in dark mode. Painting nothing removes the box that was
- * being unevenly filled in the first place.
- */
+/** One fill for every mark, even a blurry 16px source: uneven sizes read as broken. */
 const FAVICON_FILL = 0.82;
 
-/**
- * Every mark fills the same fraction of its tile, whatever it cost to get there.
- *
- * This used to cap enlargement at the source's own resolution, so the
- * twenty-eight domains that publish only a 16px icon drew at about 18pt beside
- * neighbours at 33pt. That IS the sharper picture and the owner rejected it
- * outright: a list where some logos are half the size of others reads as
- * broken, and blur reads as a bad logo — which it is, and which is the site's
- * doing rather than the app's.
- *
- * The measurement that produced the cap still stands and is still recorded in
- * `brand-marks.ts`, because it is the answer to "why is this one soft" and it
- * is the thing to check before anyone tries a better source again. Seven
- * services, each brand's own site, their sibling domains and Wikipedia were
- * asked; nothing larger exists for these names. What changed is what to do
- * about it, and the owner's answer is: one size, and live with it.
- */
-function markFill(_domain: string | null, size: number): number {
-  return Math.round(size * FAVICON_FILL);
-}
-
-/** Utility/service keywords → icon + accent (checked before brand lookup). */
 /**
  * The things people subscribe to that are not brands.
  *
@@ -266,7 +233,6 @@ const BRAND_DOMAIN: Record<string, string> = {
   "booking": "booking.com",
 };
 
-
 /**
  * Turkish banks, card programmes and wallets.
  *
@@ -331,12 +297,7 @@ const BANK_DOMAIN: Record<string, string> = {
   // one they think of — "Bonus" and "Garanti" are the same plastic — and
   // because the programme has its own mark, which is the one printed on the
   // card in the drawer.
-  // Tried and REVERTED: `yapikredi.com.tr` publishes 180px where
-  // `worldcard.com.tr` publishes 16, so pointing World at the bank would have
-  // fixed the blur reported on "WorldEko". It is refused by an older and
-  // better rule — a card programme never wears its bank's mark, because the
-  // owner names the source after whichever of the two they think of and the
-  // two are different pictures. `tests/payment-source-logo` holds the line.
+  // A card programme never wears its bank's mark, even when the bank's is sharper.
   world: "worldcard.com.tr",
   worldcard: "worldcard.com.tr",
   "world card": "worldcard.com.tr",
@@ -411,42 +372,7 @@ const BANK_DOMAIN: Record<string, string> = {
  *   "bip"
  *   "bisu"
  *   "millenicom"
- *
- * A record rather than an array: nothing imported it, so it was data the
- * bundle carried and no screen read. What enforces the rule is that none of
- * these names appears in a domain table above, which `payment-source-logo`
- * asserts by resolving each one and requiring null.
  */
-
-/** Resolve the domain to fetch a favicon from (explicit override or a brand). */
-/**
- * The catalogue entry a name refers to.
- *
- * Whole name, then first word, then any brand mentioned as a whole word inside
- * it — "Ailem için Netflix" is a Netflix subscription, and "maximum" is not
- * Max. Longest key first, so "youtube music" wins over "youtube".
- */
-function catalogueKey<T>(name: string, table: Record<string, T>): T | null {
-  const key = foldForMatch(name);
-  if (table[key] != null) return table[key]!;
-  const firstWord = key.split(/\s+/)[0];
-  if (firstWord && table[firstWord] != null) return table[firstWord]!;
-  const keys = Object.keys(table);
-  const longestFirst = (a: string, b: string) => b.length - a.length;
-  const mentioned = keys
-    .filter((entry) => entry.length >= 3 && nameMentions(name, entry))
-    .sort(longestFirst)[0];
-  if (mentioned != null) return table[mentioned]!;
-  // Last, and only for keys long enough to be a brand rather than a fragment:
-  // the concatenated sub-brand. "Worldeko", "Worldgold" and "bonusplatinium"
-  // are cards people really hold, and every one of them fails all three passes
-  // above. Longest key first here too, so a name that begins two keys resolves
-  // to the more specific one.
-  const prefixed = keys
-    .filter((entry) => entry.length >= MIN_PREFIX_MATCH && nameStartsWord(name, entry))
-    .sort(longestFirst)[0];
-  return prefixed != null ? table[prefixed]! : null;
-}
 
 /**
  * Both catalogues as one, so the MORE SPECIFIC key wins rather than whichever
@@ -499,7 +425,7 @@ export function Logo({
   // domains load transparently and fall back locally on any network error.
   const faviconDomain = utility ? null : domainFor(name, domain);
   const faviconUrl = remoteFaviconUrl(faviconDomain);
-  const markSize = markFill(faviconDomain, size);
+  const markSize = Math.round(size * FAVICON_FILL);
 
   if (faviconDomain && faviconUrl && failedDomain !== faviconDomain) {
     return (

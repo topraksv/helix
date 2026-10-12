@@ -1,25 +1,18 @@
-/**
- * Item breakdown: tap a category (or computed column) in Mali Tablo to see its
- * value in every month of the year at a glance. Read-only summary — tapping a
- * month row jumps into that month's detail where the transactions are managed.
- */
+/** Item breakdown: one column's value in every month of the year; a row opens that month's detail. */
 
 import { useMemo } from "react";
 import { Pressable, Text, View } from "react-native";
 import { Redirect, Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { creditCardSplitsByMonth } from "../../../domain/analytics";
-import { monthColumnBasis } from "../../../domain/balance";
-import { evaluateComputedColumn, parseDefinition } from "../../../domain/computed-columns";
+import { evaluateMonthColumn, parseDefinition } from "../../../domain/computed-columns";
 import { makeMonthKey, monthKeyOf, todayISO } from "../../../domain/dates";
 import { isValidItemParams, singleParam, type ItemKind } from "../../../domain/route-params";
 import { formatMinorCompact } from "../../../domain/money";
 import {
-  useAllTransactionsState,
   useCategoriesState,
   useComputedColumnsState,
   useLedgerState,
   useTxLike,
-  usePersonsState,
   useSourcesState,
 } from "../../../data/hooks";
 import { combineLiveStates } from "../../../data/live-state";
@@ -93,16 +86,14 @@ function ItemBreakdown({
   const ledgerState = useLedgerState(year);
   const computedState = useComputedColumnsState();
   const sourcesState = useSourcesState();
-  const personsState = usePersonsState();
   const categoriesState = useCategoriesState();
-  const transactionsState = useAllTransactionsState();
   const bundle = ledgerState.data;
   const computed = computedState.data;
   const sources = sourcesState.data;
   const categories = categoriesState.data;
   const today = todayISO();
   const currentMonth = monthKeyOf(today);
-  const { status: dataStatus, ready: dataReady, retry: retryData } = combineLiveStates([ledgerState, computedState, sourcesState, personsState, categoriesState, transactionsState]);
+  const { status: dataStatus, ready: dataReady, retry: retryData } = combineLiveStates([ledgerState, computedState, sourcesState, categoriesState]);
 
   const creditCardIds = useMemo(
     () => new Set(sources.filter((src) => src.type === "credit_card").map((src) => src.id)),
@@ -110,15 +101,8 @@ function ItemBreakdown({
   );
   const txLike = useTxLike();
 
-  // Value of this column for a given month: a category reads its bucket; a
-  // computed column is evaluated the same way the matrix does (with the
-  // credit-card split available to cc_split definitions).
   const dataByMonth = new Map((bundle?.yearMonths ?? []).map((month) => [month.month, month]));
-  // ONE pass for all twelve months. `creditCardSplit` internally builds every
-  // month's split and then discards all but one, so calling it inside the row
-  // loop re-scanned the whole ledger twelve times per render: measured 65.3 ms
-  // at 100k rows versus 5.4 ms hoisted (12.2x). `buildCashFlowMatrixModel`
-  // already used the batch form; this call site had not.
+  // One batched creditCardSplit for all twelve months; per-row calls rescan the ledger twelve times.
   const cardSplits = useMemo(
     () => creditCardSplitsByMonth(txLike, creditCardIds, today),
     [txLike, creditCardIds, today],
@@ -133,14 +117,8 @@ function ItemBreakdown({
     else if (kind === "computed") {
       if (!compDef) value = null;
       else {
-        const cc = cardSplits.get(month) ?? { singleMinor: 0, installmentMinor: 0 };
         try {
-          value = evaluateComputedColumn(parseDefinition(JSON.parse(compDef.definition)), {
-            month,
-            ...monthColumnBasis(ledgerMonth),
-            ccSingleMinor: cc.singleMinor,
-            ccInstallmentMinor: cc.installmentMinor,
-          });
+          value = evaluateMonthColumn(parseDefinition(JSON.parse(compDef.definition)), ledgerMonth, cardSplits.get(month));
         } catch {
           value = null;
         }
@@ -172,9 +150,6 @@ function ItemBreakdown({
     <Screen width="form">
       <Stack.Screen options={{ title: label ?? tr.cashflow.monthDetail }} />
       <DataStateNotice status={dataStatus} retry={retryData} />
-      {/* Loading is the only thing a missing bundle can mean now, and the
-          notice above already says it. The empty state that stood here read
-          "Bu ayda kayıt yok" over a ledger that had simply lost its anchor. */}
       {bundle == null ? null : (
         <Card padded={false}>
           <View style={{ paddingHorizontal: spacing.lg, paddingVertical: spacing.md, borderBottomWidth: 1, borderColor: palette.border, flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
@@ -194,10 +169,7 @@ function ItemBreakdown({
                   justifyContent: "space-between",
                   alignItems: "center",
                   minWidth: 0,
-                  // The last row has no separator, so it measured one pixel
-                  // shorter than the eleven above it and was the only control
-                  // in the app under the platform minimum. The height is the
-                  // row's own, not a side effect of its border.
+                  // The row sets its own min height; the last row has no border to supply it.
                   minHeight: controlSize.minimumTarget,
                   paddingHorizontal: spacing.lg,
                   paddingVertical: spacing.md,
@@ -206,20 +178,14 @@ function ItemBreakdown({
                   ...interactionSurface(palette, state, { base: isCurrent ? palette.primarySoft + "55" : "transparent" }),
                 })}
               >
-                {/* One measure for the label column, wide enough for the
-                    longest month ("Haziran 2026") plus its own breathing room.
-                    Intrinsic, each row's bar started at a different x and was a
-                    different length, so twelve bars that exist to be compared
-                    could not be. */}
+                {/* Fixed label column so twelve bars share an origin and can be compared. */}
                 <Text style={[type.body, { width: 116, paddingRight: spacing.sm, flexShrink: 0, color: isCurrent ? palette.primaryText : palette.text, fontFamily: isCurrent ? font.bold : font.medium }]}>
                   {monthLabel(r.month)}
                 </Text>
                 <View style={{ flex: 1, minWidth: 32, marginHorizontal: spacing.sm }}>
                   <MonthValueBar value={r.value} maxMagnitude={maxMagnitude} />
                 </View>
-                {r.value == null ? (
-                  <Text style={[type.amountSm, { color: palette.textSecondary }]}>—</Text>
-                ) : r.value === 0 ? (
+                {r.value == null || r.value === 0 ? (
                   <Text style={[type.amountSm, { color: palette.textSecondary }]}>—</Text>
                 ) : (
                   <View style={{ minWidth: 0, maxWidth: 132, flexShrink: 1, alignItems: "flex-end" }}>

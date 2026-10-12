@@ -12,7 +12,8 @@ import Pencil from "lucide-react-native/icons/pencil";
 import Trash from "lucide-react-native/icons/trash";
 import WalletCards from "lucide-react-native/icons/wallet-cards";
 import { finalizeOnboarding, hasImportedData, seedWorkspace, TEMPLATE_CATEGORIES, TEMPLATE_EXTRA_CATEGORIES, type TemplateCategory } from "../../data/repo";
-import { importBundle, MAX_BACKUP_BYTES, parseExportBundleText } from "../../services/export-import";
+import { importBundle } from "../../services/export-import";
+import { MAX_BACKUP_BYTES, parseExportBundleText } from "../../services/backup-validation";
 import { useSession } from "../../auth/session";
 import { useSettingsMapState } from "../../data/hooks";
 import { combineLiveStates } from "../../data/live-state";
@@ -21,9 +22,10 @@ import { remapDraftOwnerIndex } from "../../domain/onboarding";
 import { PAYMENT_SOURCE_TYPES, type PaymentSourceType } from "../../domain/types";
 import { monthLabel, tr } from "../../i18n/tr";
 import { Body, Button, Card, ChipPicker, DataGateScreen, DataStateNotice, Field, Heading, IconButton, ListRow, MoneyField, Row, Screen, SelectionGrid, Spread } from "../../ui/components";
+import { scheduleSync } from "../../sync/engine";
 import { appAlert } from "../../ui/dialog";
 import { BrandMark } from "../../ui/brand";
-import { placeholderPools, useRotatingPlaceholder } from "../../ui/placeholders";
+import { useRotatingPlaceholder } from "../../ui/placeholders";
 import { density, font, radius, spacing, type, useTheme } from "../../ui/theme";
 import { useOperationGuard } from "../../ui/operation-guard";
 import { readPickedText } from "../../services/picked-file";
@@ -200,7 +202,7 @@ function TemplateStep({ selected, onSelected, hasImport }: { selected: string[];
 }
 
 function PersonsStep({ drafts }: { drafts: PersonDrafts }) {
-  const placeholder = useRotatingPlaceholder(placeholderPools.person);
+  const placeholder = useRotatingPlaceholder(tr.placeholders.person);
   return (
     <Card>
       <Heading>3 · {tr.onboarding.personsTitle}</Heading>
@@ -235,7 +237,7 @@ function PersonsStep({ drafts }: { drafts: PersonDrafts }) {
 }
 
 function SourcesStep({ drafts, persons }: { drafts: SourceDrafts; persons: string[] }) {
-  const placeholder = useRotatingPlaceholder(placeholderPools.source);
+  const placeholder = useRotatingPlaceholder(tr.placeholders.source);
   const { form } = drafts;
   return (
     <Card>
@@ -297,11 +299,7 @@ export default function SetupScreen() {
   const { userId } = useSession();
   const router = useRouter();
   const { palette } = useTheme();
-  // Detect a completed spreadsheet import (each imported year writes an
-  // `import_batch:<year>` setting). When present, the workbook governs the
-  // categories AND the opening balance, so the template + opening-balance
-  // inputs become redundant — we clear the pre-ticked template once and tell
-  // the user, instead of silently seeding duplicate/empty columns on top.
+  // Each imported year writes an `import_batch:<year>` setting; the workbook then owns categories and the opening balance.
   const settingsState = useSettingsMapState();
   const importedYears = [...settingsState.data.keys()]
     .filter((k) => k.startsWith("import_batch:"))
@@ -342,20 +340,8 @@ export default function SetupScreen() {
     }
   }, [hasImport]);
 
-  // Seed the workspace (persons/sources/categories/opening) from the CURRENT
-  // form values. `seedWorkspace` is idempotent (deterministic ids), so calling
-  // it again — when an importer is opened, and again on commit — upserts the
-  // same rows and re-applies the latest opening balance instead of duplicating
-  // the workspace or dropping edits made after the first seed. Onboarding is
-  // finalized only by "save & start", so the user can import, come back, review,
-  // and then commit.
-  //
-  // A spreadsheet or JSON import brings its own columns, so seeding defaults
-  // beside them creates stray columns. When `includeTemplates` isn't given (the
-  // commit path), decide from PERSISTED import state — not the reactive
-  // `hasImport` live query, which can still be false right after returning from
-  // the wizard. If the import landed but the reactive auto-clear hasn't yet run,
-  // seed none; once it has, `selectedTemplate` holds only what the user re-ticked.
+  // `seedWorkspace` is idempotent (deterministic ids), so it runs on each importer open and again on commit.
+  // Without `includeTemplates`, decide from persisted import state: the live `hasImport` can still be false right after the wizard returns.
   const ensureSeeded = async (includeTemplates?: boolean): Promise<boolean> => {
     if (!userId) return false;
     const include = includeTemplates ?? (!(await hasImportedData(userId)) || importClearedRef.current);
@@ -374,10 +360,7 @@ export default function SetupScreen() {
     if (!userId) return;
     try {
       if (choice === "json") {
-        // Pick the file FIRST, and only enter the loading state around the real
-        // work — never around the picker, whose promise can fail to settle when
-        // the OS dialog is dismissed and left the finish button spinning (P1-1).
-        // Only a real, processed backup then shows the "prepared" note (P1-2).
+        // Pick the file before entering the busy state: the picker's promise may never settle when the dialog is dismissed.
         const picked = await DocumentPicker.getDocumentAsync({ type: "application/json", copyToCacheDirectory: true });
         if (picked.canceled || !picked.assets[0]) return;
         setBusy(true);
@@ -386,6 +369,7 @@ export default function SetupScreen() {
         // would leave a partial starter workspace behind when a corrupt backup
         // is rejected or the restore write fails.
         await importBundle(userId, parseExportBundleText(content));
+        scheduleSync(userId);
         setSeeded(true);
         return;
       }
@@ -408,12 +392,9 @@ export default function SetupScreen() {
     try {
       await ensureSeeded();
       await finalizeOnboarding(userId);
+      scheduleSync(userId);
       setCommitted(true);
-      // Navigation is driven by the root route guard once the live `onboarded`
-      // flag flips true. Replacing to "/(tabs)" here fired while `onboarded` was
-      // still false, and the (tabs)→blank→setup→(tabs) bounce white-screened on
-      // iOS (React #185). The button stays loading until the guard unmounts
-      // this screen; only a failure clears `busy`.
+      // The root route guard navigates once the live `onboarded` flag flips; navigating here bounced while it was still false. `busy` stays set until this screen unmounts.
     } catch (e) {
       devError("onboarding.commit", e);
       void appAlert(userMessage(e, tr.errors.saveFailed), tr.errors.title);
@@ -431,7 +412,7 @@ export default function SetupScreen() {
       <View>
         <DataStateNotice status={dataStatus} retry={retryData} />
         <Row gap={spacing.md} style={{ marginBottom: spacing.lg }}>
-          <BrandMark size={44} />
+          <BrandMark height={44} />
           <View style={{ flex: 1, minWidth: 0 }}>
             <Text accessibilityRole="header" style={[type.title, { color: palette.text }]}>{tr.onboarding.welcome}</Text>
             <Body muted>{tr.onboarding.intro}</Body>

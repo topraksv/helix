@@ -25,35 +25,12 @@ import { font, maxFontScale, spacing, stateOpacity, type, useTheme, type Palette
 /** Default fixed metrics; exported so callers can size a table to its content. */
 export const STICKY_ROW_HEIGHT = 52;
 export const STICKY_HEADER_HEIGHT = 56;
-/**
- * The current month's wash: a hex alpha over `palette.primary`.
- *
- * `primary`, not `primarySoft`. Soft is already a near-black in the dark
- * themes — `#3C2A22` against a `#191512` surface — so a third of it composites
- * to `#241C17`, about ten values of red away from the ground it sits on. That
- * is why the month "was not coloured at all" in a screenshot where the code
- * plainly coloured it: the fill was there and it was invisible. The accent is
- * the one warm colour in the palette bright enough to read as a wash at low
- * alpha in both themes.
- *
- * One constant because it is one fact: a row and a column carrying the same
- * month must not disagree about how much it stands out.
- */
+/** Current-month wash: alpha over `primary` (`primarySoft` is near-black in dark themes and vanishes). One constant so row and column agree. */
 export const CURRENT_TINT = "26";
 
 /** Fixed right-hand strip holding a header's pin. */
 const STICKY_MARKER_W = 24;
-/**
- * The pin's target on a device driven by a finger.
- *
- * 24px clears WCAG 2.5.8's floor and is fine under a mouse, but it is well
- * under the 44pt/48dp a thumb needs, and this control also runs on phones. It
- * cannot simply grow: the strip lives inside a ~134px financial column beside
- * the header's own label, and taking 44 of those would cost a visible column.
- * So the target widens only where the pointer is coarse — every native build,
- * and the compact table a phone browser gets — and `hitSlop` carries the rest
- * on native, where it actually applies.
- */
+/** The pin's target under a coarse pointer: wider than 24, short of 44 because the strip shares a ~134px column with the label. */
 const STICKY_MARKER_TOUCH_W = 32;
 
 /**
@@ -83,15 +60,7 @@ function softWrapLabel(label: string, maxTokenLength = 12): string {
     .join("");
 }
 
-/**
- * How many lines a user-authored item name may take before it is shortened.
- *
- * Unbounded wrapping was the first answer to the ellipsis ban and it hands the
- * table's geometry to whatever someone types: one 400-character "category"
- * pushes every row off the screen. Three lines is more than any real
- * income-expense item needs — "Sağlık ve Özel Sigorta Katkı Payı" fits in two —
- * and the full text stays in the accessible label either way.
- */
+/** Wrap user-authored names, but at most three lines; the full text stays in the accessible label. */
 const LABEL_MAX_LINES = 3;
 
 export interface StickyColumn {
@@ -135,19 +104,7 @@ function getNode(ref: React.RefObject<ScrollView | null>): HTMLElement | null {
 /** How long after the last scroll event the web considers a drag finished. */
 const WEB_SCROLL_SETTLE_MS = 140;
 
-/**
- * Web-only: grab-to-pan (both axes), arrow/Page keyboard scrolling, and the
- * snap-to-cell that `snapToInterval` provides on native and nowhere else. The
- * header mirrors the body's horizontal offset, so panning updates both.
- *
- * `snapToInterval` is not implemented in react-native-web at all — its
- * `ScrollView` maps only `pagingEnabled` onto `scroll-snap-type`
- * (`dist/exports/ScrollView/index.js`). So the rule this table exists to
- * enforce — a financial grid never rests on a half-covered cell, because the
- * sticky label column hides the left of an amount and `₺14.500,00` reads as
- * `4.500,00` — held on the phone app and not in the browser, where a dragged
- * scroll measured 722px on an 87px grid. One behaviour, both platforms.
- */
+/** Web-only pan, keyboard scroll and snap-to-cell: react-native-web does not implement `snapToInterval`, and a half-covered cell reads as a different amount. */
 function useWebInteractions(
   vRef: React.RefObject<ScrollView | null>,
   bodyHRef: React.RefObject<ScrollView | null>,
@@ -238,12 +195,6 @@ function useWebInteractions(
     };
 
     vNode.style.cursor = "grab";
-    // Both scrollers must be reachable by keyboard: a scrollable region that
-    // cannot receive focus is unusable without a pointer (axe
-    // `scrollable-region-focusable`). The body scroller sits inside the
-    // vertical one, so its arrow keys still bubble to the handler below.
-    vNode.setAttribute("tabindex", "0");
-    bodyNode?.setAttribute("tabindex", "0");
     vNode.addEventListener("mousedown", onDown);
     window.addEventListener("mousemove", onMove, { passive: false });
     window.addEventListener("mouseup", onUp);
@@ -256,27 +207,12 @@ function useWebInteractions(
       vNode.removeEventListener("keydown", onKey);
       bodyNode?.removeEventListener("scroll", onBodyScroll);
       if (settleTimer) clearTimeout(settleTimer);
-      vNode.removeAttribute("tabindex");
-      bodyNode?.removeAttribute("tabindex");
       vNode.style.cursor = "";
     };
   }, [vRef, bodyHRef, headerHRef, rowHeight, cellWidth]);
 }
 
-/**
- * The chrome a column header wears, whatever rail it is drawn in.
- *
- * Two headers render a column — the scrolling one and the pinned one — and
- * every state they can be in has to look the same in both. It did not: the
- * pinned header knew nothing about `currentColumnKey`, so pinning the current
- * month silently dropped its 3px underline and repainted its label, which
- * reads as the pin having changed WHICH month is current. One function, so a
- * state cannot exist in one rail and not the other.
- *
- * The border width is constant across states on purpose. A header that gains
- * or loses a rule when it is pinned, marked or current moves its own text by
- * those pixels, and a row of headers then sits at two different baselines.
- */
+/** Header chrome shared by the scrolling and pinned rails, so a state cannot exist in one and not the other. Border width is constant across states so labels share a baseline. */
 function headerChrome(
   palette: Palette,
   { isCurrent, markEdge }: { isCurrent: boolean; markEdge?: string },
@@ -290,22 +226,7 @@ function headerChrome(
 }
 
 
-/**
- * Arrow-key navigation across the grid, and one tab stop instead of 240.
- *
- * Every cell used to be its own tab stop: crossing a two-year ledger by
- * keyboard was 240 Tab presses to reach the navigation bar behind it, and the
- * arrow keys did nothing at all. Cells now carry `tabIndex -1` (see
- * `MatrixCell`), so Tab moves past the whole grid, and the arrows do what they
- * do in every other table: move a cell at a time, Home/End to the ends of a
- * row, PageUp/PageDown a screenful of rows, Ctrl+Home/End to the corners.
- *
- * DOM-driven rather than React state on purpose. The cell nodes are built by
- * the screen and handed in as opaque children, and roving state through that
- * boundary would mean every cell re-rendering on every arrow press — 240
- * re-renders per keystroke on the screen this component exists to keep fast.
- * Reading coordinates back off the wrapper costs one query per press.
- */
+/** Arrow-key navigation and a single tab stop; DOM-driven so a keypress does not re-render every cell. */
 function useGridKeyboard(
   gridRef: React.RefObject<View | null>,
   rowCount: number,
@@ -440,16 +361,7 @@ export function StickyTable({
   const headerHRef = useRef<ScrollView>(null);
   const [bodyW, setBodyW] = useState(0);
   const [tableW, setTableW] = useState(0);
-  // The screen that owns this table sizes a cell so a whole number of them fits
-  // the width it *estimates*. That estimate is off by the container's own
-  // hairlines — measured at 320px it was 176 against a real 174 — and two pixels
-  // are enough to leave the last column clipped at the right edge for ever.
-  //
-  // What is measured is the whole table minus the label rail, never the body
-  // scroller: a pinned column is drawn beside the labels, so fitting to the body
-  // made the cell width depend on a measurement the cell width had just changed.
-  // `fittedCellWidth` carries the arithmetic and the evidence. `bodyW` is still
-  // measured below, but only for scroll geometry, which nothing lays out from.
+  // Fit cells to the measured table minus the label rail, never to the body scroller: a pinned column would make the width depend on itself. See `fittedCellWidth`.
   const cellWidth = fittedCellWidth(Math.max(0, tableW - headWidth), requestedCellWidth);
 
   useWebInteractions(vRef, bodyHRef, headerHRef, rowHeight, cellWidth);
@@ -458,12 +370,7 @@ export function StickyTable({
   const horizontalFocusSig = useRef("");
   const verticalFocusSig = useRef("");
 
-  // Every column header and row label reports its own height via `onLayout`.
-  // On first mount that is ~38 calls (25 columns + 12 rows + the corner), and
-  // each used to be its own `setLabelHeights` — ~38 re-renders of the whole
-  // non-virtualized grid before anything settled, repeating on every pivot or
-  // year change. Accumulate in a ref (no render) and flush once per frame, so
-  // the whole storm collapses to one state update per animation frame.
+  // Batch every label's onLayout into one state update per frame.
   const labelHeightsRef = useRef<Record<string, number>>({});
   const labelFlushHandle = useRef<number | null>(null);
   const mountedRef = useRef(true);
@@ -511,24 +418,9 @@ export function StickyTable({
 
   const scrollColumnsSignature = scrollCols.map((column) => column.key).join("|");
 
-  // A horizontally scrolled financial grid must never rest on a half-covered
-  // cell: the sticky label column hides the left part of an amount, and what
-  // is left reads as a smaller but perfectly valid figure. The viewport shows
-  // a whole number of cells, the trailing spacer makes the last cell reachable
-  // at a whole-cell offset, and `snapToInterval` keeps a dragged scroll on the
-  // same grid.
+  // A scrolled financial grid must not rest on a half-covered cell: the label rail hides the left of an amount. `snapToInterval` keeps drags on the cell grid.
   const visibleCells = bodyW > 0 ? Math.max(1, Math.floor(bodyW / cellWidth)) : 0;
-  // The far end is where the CONTENT ends, and nothing is added to reach it.
-  //
-  // Two other answers were tried. A trailing spacer made every resting offset a
-  // whole number of cells, at the price of a strip of bare background after the
-  // last column — the width of most of a cell on a desktop, and the owner's
-  // word for it was that the table had a hole in it. Carrying that leftover
-  // inside the last column instead removed the strip but left one column wider
-  // than the rest, which is a false reading of a table whose columns are
-  // otherwise equal. So the end can rest mid-cell: the snap below keeps every
-  // OTHER offset on the grid, and the one place a cell is clipped at the left
-  // edge is the position a person reached by dragging to the very end.
+  // The far end is where the content ends; only the very end may rest mid-cell (a spacer left a visible hole, a wider last column misread as data).
   const maxScrollX = Math.max(0, scrollCols.length * cellWidth - visibleCells * cellWidth);
 
   // Center the current month on open (clamped at the edges). When the pivot
@@ -537,14 +429,7 @@ export function StickyTable({
   // old July offset and opens halfway through an unrelated category list.
   useEffect(() => {
     if (bodyW <= 0) return;
-    // The signature is what the user asked for — a focus target and a set of
-    // columns — not how wide the body measured. It used to include `bodyW` and
-    // `cellWidth`, and pinning a column changes both: the sticky side grows by
-    // one cell, the body shrinks, the fitted cell width recomputes, and each of
-    // those re-fired this effect and yanked the scroll back to the focused
-    // month. That is the shake, and it is why the table could not be dragged
-    // sideways while a column was pinned — every drag was overwritten on the
-    // next render.
+    // Keyed on the focus target and columns only: keying on measured widths re-fired on pin and fought the user's drag.
     const sig = `${focusColumnKey}|${scrollColumnsSignature}`;
     if (horizontalFocusSig.current === sig) return;
     let target = 0;
@@ -552,14 +437,7 @@ export function StickyTable({
       const idx = scrollCols.findIndex((c) => c.key === focusColumnKey);
       if (idx >= 0) {
         const centered = idx * cellWidth + cellWidth / 2 - bodyW / 2;
-        // Every resting offset is a whole number of cells, including the one at
-        // the far end. The clamp used to be `contentW - bodyW`, which is a
-        // fractional offset whenever the viewport is not an exact multiple of
-        // the cell — and focusing a month near the end hits that clamp. The
-        // sticky label column then covered the left part of a real amount, so
-        // `₺14.500,00` rendered as `4.500,00`: not a clipped number, a
-        // different and entirely plausible one. The trailing spacer below is
-        // what makes this maximum reachable.
+        // Whole-cell offsets everywhere; a fractional clamp let the label rail cover the left of an amount.
         target = Math.max(0, Math.min(Math.round(centered / cellWidth) * cellWidth, maxScrollX));
       }
     }
@@ -592,7 +470,7 @@ export function StickyTable({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focusRowKey, bodyViewH, rows.length, rowHeightsSignature]);
 
-  const rowBg = (_i: number, highlight?: boolean) =>
+  const rowBg = (highlight?: boolean) =>
     highlight ? palette.primary + CURRENT_TINT : "transparent";
 
   // Body horizontal scroll drives the header's offset (native + web).
@@ -627,9 +505,6 @@ export function StickyTable({
           height: resolvedHeaderHeight,
           backgroundColor: "transparent",
           justifyContent: "center",
-          // The current month keeps its own 3px rule; a marked column shows a
-          // 2px one in its token colour, so the two are never confused and a
-          // column can carry both facts at once.
           borderBottomWidth: chrome.borderBottomWidth,
           borderBottomColor: chrome.borderBottomColor,
         }}
@@ -643,14 +518,7 @@ export function StickyTable({
           onLongPress={onColumnLongPress ? () => { selectionTap(); onColumnLongPress(c.key); } : undefined}
           accessibilityRole={labelAction ? "button" : undefined}
           accessibilityLabel={labelAction ? c.accessibilityLabel ?? c.label : undefined}
-          // Fill the header band: wrapping only the label left a full-width but
-          // 16px-tall tap target on the app's primary financial surface.
-          //
-          // The padding is HERE and not on the cell around it. Held by the
-          // wrapper it kept the pressable 86x48 inside a 134x56 header, so the
-          // hover fill floated in the middle of the cell with an unlit margin
-          // on all four sides — the rule is that the pressable owns its padding
-          // and the box around it owns only position.
+          // The pressable owns its padding so the hover fill reaches the cell edges.
           style={(state) => ({
             flex: 1,
             alignSelf: "stretch",
@@ -695,23 +563,7 @@ export function StickyTable({
     );
   };
 
-  /**
-   * The header's trailing marks — the computed-column sigma and the pin.
-   *
-   * A sibling of the label pressable, and deliberately NOT a child of it. The
-   * pin used to paint its own hover, so moving the pointer onto it dropped the
-   * header's fill and lit a 24px strip on its own: one column showing two
-   * states at once. Nesting it inside the header was tried and reverted — a
-   * button inside a button is `nested-interactive`, a WCAG violation axe
-   * catches, and react-native-web ends the outer hover on entry anyway
-   * (`Pressable` hard-codes `contain: true`).
-   *
-   * So the pin reports its pointer through `hoveredPinKey` and paints no fill
-   * at all. The header pressable spans the whole cell and this strip is
-   * transparent over its right end, so the fill the header paints is the one
-   * the reader sees under the pin. One visual cell lights once
-   * (`docs/UI.md` §3).
-   */
+  /** Sigma and pin marks: a sibling of the label pressable (nesting is nested-interactive), painting no fill of its own so one cell lights once. */
   const markerStrip = (c: StickyColumn, markerWidth: number) => (
     <View
       style={{
@@ -734,17 +586,7 @@ export function StickyTable({
           onHoverOut={() => setHoveredPinKey((current) => (current === c.key ? null : current))}
           accessibilityRole="button"
           accessibilityLabel={pinnedKey === c.key ? tr.a11y.unpinColumn(c.accessibilityLabel ?? c.label) : tr.a11y.pinColumn(c.accessibilityLabel ?? c.label)}
-          // The mark stays 12px; the box it can be hit in is the whole header
-          // band, which is 56pt tall. `hitSlop` used to carry that and does
-          // nothing on the web, so the box carries its own width instead: 24
-          // under a mouse, 32 under a finger. It stops there rather than at 44
-          // because the strip shares a ~134px financial column with that
-          // column's label, and the last 12px would cost a visible month.
-          // Pressed, but never hovered. A pointer resting anywhere in this
-          // header lights the whole column through the pressable this sits
-          // in; a second fill here would light a 24px strip inside a lit
-          // column. A press still has to answer on a phone, where there is no
-          // hover to fall back on, so the mark itself dims.
+          // 24 under a mouse, 32 under a finger. Pressed dims the mark; it never paints a hover fill inside the lit header.
           style={({ pressed }) => ({
             width: coarsePointer ? STICKY_MARKER_TOUCH_W : STICKY_MARKER_W,
             alignSelf: "stretch",
@@ -763,16 +605,7 @@ export function StickyTable({
     </View>
   );
 
-  /**
-   * The box one cell sits in — the SAME box whether that cell is scrolling or
-   * pinned into the left rail.
-   *
-   * Pinning moves a column; it must not change the column. Two near-identical
-   * wrappers is how that promise decays: the pinned copy had already lost the
-   * current-month highlight, and every later cell-level affordance would have
-   * had to be added twice or silently work in only one of the two places.
-   * One function, so a pinned cell cannot drift from its scrolling self.
-   */
+  /** One cell box for both rails, so a pinned cell cannot drift from its scrolling self. */
   const bodyCell = (column: StickyColumn, row: StickyRow) => {
     const index = colIndexByKey.get(column.key);
     if (index === undefined) return null;
@@ -809,23 +642,7 @@ export function StickyTable({
   return (
     <View
       ref={gridRef}
-      // Keyboard behaviour, not an ARIA claim.
-      //
-      // `useGridKeyboard` gives the arrow keys their standard job and the cells
-      // carry `tabIndex -1`, so the whole table is ONE tab stop instead of 240
-      // — crossing a two-year ledger to reach the navigation bar behind it used
-      // to take 240 presses.
-      //
-      // It deliberately does NOT declare `role="grid"`. A grid owes axe a
-      // structure this table does not have: one visual row is TWO DOM
-      // subtrees, because the label rail and the scrolling rail are separate
-      // scrollers that stay in step. Declaring the role produced a real
-      // `aria-required-children` violation — a promise about structure that
-      // the DOM breaks — which is worse for a screen reader than no promise.
-      // What a reader needs is in each cell's own name instead: every cell
-      // announces its month, its column and its value ("Ocak 2026, Faturalar,
-      // ₺279,15"). Giving this table true grid semantics means merging the two
-      // rails, which is a rewrite of the component rather than an attribute.
+      // One tab stop and arrow keys, but no role="grid": a visual row is two DOM subtrees, which fails aria-required-children. Each cell names month, column and value instead.
       onLayout={(e: LayoutChangeEvent) => setTableW(e.nativeEvent.layout.width)}
       style={height ? { height } : { flex: 1 }}
     >
@@ -871,8 +688,13 @@ export function StickyTable({
 
       {/* Body: fixed-left labels (+ pinned col) beside a horizontally-scrolling
           data grid; the whole body scrolls vertically as one. */}
+      {/* Both scrollers are keyboard-reachable from the first paint (axe
+          `scrollable-region-focusable`); a tabindex set later from an effect lost
+          the race to an audit under load. The body scroller sits inside this
+          one, so its arrow keys still bubble to the handler. */}
       <ScrollView
         ref={vRef}
+        focusable={Platform.OS === "web"}
         accessibilityLabel={tr.a11y.tableLabel(cornerLabel)}
         accessibilityHint={tr.a11y.tableNavigation}
         showsVerticalScrollIndicator={false}
@@ -892,7 +714,7 @@ export function StickyTable({
                   // row, while the shared measured minimum keeps both halves
                   // aligned on the following render.
                   minHeight: resolvedRowHeights[ri],
-                  backgroundColor: rowBg(ri, r.rowHighlight),
+                  backgroundColor: rowBg(r.rowHighlight),
                   borderBottomWidth: ri === rows.length - 1 ? 0 : 1,
                   borderColor: palette.border,
                 }}
@@ -940,6 +762,7 @@ export function StickyTable({
           <ScrollView
             ref={bodyHRef}
             testID="table-horizontal-body"
+            focusable={Platform.OS === "web"}
             horizontal
             showsHorizontalScrollIndicator
             scrollEventThrottle={16}
@@ -957,21 +780,9 @@ export function StickyTable({
                   key={r.key}
                   style={{
                     flexDirection: "row",
-                    // `height`, not `minHeight`: the label half owns the row's
-                    // size (it is the half that can wrap and the half that
-                    // measures itself), and the body half takes exactly that.
-                    // With both free to grow, a body cell a fraction taller than
-                    // the label's estimate made the two halves disagree by a
-                    // pixel — every row, so the first column and the months
-                    // beside it were very slightly out of step all the way down.
+                    // `height`, not `minHeight`: the label half sizes the row.
                     height: resolvedRowHeights[ri],
-                    // The row does NOT wash itself. A row-wide background sits
-                    // UNDER a marked cell's own fill, so a colour-tagged cell
-                    // in the current month lost the wash entirely — while the
-                    // same cell in the other orientation kept it, because
-                    // there the cell painted it. The cell is now the only
-                    // painter in both orientations; this leaves the wash to it
-                    // and keeps only the label pane's own tint (above).
+                    // The row paints no wash; the cell is the only painter.
                     backgroundColor: "transparent",
                     borderBottomWidth: ri === rows.length - 1 ? 0 : 1,
                     borderColor: palette.border,
@@ -988,17 +799,7 @@ export function StickyTable({
   );
 }
 
-/**
- * The pinned column's header, in the fixed left rail.
- *
- * It carries the SAME two actions as a scrolling header (`headerCell`): the
- * label runs the column's own action, and the pin mark beside it toggles the
- * pin. Collapsing both into a single "unpin" Pressable is what made pinning
- * subtract an ability — a pinned month could no longer be opened from its
- * header, a pinned item could no longer open its breakdown, and the only way
- * back to either was to unpin first. Pinning fixes a column in place; it does
- * not change what the column can do.
- */
+/** Pinned header: keeps both actions of a scrolling header — pinning must not remove what a column can do. */
 function PinnedHeader({
   label,
   accessibilityLabel,

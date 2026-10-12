@@ -23,14 +23,14 @@ import {
 } from "../../../domain/investments";
 import { formatMinorCompact, formatMinorInput } from "../../../domain/money";
 import { userMessage } from "../../../domain/user-error";
-import { tr } from "../../../i18n/tr";
+import { dateLabel, tr } from "../../../i18n/tr";
 import { scheduleSync } from "../../../sync/engine";
 import { DateField } from "../../../ui/calendar";
 import { Amount, Button, Card, DataStateNotice, Eyebrow, FadeIn, Field, IconButton, Label, MoneyField, PanelHeader, Screen, Segmented, Select } from "../../../ui/components";
 import { appAlert } from "../../../ui/dialog";
 import { navigateBack } from "../../../ui/navigation";
 import { useDirtyExitGuard, useDraftDirty } from "../../../ui/dirty-exit";
-import { placeholderPools, useRotatingPlaceholder } from "../../../ui/placeholders";
+import { useRotatingPlaceholder } from "../../../ui/placeholders";
 import { controlSize, font, radius, spacing, type, useTheme } from "../../../ui/theme";
 import { shouldPairOperationSummary } from "../../../ui/responsive";
 import { useContentWidth } from "../../../ui/viewport";
@@ -47,10 +47,7 @@ function errorText(error: unknown): string {
     quote_inconsistent: tr.investments.inconsistentQuote,
     quote_incomplete: tr.investments.incompleteQuote,
     invalid_quantity: tr.investments.invalidQuantity,
-    // Not the ceiling: nothing throws this code for an amount over the limit
-    // (that check throws a plain Error), so the limit sentence was wrong in
-    // every case it could appear. What it does mean is a figure that is
-    // negative or zero where the record needs a positive one.
+    // This code means a non-positive figure, not the ceiling (which throws a plain Error).
     invalid_money: tr.investments.invalidAmount,
     invalid_date: tr.investments.invalidDate,
     unknown_product: tr.investments.noProducts,
@@ -229,14 +226,13 @@ function OperationSummary({ draft }: { draft: OperationDraft }) {
   const { kind, selected, date, title, calculationTotal: totalMinor, unit } = draft;
   const { color, Icon } = impactOf(kind, palette);
   const impact = tr.investments.operationImpact[kind];
-  const dash = (style: object) => <Text style={[style, { color: palette.textStrong, marginTop: 2 }]}>—</Text>;
   return (
     <FadeIn style={{ marginBottom: spacing.lg }}>
       <View
         testID="investment-operation-summary"
         accessible
         accessibilityRole="image"
-        accessibilityLabel={`${title}. ${selected?.name ?? tr.investments.product}. ${date}. ${totalMinor == null ? "—" : formatMinorCompact(totalMinor)}. ${impact}`}
+        accessibilityLabel={`${title}. ${selected?.name ?? tr.investments.product}. ${dateLabel(date)}. ${totalMinor == null ? "—" : formatMinorCompact(totalMinor)}. ${impact}`}
         // A card as the app paints one — `surface` under a hairline — with the
         // operation's colour as the same top accent a hero card uses.
         style={{
@@ -260,9 +256,7 @@ function OperationSummary({ draft }: { draft: OperationDraft }) {
               {selected ? `${selected.name} · ${tr.investments.types[selected.assetType]}` : tr.investments.product}
             </Text>
           </View>
-          {/* "Serbest bakiyeye eklenir" tells the user where their money goes; a
-              34%-wide column broke it across three lines on a phone, so it
-              shares the row only when there is room. */}
+          {/* Shares the row only when there is room, so the destination text does not wrap to three lines. */}
           {wideSummary ? (
             <View style={{ maxWidth: "38%", paddingHorizontal: spacing.md, paddingVertical: spacing.xs + 1, borderRadius: radius.full, backgroundColor: color + "18", borderWidth: StyleSheet.hairlineWidth, borderColor: color + "70" }}>
               <Text style={[type.small, { color, fontFamily: font.semibold, textAlign: "center" }]}>{impact}</Text>
@@ -277,7 +271,7 @@ function OperationSummary({ draft }: { draft: OperationDraft }) {
         ) : null}
         <View style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.sm, marginTop: spacing.lg }}>
           <SummaryTile label={tr.investments.operationDate} minWidth={110}>
-            <Text style={[type.label, { color: palette.textStrong, marginTop: 2 }]}>{date}</Text>
+            <Text style={[type.label, { color: palette.textStrong, marginTop: 2 }]}>{dateLabel(date)}</Text>
           </SummaryTile>
           <SummaryTile label={tr.investments.operationImpactLabel} minWidth={110}>
             <Text style={[type.label, { color, marginTop: 2 }]}>{impact}</Text>
@@ -290,7 +284,7 @@ function OperationSummary({ draft }: { draft: OperationDraft }) {
             </SummaryTile>
             <SummaryTile label={tr.investments.unitPrice} minWidth={0}>
               {unit.minor == null
-                ? dash(type.amountSm)
+                ? <Text style={[type.amountSm, { color: palette.textStrong, marginTop: 2 }]}>—</Text>
                 : <Amount minor={unit.minor} colorized={false} accessibilityLabel={formatMinorCompact(unit.minor)} style={[type.amountSm, { color: palette.textStrong, marginTop: 2, textAlign: "left" }]} />}
             </SummaryTile>
           </View>
@@ -339,8 +333,8 @@ function HeldQuantity({ atoms }: { atoms: bigint }) {
 
 function QuoteFields({ draft }: { draft: OperationDraft }) {
   const { quantity, unit, total, quoted } = draft;
-  const quantityPlaceholder = useRotatingPlaceholder(placeholderPools.investmentQuantity, { prefix: false, active: quantity.length === 0 });
-  const unitPlaceholder = useRotatingPlaceholder(placeholderPools.investmentUnitPrice, { prefix: false, active: unit.raw.length === 0 || total.raw.length === 0 });
+  const quantityPlaceholder = useRotatingPlaceholder(tr.placeholders.investmentQuantity, { prefix: false, active: quantity.length === 0 });
+  const unitPlaceholder = useRotatingPlaceholder(tr.placeholders.investmentUnitPrice, { prefix: false, active: unit.raw.length === 0 || total.raw.length === 0 });
   const onTotal = (raw: string, minor: number | null) => draft.setTotal({ raw, minor });
   if (draft.amountOnly) return <MoneyField label={tr.investments.requiredTotal} value={total.raw} placeholder={unitPlaceholder} onChangeMinor={onTotal} />;
   return (
@@ -386,7 +380,7 @@ function OperationFields({ draft }: { draft: OperationDraft }) {
   const router = useRouter();
   const { palette } = useTheme();
   const { baseKind, products } = draft;
-  const notePlaceholder = useRotatingPlaceholder(placeholderPools.investmentNote, { active: draft.note.length === 0 });
+  const notePlaceholder = useRotatingPlaceholder(tr.placeholders.investmentNote, { active: draft.note.length === 0 });
   const addProduct = () => router.push({ pathname: "/investments/product", params: { next: baseKind } });
   return (
     <Card style={{ marginBottom: spacing.lg }}>

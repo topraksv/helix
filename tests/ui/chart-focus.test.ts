@@ -1,14 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { chartFocusReducer, type ChartFocusState } from "../../src/ui/chart-focus";
 
-/**
- * A chart carries two signals and they are not the same thing. A pointer
- * HOVERING a slice asks a passing question; a tap or a click is a decision.
- * They used to share one piece of state, so on the web a click could not be
- * held at all — moving the mouse one pixel off the row threw the selection
- * straight back — and the only way out of a selection was to find and press
- * the exact element that made it.
- */
+/** A pointer hovering a slice asks a passing question; a tap or a click is a decision, so they are separate state. */
 describe("chart focus", () => {
   const none: ChartFocusState = { locked: null, hovered: null };
   const active = (s: ChartFocusState) => s.locked ?? s.hovered;
@@ -22,7 +15,6 @@ describe("chart focus", () => {
   it("holds a click after the pointer leaves", () => {
     const locked = chartFocusReducer(none, { type: "toggle", index: 3 });
     expect(active(locked)).toBe(3);
-    // This is the case the web could not do before.
     expect(active(chartFocusReducer(locked, { type: "endPreview", index: 3 }))).toBe(3);
   });
 

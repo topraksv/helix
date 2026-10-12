@@ -1,17 +1,4 @@
-/**
- * What a cold start shows between the native splash and the app: the mark
- * drawing itself at the splash image's size and place, and the name writing
- * itself under it, on the ground of the theme the app opens in — the owner's
- * amber dark launched on the splash's cool near-black (2026-10-02). The native
- * splash is one colour for every palette, so the hand-over changes the ground
- * where the palette differs from it. It is held until the root has something to show and
- * the drawing has had its time, then dissolves into the app.
- *
- * It replaced the three-dot boot wait. A wait still shows one indicator for
- * its whole duration: the mark, from the first frame to the last, and never
- * dots under it, which is why the boot gates beneath draw nothing while this
- * is up.
- */
+/** Cold start: the mark draws itself where the splash image sits, then dissolves once the root is ready and the drawing has rested. It is the only boot indicator, so the gates beneath draw nothing. */
 
 import { useEffect, useState } from "react";
 import { Animated, Easing, Platform, StyleSheet, type ViewStyle } from "react-native";
@@ -20,19 +7,12 @@ import * as SplashScreen from "expo-splash-screen";
 import { tr } from "../i18n/tr";
 import { BrandMark, preloadBrandMark } from "./brand";
 import { useReducedMotion } from "./motion";
-import { useTheme } from "./theme";
+import { motion, useTheme } from "./theme";
 
-/**
- * `imageWidth` in `app.json`. The plugin fits the image into a square of that
- * side on both platforms and centres it, and the mark is taller than wide, so
- * 130 is its HEIGHT — which is what `BrandMark`'s `size` measures. The splash
- * PNG is cropped to the drawing, so nothing else offsets it.
- */
+/** `imageWidth` in `app.json`: the plugin fits the image into a square of that side, and the mark is taller than wide, so 130 is its height. */
 const SPLASH_MARK = 130;
 
-/** The drawing's length, the finished mark's rest and the dissolve. The chart's
- *  `motion.draw` (1150 ms) and a 120 ms dissolve were gone before they were
- *  seen; the owner asked for a slower launch (2026-10-02). */
+/** Draw, rest and dissolve; slower than `motion.draw` so the launch is seen. */
 const LAUNCH = { draw: 2000, rest: 300, fade: 400 } as const;
 
 /** How long the drawing may hold an app that is ready. The drawing starts
@@ -123,12 +103,12 @@ export function Launch({ settled, onGone }: { settled: boolean; onGone: () => vo
               opacity: leaving && !reducedMotion ? 0 : 1,
               transitionProperty: "opacity",
               transitionDuration: `${LAUNCH.fade}ms`,
-              transitionTimingFunction: "cubic-bezier(0.22, 1, 0.36, 1)",
+              transitionTimingFunction: motion.webEase,
             } as unknown as ViewStyle)
           : { opacity },
       ]}
     >
-      {drawable && <BrandMark size={SPLASH_MARK} duration={LAUNCH.draw} named />}
+      {drawable && <BrandMark height={SPLASH_MARK} duration={LAUNCH.draw} named />}
     </Animated.View>
   );
 }

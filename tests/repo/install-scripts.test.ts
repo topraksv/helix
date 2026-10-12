@@ -67,40 +67,14 @@ function packagesWithInstallScripts(root = "node_modules"): string[] {
   return [...new Set(found)].sort();
 }
 
-/**
- * Measured on 2026-08-07, and every entry is a build tool rather than anything
- * the app ships:
- *
- * - `esbuild`      — validates that the platform binary from its own
- *                    optionalDependency matches the host. Four copies in the
- *                    tree, all through the toolchain.
- * - `unrs-resolver` — the native resolver behind `eslint-plugin-import`.
- *
- * `dtrace-provider` used to sit here: a native addon compiled at install time
- * on the machine that publishes the OTA, which is the most sensitive place a
- * build script can run and the reason this test exists. It arrived only
- * through `eas-cli → @expo/logger → bunyan`, and the publisher is no longer
- * installed at all — see release-config's EAS pinning test.
- */
+/** Every install hook is an allowlisted decision; a new one fails here, and an entry no longer installed must be pruned. */
 const ALLOWED = ["esbuild", "unrs-resolver"];
 
 describe("install-time code execution", () => {
   it("runs install scripts only from the packages that are meant to", () => {
-    const found = packagesWithInstallScripts();
-    // A run against an empty or half-installed tree would pass this test while
-    // proving nothing at all.
-    expect(found.length, "an installed dependency tree").toBeGreaterThan(0);
-    expect(found, "a dependency started running code at install time").toEqual(
-      ALLOWED.filter((name) => found.includes(name)),
-    );
-  });
-
-  it("keeps the allowlist honest about what is still installed", () => {
-    const found = packagesWithInstallScripts();
-    const gone = ALLOWED.filter((name) => !found.includes(name));
-    // An allowlist nobody prunes is an allowlist that will one day re-admit a
-    // package on its way back in.
-    expect(gone, "allowlisted but no longer installed — remove it").toEqual([]);
+    // An empty or half-installed tree cannot equal the allowlist, so this
+    // cannot pass while proving nothing.
+    expect(packagesWithInstallScripts(), "install-time code differs from the allowlist").toEqual(ALLOWED);
   });
 
   /** The root postinstall; a tree installed without it ships the blank-tab bug on native. */

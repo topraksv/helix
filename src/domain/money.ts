@@ -47,18 +47,9 @@ export function roundHalfAwayFromZero(value: number): number {
 }
 
 /**
- * Split a total into `count` installments the way a statement bills them: every
- * instalment is the total divided and rounded to the nearest kuruş, and the
- * FIRST one absorbs what that rounding left over.
- *
- * Measured on the owner's workbook, 2026-09-13: of 253 card plans, 35 carried a
- * kuruş difference. The regular instalment was the nearest-kuruş share in all
- * 35; the odd one out was the first in 22 and the last in 13. Truncating and
- * sending the remainder to the last matched neither — 1.154,98 over six is
- * billed 192,48 then five of 192,50, and truncation wrote five of 192,49.
- *
- * Nearest-kuruş rounding can leave nothing for the first share when the total
- * is smaller than the count, so that one case falls back to truncation.
+ * Statements bill the nearest-kuruş share and put the rounding on the first
+ * instalment; truncation matches neither. When the total is smaller than the
+ * count nothing is left for the first share, so that case truncates.
  */
 export function splitIntoInstallments(totalMinor: Minor, count: number): Minor[] {
   assertMinor(totalMinor);
@@ -73,16 +64,9 @@ export function splitIntoInstallments(totalMinor: Minor, count: number): Minor[]
 }
 
 /**
- * The two figures a screen needs to describe a split truthfully: the first
- * instalment, which carries the rounding, and the one every later month bills.
- *
- * Two screens previewed a card plan by dividing the total themselves with
- * `Math.trunc`, which is a DIFFERENT answer from the schedule this module
- * writes whenever the total does not divide evenly — "3 taksit x ₺333,33"
- * described a ₺999,99 purchase for a ₺1.000,00 one. The preview and the
- * schedule now come from the same split, so they cannot disagree.
- *
- * `null` for a count no plan could have, so a screen previewing a half-typed
+ * The first instalment (which carries the rounding) and the one every later
+ * month bills, from the same split the schedule uses so a preview cannot
+ * disagree with it. `null` for a count no plan could have, so a half-typed
  * field cannot throw during render.
  */
 export function installmentShareRange(totalMinor: Minor, count: number): { first: Minor; rest: Minor } | null {
@@ -135,13 +119,8 @@ function roundsToNextCompactScale(value: number): boolean {
 export function compactMoneyScale(amountMinor: Minor): CompactMoneyScale {
   assertMinor(amountMinor);
   const major = Math.abs(amountMinor) / 100;
-  // No separate trilyon branch: promotion already covers it. A value at or
-  // above a trilyon is at least 1000 when read in milyar, and 1000 milyar
-  // rounds to the promotion threshold exactly — so the branch below returns
-  // "Tr" for every input a `major >= 1e12` shortcut could have caught, and
-  // could never disagree with it. Mutation found this by leaving five mutants
-  // on those two lines that no test could kill, which is the same statement:
-  // the guards decided nothing.
+  // No separate trilyon branch: 1000 milyar rounds to the promotion threshold,
+  // so "Tr" is already returned for every input a `major >= 1e12` check would catch.
   if (major >= 1e9) return roundsToNextCompactScale(major / 1e9) ? "Tr" : "Mr";
   if (major >= 1e6) return roundsToNextCompactScale(major / 1e6) ? "Mr" : "Mn";
   return "Mn";
@@ -202,23 +181,14 @@ export function formatMinorCompactAtScale(
 type AmountRejection = "empty" | "malformed" | "over-limit";
 
 /**
- * A typed amount, or the reason it is not one.
- *
- * `null` used to carry both refusals at once and the amount field could only
- * guess between them, so it named the louder: an unfinished expression — a
- * lone comma, or "1+" halfway through typing "1+2" — was refused with "this
- * amount exceeds the supported limit", a limit the input was nowhere near.
- * The reason is derived in the same pass as the value so a message and a
- * number cannot disagree; `parseTRAmountToMinor` and
- * `parseAmountExpression` stay as the thin answers for callers that only
- * want the number.
+ * A typed amount, or the reason it is not one. The reason is derived in the
+ * same pass as the value so a message and a number cannot disagree: an
+ * unfinished expression ("1+") must not be reported as over the limit.
  */
-export type ReadAmount = { ok: true; minor: Minor } | { ok: false; reason: AmountRejection };
+type ReadAmount = { ok: true; minor: Minor } | { ok: false; reason: AmountRejection };
 
 /** Read one Turkish-formatted amount, saying why when it is not one. */
 export function readTRAmount(input: string): ReadAmount {
-  // No `.trim()` before this: `\s` already covers every code point `trim`
-  // removes, so the call was doing nothing that the strip does not.
   const trimmed = input.replace(/[₺\s]/g, "");
   if (trimmed === "") return { ok: false, reason: "empty" };
   const negative = trimmed.startsWith("-");
@@ -228,21 +198,10 @@ export function readTRAmount(input: string): ReadAmount {
   }
   const [intPart, fracPart = ""] = body.replace(/\./g, "").split(",");
   const minor = Number(intPart) * 100 + Number((fracPart + "00").slice(0, 2));
-  // Beyond safe-integer range the arithmetic is no longer exact — treat it as
-  // invalid input rather than storing a corrupted amount (assertMinor would
-  // otherwise throw at display time). Too large to store is a different thing
-  // to say than unreadable, which is why it is a distinct reason and not null.
+  // Beyond safe-integer range the arithmetic is no longer exact; "too large" is
+  // a different message from "unreadable", hence its own reason.
   if (!isSupportedMinorAmount(minor)) return { ok: false, reason: "over-limit" };
   return { ok: true, minor: negative ? -minor : minor };
-}
-
-/**
- * Parse Turkish-formatted decimal input ("1.234,56", "1234,5", "1234") into
- * minor units. Returns null for input that is not a clean number.
- */
-export function parseTRAmountToMinor(input: string): Minor | null {
-  const read = readTRAmount(input);
-  return read.ok ? read.minor : null;
 }
 
 /**
@@ -254,14 +213,13 @@ export function parseTRAmountToMinor(input: string): Minor | null {
  * so the form can explain the limit instead of silently changing the amount.
  */
 export function formatTRInputLive(raw: string): string {
-  // The sign is read once the currency symbol is out of the way. "₺-5" does
-  // not START with a minus, so the sign was neither seen here nor kept by the
-  // strip below — a pasted refund came back as a charge of the same size, and
-  // `parseTRAmountToMinor` had already got it right, so the two disagreed about
-  // the same string. Only the symbol and spaces are removed: an operator is
-  // still not a sign, and `formatMoneyInputLive` owns that case.
+  // The sign is read after the currency symbol is removed: "₺-5" must stay a
+  // refund. An operator is still not a sign; `formatMoneyInputLive` owns that.
   const negative = raw.replace(/[₺\s]/g, "").startsWith("-");
-  const cleaned = raw.replace(/[^\d,]/g, "");
+  // A dot-only keypad has no comma, so a just-typed trailing dot is the decimal
+  // mark; grouping dots are drawn by this function and never end the value.
+  const typed = raw.includes(",") ? raw : raw.replace(/\.$/, ",");
+  const cleaned = typed.replace(/[^\d,]/g, "");
   const firstComma = cleaned.indexOf(",");
   let intDigits = (firstComma === -1 ? cleaned : cleaned.slice(0, firstComma)).replace(/\D/g, "");
   const frac = firstComma === -1 ? null : cleaned.slice(firstComma + 1).replace(/\D/g, "").slice(0, 2);

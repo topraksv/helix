@@ -8,26 +8,14 @@ import { findAutoConfirmable, findLate, generateExpected } from "../../domain/ex
 import type { ExpectedPaymentLike } from "../../domain/types";
 import { isValidCardCycle, statementForDueDate, statementForPurchase, type CardStatementPeriod } from "../../domain/card-statements";
 import { FxRateUnavailableError } from "./errors";
+import { expectedPaymentLike, expectedPaymentWrite } from "./rules";
 import { InvestmentDomainError } from "../../domain/investments";
 import { assertInvestmentWrites } from "./investment-validation";
 import { confirmExpected, type ExpectedRow } from "./expected";
 import { cardStatementWrite, type LivePaymentSource } from "./transactions";
 import { billedInTry } from "./installments";
 
-// ---------------------------------------------------------------------------
-// Daily maintenance: §2.2 date flips, expected generation, late marking, auto-pay
-// ---------------------------------------------------------------------------
-
-/**
- * Maintenance is serialized per user. A module-level BOOLEAN used to sit here
- * and made a skipped pass indistinguishable from a completed one: the early
- * return resolved `Promise<void>` exactly like success. That broke callers that
- * depend on the work having happened — `reassignAndDeletePerson`
- * (`accounts.ts:167`) awaits a pass specifically to reconcile derived expected
- * rows under the replacement person's classification, and silently got nothing
- * whenever the throttled lifecycle kick was mid-flight. The flag was also not
- * user-scoped, so one account's pass could swallow another's.
- */
+// Serialized per user: a skipped pass must not resolve like a finished one — `reassignAndDeletePerson` awaits it.
 const maintenanceQueue = createSerialQueue<void>();
 
 export async function repairCardStatementLinks(userId: string, today: ISODate): Promise<void> {
@@ -102,8 +90,7 @@ export async function repairCardStatementLinks(userId: string, today: ISODate): 
          SELECT 1 FROM transactions t
          WHERE t.user_id = cs.user_id AND t.card_statement_id = cs.id AND t.deleted_at IS NULL
        )
-       -- A statement the owner recorded a payment against is not an orphan:
-       -- the money left the account whatever became of its charges.
+       -- A statement with a recorded payment is not an orphan: the money left the account.
        AND NOT EXISTS (
          SELECT 1 FROM card_statement_payments p
          WHERE p.user_id = cs.user_id AND p.statement_id = cs.id AND p.deleted_at IS NULL
@@ -123,27 +110,17 @@ export async function repairCardStatementLinks(userId: string, today: ISODate): 
 }
 
 /**
- * Rows that exist only for another row, and nothing a delete of that row
- * reaches: a budget belongs to its category, a document to its transaction.
- * One place rather than each delete, because the parent's tombstone also
- * arrives by sync from another device, and older builds left orphans behind —
- * a transaction or plan delete never took its receipts, so their bytes and
- * bucket objects outlived every screen that could still reach them.
- *
- * A live child is tombstoned only when its parent PROVABLY exists as deleted:
- * a missing parent may simply not have synced yet on a fresh device, and
- * cleaning those would destroy data mid-first-pull.
+ * Rows that exist only for another row (a budget for its category, a document for its transaction).
+ * Swept here rather than in each delete, because the parent's tombstone also arrives by sync.
+ * A child is tombstoned only when its parent PROVABLY exists as deleted: a missing parent may not
+ * have synced yet, and cleaning it would destroy data mid-first-pull.
  */
 const DEPENDENTS = RELATIONS.filter(([table]) => table === "category_budgets" || table === "attachments");
 
 /**
- * A parent that can still come back is not deleted yet, and a document waits
- * for it: its bytes are pruned in the same pass, so a receipt swept early is
- * gone for good. The undo bar restores a transaction seconds after the delete,
- * and a live plan regenerates any of its instalments under the same id —
- * reopening a closed loan, raising a count that was lowered. A day outlasts
- * every undo; deleting the plan, which cannot be undone, is what makes its
- * rows final.
+ * A parent that can still come back is not deleted yet, and a document waits for it: its bytes are
+ * pruned in the same pass. A transaction can be restored by undo, and a live plan regenerates its
+ * instalments under the same id; a day outlasts every undo, and deleting the plan makes its rows final.
  */
 const REVIVABLE_PARENT = `p.deleted_at > ? OR EXISTS (
   SELECT 1 FROM installment_plans plan
@@ -183,8 +160,7 @@ async function runMaintenanceInner(userId: string): Promise<void> {
   const today = todayISO();
   const sqlite = await getSqliteAsync();
 
-  // 0) Repair: collapse duplicate "self" persons (a historical seed bug could
-  // create two). Keep the oldest, remap references, tombstone the rest.
+  // 0) Collapse duplicate "self" persons: keep the oldest, remap references, tombstone the rest.
   const selves = await sqlite.getAllAsync<{ id: string }>(
     `SELECT id FROM persons WHERE user_id = ? AND is_self = 1 AND deleted_at IS NULL ORDER BY created_at ASC`,
     [userId],
@@ -209,10 +185,8 @@ async function runMaintenanceInner(userId: string): Promise<void> {
     }
   }
 
-  // 0b) Repair legacy type/category mismatches without changing cash balance.
-  // Older import/editor code represented an expense refund as income +100 in
-  // the expense category. Canonical form is expense -100: same +100 balance
-  // effect, but every category/chart can now net the refund consistently.
+  // 0b) A refund stored as income +100 in an expense category becomes expense -100: same balance
+  // effect, but every category and chart nets it consistently.
   const mismatched = await sqlite.getAllAsync<Record<string, unknown> & { category_kind: "expense" | "income" }>(
     `SELECT t.*, c.kind AS category_kind
      FROM transactions t
@@ -237,11 +211,8 @@ async function runMaintenanceInner(userId: string): Promise<void> {
     );
   }
 
-  // 0c) One-time removal: the auto-created "KK Taksit" (credit-card installment
-  // split) computed column is no longer wanted — it renders a derived column
-  // that isn't a real category and confused users. Tombstone the deterministic
-  // cc column once, guarded by a synced flag so it never resurrects on any
-  // device. A user's own manually-created computed columns are untouched.
+  // 0c) One-time removal of the auto-created "KK Taksit" column, guarded by a synced flag so it
+  // never resurrects on another device. The user's own computed columns are untouched.
   const ccRemoved = await sqlite.getAllAsync<{ value: string }>(
     `SELECT value FROM settings WHERE user_id = ? AND key = 'cc_column_removed' AND deleted_at IS NULL`,
     [userId],
@@ -256,11 +227,8 @@ async function runMaintenanceInner(userId: string): Promise<void> {
     await writeSetting(userId, "cc_column_removed", true);
   }
 
-  // 0d) Link only rows with enough real date information. Installments already
-  // store their explicit payment date; new card purchases store purchaseDate.
-  // Legacy one-off card rows without either are deliberately left untouched —
-  // guessing whether their old date meant purchase or payment would rewrite
-  // financial history.
+  // 0d) Link only rows with real date information; a legacy card row with neither a purchase nor a
+  // payment date is left alone, since guessing would rewrite financial history.
   await repairCardStatementLinks(userId, today);
 
   // 0e) A dependent goes with the row it belongs to.
@@ -271,48 +239,41 @@ async function runMaintenanceInner(userId: string): Promise<void> {
     `SELECT * FROM transactions WHERE user_id = ? AND status = 'pending' AND effective_date <= ? AND deleted_at IS NULL`,
     [userId, today],
   );
-  // A statement the owner has paid against fixes the TRY figure of its
-  // foreign instalments: the payment was made against that figure, and
-  // `settleStatement` reads the live one, so restating it after the payment
-  // turned a statement paid in full into a partial one.
+  // A statement paid against fixes the TRY figure of its foreign instalments; restating it afterwards
+  // would turn a statement paid in full into a partial one.
   const paidStatements = new Set((await sqlite.getAllAsync<{ statement_id: string }>(
     `SELECT DISTINCT statement_id FROM card_statement_payments WHERE user_id = ? AND paid_on <= ? AND deleted_at IS NULL`,
     [userId, today],
   )).map((payment) => payment.statement_id));
   const billsAtRate = (row: Record<string, unknown>) =>
     row.installment_plan_id != null && !paidStatements.has(String(row.card_statement_id));
-  if (due.length > 0) {
-    const priority = (row: Record<string, unknown>) =>
-      row.type === "transfer" && Number(row.amount_try_minor) > 0
-        ? 0
-        : row.type === "transfer" && Number(row.amount_try_minor) < 0
-          ? 2
-          : 1;
-    for (const row of [...due].sort((a, b) => priority(a) - priority(b) || String(a.id).localeCompare(String(b.id)))) {
-      const billed = !billsAtRate(row)
-        ? null
-        : await billedInTry(userId, String(row.currency), Number(row.amount_minor), String(row.effective_date) as ISODate);
-      const writes: RowWrite[] = [{ table: "transactions", row: { ...fromDbShape("transactions", row), status: "realized", ...billed } }];
-      try {
-        await writeRowsValidated(
-          userId,
-          writes,
-          (db) => assertInvestmentWrites(db, userId, writes).then(() => undefined),
-          false,
-        );
-      } catch (error) {
-        // A scheduled refund can become unaffordable after later edits. Keep it
-        // pending for the user to adjust; every unrelated due row still lands.
-        if (error instanceof InvestmentDomainError && error.code === "insufficient_cash") continue;
-        throw error;
-      }
+  const priority = (row: Record<string, unknown>) =>
+    row.type === "transfer" && Number(row.amount_try_minor) > 0
+      ? 0
+      : row.type === "transfer" && Number(row.amount_try_minor) < 0
+        ? 2
+        : 1;
+  for (const row of [...due].sort((a, b) => priority(a) - priority(b) || String(a.id).localeCompare(String(b.id)))) {
+    const billed = !billsAtRate(row)
+      ? null
+      : await billedInTry(userId, String(row.currency), Number(row.amount_minor), String(row.effective_date) as ISODate);
+    const writes: RowWrite[] = [{ table: "transactions", row: { ...fromDbShape("transactions", row), status: "realized", ...billed } }];
+    try {
+      await writeRowsValidated(
+        userId,
+        writes,
+        (db) => assertInvestmentWrites(db, userId, writes).then(() => undefined),
+        false,
+      );
+    } catch (error) {
+      // A scheduled refund can become unaffordable after later edits: keep it pending, land the rest.
+      if (error instanceof InvestmentDomainError && error.code === "insufficient_cash") continue;
+      throw error;
     }
   }
 
-  // 1b) A coming instalment of a foreign-currency plan is worth what the
-  // currency is worth now, not on the day the plan was entered: its TRY figure
-  // follows the last known rate until its own day arrives and fixes it above,
-  // or until its statement is paid against.
+  // 1b) A coming foreign-currency instalment follows the last known rate until its own day fixes it
+  // above, or its statement is paid against.
   const comingForeign = await sqlite.getAllAsync<Record<string, unknown>>(
     `SELECT * FROM transactions
      WHERE user_id = ? AND status = 'pending' AND installment_plan_id IS NOT NULL
@@ -340,11 +301,10 @@ async function runMaintenanceInner(userId: string): Promise<void> {
      WHERE r.user_id = ? AND r.deleted_at IS NULL`,
     [userId],
   );
-  // Older builds generated dashboard obligations for watch-only people. Those
-  // rows never belong in the user's balance/forecast; clean pending/late
-  // derivatives while retaining paid/skipped history.
-  const watchedSubscriptions = new Set(subs.filter((row) => !Boolean(row.is_self)).map((row) => row.id as string));
-  const watchedIncomes = new Set(incomes.filter((row) => !Boolean(row.is_self)).map((row) => row.id as string));
+  // Watch-only people's obligations never belong in the user's balance or forecast: drop pending/late
+  // derivatives, keep paid/skipped history.
+  const watchedSubscriptions = new Set(subs.filter((row) => !row.is_self).map((row) => row.id as string));
+  const watchedIncomes = new Set(incomes.filter((row) => !row.is_self).map((row) => row.id as string));
   if (watchedSubscriptions.size > 0 || watchedIncomes.size > 0) {
     const mutableExpected = await sqlite.getAllAsync<Record<string, unknown>>(
       `SELECT * FROM expected_payments
@@ -402,26 +362,7 @@ async function runMaintenanceInner(userId: string): Promise<void> {
   );
   if (drafts.length > 0) {
     const writes: RowWrite[] = [];
-    for (const d of drafts) {
-      writes.push({
-        table: "expected_payments",
-        row: {
-          id: await deterministicId(naturalKeys.expected(userId, d.kind, d.refId, d.dueDate)),
-          direction: d.direction,
-          kind: d.kind,
-          refId: d.refId,
-          dueDate: d.dueDate,
-          amountMinor: d.amountMinor,
-          amountIsEstimated: d.amountIsEstimated,
-          currency: d.currency,
-          status: "pending",
-          paidAt: null,
-          autoConfirmed: false,
-          transactionId: null,
-          deletedAt: null,
-        },
-      });
-    }
+    for (const draft of drafts) writes.push(await expectedPaymentWrite(userId, draft));
     await writeRows(userId, writes, false);
   }
 
@@ -430,19 +371,9 @@ async function runMaintenanceInner(userId: string): Promise<void> {
     `SELECT * FROM expected_payments WHERE user_id = ? AND status = 'pending' AND deleted_at IS NULL`,
     [userId],
   );
-  const pendingLike: ExpectedPaymentLike[] = pendingRows.map((r) => ({
-    id: r.id,
-    direction: r.direction,
-    kind: r.kind as ExpectedPaymentLike["kind"],
-    refId: r.ref_id,
-    dueDate: r.due_date,
-    amountMinor: r.amount_minor,
-    amountIsEstimated: Boolean(r.amount_is_estimated),
-    currency: r.currency,
-    status: r.status as ExpectedPaymentLike["status"],
-  }));
-  // refId → the day the rule was written down. `findAutoConfirmable` needs it
-  // to tell a billing date the rule lived through from one it was created on.
+  const pendingLike = pendingRows.map(expectedPaymentLike);
+  // refId → the day the rule was written down; `findAutoConfirmable` tells a billing date the rule
+  // lived through from one it was created on.
   const autoPayRules = new Map<string, ISODate | null>(
     subs
       .filter((s) => Boolean(s.auto_pay) && Boolean(s.is_self) && s.amount_mode !== "variable")
@@ -465,17 +396,7 @@ async function runMaintenanceInner(userId: string): Promise<void> {
           auto: true,
         });
       } catch (e) {
-        // A missing FX rate must not abort the whole maintenance pass — leave
-        // the item pending and auto-confirm it on a later run once a rate is
-        // cached. Re-throw anything unexpected.
-        //
-        // Swallowing the rest was tried and reverted on 2026-09-09. A rule that
-        // has drifted out of shape does take every repair after it down with
-        // it, which is worth fixing — but continuing past an unexplained throw
-        // costs this file 16 detected mutants, because a great many of them
-        // were only ever observable AS that throw. The resilience is worth
-        // having with assertions on what the pass produces, and worth nothing
-        // bought by making the pass harder to check.
+        // Only a missing rate is swallowed; continuing past other throws hides failures the tests observe.
         if (!(e instanceof FxRateUnavailableError)) throw e;
       }
     }
@@ -486,10 +407,7 @@ async function runMaintenanceInner(userId: string): Promise<void> {
     const byId = new Map(pendingRows.map((r) => [r.id, r]));
     await writeRows(
       userId,
-      // A derived id with no row behind it should not exist, and an `as
-      // unknown as` cast used to say so — but maintenance runs on every boot,
-      // and `fromDbShape(undefined)` would throw out of it rather than skip
-      // one row. Nothing else on that boot would then run either.
+      // A derived id with no row is skipped: `fromDbShape(undefined)` would abort the rest of every boot's pass.
       late.flatMap((l) => {
         const row = byId.get(l.id);
         return row

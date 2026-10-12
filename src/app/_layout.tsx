@@ -51,14 +51,14 @@ import { DialogHost, PromptHost } from "../ui/dialog";
 import { ErrorBoundary } from "../ui/error-boundary";
 import { FrozenGate } from "../ui/frozen-gate";
 import { ThemeDissolve } from "../ui/motion-primitives";
-import { applyThemeChange, syncThemeColorMeta } from "../ui/theme-transition";
+import { applyThemeChange } from "../ui/theme-transition";
 import { UndoSnackbar, useUndo } from "../ui/undo";
 import { tr } from "../i18n/tr";
 import { loadDevicePreferences } from "../services/device-preferences";
 import { DelayedLoadingIndicator, LoadingIndicator } from "../ui/loading-indicator";
 import { Launch } from "../ui/launch";
 import { HeaderBackButton, TransactionBackButton } from "../ui/header-back";
-import { cardScreenOptions, pageScreenOptions } from "../ui/header-bar";
+import { pageScreenOptions } from "../ui/header-bar";
 
 import { devError, installCrashHandlers } from "../services/logger";
 import { KeyboardSafeRoot } from "../ui/keyboard-safe";
@@ -74,12 +74,8 @@ import {
   useWorkspaceMaintenance,
 } from "../ui/root-lifecycle";
 
-// Subset from the upstream Google Fonts packages by `scripts/subset-fonts.mjs`
-// — the same TTF on every platform, so mobile web, desktop web, desktop-mode
-// mobile web and the installed app all measure and render identically. The
-// upstream faces carry 2_849 codepoints each for a Turkish product; see the
-// script for what is kept and `tests/repo/font-coverage.test.ts` for what may not
-// be dropped.
+// Subset to the glyphs the app renders, so first paint does not wait on the full font.
+// `scripts/subset-fonts.mjs` builds it; `tests/repo/font-coverage.test.ts` holds what may not be dropped.
 const Inter_400Regular = require("../../assets/fonts/Inter_400Regular.ttf");
 const Inter_500Medium = require("../../assets/fonts/Inter_500Medium.ttf");
 const Inter_600SemiBold = require("../../assets/fonts/Inter_600SemiBold.ttf");
@@ -114,20 +110,14 @@ function waitingState(
 /**
  * The two endings the boot screen can reach, side by side.
  *
- * A table rather than four `bootFailure === "busy" ?` ternaries in the render:
- * the same question asked four times is four places for the answers to drift
- * apart, and here the whole difference between the two endings is four lines
- * that can be read against each other.
+ * A table rather than four ternaries in the render: the same question asked
+ * four times is four places for the answers to drift apart.
  */
 const BOOT_ENDINGS = {
   // Another tab MIGHT have it — nothing has answered yet, so a reload is still
   // worth offering.
   busy: { title: tr.errors.bootBusyTitle, lead: tr.errors.bootBusyLead, steps: tr.errors.bootBusySteps, action: tr.errors.bootBusyAction, blocked: false },
-  // Another tab has ANSWERED. Reloading provably lands back on this screen, so
-  // the screen says it is waiting instead of offering to do something it
-  // cannot do — the behaviour the owner reported as "basınca açılmıyor, yine
-  // aynı ekran geliyor". Nothing is lost without the button: the page reloads
-  // itself within about two seconds of that tab closing.
+  // Another tab has answered: a reload would land back here, so the screen says it is waiting; the page reloads itself when that tab closes.
   busyHeld: { title: tr.errors.bootBusyTitle, lead: tr.errors.bootBusyLead, steps: tr.errors.bootBusySteps, action: tr.errors.bootBusyWaiting, blocked: true },
   unknown: { title: tr.errors.bootFailedTitle, lead: tr.errors.bootFailedHint, steps: [], action: tr.common.retry, blocked: false },
 } as const;
@@ -143,11 +133,7 @@ function bootEndingFor(failure: BootFailure | null, heldElsewhere: boolean) {
  * The screen a tab reaches when the app could not start.
  *
  * Every line that carries meaning is drawn in `palette.text` on a surface of
- * its own. It used to be an `EmptyState`: the explanation in
- * `textSecondary`, the only line saying what to do in a 12px chip, all of it
- * floating centred on the page background — legible in one palette and a guess
- * in the next. What a person has to do is two ordered steps, so it is written
- * as two numbered steps rather than one sentence to parse.
+ * its own, and the two things a person has to do are numbered steps.
  */
 function BootNotice({ ending, onRetry }: { ending: ReturnType<typeof bootEndingFor>; onRetry: () => void }) {
   const { palette } = useTheme();
@@ -183,10 +169,7 @@ function BootNotice({ ending, onRetry }: { ending: ReturnType<typeof bootEndingF
           </View>
         ))}
         {ending.blocked ? (
-          /* A STATUS, not a refused control. A disabled `Button` is dimmed to
-             `stateOpacity.disabled`, which measured 2.07:1 here; nothing is
-             meant to happen on press, since the page reloads itself within
-             about two seconds of the other tab closing. */
+          /* A status, not a refused control: a disabled `Button` is dimmed below contrast (tests/ui/theme-contrast.test.ts), and nothing is meant to happen on press. */
           <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.md, padding: spacing.md, borderRadius: radius.md, backgroundColor: palette.surfaceAlt }}>
             <LoadingIndicator color={palette.text} label={ending.action} />
             <Text style={[type.label, { flex: 1, color: palette.text, fontFamily: font.semibold }]}>{ending.action}</Text>
@@ -212,18 +195,18 @@ installCrashHandlers();
 const themePrefListeners = new Set<(p: ThemePreference) => void>();
 const palettePrefListeners = new Set<(p: PaletteId) => void>();
 
-export function setGlobalThemePreference(pref: ThemePreference, fromBackground?: string) {
+export function setGlobalThemePreference(pref: ThemePreference) {
   void kv.set("helix.theme", pref);
   applyThemeChange(() => {
     for (const listener of themePrefListeners) listener(pref);
-  }, fromBackground);
+  });
 }
 
-export function setGlobalPalettePreference(pref: PaletteId, fromBackground?: string) {
+export function setGlobalPalettePreference(pref: PaletteId) {
   void kv.set("helix.palette", pref);
   applyThemeChange(() => {
     for (const listener of palettePrefListeners) listener(pref);
-  }, fromBackground);
+  });
 }
 
 /**
@@ -284,13 +267,7 @@ function LaunchOver({ launched, theme, settled, onGone }: { launched: boolean; t
 }
 
 export default function RootLayout() {
-  // The static export prerenders this layout with no colour scheme, so the
-  // HTML arrives with the light background baked in. Hydration keeps the DOM
-  // it finds, and a first client render that already reads "dark" hands React
-  // nothing to patch: the boot screens drew the dark palette's light text on
-  // the light background, 1.15:1. Matching the prerender for one render and
-  // then switching gives React the change it needs to repaint; the server
-  // snapshot is what React reads while hydrating, and nothing else is.
+  // The static export prerenders with no colour scheme, so the HTML has the light background baked in, and hydration keeps the DOM it finds. Match the prerender for one render, then switch, so React has a change to repaint; the contrast is checked by tests/ui/theme-contrast.test.ts.
   const liveScheme = useColorScheme();
   const hydrated = useSyncExternalStore(noSubscription, () => true, () => Platform.OS !== "web");
   const systemScheme = hydrated ? liveScheme : "light";
@@ -308,9 +285,7 @@ export default function RootLayout() {
   // `drawsWithoutDatabase` for why it is the only route that may be.
   const segments = useSegments();
   const standaloneRecovery = drawsWithoutDatabase(bootFailure, classifyRootRoute(segments as string[]));
-  // Fonts are cosmetic: never let a slow/flaky web font fetch hold the whole
-  // app on a blank screen — after a short grace we render with the system
-  // fallback (this was the mobile-web "white screen" culprit).
+  // Fonts are cosmetic: after a short grace, render with the system fallback rather than hold the app on a blank screen.
   const [fontGrace, setFontGrace] = useState(false);
   const [fontsLoaded, fontsError] = useFonts({
     Inter_400Regular,
@@ -471,14 +446,7 @@ function RootLayoutInner({ launching, onSettled }: { launching: boolean; onSettl
   }, [segments]);
   const inRecovery = routeArea === "recovery";
 
-  // On a fresh device an already-onboarded account's `onboarded` flag arrives
-  // only with the first sync pull; until then the local query returns false and
-  // the guard would flash the onboarding screen. Give an online (non-signup)
-  // session a bounded grace, lifted only once the live query has re-read the
-  // flag AFTER that pull completed (not merely when the pull finished — the
-  // query lag is exactly what flashed "Quick Start" on logout→login). A
-  // brand-new signup skips the grace (isNewSignup) and reaches onboarding
-  // immediately.
+  // On a fresh device `onboarded` arrives only with the first sync pull, and until then the guard would flash onboarding. An online non-signup session gets a bounded grace, lifted once the live query has re-read the flag after the pull.
   const awaitingFirstPull = useFirstPullGrace({
     userId,
     online: isOnlineSession,
@@ -494,10 +462,16 @@ function RootLayoutInner({ launching, onSettled }: { launching: boolean; onSettl
   );
   const { scheme } = theme;
   // The shell declares one `theme-color` per scheme so the browser chrome is
-  // right before any of this mounts. This is what an explicit in-app theme
-  // choice changes; it overwrites those tags rather than adding another,
-  // because only the first matching one is ever read.
-  useEffect(() => syncThemeColorMeta(theme.palette.background), [theme.palette.background]);
+  // right before any of this mounts. An explicit in-app theme choice overwrites
+  // those tags, dropping their `media`, rather than adding another: only the
+  // first matching one is ever read.
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    document.querySelectorAll('meta[name="theme-color"]').forEach((meta) => {
+      meta.setAttribute("content", theme.palette.background);
+      meta.removeAttribute("media");
+    });
+  }, [theme.palette.background]);
   // The root view shows through wherever no screen is drawn: beside a page
   // sliding in, and in a phone's rounded corners. Unset, expo-system-ui leaves
   // it white (black in dark), not the page's ground, in a store build as much
@@ -543,15 +517,7 @@ function RootLayoutInner({ launching, onSettled }: { launching: boolean; onSettl
     void bootstrap(); // DB is migrated before this component mounts
   }, [bootstrap]);
 
-  // The undo bar belongs to the session that raised it. Its message quotes a
-  // real row ("Netflix · Silindi") and its action is a closure holding the
-  // previous account's user id and row snapshot, both of which survive the
-  // screen unmounting because the store is module-level. Signing out inside its
-  // six-second life therefore carried one account's row name — and a restore
-  // that would write that row into the next account's freshly wiped
-  // workspace — across the boundary. Every teardown path (sign-out, freeze,
-  // deletion, remote invalidation, account switch) changes `userId`, so this is
-  // the one place that sees all of them.
+  // The undo bar belongs to the session that raised it: its closure holds the previous account's row, and the store is module-level. Every teardown path changes `userId`, so this is the one place that sees all of them.
   useEffect(() => {
     useUndo.getState().clear();
   }, [userId]);
@@ -612,10 +578,7 @@ function RootLayoutInner({ launching, onSettled }: { launching: boolean; onSettl
     if (!blank) onSettled();
   }, [blank, onSettled]);
 
-  // Only a cold start reaches this: `ready` and a resolved `locked` never
-  // revert, so the launch screen above is always what covers it. A bare
-  // background with nothing over it is how a stuck lock read was reported —
-  // "the screen vanishes" — and the mark resting there is what answers that.
+  // Only a cold start reaches this: `ready` and a resolved `locked` never revert, so the launch screen above covers it.
   if (!ready || locked === null) {
     return <View style={{ flex: 1, backgroundColor: theme.palette.background }} />;
   }
@@ -658,13 +621,7 @@ function RootLayoutInner({ launching, onSettled }: { launching: boolean; onSettl
           style={{ flex: 1, backgroundColor: theme.palette.background, justifyContent: "center", alignItems: "center" }}
         >
           {guardQueryFailed ? (
-            /* The boot screen's sibling: the database opened, and then the two
-               queries that decide which screen to show would not answer. It
-               said "Veritabanı hatası" and drew a title over a loose button,
-               which is the same shape of message and the same missing design as
-               the failure before it — so it is now the same `EmptyState`, with
-               copy that says what a person can do rather than which layer
-               broke. */
+            /* The boot screen's sibling: the database opened, but the two queries that decide which screen to show would not answer. */
             <View
               accessibilityRole="alert"
               accessibilityLiveRegion="assertive"
@@ -707,30 +664,28 @@ function RootLayoutInner({ launching, onSettled }: { launching: boolean; onSettl
       <View style={{ flex: 1, backgroundColor: theme.palette.background }}>
         <ErrorBoundary>
         <Stack
-          screenOptions={{
-            ...pageScreenOptions(theme.palette),
-          }}
+          screenOptions={pageScreenOptions(theme.palette)}
         >
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
           <Stack.Screen name="(auth)/sign-in" options={{ headerShown: false }} />
           <Stack.Screen name="(auth)/reset-password" options={{ headerShown: false }} />
           <Stack.Screen name="(onboarding)/setup" options={{ headerShown: false }} />
-          <Stack.Screen name="transaction" options={{ ...cardScreenOptions(theme.palette), title: tr.tx.new, headerLeft: () => <TransactionBackButton /> }} />
-          <Stack.Screen name="installment-new" options={{ ...cardScreenOptions(theme.palette), title: tr.installments.newPlan, headerLeft: () => <HeaderBackButton fallback="/(tabs)/cash-flow/installments" /> }} />
-          <Stack.Screen name="installment-refund" options={{ ...cardScreenOptions(theme.palette), title: tr.installments.refundTitle, headerLeft: () => <HeaderBackButton fallback="/(tabs)/cash-flow/installments" /> }} />
-          <Stack.Screen name="subscription-form" options={{ ...cardScreenOptions(theme.palette), title: tr.subs.add, headerLeft: () => <HeaderBackButton fallback="/(tabs)/subscriptions" /> }} />
-          <Stack.Screen name="bulk-entry" options={{ ...cardScreenOptions(theme.palette), title: tr.bulk.title, headerLeft: () => <HeaderBackButton fallback="/(tabs)/cash-flow" /> }} />
-          <Stack.Screen name="cell-editor" options={{ ...cardScreenOptions(theme.palette), title: tr.cell.title, headerLeft: () => <HeaderBackButton fallback="/(tabs)/cash-flow" /> }} />
-          <Stack.Screen name="import-wizard" options={{ ...cardScreenOptions(theme.palette), title: tr.importer.title, headerLeft: () => <HeaderBackButton fallback="/(tabs)/settings" /> }} />
-          <Stack.Screen name="workspace-template" options={{ ...cardScreenOptions(theme.palette), title: tr.template.title, headerLeft: () => <HeaderBackButton fallback="/(tabs)/settings/categories" /> }} />
-          <Stack.Screen name="opening-balance" options={{ ...cardScreenOptions(theme.palette), title: tr.settings.opening, headerLeft: () => <HeaderBackButton fallback="/(tabs)/cash-flow" /> }} />
-          <Stack.Screen name="account-security" options={{ ...cardScreenOptions(theme.palette), title: tr.account.security, headerLeft: () => <HeaderBackButton fallback="/(tabs)/settings" /> }} />
-          <Stack.Screen name="data-reset" options={{ ...cardScreenOptions(theme.palette), title: tr.dataReset.title, headerLeft: () => <HeaderBackButton fallback="/account-security" /> }} />
+          <Stack.Screen name="transaction" options={{ title: tr.tx.new, headerLeft: () => <TransactionBackButton /> }} />
+          <Stack.Screen name="installment-new" options={{ title: tr.installments.newPlan, headerLeft: () => <HeaderBackButton fallback="/(tabs)/cash-flow/installments" /> }} />
+          <Stack.Screen name="installment-refund" options={{ title: tr.installments.refundTitle, headerLeft: () => <HeaderBackButton fallback="/(tabs)/cash-flow/installments" /> }} />
+          <Stack.Screen name="subscription-form" options={{ title: tr.subs.add, headerLeft: () => <HeaderBackButton fallback="/(tabs)/subscriptions" /> }} />
+          <Stack.Screen name="bulk-entry" options={{ title: tr.bulk.title, headerLeft: () => <HeaderBackButton fallback="/(tabs)/cash-flow" /> }} />
+          <Stack.Screen name="cell-editor" options={{ title: tr.cell.title, headerLeft: () => <HeaderBackButton fallback="/(tabs)/cash-flow" /> }} />
+          <Stack.Screen name="import-wizard" options={{ title: tr.importer.title, headerLeft: () => <HeaderBackButton fallback="/(tabs)/settings" /> }} />
+          <Stack.Screen name="workspace-template" options={{ title: tr.template.title, headerLeft: () => <HeaderBackButton fallback="/(tabs)/settings/categories" /> }} />
+          <Stack.Screen name="opening-balance" options={{ title: tr.settings.opening, headerLeft: () => <HeaderBackButton fallback="/(tabs)/cash-flow" /> }} />
+          <Stack.Screen name="account-security" options={{ title: tr.account.security, headerLeft: () => <HeaderBackButton fallback="/(tabs)/settings" /> }} />
+          <Stack.Screen name="data-reset" options={{ title: tr.dataReset.title, headerLeft: () => <HeaderBackButton fallback="/account-security" /> }} />
           {/* Keep the shared column editor in a normal stack card. An iOS sheet
               owns the same vertical pan used by the reorder grip, even when
               swipe-to-dismiss is disabled; the Settings entry point works
               because it has no sheet recognizer. */}
-          <Stack.Screen name="columns-editor" options={{ ...cardScreenOptions(theme.palette), title: tr.cashflow.editColumns, headerLeft: () => <HeaderBackButton fallback="/(tabs)/cash-flow" /> }} />
+          <Stack.Screen name="columns-editor" options={{ title: tr.cashflow.editColumns, headerLeft: () => <HeaderBackButton fallback="/(tabs)/cash-flow" /> }} />
           <Stack.Screen name="statement-import" options={{ title: tr.statement.title, headerLeft: () => <HeaderBackButton fallback="/(tabs)/settings" /> }} />
           <Stack.Screen name="feedback" options={{ title: tr.feedback.title, headerLeft: () => <HeaderBackButton fallback="/(tabs)/settings" /> }} />
           {/* Outside the protected group on purpose: the notice has to be
@@ -744,7 +699,7 @@ function RootLayoutInner({ launching, onSettled }: { launching: boolean; onSettl
           <Stack.Screen name="analytics" options={{ title: tr.analysis.title, headerLeft: () => <HeaderBackButton fallback="/(tabs)" /> }} />
           <Stack.Screen name="installments" options={{ title: tr.installments.title, headerLeft: () => <HeaderBackButton fallback="/(tabs)" /> }} />
           <Stack.Screen name="card-statement" options={{ title: tr.cardStatement.title, headerLeft: () => <HeaderBackButton fallback="/(tabs)" /> }} />
-          <Stack.Screen name="market-detail" options={{ ...cardScreenOptions(theme.palette), title: tr.markets.title, headerLeft: () => <HeaderBackButton fallback="/(tabs)" /> }} />
+          <Stack.Screen name="market-detail" options={{ title: tr.markets.title, headerLeft: () => <HeaderBackButton fallback="/(tabs)" /> }} />
           <Stack.Screen name="payment-sources" options={{ title: tr.settings.sources, headerLeft: () => <HeaderBackButton fallback="/(tabs)/settings" /> }} />
           <Stack.Screen name="incomes" options={{ title: tr.settings.incomeRules, headerLeft: () => <HeaderBackButton fallback="/(tabs)/settings" /> }} />
           <Stack.Screen name="budgets" options={{ title: tr.budgets.title, headerLeft: () => <HeaderBackButton fallback="/(tabs)/settings" /> }} />

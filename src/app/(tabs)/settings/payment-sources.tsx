@@ -28,8 +28,9 @@ import ReceiptText from "lucide-react-native/icons/receipt-text";
 import Trash from "lucide-react-native/icons/trash";
 import WalletCards from "lucide-react-native/icons/wallet-cards";
 import type { LucideIcon } from "lucide-react-native";
-import { Amount, Badge, Body, Button, Card, CardList, ChipPicker, ChoiceTile, CardListSkeleton, DataGateScreen, DataStateNotice, EmptyState, Field, IconButton, PanelHeader, Row, Screen, SectionHeader, Spread, useLedeAlignment } from "../../../ui/components";
-import { placeholderPools, useRotatingPlaceholder } from "../../../ui/placeholders";
+import { Amount, Badge, Body, Button, Card, CardList, ChoiceTile, CardListSkeleton, DataGateScreen, DataStateNotice, EmptyState, Field, IconButton, PanelHeader, Row, Screen, SectionHeader, Spread, useLedeAlignment } from "../../../ui/components";
+import { ReferenceInUseCard } from "../../../ui/category-delete-sheet";
+import { useRotatingPlaceholder } from "../../../ui/placeholders";
 import { useUndo } from "../../../ui/undo";
 import { spacing, type, useTheme } from "../../../ui/theme";
 import { appAlert, appConfirm } from "../../../ui/dialog";
@@ -37,12 +38,11 @@ import { useOperationGuard } from "../../../ui/operation-guard";
 import { useDirtyExitGuard } from "../../../ui/dirty-exit";
 import { WorkspaceSplit } from "../../../ui/workspace-layout";
 import { isMonthDay } from "../../../domain/dates";
-
 import { monthDayLabel } from "../../../ui/month-day-field";
 import { CardCycleFields, CardCycleRing, cardCycleError } from "../../../ui/card-cycle-fields";
 import { selectionTapIfChanged } from "../../../ui/haptics";
 import { assignedPersonId, PersonAssignment } from "../../../ui/person-assignment";
-import { isValidCardCycle } from "../../../domain/card-statements";
+import { isValidCardCycle, statementAmounts } from "../../../domain/card-statements";
 import { shouldUseTripleTileGrid } from "../../../ui/responsive";
 
 const TYPES = PAYMENT_SOURCE_TYPES.map((value) => ({ value, label: tr.sources[value] }));
@@ -80,12 +80,7 @@ function SourceTypePicker({ value, onChange }: { value: PaymentSourceType; onCha
             selected={selected}
             layout="row"
             minHeight={52}
-            // Seven tiles wrapped into two columns left the last one — EFT /
-            // Havale — alone on its row, where `flexGrow` stretched it to full
-            // width. The widest tile was therefore the least-used method, by
-            // accident of arithmetic. Giving the double width to the credit
-            // card instead makes the most-reached-for option the easiest to
-            // hit, and leaves an even six to fill the rows below it.
+            // The credit card takes the double-width tile, leaving an even six below.
             basis={option.value === "credit_card" ? (tripleTiles ? "48%" : "100%") : tripleTiles ? "23%" : "47%"}
             onPress={() => {
               selectionTapIfChanged(value, option.value);
@@ -100,19 +95,7 @@ function SourceTypePicker({ value, onChange }: { value: PaymentSourceType; onCha
   );
 }
 
-/**
- * One payment source, with its mark level with its NAME.
- *
- * A row in this list is one to four lines tall — name, type, owner, and a
- * credit card's cycle badges — and centring a 44px mark against all of that
- * dropped it beside the third line on a card and beside the first on cash, so
- * no two rows in the list agreed on where a logo sits. `useLedeAlignment` is
- * the rule the rest of the app already uses: centre against the text while it
- * is short, and stop travelling past three lines.
- *
- * It is a component rather than a branch inside `renderItem` because that hook
- * cannot run in a render callback the list calls once per item.
- */
+/** One source row, its mark level with the name (useLedeAlignment). A component because the hook cannot run inside renderItem. */
 function PaymentSourceRow({
   source,
   ownerName,
@@ -140,7 +123,7 @@ function PaymentSourceRow({
         </View>
         <View style={{ flex: 1, minWidth: 0, ...lede.textStyle }} onLayout={lede.onBlockLayout}>
           <Body onLayout={lede.onLineLayout}>{source.name}</Body>
-          <Body muted style={{ marginTop: 1 }}>{TYPES.find((t) => t.value === source.type)?.label}</Body>
+          <Body muted style={{ marginTop: 1 }}>{tr.sources[source.type]}</Body>
           {ownerName ? (
             <Body muted style={{ marginTop: 1 }}>
               {tr.sources.owner}: {ownerName}
@@ -150,10 +133,7 @@ function PaymentSourceRow({
             <Row gap={spacing.xs} style={{ flexWrap: "wrap", marginTop: spacing.xs, alignItems: "center" }}>
               {source.statementDay && source.dueDay ? (
                 <>
-                  {/* The ring answers what the two numbers leave open:
-                      whether a purchase made now lands on the statement
-                      about to close or the next one. Side by side it
-                      also says which card is freshest. */}
+                  {/* The ring shows whether a purchase now lands on this statement or the next. */}
                   <CardCycleRing statementDay={source.statementDay} dueDay={source.dueDay} />
                   <Badge text={`${tr.sources.statementDayShort}: ${monthDayLabel(source.statementDay)}`} />
                   <Badge text={`${tr.sources.dueDayShort}: ${monthDayLabel(source.dueDay)}`} tone="primary" />
@@ -196,10 +176,7 @@ function useSourceForm(sources: Source[], persons: { id: string; isSelf: boolean
     ? name.trim() !== editing.name || sourceType !== editing.type || personId !== editing.personId || dueDay !== editing.dueDay || statementDay !== editing.statementDay
     : Boolean(name.trim() || sourceType !== "credit_card" || personChoice || dueDayStr.trim() || statementDayStr.trim());
   const { confirmDiscard } = useDirtyExitGuard(dirty && !busy);
-  // A statement that closes on the day it is due has no period at all, and
-  // "ayın sonu" is day 31 — so typing 31 opposite the month-end chip is the
-  // same collision written a different way. Beyond that, the gap itself has to
-  // look like a card cycle; `CardCycleFields` owns both rules and shows why.
+  // The cycle needs two valid, distinct days that form a card period; CardCycleFields owns and explains both rules.
   const cycleValid = sourceType !== "credit_card"
     || (statementDay != null && isMonthDay(statementDay) && dueDay != null && isMonthDay(dueDay) && cardCycleError(statementDay, dueDay) === null);
   const valid = Boolean(name.trim() && personId && cycleValid);
@@ -300,36 +277,22 @@ function SourceInUseCard({ removal, busy }: { removal: ReturnType<typeof useSour
     [tr.references.subscriptions, resolving.usage.subscriptions],
   ] as const).filter(([, count]) => count > 0);
   return (
-    <Card>
-      <PanelHeader icon={Trash} title={tr.references.sourceInUse(resolving.source.name)} description={tr.references.resolveBeforeDelete} />
-      {usageRows.map(([label, count]) => (
-        <Spread key={label} style={{ marginBottom: spacing.xs }}>
-          <Body muted>{label}</Body>
-          <Body>{String(count)}</Body>
-        </Spread>
-      ))}
-      <Body style={{ marginTop: spacing.sm, marginBottom: spacing.sm }}>{tr.references.chooseSource}</Body>
-      {cardRequired ? <Body muted style={{ marginBottom: spacing.sm }}>{tr.references.cardReplacementRequired}</Body> : null}
-      <ChipPicker
-        options={[
-          ...(!cardRequired ? [{ value: NO_SOURCE, label: tr.references.noSource }] : []),
-          ...removal.options.map((source) => ({ value: source.id, label: source.name })),
-        ]}
-        value={replacementChoice}
-        onChange={removal.setReplacementChoice}
-      />
-      <Row>
-        <View style={{ flex: 1 }}>
-          <Button
-            label={tr.references.reassignAndDelete}
-            onPress={() => void removal.reassign()}
-            disabled={busy || (cardRequired && replacementChoice === NO_SOURCE)}
-            loading={busy}
-          />
-        </View>
-        <Button label={tr.common.cancel} variant="ghost" onPress={removal.cancel} disabled={busy} />
-      </Row>
-    </Card>
+    <ReferenceInUseCard
+      title={tr.references.sourceInUse(resolving.source.name)}
+      rows={usageRows}
+      chooseLabel={tr.references.chooseSource}
+      note={cardRequired ? tr.references.cardReplacementRequired : undefined}
+      options={[
+        ...(!cardRequired ? [{ value: NO_SOURCE, label: tr.references.noSource }] : []),
+        ...removal.options.map((source) => ({ value: source.id, label: source.name })),
+      ]}
+      value={replacementChoice}
+      onChange={removal.setReplacementChoice}
+      onConfirm={() => void removal.reassign()}
+      onCancel={removal.cancel}
+      busy={busy}
+      confirmDisabled={cardRequired && replacementChoice === NO_SOURCE}
+    />
   );
 }
 
@@ -347,12 +310,7 @@ function StatementHistoryCard({ cardId }: { cardId: string }) {
     .sort((a, b) => b.dueDate.localeCompare(a.dueDate));
   const transactions = useAllTransactionsState().data;
   if (statements.length === 0) return null;
-  const ids = new Set(statements.map((statement) => statement.id));
-  const amountById = new Map<string, number>();
-  for (const transaction of transactions) {
-    const statementId = transaction.cardStatementId;
-    if (statementId && ids.has(statementId)) amountById.set(statementId, (amountById.get(statementId) ?? 0) + transaction.amountTryMinor);
-  }
+  const amountById = statementAmounts(transactions, new Set(statements.map((statement) => statement.id)));
   const shown = statements.slice(0, 6);
   const largest = shown.reduce((max, statement) => Math.max(max, Math.abs(amountById.get(statement.id) ?? 0)), 0);
   return (
@@ -385,7 +343,7 @@ function StatementHistoryCard({ cardId }: { cardId: string }) {
 }
 
 function SourceFormCard({ form, persons, busy }: { form: ReturnType<typeof useSourceForm>; persons: { id: string; name: string }[]; busy: boolean }) {
-  const sourcePlaceholder = useRotatingPlaceholder(placeholderPools.source);
+  const sourcePlaceholder = useRotatingPlaceholder(tr.placeholders.source);
   const saveButton = <Button label={form.editingId ? tr.common.save : tr.common.add} onPress={() => void form.save()} disabled={!form.valid || busy} loading={busy} />;
   return (
     <Card>
@@ -394,9 +352,7 @@ function SourceFormCard({ form, persons, busy }: { form: ReturnType<typeof useSo
         title={form.editingId ? tr.sources.editTitle : tr.sources.formTitle}
         description={form.editingId ? tr.sources.editHint(form.name || tr.sources.formTitle) : tr.sources.formHint}
       />
-      {/* The mark resolves from the name as it is typed, the same live preview
-          the subscription form gives. It is the FIELD's leading mark: wrapping
-          the field centred it against label and input, above the box it names. */}
+      {/* Live logo preview as the field's leading mark, not a wrapper. */}
       <View style={{ marginBottom: spacing.sm }}>
         <Field
           noMargin

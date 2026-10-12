@@ -1,7 +1,5 @@
-#!/usr/bin/env node
 /**
  * Ask what was actually published, rather than whether a request succeeded.
- * Helix and Gital run this same file.
  *
  *   node scripts/check-published.mjs entry <export-dir>
  *   node scripts/check-published.mjs web <base-url> [--entry <path>] [--wait <seconds>]
@@ -24,13 +22,10 @@
  *
  * `green` prints `sha=…` and `url=…` for the newest green `ci` push run on
  * `main` — with `--sha`, that commit's — and with `--head`, `open=…`, how many
- * push runs of that commit are still going. `ci.yml`'s base, the nightly and
- * the release each asked this with their own query over one unpaged window of
- * 100 runs of every event.
+ * push runs of that commit are still going.
  */
 import { appendFileSync, readFileSync } from "node:fs";
-import { join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { join } from "node:path";
 
 /** The entry bundle a page references, as a path below the site's base. */
 export function entryOf(html) {
@@ -63,15 +58,8 @@ export function appVersionOf(bundle, slug) {
 }
 
 /**
- * The newest SDK the stores' Expo Go runs, from Expo's own version list.
- *
- * That list names a preview SDK before any store carries its client: on
- * 2026-09-15 it listed 58.0.0, client builds included, while its `expoVersion`
- * still read `~58.0.0-preview.1`. So "newest" means newest released — an
- * `expoVersion` with no prerelease tag. On 2026-09-30 the beta lost that tag
- * and carried no `beta` flag either, and the nightly failed for two nights on
- * an SDK no store had; what every released SDK has and a beta lacks is its
- * release notes, so a released one is also one with a `releaseNoteUrl`.
+ * The newest released SDK in Expo's version list, which names previews before any store carries their client:
+ * released means no prerelease tag, no `beta` flag, and a `releaseNoteUrl`.
  */
 export function storeSdkMajor(sdkVersions) {
   const released = Object.entries(sdkVersions ?? {})
@@ -80,9 +68,6 @@ export function storeSdkMajor(sdkVersions) {
     .filter((major) => Number.isInteger(major));
   return released.length > 0 ? Math.max(...released) : null;
 }
-
-/** The SDK major a dependency range such as `~57.0.20` pins. */
-export const sdkMajorOf = (range) => Number.parseInt(String(range).replace(/^\D*/, ""), 10);
 
 /**
  * One `eas update --platform all` publication, verified and written down.
@@ -120,13 +105,7 @@ export function otaRecord(updates, sdkMajor) {
   return { problems, summary };
 }
 
-/**
- * The run `green` looks for, among runs newest first. Every filter is applied
- * here: GitHub answers `branch`, `event`, `status` and `head_sha` from its run
- * search, which named a run 20 days stale on 2026-09-28 and 24 days stale on
- * 2026-10-02 — each a 40-odd-commit scope, mutation past 90 minutes, and no
- * deploy.
- */
+/** The run `green` looks for, newest first; GitHub's own run-search filters returned stale runs, so every filter is applied here. */
 export function greenRun(runs, sha) {
   return runs.find((run) => run.event === "push" && run.head_branch === "main" && run.conclusion === "success" && (!sha || run.head_sha === sha)) ?? null;
 }
@@ -195,15 +174,11 @@ async function checkWeb(base, { expected, waitSeconds, version, slug }) {
   if (bundle.status !== 200) return fail(`the shell references ${entry} and the site answers HTTP ${bundle.status} for it`);
   const served = appVersionOf(bundle.body, slug);
   if (served !== version) return fail(`production is not serving ${version}: the live bundle declares ${served ?? "no app version"}`);
-  // A static route below the root, so a publication that carried only the
-  // shell is caught too. Both applications have this one.
+  // A static route below the root, so a publication that carried only the shell is caught too.
   const route = await get(`${site}/privacy`);
   if (route.status !== 200) return fail(`${site}/privacy answered HTTP ${route.status}`);
   console.log(`production serves ${entry}, declaring ${version}`);
-  // The summary is Markdown rendered on the run page, so it records what this
-  // run asserted and has now confirmed — the bundle name it was handed and the
-  // version `app.json` names — and nothing the site sent. Where no bundle was
-  // expected, the version is the whole claim.
+  // The summary renders as Markdown, so it records only what this run asserted, never anything the site sent.
   if (process.env.GITHUB_STEP_SUMMARY) {
     const confirmed = expected ? `serves \`${expected}\`, declaring ${version}` : `declares ${version}`;
     appendFileSync(process.env.GITHUB_STEP_SUMMARY, `### Web publication\n\nProduction ${confirmed}\n`);
@@ -235,7 +210,7 @@ async function main() {
   const args = process.argv.slice(2);
   const [command, target] = args;
   const option = (name) => (args.includes(name) ? (args[args.indexOf(name) + 1] ?? "") : undefined);
-  const projectMajor = () => sdkMajorOf(JSON.parse(readFileSync("package.json", "utf8")).dependencies.expo);
+  const projectMajor = () => Number.parseInt(String(JSON.parse(readFileSync("package.json", "utf8")).dependencies.expo).replace(/^\D*/, ""), 10);
 
   if (command === "entry" && target) {
     const html = readFileSync(join(target, "index.html"), "utf8");
@@ -263,8 +238,7 @@ async function main() {
   }
 }
 
-// An unreachable site or an unreadable answer is a finding with a sentence, not
-// a stack trace: "the site is down" and "the site is stale" need different work.
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+// An unreachable site is a finding with a sentence, not a stack trace: "down" and "stale" need different work.
+if (import.meta.main) {
   await main().catch((error) => fail(`could not complete the check: ${error.message}`));
 }

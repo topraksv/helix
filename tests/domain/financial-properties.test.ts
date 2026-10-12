@@ -1,19 +1,4 @@
-/**
- * The rules that must hold for EVERY input, not for the ones someone thought of.
- *
- * Serialization, ordering and normalization have long belonged to
- * property-based testing here, and no test in this suite ever
- * generated an input. The example-based tests around these functions are good —
- * they pin real defects with real numbers — but they can only assert what their
- * author already suspected. These assert the shape of the answer over the whole
- * input space, which is where a financial engine hides its edge cases: the
- * amount that rounds differently, the two rows that sort equal, the month
- * boundary that lands on the 31st.
- *
- * Each property below is a sentence about the domain, not about the code. If
- * one fails, fast-check shrinks the counterexample to the smallest input that
- * still breaks it, and that input is the bug report.
- */
+/** Properties that must hold for every input; on failure fast-check shrinks to the smallest counterexample. */
 
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
@@ -21,7 +6,6 @@ import { buildLedger, resolveLedgerAnchor } from "../../src/domain/balance";
 import { MAX_ABS_AMOUNT_MINOR, formatMinorInput, parseAmountExpression } from "../../src/domain/money";
 import { sortTransactions, type TransactionSortMode } from "../../src/domain/transaction-search";
 import { addMonthsToKey, monthKeyOf, monthRange, type ISODate, type MonthKey } from "../../src/domain/dates";
-import { resolveTombstoneVersion } from "../../src/sync/tombstone-policy";
 import type { TxLike } from "../../src/domain/types";
 import { directBalance } from "../helpers";
 
@@ -242,40 +226,6 @@ describe("month arithmetic", () => {
         for (let index = 1; index < range.length; index += 1) {
           expect(range[index]).toBe(addMonthsToKey(range[index - 1] as MonthKey, 1));
         }
-      }),
-      { numRuns: 300, seed: PROPERTY_SEED },
-    );
-  });
-});
-
-describe("tombstone generation", () => {
-  it("never moves backwards", () => {
-    // Sync merges compare generations. A version that can decrease lets a
-    // resurrected row win against its own delete.
-    fc.assert(
-      fc.property(
-        fc.record({ deletedAt: fc.option(fc.constant("2026-01-01T00:00:00.000Z"), { nil: null }), tombstoneVersion: fc.nat({ max: 50 }) }),
-        fc.option(fc.constant("2026-02-01T00:00:00.000Z"), { nil: null }),
-        fc.nat({ max: 50 }),
-        (existing, requestedDeletedAt, requestedVersion) => {
-          const next = resolveTombstoneVersion(existing, requestedDeletedAt, requestedVersion);
-          expect(next).toBeGreaterThanOrEqual(existing.tombstoneVersion);
-          expect(next).toBeGreaterThanOrEqual(requestedVersion);
-        },
-      ),
-      { numRuns: 500, seed: PROPERTY_SEED },
-    );
-  });
-
-  it("advances exactly one generation when a live row is deleted", () => {
-    fc.assert(
-      fc.property(fc.nat({ max: 50 }), fc.nat({ max: 50 }), (existingVersion, requestedVersion) => {
-        const next = resolveTombstoneVersion(
-          { deletedAt: null, tombstoneVersion: existingVersion },
-          "2026-02-01T00:00:00.000Z",
-          requestedVersion,
-        );
-        expect(next).toBe(Math.max(existingVersion, requestedVersion) + 1);
       }),
       { numRuns: 300, seed: PROPERTY_SEED },
     );

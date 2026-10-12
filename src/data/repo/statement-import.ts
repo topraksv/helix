@@ -1,22 +1,15 @@
 /**
- * Committing the statement rows a person accepted (spec §3.9).
+ * Committing the statement rows a person accepted (spec §3.9). This runs AFTER a review and only
+ * writes what was approved. Two properties carry it:
  *
- * Everything here happens AFTER a review: this module never decides what to
- * import, only how to write what was already approved. Two properties carry
- * the whole thing:
- *
- * - **Deterministic identity.** Each row's id is derived from the statement
- *   line it came from (`naturalKeys.statementTx`), so importing the same
- *   statement twice converges on the same rows instead of adding a second copy
- *   — even across devices, and even if the first import's outbox never synced.
- * - **All or nothing.** One batch, one transaction. A statement that fails
- *   half way through must leave the ledger exactly as it was, because a
- *   half-imported statement is indistinguishable from a complete one.
+ * - Deterministic identity: a row's id derives from its statement line (`naturalKeys.statementTx`),
+ *   so importing a statement twice converges on the same rows, even across devices.
+ * - All or nothing: one batch, one transaction, since a half-imported statement looks complete.
  */
 
 import { getSqliteAsync } from "../../db/client";
 import { deterministicId, naturalKeys } from "../../db/ids";
-import { writeRowsValidated, type RowWrite } from "../../db/mutations";
+import { writeRows, type RowWrite } from "../../db/mutations";
 import { dayOf, isMonthKey, lastDayOf, monthDiff, todayISO, type ISODate, type MonthKey } from "../../domain/dates";
 import { isValidCardCycle, statementPeriod, type CardCycle, type CardStatementPeriod } from "../../domain/card-statements";
 import { planForSighting } from "../../domain/installments";
@@ -25,7 +18,7 @@ import { assertSupportedMinorAmount, type Minor } from "../../domain/money";
 import { assertInputWithinLimit } from "../../domain/input";
 import { settledExpectedWrites, subscriptionPayment } from "./expected";
 import { buildPlanRows, linkDueRowsToCardStatements } from "./installments";
-import { assertLiveTransactionPerson, assertTransactionCategory, cardStatementWrite } from "./transactions";
+import { assertLiveTransactionPerson, assertTransactionCategory, cardStatementWrite, livePaymentSource } from "./transactions";
 
 /** One approved row, as the review hands it over. */
 export interface AcceptedStatementRow {
@@ -35,37 +28,17 @@ export interface AcceptedStatementRow {
   description: string;
   amountMinor: Minor;
   isRefund: boolean;
-  /**
-   * The owner's column, or null when nothing matched.
-   *
-   * Null is written as an uncategorised row rather than refused. Requiring a
-   * column meant the review had to invent one for every line it could not
-   * place, and it did: the first expense column, silently, for the whole
-   * statement.
-   */
+  /** The owner's column, or null when nothing matched; null is written uncategorised, not refused. */
   categoryId: string | null;
-  /**
-   * Set when the line is one payment of an instalment plan.
-   *
-   * Such a line does not become a charge at all: it becomes the plan, with the
-   * schedule that plan implies. `domain/statement-import.ts` derives it.
-   */
+  /** Set when the line is one payment of an instalment plan: it becomes the plan and its schedule, not a charge. */
   plan: StatementPlanSpec | null;
   /** The subscription payment this line settles, when review found one. */
   expectedId: string | null;
 }
 
-export interface StatementCommitInput {
+interface StatementCommitInput {
   personId: string;
-  /**
-   * The period this statement bills, and the ONLY month the import may reach.
-   *
-   * Every accepted line used to be dated by the day printed beside it, so one
-   * July statement scattered charges across every month its purchases were
-   * made in — including months the owner had already reconciled. A statement
-   * is one bill, settled on one day; the printed dates survive as
-   * `purchaseDate` and decide nothing.
-   */
+  /** The period this statement bills, and the ONLY month the import may reach; printed dates survive as `purchaseDate` and decide nothing. */
   period: MonthKey;
   /** The card the statement belongs to, when the owner named one. */
   paymentSourceId: string | null;
@@ -80,9 +53,8 @@ export interface StatementCommitResult {
   plansWritten: number;
 }
 
-/** SQLite binds far more than this. The ids are asked for in groups anyway, so
- *  the statement text stays the same size whatever the import's length. */
-const ID_LOOKUP_CHUNK = 200;
+/** Ids are looked up in groups so the statement text stays the same size whatever the import's length. */
+const ID_LOOKUP_CHUNK = 400;
 
 /** Which of `ids` this account already holds a transaction for. */
 async function existingTransactionIds(
@@ -103,22 +75,9 @@ async function existingTransactionIds(
 }
 
 /**
- * Write the accepted rows in one atomic batch.
- *
- * Rows whose deterministic id is already present are SKIPPED rather than
- * overwritten. Overwriting would silently discard an edit the owner made to
- * that transaction after the first import, which is exactly the kind of loss
- * an importer must never cause. An instalment line is skipped the same way
- * when the plan it implies already exists.
- */
-/**
- * When the period is settled, and which statement row the lines hang off.
- *
- * The card decides the one thing this import cannot read off the paper. With a
- * cycle, the day is the card's own due date for the period; without one — a
- * statement imported before its card exists — the last day of the period is
- * the honest stand-in. Either way the whole import stays inside the month the
- * owner named.
+ * When the period is settled, and which statement row the lines hang off. With a card cycle the
+ * day is the card's due date for the period; without one the period's last day stands in. Either
+ * way the import stays inside the month the owner named.
  */
 async function resolveStatementBilling(
   userId: string,
@@ -126,13 +85,8 @@ async function resolveStatementBilling(
   period: MonthKey,
 ): Promise<{ cycle: CardCycle | null; chargeDate: ISODate; statementRow: RowWrite | null }> {
   if (paymentSourceId == null) return { cycle: null, chargeDate: lastDayOf(period), statementRow: null };
-  const sqlite = await getSqliteAsync();
-  const card = await sqlite.getFirstAsync<{ id: string; statement_day: number | null; due_day: number | null }>(
-    `SELECT id, statement_day, due_day FROM payment_sources
-     WHERE id = ? AND user_id = ? AND type = 'credit_card' AND deleted_at IS NULL`,
-    [paymentSourceId, userId],
-  );
-  if (!card) throw new Error("Statement payment source does not exist");
+  const card = await livePaymentSource(userId, paymentSourceId);
+  if (card?.type !== "credit_card") throw new Error("Statement payment source does not exist");
   if (!isValidCardCycle({ statementDay: card.statement_day, dueDay: card.due_day })) {
     return { cycle: null, chargeDate: lastDayOf(period), statementRow: null };
   }
@@ -188,13 +142,9 @@ async function livePlans(userId: string, period: MonthKey): Promise<ExistingPlan
 }
 
 /**
- * The instalment plan one accepted line becomes, or null when it already exists.
- *
- * Existence is the plan's schedule, the same match the review shows, so a plan
- * entered by hand, brought in by a workbook or opened by an earlier statement
- * is met whatever it is called — and a line the owner ticked against the
- * review's advice still cannot open a second one. `claimed` keeps two
- * identical lines of one statement from both settling on one plan.
+ * The instalment plan one accepted line becomes, or null when it already exists. Existence is the
+ * plan's schedule, the review's own match, so a plan met under any name cannot be opened twice;
+ * `claimed` keeps two identical lines of one statement from settling on one plan.
  */
 async function planWritesForRow(
   userId: string,
@@ -262,9 +212,7 @@ function singleChargeWrite(
     subscriptionId: string | null;
   },
 ): RowWrite {
-  // A refund is an expense with a negative amount, in the same category — the
-  // canonical form the rest of the ledger already uses, so a refund reduces
-  // its category rather than appearing as unrelated income.
+  // A refund is a negative expense in the same category, so it reduces that category instead of reading as income.
   const signed = row.isRefund ? -row.amountMinor : row.amountMinor;
   return {
     table: "transactions",
@@ -295,7 +243,12 @@ function singleChargeWrite(
   };
 }
 
-/** The single charges among the accepted rows, as writes; a line already in the ledger, or whose payment was confirmed since the review, is skipped. */
+/**
+ * The single charges among the accepted rows, as writes. A line whose deterministic id is already
+ * present, or whose payment was confirmed since the review, is SKIPPED, never overwritten: that
+ * would discard an edit made after the first import. An instalment line is skipped the same way
+ * when its plan already exists.
+ */
 async function singleChargeWrites(
   userId: string,
   rows: readonly AcceptedStatementRow[],
@@ -353,9 +306,7 @@ export async function commitStatementRows(
 
   if (writes.length > 0) {
     if (statementRow && singles.writtenIds.length > 0) writes.unshift(statementRow);
-    // One call, one database transaction: a failure anywhere rolls the whole
-    // statement back rather than leaving a partial import nobody can identify.
-    await writeRowsValidated(userId, writes, () => Promise.resolve());
+    await writeRows(userId, writes);
   }
   return { writtenIds: singles.writtenIds, skipped, plansWritten };
 }

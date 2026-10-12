@@ -103,6 +103,8 @@ describe("advisory gate", () => {
       // satisfied by three entries that never expire.
       expect(source, `${id} must carry a recheckAfter`)
         .toMatch(new RegExp(`${id}[\\s\\S]{0,400}recheckAfter: "\\d{4}-\\d{2}-\\d{2}"`));
+      expect(source, `${id} must name its expected dependency paths`)
+        .toMatch(new RegExp(`${id}[\\s\\S]{0,400}expectedPaths:`));
     }
     // The threshold itself must never be quietly relaxed.
     expect(source).toContain('new Set(["high", "critical"])');
@@ -188,27 +190,6 @@ describe("advisory gate: dependency paths and expiry", () => {
     expect(problems[0]).toContain("EXPIRED");
   });
 
-  it("requires every real acknowledgement to carry paths and an expiry", () => {
-    const source = readFileSync(resolve(process.cwd(), "scripts/check-advisories.mjs"), "utf8");
-    // Anchored on ACKNOWLEDGED's OWN terminator. Reaching forward to the next
-    // `];` before `const BLOCKING` looked equivalent and was not: the first
-    // such position belongs to UNAUDITED, two declarations further down, so
-    // the capture always swept up that list too and `list` could never equal
-    // "[]". The empty-list escape below was therefore unreachable, and stayed
-    // unreachable until the day the list was genuinely emptied — which is the
-    // one day it existed for.
-    const list = source.match(/const ACKNOWLEDGED = (\[[\s\S]*?\]);\n/)?.[1];
-    expect(list).toBeDefined();
-    // Nothing acknowledged is a real answer, not a skipped check: the CLI
-    // reports a stale entry, so an empty list means every acknowledgement that
-    // was here got closed.
-    if (list === "[]") return;
-
-    for (const field of ["expectedPaths", "recheckAfter", "checkedOn"]) {
-      expect(list, field).toContain(`${field}:`);
-    }
-    expect(list).toMatch(/recheckAfter: "\d{4}-\d{2}-\d{2}"/);
-  });
 });
 
 /**
@@ -216,9 +197,8 @@ describe("advisory gate: dependency paths and expiry", () => {
  *
  * `npm audit` and Dependabot both resolve against the npm registry, so a
  * package installed from a tarball URL is not reported clean — it is not
- * reported at all. Measured on 2026-09-02: the audit named 25 advisories and
- * `xlsx` was in none of them, which is the same answer it would give for a
- * version with a known critical hole.
+ * reported at all. `xlsx` is in none of the audit's advisories, which is the
+ * same answer it would give for a version with a known critical hole.
  *
  * The list that stands in for the audit is only worth anything if it cannot
  * fall behind the lockfile, so the lockfile is what defines the set.

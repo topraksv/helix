@@ -1,19 +1,6 @@
-/**
- * Regressions that only a real render proves:
- *
- * - a future month's summary showed a carried balance above three zeros while the
- *   table cell beside it already listed the planned amount;
- * - the table closed the month without a subscription the Summary card's
- *   month-end forecast already counted;
- * - the transfer classification was repeated as a live switch under every
- *   single expense column;
- * - a screen's recorded origin did not survive a round trip through another
- *   screen, so its back control quietly reverted to the stack's own parent.
- */
-
 import { expect, test, type Page } from "@playwright/test";
 import { addMonthsToKey } from "../src/domain/dates";
-import { addMarketExpense, currentIstanbulDay, currentMonthKey, isolateExternalData, onboard, openCashFlow, pickOption } from "./helpers";
+import { addMarketExpense, addSubscription, currentMonthKey, isolateExternalData, onboard, openCashFlow, pickOption } from "./helpers";
 import { monthLabel } from "../src/i18n/tr";
 
 test.beforeEach(async ({ context }) => isolateExternalData(context));
@@ -54,12 +41,7 @@ test("a future month focus states the planned flows behind its own total", async
   await expect(page.getByRole("heading", { name: monthLabel(planned), exact: true })).toBeVisible();
   await expect(page.getByText("Gider", { exact: true })).toBeVisible();
   await expect(page.getByText("₺5.000,00", { exact: true })).toHaveCount(2);
-  // Two places now carry the signed total, and that is the point: the month
-  // card states it, and the ledger's own "Güncel Bakiye" column states it too. The
-  // balance columns used to repeat the month's opening figure unchanged for
-  // every future month, so this locator matched exactly one element and the
-  // grid beside it silently disagreed. Scoped to the card, with the grid's
-  // copy asserted separately by its cell name.
+  // The card and the grid's "Güncel Bakiye" column both state the total: scope to the card, then name the cell.
   await expect(page.getByTestId("month-focus-card").getByText(/^-.*₺5\.000,00$/)).toBeVisible();
   await expect(
     page.getByRole("group", { name: new RegExp(`${monthLabel(planned)}, Güncel Bakiye, -.*₺5\\.000,00`) }),
@@ -70,15 +52,7 @@ test("a future month focus states the planned flows behind its own total", async
 test("the table closes this month on the Summary card's month-end forecast", async ({ page }) => {
   await onboard(page);
   // Billed today and not yet confirmed: an obligation, not a movement.
-  await page.getByRole("tab", { name: "Abonelikler" }).click();
-  await page.getByRole("button", { name: "Abonelik Ekle", exact: true }).click();
-  await page.getByRole("textbox", { name: "Ad", exact: true }).fill("Netflix");
-  await page.getByRole("textbox", { name: "Tutar · TRY", exact: true }).fill("229,99");
-  await page.getByRole("textbox", { name: "Ödeme günü", exact: true }).fill(currentIstanbulDay());
-  await page.getByRole("button", { name: "Kaydet", exact: true }).click();
-  const categoryOffer = page.getByRole("button", { name: "Oluştur ve Kaydet", exact: true });
-  if (await categoryOffer.count()) await categoryOffer.click();
-  await expect(page).toHaveURL(/subscriptions/u);
+  await addSubscription(page, "Netflix", "229,99");
 
   await page.getByRole("tab", { name: "Durum" }).click();
   const forecast = page.getByTestId("dashboard-forecast-toggle");
@@ -110,7 +84,7 @@ test("an untouched month still reads zero rather than a borrowed number", async 
   await expect(expenseRow).not.toContainText("-₺0,00");
 });
 
-test("month balance transition stays between its amounts on a phone", async ({ page }) => {
+test("month balance transition stays between its amounts, on a shared baseline, on a phone", async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 720 });
   await onboard(page);
   await page.goto(`/helix/cash-flow/${currentMonthKey()}`);
@@ -121,12 +95,10 @@ test("month balance transition stays between its amounts on a phone", async ({ p
     const box = (selector: string) => {
       const node = element.parentElement?.parentElement?.querySelector<HTMLElement>(selector);
       if (!node) throw new Error(`Missing month balance geometry: ${selector}`);
-      const rect = node.getBoundingClientRect();
-      return { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom };
+      return node.getBoundingClientRect().toJSON() as DOMRect;
     };
-    const bridge = element.getBoundingClientRect();
     return {
-      bridge: { left: bridge.left, right: bridge.right, top: bridge.top, bottom: bridge.bottom },
+      bridge: element.getBoundingClientRect().toJSON() as DOMRect,
       opening: box('[data-testid="month-opening-amount"]'),
       closing: box('[data-testid="month-closing-amount"]'),
     };
@@ -136,21 +108,7 @@ test("month balance transition stays between its amounts on a phone", async ({ p
   expect(geometry.bridge.right).toBeLessThanOrEqual(geometry.closing.left + 1);
   expect(geometry.bridge.top).toBeLessThan(geometry.opening.bottom);
   expect(geometry.bridge.bottom).toBeGreaterThan(geometry.opening.top);
-});
-
-test("month opening and current balances share a visual baseline on a phone", async ({ page }) => {
-  await page.setViewportSize({ width: 320, height: 720 });
-  await onboard(page);
-  await page.goto(`/helix/cash-flow/${currentMonthKey()}`);
-
-  const opening = page.getByTestId("month-opening-amount");
-  const closing = page.getByTestId("month-closing-amount");
-  await expect(opening).toBeVisible();
-  await expect(closing).toBeVisible();
-  const geometry = await Promise.all([opening.boundingBox(), closing.boundingBox()]);
-  expect(geometry[0]).not.toBeNull();
-  expect(geometry[1]).not.toBeNull();
-  expect(Math.abs((geometry[0]!.y + geometry[0]!.height) - (geometry[1]!.y + geometry[1]!.height))).toBeLessThanOrEqual(1);
+  expect(Math.abs(geometry.opening.bottom - geometry.closing.bottom)).toBeLessThanOrEqual(1);
 });
 
 test("a large cell total stays inside its row after a narrow resize", async ({ page }) => {
@@ -163,8 +121,7 @@ test("a large cell total stays inside its row after a narrow resize", async ({ p
 
   await page.setViewportSize({ width: 320, height: 844 });
   const row = page.getByTestId("cell-total-row");
-  // A viewport resize commits through the browser's layout observer. Wait for
-  // the shared amount fit pass to settle before reading the real geometry.
+  // The resize commits through a layout observer; wait for the amount fit pass to settle.
   await expect.poll(() => row.evaluate((element) => element.scrollWidth <= element.clientWidth + 1)).toBe(true);
   const geometry = await row.evaluate((row) => {
     const amount = row.querySelector<HTMLElement>('[data-testid="cell-total-amount"]');
@@ -201,14 +158,7 @@ test("the transfer classification appears once, in the row being edited", async 
   // Exactly one: the new-category form. Never one under every column.
   await expect(transferSwitches).toHaveCount(1);
 
-  // A transfer column still says so on the collapsed row — read-only, and only
-  // where it is true. The seeded "Yatırım" column is the one such column.
-  //
-  // Targeted by test id and not by its text: the marker reads "Yatırım" and so
-  // does the seeded category's NAME, which used to be un-matchable only
-  // because an emoji sat in front of it in the same Text. The category mark is
-  // a drawn icon now, so the name is exact text too and a text locator counts
-  // both. What this test is about is the marker, so it asks for the marker.
+  // By test id, not text: the marker and the seeded "Yatırım" category name read the same.
   const marker = page.getByTestId("category-transfer-marker");
   await expect(marker).toHaveCount(1);
 
@@ -231,9 +181,7 @@ test("the transfer classification appears once, in the row being edited", async 
 
 test("Analysis returns to Summary even after a detour through Budgets @cross-browser", async ({ page }) => {
   await onboard(page);
-  // Opened from another tab, so it is the ROOT route: what sits under it is
-  // Summary itself. Nothing records an origin any more, and there is no query
-  // parameter to lose on the way back.
+  // Opened from another tab, so it is the ROOT route: what sits under it is Summary itself.
   await page.getByRole("button", { name: /Net değişim/ }).click();
   await expect(page.getByRole("heading", { name: "Analiz", exact: true })).toBeVisible();
   await expect(page).toHaveURL(/\/helix\/analytics$/);
@@ -244,7 +192,6 @@ test("Analysis returns to Summary even after a detour through Budgets @cross-bro
   await page.getByRole("button", { name: "Geri" }).click();
   await expect(page).toHaveURL(/\/helix\/analytics$/);
 
-  // …so the next back reaches Summary, not the Financial Table.
   await page.getByRole("button", { name: "Geri" }).click();
   await expect(page).toHaveURL(/\/helix\/$/);
   await expect(page.getByRole("tab", { name: "Durum", selected: true })).toBeVisible();
@@ -262,24 +209,15 @@ test("Analysis opened from the Financial Table still goes back to it", async ({ 
 
 test("a direct link to Analysis falls back to its own parent", async ({ page }) => {
   await onboard(page);
-  // A hand-typed origin must never widen the target; it degrades to the parent.
+  // A hand-typed origin must never widen the target.
   await page.goto("/helix/cash-flow/analytics?from=https://evil.example");
   await expect(page.getByRole("heading", { name: "Analiz", exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Geri" }).click();
   await expect(page).toHaveURL(/\/helix\/cash-flow$/);
 });
 
-/**
- * Every screen goes back to its own section's main screen, whatever was done
- * on it first.
- *
- * Reported on 2026-09-15: after trying a few buttons inside Taksitler, Back
- * went to Durum instead of the Financial Table. The button was a form's Back
- * with a draft in it. The confirmed discard REPLACED the form — which lives on
- * the root stack — with Taksitler, mounting a second copy of the tabs that
- * held Taksitler alone, and Taksitler's own Back, with nothing to pop, fell
- * through to the tab router's first route.
- */
+// The discard replaced the root-stack form with a second copy of the tabs holding
+// Taksitler alone, so its Back fell through to the tab router's first route (Durum).
 test("Installments goes back to the Financial Table after a dirty form is discarded", async ({ page }) => {
   await onboard(page);
   await page.getByRole("tab", { name: "Mali Tablo" }).click();

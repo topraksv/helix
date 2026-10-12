@@ -2,9 +2,9 @@
   "expo": {
     "name": "Helix",
     "slug": "helix",
-    "version": "1.9.7",
+    "version": "1.9.8",
     "orientation": "default",
-    "icon": "./assets/images/icon.png",
+    "icon": "./assets/icon.png",
     "scheme": "helix",
     "userInterfaceStyle": "automatic",
     "ios": {
@@ -95,15 +95,15 @@
       "allowBackup": false,
       "adaptiveIcon": {
         "backgroundColor": "#E7ECEB",
-        "foregroundImage": "./assets/images/android-icon-foreground.png",
-        "backgroundImage": "./assets/images/android-icon-background.png",
-        "monochromeImage": "./assets/images/android-icon-monochrome.png"
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false
     },
     "web": {
       "output": "static",
-      "favicon": "./assets/images/favicon.png"
+      "favicon": "./assets/favicon.png"
     },
     "plugins": [
       "expo-router",
@@ -122,10 +122,7 @@
       "expo-sqlite",
       "expo-secure-store",
       "expo-local-authentication",
-      [
-        "expo-notifications",
-        {}
-      ],
+      "expo-notifications",
       "./plugins/with-ios-native-product-name.js",
       "expo-font",
       "expo-image",

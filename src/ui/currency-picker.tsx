@@ -1,16 +1,7 @@
 /**
  * The one currency control.
  *
- * Three screens used to map the whole supported list into a chip row. That read
- * fine at four currencies and stops working at fourteen: the chips wrap into a
- * block that dwarfs the field they belong to, and the ordering buries the two
- * currencies almost every entry actually uses.
- *
- * So the shape follows the usage. TRY, USD and EUR are chips; the rest live
- * behind one more chip that opens the list directly. It is `Select`'s own modal
- * — passed a chip-shaped trigger — so the focus trap, the keyboard behaviour
- * and the option rendering are not written a second time, and no second field
- * appears next to the row to hold a value the chip already shows.
+ * TRY, USD and EUR are chips; the rest open `Select`'s own list through a chip-shaped trigger.
  *
  * Changing the selection never converts what the user typed. The amount is
  * theirs; only its currency changes.
@@ -26,7 +17,8 @@ import { controlSize, font, radius, spacing, type, useTheme } from "./theme";
 
 /** Kept in front because together they are almost every entry in this app. */
 const PRIMARY = ["TRY", "USD", "EUR"] as const satisfies readonly Currency[];
-const OTHERS = SUPPORTED_CURRENCIES.filter((code) => !(PRIMARY as readonly string[]).includes(code));
+const isPrimaryCode = (code: string) => (PRIMARY as readonly string[]).includes(code);
+const OTHERS = SUPPORTED_CURRENCIES.filter((code) => !isPrimaryCode(code));
 
 export function CurrencyPicker({
   value,
@@ -42,7 +34,7 @@ export function CurrencyPicker({
   onChange: (currency: Currency) => void;
 }) {
   const { palette } = useTheme();
-  const isPrimary = (PRIMARY as readonly string[]).includes(value);
+  const isPrimary = isPrimaryCode(value);
 
   const chip = (label: string, selected: boolean, onPress: () => void, hint?: string) => (
     <Pressable
@@ -53,21 +45,13 @@ export function CurrencyPicker({
       accessibilityLabel={hint}
       onPress={onPress}
       style={(state) => ({
-        // Four equal columns rather than four intrinsic widths. Picking a
-        // currency renames the last chip ("Diğer" → "🇦🇱 ALL"), and at intrinsic
-        // width that one extra glyph pushed it onto a second line on a phone —
-        // the row reflowed as a side effect of choosing. Sharing the width means
-        // the label can change without the layout moving.
+        // Equal columns, so renaming the last chip on selection cannot wrap the row.
         flex: 1,
         minHeight: controlSize.minimumTarget,
         justifyContent: "center",
         alignItems: "center",
         paddingHorizontal: spacing.sm,
         borderRadius: radius.full,
-        // The chip in `selection-controls.tsx` answers a pointer through this
-        // function and passes its resting fill as the base; this one painted the
-        // fill itself and dimmed on press, so it stayed dark under the cursor
-        // while the chip beside it lit. `docs/UI.md` §3 wants the shared fill.
         ...interactionSurface(palette, state, { base: selected ? palette.primarySoft : palette.surfaceAlt }),
       })}
     >
@@ -93,27 +77,27 @@ export function CurrencyPicker({
           fourth column has to be claimed out here or the chip's own `flex`
           would only divide that intrinsic wrapper. */}
       <View style={{ flex: 1 }}>
-      <Select<Currency>
-        label={tr.common.otherCurrencies}
-        placeholder={tr.common.otherCurrencies}
-        // Flag, name and code: the list is read by country far more often than
-        // by ISO code, and the code alone made a fourteen-row sheet unscannable.
-        options={OTHERS.map((code) => ({
-          value: code,
-          label: `${CURRENCY_INFO[code].name} · ${code}`,
-          icon: CURRENCY_INFO[code].flag,
-        }))}
-        value={isPrimary ? null : (value as Currency)}
-        onChange={onChange}
-        trigger={(open) =>
-          chip(
-            isPrimary ? `••• ${tr.common.other}` : currencyLabel(value),
-            !isPrimary,
-            open,
-            tr.common.otherCurrencies,
-          )
-        }
-      />
+        <Select<Currency>
+          label={tr.common.otherCurrencies}
+          placeholder={tr.common.otherCurrencies}
+          // Flag, name and code: the list is read by country far more often than
+          // by ISO code, and the code alone made a fourteen-row sheet unscannable.
+          options={OTHERS.map((code) => ({
+            value: code,
+            label: `${CURRENCY_INFO[code].name} · ${code}`,
+            icon: CURRENCY_INFO[code].flag,
+          }))}
+          value={isPrimary ? null : (value as Currency)}
+          onChange={onChange}
+          trigger={(open) =>
+            chip(
+              isPrimary ? `••• ${tr.common.other}` : currencyLabel(value),
+              !isPrimary,
+              open,
+              tr.common.otherCurrencies,
+            )
+          }
+        />
       </View>
     </View>
   );

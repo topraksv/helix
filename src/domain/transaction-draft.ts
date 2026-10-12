@@ -1,15 +1,7 @@
 /**
- * Whether a transaction form holds a saveable entry, and what it would write.
- *
- * This is the guard between a half-filled form and the ledger, and it lived
- * inside a 500-line component as a boolean beside a handful of nullable
- * values — so the write path re-asserted each one with `!` and nothing could
- * test the rule without a renderer. Pure on purpose: the fields, the FX rate
- * and the React state stay in `app/transaction.tsx`, and this is what a test
- * can hold.
- *
- * It returns the whole write or nothing at all. A partial answer is what let
- * the guard and the write disagree.
+ * Whether a transaction form holds a saveable entry, and what it would write:
+ * the whole write or nothing, so the guard and the write cannot disagree. Pure,
+ * so a test needs no renderer; the form state stays in `app/transaction.tsx`.
  */
 
 import { convertToTryMinor } from "./fx";
@@ -40,7 +32,7 @@ export interface TransactionDraft {
   installment: boolean;
 }
 
-export interface TransactionSave {
+interface TransactionSave {
   amountMinor: Minor;
   /** What the ledger stores: negative for a reversal. */
   signedAmountMinor: Minor;
@@ -51,12 +43,8 @@ export interface TransactionSave {
 }
 
 /**
- * The TRY figure the form shows while it is still being filled.
- *
- * The same conversion and the same sign the save would write, so the number
- * the user reads under a foreign amount cannot differ from the one that lands
- * in the ledger. `null` means the rate is missing — never a TRY figure taken
- * on faith.
+ * The TRY figure shown while the form is filled: the same conversion and sign
+ * the save writes. `null` means the rate is missing, never taken on faith.
  */
 export function previewTryMinor(
   amountMinor: Minor | null,

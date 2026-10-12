@@ -6,6 +6,23 @@ defterinde yazılıdır ve bu depoya dahil değildir.
 
 Notlar kısa tutulur: ne değişti, tek cümle. Sebebi ve ölçümü commit'te.
 
+## 1.9.8
+
+### Patch Changes
+
+- Nokta tuşlu klavyede yazılan nokta ondalık ayırıcı sayılıyor; "45.9" artık 459 TL olmuyor.
+- Deneme süresi biten yıllık aboneliğin ilk ödeme tarihi doğru hesaplanıyor.
+- Silinmiş bir yatırım ürünü yeniden kaydedilemiyor.
+- Birkaç ekranda kayıttan sonra eşitleme başlamıyordu; artık başlıyor.
+- Web'de piyasa verisi doğrudan alınamayınca yedek yoldan da geliyor.
+- Yatırım cüzdanına giren transfer gelir gibi yeşil değil, nötr renkte gösteriliyor.
+- Ekran okuyucu web'deki diyalogların adını okuyor; onay kutularının durumunu söylüyor.
+- Boş gövdeli bir geri bildirim isteği sunucu hatası vermiyor.
+- Hesap makinesi, işlem yazılırken sonucu önizliyor.
+- Hatırlatma günü ve bekleyenleri gösterme ayarı diğer cihazlara hemen eşitleniyor.
+- E-posta bağlantısı internet yokken açılırsa harcanmıyor; internet gelince sayfa yenilenebiliyor.
+- Excel aktarımında bir yılın sayfasında bakiye sayılan sütun, aynı adı taşıyan diğer yıllarda artık dışarıda kalmıyor; maaşlar eksik aktarılmıyor.
+
 ## 1.9.7
 
 ### Patch Changes

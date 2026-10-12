@@ -1,5 +1,5 @@
 # What no push asks: whether the live surfaces are what `main` says they
-# should be. Helix and Gital run this same file.
+# should be.
 #
 # It deploys nothing. A red nightly is a bug report, not a rollback trigger.
 name: nightly
@@ -19,17 +19,11 @@ concurrency:
 jobs:
   # Is the site serving what `main` says it should be?
   #
-  # Nothing has ever asked. A green `main` and a stale production are the same
-  # picture from inside this repository, and the two have come apart for a real
-  # reason rather than a hypothetical one: a failed gate on an app-bearing push
-  # followed by a test-only fix classifies light, skips the deploy, and leaves
-  # the site on the previous version with every check green above it. That was
-  # recovered by hand, after someone happened to look.
-  #
-  # This is the cheapest possible detector: fetch the shell, follow it to the
-  # entry bundle, and look for the version `app.json` claims. It runs in the
-  # nightly because a red nightly is a bug report and this is exactly that —
-  # it publishes nothing and rolls nothing back.
+  # A green `main` and a stale production look the same from inside the
+  # repository: a failed gate on an app-bearing push followed by a test-only
+  # fix classifies light, skips the deploy, and leaves the old version live.
+  # The cheapest detector: fetch the shell, follow it to the entry bundle, and
+  # look for the version `app.json` claims.
   published-version:
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -40,20 +34,19 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version-file: .nvmrc
-      # The same script `deploy-web` runs the moment it publishes, asked here of
-      # whatever is live without an expected bundle name. The escaped-manifest
-      # trap that once made this check fail identically on a healthy site is
-      # recorded beside `appVersionOf`, where it is now tested.
+      # The script `deploy-web` runs on publishing, asked of whatever is live
+      # without an expected bundle name.
       - name: Compare the live bundle against app.json
-        run: node scripts/check-published.mjs web https://topraksv.github.io/helix
+        env:
+          SITE: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}
+        run: node scripts/check-published.mjs web "$SITE"
 
   # Has everything on `main` reached a surface?
   #
   # Only a green push run publishes, so while the newest one is behind `main`,
   # what changed since is on neither surface — and the version check above sees
   # that only when a release moved the version, never for the Expo Go update.
-  # Replaying 100 runs found eight such windows per surface, the longest 2.6
-  # days. A push or a re-run of the head's run closes one (docs/RELEASE.md).
+  # A push or a re-run of the head's run closes one (docs/RELEASE.md).
   main-published:
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -81,12 +74,9 @@ jobs:
   # Can anyone open what `deploy-mobile` publishes?
   #
   # Expo Go runs one SDK — the one the stores carry — and an update for any
-  # other SDK still publishes green and opens on no up-to-date phone. That
-  # happened once: the repository sat three SDKs behind the store's client with
-  # every run green, and the runbook's manual check was the only thing that
-  # could have said so. Expo's newest listed SDK is not the answer on its own,
-  # because a preview is listed before any store carries it; the script reads
-  # the newest RELEASED one. Like the job above, it reports and changes nothing.
+  # other SDK still publishes green and opens on no up-to-date phone. Expo's
+  # newest listed SDK is not the answer, because a preview is listed before any
+  # store carries it; the script reads the newest RELEASED one.
   expo-go-reach:
     runs-on: ubuntu-latest
     timeout-minutes: 10

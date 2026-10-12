@@ -1,8 +1,19 @@
 import { describe, expect, it } from "vitest";
-import { buildLedger, buildLedgerChain, ledgerChainEndYear, monthFlowTotals, projectedBalance, reconciliationDelta, sliceLedgerYear, type LedgerBundle } from "../../src/domain/balance";
+import {
+  buildLedger,
+  buildLedgerChain,
+  type LedgerBundle,
+  ledgerChainEndYear,
+  monthFlowTotals,
+  projectedBalance,
+  reconciliationDelta,
+  resolveLedgerAnchor,
+  sliceLedgerYear,
+} from "../../src/domain/balance";
 import type { ISODate, MonthKey } from "../../src/domain/dates";
 import type { TxLike } from "../../src/domain/types";
 import { required, tl, tx } from "../helpers";
+import { balanceDeclarationDrift, declarationAdjustmentMinor, declaredMonthOf, driftCandidates, parseBalanceDeclaration } from "../../src/domain/balance-declaration";
 
 /**
  * Golden test: the user's real Excel (Gelir-Gider 2026, Ocak–Temmuz) verified
@@ -219,13 +230,7 @@ describe("pending rows in table cells (display-only)", async () => {
   });
 });
 
-/**
- * A month-focused card shows one total and the three flows it is made of. The
- * realized-only chain is right for the balance but reads 0 for every future
- * month, so August showed a carried balance above "Gelir 0 / Gider 0 /
- * Yatırım 0" while the category cell beside it already showed the planned
- * 50,00. `monthFlowTotals` is the single answer both halves come from.
- */
+/** A month card's total and its three flows come from `monthFlowTotals`, so a future month shows its plan, not three zeros. */
 describe("a month's total and its breakdown come from one set of rows", async () => {
   const { buildLedger, monthFlowTotals } = await import("../../src/domain/balance");
   const base = {
@@ -362,17 +367,7 @@ describe("resolveLedgerAnchor (prior-year history)", async () => {
   });
 });
 
-/**
- * The chain-then-slice pair `useLedgerState` builds, assembled here the same
- * way it assembles it.
- *
- * There used to be a `buildLedgerBundle` in the domain doing this, and its own
- * comment claimed the rules were "stated once". They were not: `data/hooks.ts`
- * re-inlined the composition when it gained the chain and slice caches, so the
- * product never called the wrapper and these tests were pinning a code path
- * nothing shipped. Composing it here instead keeps the assertions and makes
- * them mirror the live caller.
- */
+/** The chain-then-slice pair, composed here exactly as `useLedgerState` composes it. */
 function ledgerBundle(input: {
   configuredStart: MonthKey | null;
   openingBalanceMinor: number;
@@ -398,11 +393,7 @@ describe("the ledger bundle a screen reads", () => {
     today: "2026-07-15" as const,
   };
 
-  /**
-   * The state a workspace is in the moment its ledger is cleared, and the one
-   * this used to answer with `null` — which each screen then read as "still
-   * loading", "no records this month" or "your data could not be read".
-   */
+  /** A workspace with its ledger just cleared. */
   describe("with no opening month configured", () => {
     const unanchored = { ...base, configuredStart: null, openingBalanceMinor: 0 };
 
@@ -514,12 +505,7 @@ describe("the earliest month that actually holds something", () => {
     expect(bundle.firstRecordedMonth).toBeNull();
   });
 
-  /**
-   * An import writes an anchor. Bringing one year of a ten-year workbook used
-   * to leave the other nine reachable, each a page of blank rows with the
-   * balance columns carrying the opening figure across them — the table said
-   * data was there and every cell said it was not.
-   */
+  // An import writes an anchor; the years between it and the first record are not offered.
   it("is the first recorded month even when the anchor is years earlier", () => {
     const bundle = ledgerBundle({
       ...base,
@@ -560,7 +546,7 @@ describe("the earliest month that actually holds something", () => {
 
 /**
  * A declaration holds the balance at the end of its day to the figure the owner
- * wrote down (owner decision, 2026-09-13). What it adds is recomputed from the
+ * wrote down. What it adds is recomputed from the
  * rows as they stand, so a row entered later on or before that day is absorbed
  * and one after it still counts.
  */
@@ -697,7 +683,7 @@ describe("dated balance declarations", () => {
  * A recorded statement payment moves the balance on the day it was made, and
  * the month says why: its charges stay in their cells, the unpaid part is
  * owed, and a payment made in another month is given back where the charges
- * land (owner decision, 2026-09-13).
+ * land.
  */
 describe("statement payments in the chain", () => {
   const today = "2026-09-20" as ISODate;
@@ -779,5 +765,177 @@ describe("statement payments in the chain", () => {
     });
     expect(month(built, "2026-08").openingMinor).toBe(24_000_00);
     expect(month(built, "2026-09").openingMinor).toBe(20_000_00);
+  });
+});
+
+describe("ledger anchoring, pending cells and the forecast horizon", () => {
+  it("back-anchors only strictly earlier realized flows and adjustments", () => {
+    const result = resolveLedgerAnchor(
+      "2026-01", 1_000,
+      [
+        tx({ type: "expense", amountTryMinor: 100, effectiveDate: "2025-12-31", categoryKind: "expense" }),
+        tx({ type: "income", amountTryMinor: 200, effectiveDate: "2026-01-01", categoryKind: "income" }),
+        tx({ type: "expense", amountTryMinor: 999, effectiveDate: "2025-11-01", status: "pending", categoryKind: "expense" }),
+      ],
+      [
+        { date: "2025-12-31", amountMinor: 50 },
+        { date: "2026-01-01", amountMinor: 500 },
+        { date: "2027-01-01", amountMinor: 9_999 },
+      ],
+      "2026-07-01",
+    );
+    expect(result).toEqual({ startMonth: "2025-11", openingBalanceMinor: 1_050 });
+  });
+
+  it("back-anchors from adjustments while excluding future corrections", () => {
+    expect(resolveLedgerAnchor(
+      "2026-01", 1_000, [], [{ date: "2025-12-31", amountMinor: 50 }], "2026-07-18",
+    )).toEqual({ startMonth: "2025-12", openingBalanceMinor: 950 });
+    expect(resolveLedgerAnchor(
+      "2027-01", 1_000, [], [{ date: "2026-08-01", amountMinor: 50 }], "2026-07-18",
+    )).toEqual({ startMonth: "2026-08", openingBalanceMinor: 1_000 });
+    expect(resolveLedgerAnchor(
+      "2027-01", 1_000, [], [{ date: "2026-07-18", amountMinor: 50 }], "2026-07-18",
+    )).toEqual({ startMonth: "2026-07", openingBalanceMinor: 950 });
+  });
+
+  it("keeps pending cells and future adjustments out of realized balances", () => {
+    const ledger = buildLedger({
+      openingBalanceMinor: 1_000, startMonth: "2026-07", endMonth: "2026-07", today: "2026-07-18",
+      includePendingInCells: false,
+      transactions: [tx({ status: "pending", type: "expense", amountTryMinor: 100, effectiveDate: "2026-07-18", categoryId: "food", categoryKind: "expense" })],
+      adjustments: [{ date: "2026-07-19", amountMinor: 500 }],
+    });
+    expect(ledger[0]?.byCategory).toEqual(new Map());
+    expect(ledger[0]?.adjustmentMinor).toBe(0);
+    expect(ledger[0]?.closingMinor).toBe(1_000);
+    const withPendingCells = buildLedger({
+      openingBalanceMinor: 1_000, startMonth: "2026-07", endMonth: "2026-07", today: "2026-07-18",
+      includePendingInCells: true,
+      transactions: [
+        tx({ status: "realized", personIsSelf: false, type: "expense", amountTryMinor: 100, effectiveDate: "2026-07-18", categoryId: "food", categoryKind: "expense" }),
+        tx({ status: "realized", personIsSelf: true, type: "expense", amountTryMinor: 200, effectiveDate: "2026-07-19", categoryId: "food", categoryKind: "expense" }),
+      ],
+      adjustments: [],
+    });
+    // The watched row never shows; the self row dated tomorrow shows as planned
+    // even though another device already marked it realized.
+    expect(withPendingCells[0]?.byCategory).toEqual(new Map([["food", 200]]));
+    expect(withPendingCells[0]?.plannedExpenseMinor).toBe(200);
+    expect(withPendingCells[0]?.closingMinor).toBe(1_000);
+    expect(buildLedger({
+      openingBalanceMinor: 1_000, startMonth: "2026-07", endMonth: "2026-07", transactions: [],
+      adjustments: [{ date: "2026-07-18", amountMinor: 50 }], today: "2026-07-18",
+    })[0]?.closingMinor).toBe(1_050);
+  });
+
+  it("opens at the anchor's own figure when the ledger begins after today", () => {
+    const chain = required(buildLedgerChain({
+      configuredStart: "2027-01", openingBalanceMinor: 1_000, includePendingInCells: false,
+      transactions: [tx({ type: "income", amountTryMinor: 100, effectiveDate: "2027-01-01", categoryKind: "income" })],
+      adjustments: [{ date: "2027-01-01", amountMinor: 50 }],
+      endYear: ledgerChainEndYear(2027, "2026-07-18"), today: "2026-07-18",
+    }));
+    const bundle = sliceLedgerYear(chain, 2027);
+    expect(bundle.actualBalanceMinor).toBe(1_000);
+    expect(bundle.startMonth).toBe("2027-01");
+    expect(bundle.txLike).toHaveLength(1);
+  });
+
+  it("includes a flow exactly on the forecast horizon and excludes the next day", () => {
+    expect(projectedBalance(1_000, [
+      { direction: "in", amountTryMinor: 200, date: "2026-07-31" },
+      { direction: "out", amountTryMinor: 300, date: "2026-08-01" },
+    ], "2026-07-31")).toBe(1_200);
+  });
+});
+
+describe("drift candidates", () => {
+  /** Unconfirmed past rows are offered as candidates for the drift, never as a finding. */
+  it("offers the unconfirmed rows that would move the ledger toward the declaration", () => {
+    const today = "2026-07-18" as const;
+    const rows = [
+      tx({ id: "big-expense", type: "expense", amountTryMinor: 900_00, effectiveDate: "2026-07-10", status: "pending" }),
+      tx({ id: "small-expense", type: "expense", amountTryMinor: 100_00, effectiveDate: "2026-07-12", status: "pending" }),
+      tx({ id: "income", type: "income", amountTryMinor: 500_00, effectiveDate: "2026-07-11", status: "pending" }),
+      tx({ id: "future", type: "expense", amountTryMinor: 700_00, effectiveDate: "2026-07-25", status: "pending" }),
+      tx({ id: "already-realized", type: "expense", amountTryMinor: 800_00, effectiveDate: "2026-07-09" }),
+    ];
+
+    // The table reads HIGHER than the owner said, so only money leaving can
+    // explain it: the two pending expenses, largest first.
+    expect(driftCandidates(1_000_00, rows, today).map((c) => c.id)).toEqual(["big-expense", "small-expense"]);
+    expect(driftCandidates(1_000_00, rows, today)[0]).toEqual({
+      id: "big-expense", effectMinor: -900_00, date: "2026-07-10",
+    });
+
+    // The other direction asks the opposite question and gets the other row.
+    expect(driftCandidates(-1_000_00, rows, today).map((c) => c.id)).toEqual(["income"]);
+
+    // Nothing to explain, nothing offered.
+    expect(driftCandidates(0, rows, today)).toEqual([]);
+  });
+
+  /**
+   * Today's own row is a candidate; tomorrow's is not.
+   *
+   * The boundary is the whole rule: a row dated today is money that may
+   * already have moved and has not been confirmed, which is exactly what the
+   * list is for. One dated tomorrow cannot have moved yet, so offering it
+   * would send the owner to check something that is not late.
+   */
+  it("includes a row dated today and stops at tomorrow", () => {
+    const today = "2026-07-18" as const;
+    const rows = [
+      tx({ id: "due-today", type: "expense", amountTryMinor: 700_00, effectiveDate: today, status: "pending" }),
+      tx({ id: "due-tomorrow", type: "expense", amountTryMinor: 800_00, effectiveDate: "2026-07-19", status: "pending" }),
+    ];
+    expect(driftCandidates(1_000_00, rows, today).map((c) => c.id)).toEqual(["due-today"]);
+  });
+
+  it("caps how many candidates it offers", () => {
+    const rows = Array.from({ length: 9 }, (_, index) =>
+      tx({ id: `p${index}`, type: "expense", amountTryMinor: (index + 1) * 100, effectiveDate: "2026-07-10", status: "pending" }));
+    expect(driftCandidates(10_000_00, rows, "2026-07-18")).toHaveLength(5);
+    expect(driftCandidates(10_000_00, rows, "2026-07-18", 2).map((c) => c.id)).toEqual(["p8", "p7"]);
+  });
+});
+
+/** The balance last confirmed against a real account, and whether the ledger still agrees. */
+describe("a declared balance can be compared with the ledger later", () => {
+  it("reads back only a well-formed declaration", () => {
+    expect(parseBalanceDeclaration({ minor: 2_000_000, at: "2026-08-04" })).toEqual({ minor: 2_000_000, at: "2026-08-04" });
+    expect(parseBalanceDeclaration(null)).toBeNull();
+    expect(parseBalanceDeclaration([])).toBeNull();
+    expect(parseBalanceDeclaration({ minor: 10 })).toBeNull();
+    expect(parseBalanceDeclaration({ at: "2026-08-04" })).toBeNull();
+    expect(parseBalanceDeclaration({ minor: Number.NaN, at: "2026-08-04" })).toBeNull();
+    expect(parseBalanceDeclaration({ minor: 10, at: "" })).toBeNull();
+  });
+
+  it("reports the drift, and says nothing when there is none", () => {
+    const declared = { minor: 2_000_000, at: "2026-08-04" };
+    expect(balanceDeclarationDrift(declared, 3_000_000)).toBe(1_000_000);
+    expect(balanceDeclarationDrift(declared, 1_000_000)).toBe(-1_000_000);
+    expect(balanceDeclarationDrift(declared, 2_000_000)).toBeNull();
+    expect(balanceDeclarationDrift(null, 3_000_000)).toBeNull();
+    expect(balanceDeclarationDrift(declared, null)).toBeNull();
+  });
+});
+
+describe("declaring a month's opening", () => {
+  it("holds the month after the adjustment's date, across a year end", () => {
+    expect(declaredMonthOf("2026-03-31")).toBe("2026-04");
+    expect(declaredMonthOf("2026-03-01")).toBe("2026-04");
+    expect(declaredMonthOf("2025-12-31")).toBe("2026-01");
+  });
+
+  it("measures the adjustment from the opening without the month's own declaration", () => {
+    expect(declarationAdjustmentMinor(50_000, 30_000, 0)).toBe(20_000);
+    expect(declarationAdjustmentMinor(50_000, 30_000, 5_000)).toBe(25_000);
+    expect(declarationAdjustmentMinor(50_000, 30_000, -5_000)).toBe(15_000);
+    expect(declarationAdjustmentMinor(30_000, 30_000, 0)).toBe(0);
+    expect(declarationAdjustmentMinor(25_000, 30_000, 5_000)).toBe(0);
+    expect(declarationAdjustmentMinor(-1, 0, 0)).toBe(-1);
   });
 });

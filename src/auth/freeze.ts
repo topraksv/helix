@@ -1,17 +1,8 @@
 /**
- * Account freeze lifecycle: mark the account frozen, prove that decision
- * actually reached the cloud, then end the session so every device lands on
- * the reactivation gate.
- *
- * This lives outside the screen because the FAILURE path is the whole problem.
- * The flag is persisted before the network work, so anything that goes wrong
- * afterwards — a returned error or a thrown one — has to put it back. When the
- * screen owned this inline, only the happy path and two returned-error paths
- * cleaned up: a rejection from the sync, the outbox read or the sign-out
- * escaped into a floating promise, leaving the account persisted as frozen and
- * the session's `isFreezing` flag stuck on. That flag suppresses the
- * reactivation gate, so the user saw a button that did nothing, no error, and a
- * locked app on the next launch.
+ * Account freeze lifecycle: mark the account frozen, prove that reached the
+ * cloud, then end the session so every device lands on the reactivation gate.
+ * The flag is persisted before the network work, so any failure afterwards,
+ * returned or thrown, has to put it back.
  */
 
 export interface AccountFreezeEffects {

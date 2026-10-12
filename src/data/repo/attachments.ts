@@ -1,20 +1,14 @@
 /**
  * Documents kept beside a transaction (spec §2.5).
  *
- * The row and the file are written as a pair, and the ORDER matters in both
- * directions: the file lands before the row that names it (a row pointing at
- * nothing is a broken attachment in the list), and on delete the row is
- * tombstoned before the file is removed (a file with no row is invisible
- * garbage that still occupies the device).
- *
- * `domain/attachments.ts` owns every rule about what may be stored;
- * this module owns where it goes.
+ * The row and the file are written as a pair, and the order matters: the file lands before the
+ * row that names it, and on delete the row is tombstoned before the file is removed.
+ * `domain/attachments.ts` owns what may be stored; this module owns where it goes.
  */
 
 import { getSqliteAsync } from "../../db/client";
 import { newId } from "../../db/ids";
-import { assertLiveRow, fromDbShape, nowIso, restoreRows, writeRowsValidated, type RowWrite } from "../../db/mutations";
-import { scheduleSync } from "../../sync/engine";
+import { assertLiveRow, fromDbShape, nowIso, restoreRows, writeRows, writeRowsValidated, type RowWrite } from "../../db/mutations";
 import {
   classifyAttachment,
   isAttachmentKind,
@@ -32,12 +26,8 @@ export interface NewAttachment {
   byteSize: number;
   kind?: AttachmentKind;
   /**
-   * Copy the picked file to the app-owned path this function decides.
-   *
-   * Inverted deliberately: the repository never receives a source URI, so a
-   * caller cannot hand it a path to read from and there is nothing here that
-   * could be pointed at another app's storage. The caller does the copy; the
-   * repository decides the destination and owns the row.
+   * Copy the picked file to the app-owned path this function decides. Inverted on purpose: the
+   * repository never receives a source URI, so nothing here can be pointed at another app's storage.
    */
   copyInto: (storedName: string) => Promise<void>;
 }
@@ -59,9 +49,7 @@ export async function addAttachment(userId: string, input: NewAttachment): Promi
   const id = newId();
   const storedName = storedAttachmentName(id, classified.value.mimeType);
 
-  // The file first: a row whose file never arrived is an attachment the list
-  // offers and cannot open. A file whose row never arrived is collected by
-  // `pruneOrphanAttachmentFiles` instead.
+  // The file first: a row without its file cannot be opened; a file without its row is collected by `pruneOrphanAttachmentFiles`.
   await input.copyInto(storedName);
   await writeRowsValidated(
     userId,
@@ -80,7 +68,6 @@ export async function addAttachment(userId: string, input: NewAttachment): Promi
     }],
     (sqlite) => assertLiveRow(sqlite, "transactions", userId, input.transactionId),
   );
-  scheduleSync(userId);
   return id;
 }
 
@@ -90,12 +77,8 @@ export interface AttachmentSnapshot {
 }
 
 /**
- * Tombstone the row, then report the file to remove.
- *
- * The caller deletes the file only after this resolves, so an interrupted
- * delete leaves a file with no row (collectable) rather than a row with no
- * file (broken). The snapshot is what `restoreAttachment` needs, which is why
- * the file is not removed here at all when the caller intends an undo.
+ * Tombstone the row, then report the file to remove. The caller deletes the file only after this
+ * resolves, so an interrupted delete leaves a collectable file, never a row without its file.
  */
 export async function deleteAttachment(userId: string, id: string): Promise<AttachmentSnapshot | null> {
   const sqlite = await getSqliteAsync();
@@ -105,29 +88,16 @@ export async function deleteAttachment(userId: string, id: string): Promise<Atta
   );
   if (!row) return null;
   const snapshot = fromDbShape("attachments", row);
-  await writeRowsValidated(
-    userId,
-    [{ table: "attachments", row: { ...snapshot, deletedAt: nowIso() } }],
-    () => Promise.resolve(),
-  );
-  scheduleSync(userId);
+  await writeRows(userId, [{ table: "attachments", row: { ...snapshot, deletedAt: nowIso() } }]);
   return { row: snapshot, storedName: String(row.stored_name) };
 }
 
 export async function restoreAttachment(userId: string, snapshot: AttachmentSnapshot): Promise<void> {
   const writes: RowWrite[] = [{ table: "attachments", row: { ...snapshot.row, deletedAt: null } }];
   await restoreRows(userId, writes);
-  scheduleSync(userId);
 }
 
-/**
- * Stored names this account still has a live row for.
- *
- * The caller lists the attachment directory and removes anything absent from
- * this set: files left by an interrupted add, by a tombstone that has since
- * been pruned, or by a restore that brought rows from a device whose files
- * never travelled.
- */
+/** Stored names this account still has a live row for; the caller removes any file in the attachment directory absent from this set. */
 export async function liveAttachmentNames(userId: string): Promise<Set<string>> {
   const sqlite = await getSqliteAsync();
   const rows = await sqlite.getAllAsync<{ stored_name: string }>(

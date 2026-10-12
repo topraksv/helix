@@ -14,8 +14,8 @@
  */
 import { UserFacingError } from "../domain/user-error";
 import { tr } from "../i18n/tr";
-import { writeMoney } from "../domain/workbook-format";
 import {
+  writeMoney,
   WORKBOOK_COLUMNS,
   WORKBOOK_SHEETS,
   type InvestmentRow,
@@ -27,26 +27,7 @@ import {
 /** The MIME every platform agrees names an `.xlsx`. */
 export const WORKBOOK_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 
-/**
- * How many data rows one workbook may carry, across all three sheets.
- *
- * The JSON backup has had a cap since it was written and this did not, which
- * is the kind of asymmetry that stays invisible until someone with eight years
- * of ledger presses the button. A workbook is worse than the backup there:
- * every cell becomes a JavaScript string, three passes run over the grid, and
- * SheetJS holds the whole book before a byte is written.
- *
- * Excel's own sheet limit is 1,048,576 rows, so this is not the format's
- * ceiling — it is the point past which the phone is the thing that breaks. It
- * is a quarter of `MAX_BACKUP_ROWS` on purpose: the backup streams a table at
- * a time under a byte cap and this cannot.
- *
- * The number is measured rather than guessed. A ledger row with a unique note
- * — the worst case, since unique strings cannot share the file's string table
- * — costs about 0.64 MB per thousand rows and a second per thirty thousand on
- * a laptop. 25,000 therefore lands near the backup's own 15 MB ceiling, which
- * is the largest file this app already asks a phone to hold.
- */
+// Past this the phone breaks, not the format: every cell becomes a JS string and SheetJS holds the whole book.
 const MAX_WORKBOOK_ROWS = 25_000;
 
 /** Header row plus one cell per column, in the order the contract declares. */
@@ -76,25 +57,8 @@ function widthsOf(grid: readonly (readonly string[])[]): { wch: number }[] {
   return widths.map((width) => ({ wch: Math.min(MAX_COL, Math.max(MIN_COL, width + 2)) }));
 }
 
-/**
- * One grid as a sheet Excel treats as a table.
- *
- * Cell styling is a paid SheetJS feature and this is the community build, so a
- * bold header is not available — measured, not assumed: `!cols` and
- * `!autofilter` reach the file, `!freeze` and per-cell `s` do not. The filter
- * is what actually earns the "table" feeling, because Excel draws the header
- * row with dropdowns and treats the block below as one region to sort. Widths
- * do the rest.
- *
- * Every cell is written as TEXT on purpose — see `workbook-format.ts` on why
- * money and dates must not become Excel numbers. That needs no code here:
- * `WorkbookCell` is a string, `aoa_to_sheet` types a JS string as text
- * whatever it looks like (measured: "500" and "1234,56" both come out `t:"s"`),
- * and `tests/workbook-roundtrip` asserts it on the written file. A loop that
- * re-stamped every cell was removed once that was checked rather than assumed
- * — it was a full extra pass over the grid for a guarantee the type system and
- * the test already give.
- */
+// The community SheetJS build has no cell styling, so the autofilter and widths carry the "table" feel.
+// Cells stay JS strings, which aoa_to_sheet writes as text; money and dates must not become Excel numbers.
 function toSheet(xlsx: typeof import("xlsx"), grid: string[][], notes: readonly LedgerNote[]): import("xlsx").WorkSheet {
   const sheet = xlsx.utils.aoa_to_sheet(grid);
   // Hidden, the way Excel keeps a note: a marker on the cell, the text on hover.

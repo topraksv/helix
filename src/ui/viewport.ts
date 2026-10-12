@@ -1,17 +1,4 @@
-/**
- * Where navigation is, and how much width that leaves the content.
- *
- * Every responsive decision in the app used to read the raw window width, which
- * was the same number as the content width for as long as navigation was a bar
- * floating over the bottom of the scene. A rail standing beside the content
- * broke that equality without breaking any of the call sites: at a 1024 px
- * window the dashboard still paired its columns as if it had 1024, while the
- * column it was laying out was 784.
- *
- * So the inset has one owner and the predicates get the width that actually
- * exists. `Screen` reads it for its own padding, and every layout rule reads
- * `useContentWidth()` instead of `useWindowDimensions().width`.
- */
+/** One owner for the navigation inset; layout rules read `useContentWidth()`, not the raw window width. */
 
 import { useCallback, useState } from "react";
 import { Platform, useWindowDimensions, type LayoutChangeEvent } from "react-native";
@@ -23,9 +10,7 @@ import { navigationInset, segmentedMaxWidth } from "./theme";
 export interface NavigationSpace {
   /** Space the navigation surface occupies below the content. */
   bottom: number;
-  /** Space it occupies before the content. */
-  left: number;
-  /** Window width minus that leading space — what a layout really has. */
+  /** The window width. */
   contentWidth: number;
   /** Whether this screen is inside the tab navigator at all. */
   inTabs: boolean;
@@ -39,13 +24,12 @@ export function useNavigationSpace(): NavigationSpace {
   // surface of their own, so nothing is taken from them.
   const inTabs = segments[0] === "(tabs)";
   const inset = navigationInset({ bottomInset: insets.bottom, isWeb: Platform.OS === "web" });
-  const left = inTabs ? inset.left : 0;
-  return { bottom: inset.bottom, left, contentWidth: width - left, inTabs };
+  return { bottom: inset.bottom, contentWidth: width, inTabs };
 }
 
 /** The width a layout rule should measure itself against. */
 export function useContentWidth(): number {
-  return useNavigationSpace().contentWidth;
+  return useWindowDimensions().width;
 }
 
 /**
@@ -53,28 +37,14 @@ export function useContentWidth(): number {
  *
  * `undefined` below the threshold, where the container is still the right bound
  * and a phone expects a control to fill its column. Above it a row of controls
- * left to fill a workspace stops being a control and becomes a banner — four
- * investment actions each got 295px of empty tile before this.
+ * left to fill a workspace stops being a control and becomes a banner.
  */
 export function useClusterWidth(count: number): number | undefined {
   const contentWidth = useContentWidth();
   return shouldBoundIntrinsicControls(contentWidth) ? segmentedMaxWidth(count) : undefined;
 }
 
-/**
- * The width of the box this content is actually in.
- *
- * The content width answers "how wide is the page column"; it cannot answer
- * "how wide is the card I am inside, in the narrower of two desktop columns".
- * Anything that has to be drawn at an explicit pixel width — an SVG chart — has
- * to ask its own container, because every derivation from a viewport number
- * guesses at the padding and columns between the two and eventually guesses
- * wrong: the same expression that fitted a full-width card overflowed it by
- * 220px once a rail stood beside the page.
- *
- * The fallback covers the frame before the first layout pass, so a chart never
- * flashes empty.
- */
+/** Measure the box you are in when drawing at an explicit pixel width; a viewport number cannot know the columns around you. */
 export function useMeasuredWidth(fallback: number): [number, (event: LayoutChangeEvent) => void] {
   const [width, setWidth] = useState(fallback);
   const onLayout = useCallback((event: LayoutChangeEvent) => {

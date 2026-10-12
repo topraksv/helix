@@ -3,12 +3,6 @@
  * sits in the right column with the edit/delete actions below it, and
  * dates/status render as compact wrapping badges (the same language as the
  * payment-method cycle chips) so long values never break the hierarchy.
- *
- * The three columns centre against the row rather than hanging from its top.
- * The badges wrap, so the label column's height depends on how many a rule
- * happens to carry — a subscription in trial with auto-pay is three lines
- * where a plain one is one — and top alignment left the logo and the price
- * stranded against the first line of a much taller row.
  */
 
 import { type ReactNode } from "react";
@@ -58,19 +52,7 @@ export function RuleRow({
   onEdit: () => void;
   onDelete: () => void;
 }) {
-  /**
-   * The row's own tap target wraps ONLY the label column.
-   *
-   * It used to wrap the whole row, which put two `IconButton`s (themselves
-   * `accessibilityRole="button"`) inside another `role="button"` — axe's
-   * `nested-interactive` rule, WCAG SC 4.1.2. `ListRow` in
-   * `settings/index.tsx` shows the discipline this file had lapsed from: a row
-   * with an interactive `right` does not also make itself pressable.
-   *
-   * Scoping the Pressable to the label leaves three SIBLING controls — open,
-   * edit, delete — each separately focusable, each with its own name, and the
-   * label still opens the editor on tap.
-   */
+  /** Only the label is pressable: a pressable row around the edit and delete buttons is nested-interactive. */
   const label = (
     <View style={{ flex: 1, minWidth: 0 }}>
       <Body style={{ fontFamily: font.medium }}>{title}</Body>
@@ -100,12 +82,7 @@ export function RuleRow({
           accessibilityRole="button"
           accessibilityLabel={title}
           onPress={onPress}
-          // The fill reaches past the label on all four sides. Painted on the
-          // bare content box it began at the first glyph and stopped at the
-          // last, inside a row that is taller than it and padded around it —
-          // so a hovered subscription lit a strip floating in its own row. The
-          // bleed borrows the row's own padding and the matching inset gives it
-          // straight back, so nothing moves and only the lit area grows.
+          // The bleed lets the fill reach past the label without moving it.
           style={(state) => ({
             flex: 1,
             minWidth: 0,
@@ -124,10 +101,7 @@ export function RuleRow({
       ) : (
         label
       )}
-      {/* The row's controls sit BESIDE the amount wherever the row has width
-          for them. Stacked unconditionally they pushed every subscription to
-          90px tall on a surface with a third of its width to spare; below the
-          narrow threshold that stack is still the only thing that fits. */}
+      {/* Actions sit beside the amount when the width allows; stacked only below the threshold. */}
       <View
         style={stackActions
           ? { alignItems: "flex-end", gap: spacing.xs }

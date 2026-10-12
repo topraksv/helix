@@ -21,9 +21,10 @@ import Pencil from "lucide-react-native/icons/pencil";
 import Plus from "lucide-react-native/icons/plus";
 import Trash from "lucide-react-native/icons/trash";
 import UserRound from "lucide-react-native/icons/user-round";
-import { Badge, Body, Button, Card, CardList, ChipPicker, CardListSkeleton, DataGateScreen, DataStateNotice, FadeIn, Field, IconButton, PanelHeader, Row, Screen, Spread } from "../../../ui/components";
+import { Badge, Body, Button, Card, CardList, CardListSkeleton, DataGateScreen, DataStateNotice, FadeIn, Field, IconButton, InlineEditRow, PanelHeader, Row, Screen, Spread } from "../../../ui/components";
+import { ReferenceInUseCard } from "../../../ui/category-delete-sheet";
 import { appAlert, appConfirm } from "../../../ui/dialog";
-import { placeholderPools, useRotatingPlaceholder } from "../../../ui/placeholders";
+import { useRotatingPlaceholder } from "../../../ui/placeholders";
 import { useUndo } from "../../../ui/undo";
 import { circle, font, radius, spacing, type, useTheme } from "../../../ui/theme";
 import { useOperationGuard } from "../../../ui/operation-guard";
@@ -137,7 +138,7 @@ export default function PersonsScreen() {
   const editingPerson = editingId ? persons.find((person) => person.id === editingId) : null;
   const editDraftDirty = Boolean(editingPerson && editName.trim() !== editingPerson.name);
   const { confirmDiscard } = useDirtyExitGuard(name.trim() !== "" || editDraftDirty);
-  const personPlaceholder = useRotatingPlaceholder(placeholderPools.person);
+  const personPlaceholder = useRotatingPlaceholder(tr.placeholders.person);
   const { status: dataStatus, ready: dataReady, retry: retryData } = combineLiveStates([personsState]);
 
   const rename = async (p: (typeof persons)[number], newName: string) => {
@@ -220,13 +221,13 @@ export default function PersonsScreen() {
   };
 
   const usageRows = resolving
-    ? [
+    ? ([
         [tr.references.paymentSources, resolving.usage.paymentSources],
         [tr.references.installmentPlans, resolving.usage.installmentPlans],
         [tr.references.transactions, resolving.usage.transactions],
         [tr.references.subscriptions, resolving.usage.subscriptions],
         [tr.references.recurringIncomes, resolving.usage.recurringIncomes],
-      ].filter(([, count]) => Number(count) > 0)
+      ] as [string, number][]).filter(([, count]) => count > 0)
     : [];
 
   if (!dataReady) return <DataGateScreen status={dataStatus} retry={retryData} skeleton={<CardListSkeleton />} />;
@@ -250,56 +251,38 @@ export default function PersonsScreen() {
         </Row>
           </Card>
           {resolving ? (
-            <Card>
-          <PanelHeader
-            icon={Trash}
-            title={tr.references.personInUse(resolving.person.name)}
-            description={tr.references.resolveBeforeDelete}
-          />
-          {usageRows.map(([label, count]) => (
-            <Spread key={String(label)} style={{ marginBottom: spacing.xs }}>
-              <Body muted>{label}</Body>
-              <Body>{String(count)}</Body>
-            </Spread>
-          ))}
-          <Body style={{ marginTop: spacing.sm, marginBottom: spacing.sm }}>{tr.references.choosePerson}</Body>
-          <ChipPicker
-            options={persons.filter((person) => person.id !== resolving.person.id).map((person) => ({ value: person.id, label: person.name }))}
-            value={replacementId}
-            onChange={setReplacementId}
-          />
-          <Row>
-            <View style={{ flex: 1 }}>
-              <Button label={tr.references.reassignAndDelete} onPress={() => void reassign()} disabled={!replacementId || deleting} loading={deleting} />
-            </View>
-            <Button label={tr.common.cancel} variant="ghost" onPress={() => setResolving(null)} disabled={deleting} />
-          </Row>
-            </Card>
+            <ReferenceInUseCard
+              title={tr.references.personInUse(resolving.person.name)}
+              rows={usageRows}
+              chooseLabel={tr.references.choosePerson}
+              options={persons.filter((person) => person.id !== resolving.person.id).map((person) => ({ value: person.id, label: person.name }))}
+              value={replacementId}
+              onChange={setReplacementId}
+              onConfirm={() => void reassign()}
+              onCancel={() => setResolving(null)}
+              busy={deleting}
+              confirmDisabled={!replacementId}
+            />
           ) : null}
           </View>
         )}
         secondary={(
           <View>
-          {/* The heading belongs INSIDE the card, as it does on every other
-              split screen. Standing above it, its section gap pushed the whole
-              right-hand column below the card on the left, and two panes that
-              start on different lines read as two unrelated screens. */}
+          {/* The heading sits inside the card so both panes start on one line. */}
           <CardList
             header={<PanelHeader icon={UserRound} title={tr.persons.listTitle} description={tr.persons.listHint} />}
             items={[...persons].sort((a, b) => Number(b.isSelf) - Number(a.isSelf))}
             keyExtractor={(p) => p.id}
             renderItem={(p) =>
           editingId === p.id ? (
-            // The name is the point of this row, so it gets the whole width.
-            // Sharing one line with two full-size actions left it about a third
-            // of a phone — you could not read the thing you were renaming.
-            <View style={{ paddingVertical: spacing.sm, gap: spacing.sm }}>
-              <Field accessibilityLabel={`${tr.common.edit} · ${p.name}`} noMargin value={editName} onChangeText={setEditName} />
-              <Row gap={spacing.sm} style={{ justifyContent: "flex-end" }}>
-                <Button label={tr.common.cancel} size="sm" variant="ghost" onPress={() => setEditingId(null)} />
-                <Button label={tr.common.save} size="sm" variant="secondary" disabled={!editName.trim()} onPress={() => void rename(p, editName)} />
-              </Row>
-            </View>
+            // The name gets the row's full width while it is edited.
+            <InlineEditRow
+              style={{ paddingVertical: spacing.sm }}
+              field={<Field accessibilityLabel={`${tr.common.edit} · ${p.name}`} noMargin value={editName} onChangeText={setEditName} />}
+              onCancel={() => setEditingId(null)}
+              onSave={() => void rename(p, editName)}
+              saveDisabled={!editName.trim()}
+            />
           ) : (
             <Spread
               style={{

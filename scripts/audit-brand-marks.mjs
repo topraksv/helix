@@ -1,35 +1,10 @@
 /**
- * Ask every favicon service for every domain `src/ui/logo.tsx` names, keep the
- * best REAL mark, and rewrite `tests/fixtures/brand-mark-audit.ts` with the answer.
+ * Ask every favicon service for every domain `src/ui/logo.tsx` names, keep the best REAL mark, and rewrite
+ * `tests/fixtures/brand-mark-audit.ts`. By hand, never CI: it hits third-party networks. `node scripts/audit-brand-marks.mjs`
  *
- * Run it by hand, not in CI: it makes several network requests per domain to
- * third parties, and the app is offline-first — the point of recording the
- * result is that nothing at build or run time has to ask again.
- *
- *   node scripts/audit-brand-marks.mjs
- *
- * The rule this script exists to enforce is that A BIGGER PICTURE IS NOT A
- * BETTER LOGO. Every one of these services answers "never heard of it" with an
- * image rather than an error, and their invented images are LARGER than most
- * real marks:
- *
- *   - Google returns a 16x16 grey globe.
- *   - DuckDuckGo returns a 48x48 grey letter tile — bigger than the genuine
- *     favicons of `qnb.com.tr`, `teb.com.tr`, `worldcard.com.tr` and
- *     `nays.com.tr`, all of which it briefly "improved".
- *   - icon.horse generates a 256x256 letter avatar, and a different one per
- *     first letter, so a single known hash cannot catch it. Scored on pixels
- *     it beats every real mark in the catalogue.
- *
- * So placeholders are not matched against a hard-coded list. Before measuring
- * anything, each service is asked for domains that cannot exist — one per
- * letter of the alphabet, because the invented images are letter-based — and
- * whatever comes back is that service's set of lies. A real domain whose bytes
- * match one of them scores nothing, however many pixels it has.
- *
- * The runtime file `src/domain/brand-marks.ts` is NOT rewritten here. Which
- * service to ask, and which marks are too small to enlarge, are conclusions a
- * person draws from this output; the log prints both lists ready to paste.
+ * A BIGGER PICTURE IS NOT A BETTER LOGO: these services answer "never heard of it" with an image, often larger than a
+ * real mark, so each service is first asked for domains that cannot exist and whatever comes back is its set of lies.
+ * `src/domain/brand-marks.ts` is not rewritten; the log prints its provider lists ready to paste.
  */
 import { createHash } from "node:crypto";
 import { readFileSync, writeFileSync } from "node:fs";
@@ -70,17 +45,16 @@ function markWidth(buffer) {
   return 0;
 }
 
-const PROVIDERS = ["google", "duckduckgo", "iconhorse"];
-
-function url(domain, provider) {
-  if (provider === "duckduckgo") return `https://icons.duckduckgo.com/ip3/${encodeURIComponent(domain)}.ico`;
-  if (provider === "iconhorse") return `https://icon.horse/icon/${encodeURIComponent(domain)}`;
-  return `https://www.google.com/s2/favicons?domain=${encodeURIComponent(domain)}&sz=256`;
-}
+const URLS = {
+  google: (domain) => `https://www.google.com/s2/favicons?domain=${encodeURIComponent(domain)}&sz=256`,
+  duckduckgo: (domain) => `https://icons.duckduckgo.com/ip3/${encodeURIComponent(domain)}.ico`,
+  iconhorse: (domain) => `https://icon.horse/icon/${encodeURIComponent(domain)}`,
+};
+const PROVIDERS = Object.keys(URLS);
 
 async function fetchBytes(domain, provider) {
   try {
-    const response = await fetch(url(domain, provider), { redirect: "follow" });
+    const response = await fetch(URLS[provider](domain), { redirect: "follow" });
     return Buffer.from(await response.arrayBuffer());
   } catch {
     return Buffer.alloc(0);
@@ -89,13 +63,7 @@ async function fetchBytes(domain, provider) {
 
 const sha12 = (buffer) => createHash("sha256").update(buffer).digest("hex").slice(0, 12);
 
-/**
- * What each service invents for a domain that does not exist.
- *
- * One control per letter: the letter avatars differ by initial, so a single
- * control would only ever catch the brands starting with that letter. The
- * suffix is nonsense no registrar would sell, and it is asked once per run.
- */
+// One control per letter, because the letter avatars differ by initial.
 async function learnPlaceholders() {
   const letters = "abcdefghijklmnopqrstuvwxyz".split("");
   const controls = letters.map((letter) => `${letter}zqx-no-such-brand-9317.com`);
@@ -109,13 +77,10 @@ async function learnPlaceholders() {
 }
 
 /** The mark a provider serves, or width 0 when it only has a placeholder. */
-/** The mark a provider serves, or width 0 when it only has a placeholder. */
 async function measure(domain, provider) {
   const buffer = await fetchBytes(domain, provider);
-  if (buffer.length === 0) return { px: 0, sha: "" };
   const sha = sha12(buffer);
-  if (PLACEHOLDER.has(sha)) return { px: 0, sha: "" };
-  return { px: markWidth(buffer), sha };
+  return buffer.length === 0 || PLACEHOLDER.has(sha) ? { px: 0, sha: "" } : { px: markWidth(buffer), sha };
 }
 
 const source = readFileSync(SOURCE, "utf8");
@@ -133,21 +98,8 @@ for (const domain of domains) {
   console.log(`${domain.padEnd(26)} (${detail})`);
 }
 
-/**
- * A second pass over the answers, because one control probe is not enough.
- *
- * icon.horse generates its letter avatar lazily: the first request for a
- * domain it has not crawled returns a generic image, and a later request for
- * the same letter can return a DIFFERENT generic image. So a control fetched
- * at the start of the run does not necessarily match the lie told in the
- * middle of it — measured, `carrefoursa.com` and `crunchyroll.com` both came
- * back as a real 256px mark and were byte-identical to a control fetched
- * afterwards.
- *
- * What no placeholder can hide from is being served for two unrelated brands.
- * Any image that appears for more than one domain is treated as invented and
- * scored nothing, except where the two names are genuinely one owner.
- */
+// icon.horse tells different lies over a run, so a control fetched first can miss one: an image served for two
+// unrelated brands is invented and scores nothing, unless they are one owner.
 const SAME_OWNER = [
   ["advantage.com.tr", "hsbc.com.tr"],
   ["blutv.com", "max.com"],
@@ -186,30 +138,18 @@ for (const [domain, results] of Object.entries(answers)) {
   measured[domain] = best;
 }
 
-const existing = readFileSync(TARGET, "utf8");
-const head = existing.slice(0, existing.indexOf("/** The best available mark per domain"));
-const tail = existing.slice(existing.indexOf("/** The URL that serves"));
+const head = readFileSync(TARGET, "utf8");
 const body = Object.entries(measured)
   .filter(([, m]) => m.px > 0)
   .map(([d, { px, provider, sha }]) => `  "${d}": { px: ${px}, provider: "${provider}", sha: "${sha}" },`)
   .join("\n");
 writeFileSync(
   TARGET,
-  `${head}/** The best available mark per domain, by measurement. */\nexport const BRAND_MARK_AUDIT: Record<string, BrandMark> = {\n${body}\n};\n\n${tail}`,
+  `${head.slice(0, head.indexOf("export const BRAND_MARK_AUDIT"))}export const BRAND_MARK_AUDIT: Record<string, BrandMark> = {\n${body}\n};\n`,
 );
 const missing = Object.entries(measured).filter(([, m]) => m.px === 0);
 console.log(`\nrewrote ${TARGET}: ${domains.length - missing.length} marked, ${missing.length} unmarked`);
 for (const [d] of missing) console.log(`  unmarked: ${d}`);
-// Byte-identical marks mean one brand is wearing another's logo. That is what
-// `naysapp.com.tr` did with İş Bankası, and it is invisible to a size check.
-const byShaMarks = new Map();
-for (const [d, m] of Object.entries(measured)) {
-  if (m.px === 0) continue;
-  byShaMarks.set(m.sha, [...(byShaMarks.get(m.sha) ?? []), d]);
-}
-for (const [sha, shared] of byShaMarks) {
-  if (shared.length > 1) console.log(`  shared mark ${sha}: ${shared.join(", ")}`);
-}
 const byProvider = {};
 for (const [d, m] of Object.entries(measured)) {
   if (m.px === 0 || m.provider === "google") continue;
@@ -218,8 +158,3 @@ for (const [d, m] of Object.entries(measured)) {
 for (const [provider, list] of Object.entries(byProvider)) {
   console.log(`\n${provider.toUpperCase()}_MARKS in src/domain/brand-marks.ts:\n${list.map((d) => `  "${d}",`).join("\n")}`);
 }
-// A mark this small cannot be enlarged into a tile without smearing. The app
-// draws it at its own scale instead, so it stays a small sharp logo rather
-// than a large soft one.
-const small = Object.entries(measured).filter(([, m]) => m.px > 0 && m.px < 48);
-console.log(`\nSMALL_MARK_PX in src/domain/brand-marks.ts (${small.length} of ${domains.length}):\n${small.map(([d, m]) => `  "${d}": ${m.px},`).join("\n")}`);

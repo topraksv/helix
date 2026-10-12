@@ -65,7 +65,7 @@ export default function AttentionScreen() {
   const settingsState = useSettingsMapState();
   const ledgerState = useLedgerState(yearOf(today));
   const { status, ready, retry } = combineLiveStates([
-    expectedState, subscriptionsState, incomesState, plansState, transactionsState, settingsState,
+    expectedState, subscriptionsState, incomesState, plansState, transactionsState, settingsState, ledgerState,
   ]);
 
   const stored = settingValue<unknown>(settingsState.data, "attention_state", null);
@@ -155,7 +155,7 @@ export default function AttentionScreen() {
       await setAttentionState(userId, next, liveIds);
       scheduleSync(userId);
       if (notice) {
-        undo.show(notice, undoTo ? () => setAttentionState(userId, undoTo, liveIds) : null);
+        undo.show(notice, undoTo ? () => setAttentionState(userId, undoTo, liveIds).then(() => scheduleSync(userId)) : null);
       }
     } catch (error) {
       devError("attention.state", error);

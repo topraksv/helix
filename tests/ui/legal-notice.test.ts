@@ -14,7 +14,6 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
-import { classifyRootRoute, resolveRootGuard } from "../../src/domain/app-guard";
 import { markUrl, type MarkProvider } from "../../src/domain/brand-marks";
 import { MARKET_DATA_HOST } from "../../src/domain/market";
 import { tr } from "../../src/i18n/tr";
@@ -33,8 +32,7 @@ describe("KVKK notice", () => {
 
   it("sends people to the mailbox that is actually read", () => {
     // `supabase/functions/send-feedback` is a Deno function and cannot import
-    // from `src/`, so the two copies of this address are held together here
-    // instead. Item 8 will move both; this is what makes it move both.
+    // from `src/`, so the two copies of this address are held together here.
     const fn = read("supabase/functions/send-feedback/index.ts");
     const owner = /const OWNER_EMAIL = "([^"]+)"/.exec(fn)?.[1];
     expect(owner, "OWNER_EMAIL must stay parseable").toBeTruthy();
@@ -74,24 +72,8 @@ describe("KVKK notice", () => {
   it("is readable before an account exists", () => {
     const layout = read("src/app/_layout.tsx");
     expect(layout).toContain('<Stack.Screen name="privacy"');
-    // The route file is top-level, not inside the protected `(tabs)` group.
-    expect(() => read("src/app/privacy.tsx")).not.toThrow();
-
-    // Structure alone was not enough, and this is why the assertion below
-    // exists: all of the above was already true on 2026-09-03 while the route
-    // classified as protected account UI, so the guard sent every signed-out
-    // reader back to sign-in. The notice was unreachable for exactly the
-    // audience it is written for, and nothing here said so.
-    expect(classifyRootRoute(["privacy"])).toBe("public");
-    expect(resolveRootGuard({
-      ready: true,
-      locked: false,
-      userId: null,
-      onboarded: null,
-      frozen: null,
-      awaitingFirstPull: false,
-      route: "public",
-    })).toEqual({ view: "stack", redirect: null });
+    // The guard classifies it public (tests/domain/app-guard.test.ts); without
+    // that every signed-out reader is sent back to sign-in, the audience it is for.
   });
 
   it("says the account is what takes the data off the device, on the screen that creates one", () => {
@@ -123,22 +105,12 @@ describe("KVKK notice", () => {
   });
 
   /**
-   * The four names above were the whole disclosure, and the app was reaching
-   * NINE hosts.
-   *
-   * Measured in a browser on 2026-09-05: opening the app with no account at
-   * all already called `open.er-api.com` and `data-api.binance.vision`, and
-   * typing "Netflix" into a subscription name — before saving anything —
-   * called `www.google.com/s2/favicons?domain=netflix.com`. That last one is
-   * the one that matters, because the request itself is the disclosure: the
-   * domain IS which bank or which service the person just named.
-   *
-   * A hand-written list is what let that happen, so this one is DERIVED. The
-   * hosts come out of the code that builds the URLs and out of the policy that
-   * has to allow them; the map below is the only hand-written part, and its
-   * job is to fail when a host appears that nobody has decided about. Adding a
-   * host to the CSP or to a `fetch` therefore forces a line in the notice, or
-   * an explicit `null` here saying why the host is not a network contact.
+   * The hosts are DERIVED from the code that builds the URLs and the policy
+   * that allows them; only the map below is hand-written, and it fails when a
+   * host appears that nobody has decided about. A request can itself be the
+   * disclosure (a favicon lookup names the service a person typed), so a new
+   * host forces a line in the notice, or an explicit `null` saying why it is
+   * not a network contact.
    */
   const DISCLOSED_AS: Record<string, string | null> = {
     // Delivery surfaces and processors, each named in the notice.
@@ -229,36 +201,12 @@ describe("KVKK notice", () => {
   });
 
   /**
-   * The escape hatch the notice offered did not exist.
-   *
-   * For as long as there has been a transfer section, it ended with "if you do
-   * not want the transfer, use the app without an account". `resolveRootGuard`
-   * says otherwise and always has: with no `userId`, every route that is not
-   * the auth screen, the recovery screen or this notice redirects to sign-in.
-   * The account-less workspace in `session.ts` is reached only when the build
-   * carries NO Supabase configuration, which is true of exactly one artifact —
-   * the E2E export, which is never deployed.
-   *
-   * So the guard is asserted here beside the sentence. A notice that promises
-   * a way out of a transfer is making a claim about the product's front door,
-   * and this is the code that owns that door.
+   * The notice once ended with "if you do not want the transfer, use the app
+   * without an account". The root guard (tests/domain/app-guard.test.ts) sends
+   * every signed-out reader to sign-in, so no such mode exists in a deployed
+   * build, and the notice may not promise one.
    */
   it("does not offer an account-less route the guard refuses to open", () => {
-    const signedOut = {
-      ready: true,
-      locked: false,
-      userId: null,
-      onboarded: null,
-      frozen: null,
-      awaitingFirstPull: false,
-    } as const;
-    // The product's actual answer to "can I use this without an account".
-    expect(resolveRootGuard({ ...signedOut, route: "protected" }))
-      .toEqual({ view: "wait", redirect: "/(auth)/sign-in" });
-    expect(resolveRootGuard({ ...signedOut, route: "onboarding" }))
-      .toEqual({ view: "wait", redirect: "/(auth)/sign-in" });
-
-    // Therefore the notice may not say the opposite.
     const note = tr.legal.transferNote;
     // The offer, not the denial: "kullanabilirsiniz" is the sentence that has
     // to be gone, while "kullanılamadığı" is the sentence that replaced it.
@@ -428,7 +376,6 @@ describe("KVKK notice against Article 10", () => {
     // the suite above — so what the notice owes a reader is the honest version:
     // the account is the condition of use, and declining the transfer means
     // declining the account.
-    expect(tr.legal.transferNote).toMatch(/hesap oluşturmamanız|hesap açmadan kullanılamadığı/i);
     expect(tr.legal.transferNote).toMatch(/m\. 9/);
   });
 

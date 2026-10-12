@@ -56,8 +56,15 @@ describe("what storage may hand back", () => {
     expect(await pendingUsage()).toEqual([{ day: "2026-09-20", screen: "a", count: 2 }]);
   });
 
+  it("writes back only the entries it accepted", async () => {
+    store.set("helix.usage_counters.v1", JSON.stringify({ "2026-09-20|b": "3", "2026-09-20|c": 0, "2026-09-20|e": 1.5 }));
+    recordScreenView("a", new Date(2026, 8, 20));
+    await settle();
+    expect(JSON.parse(store.get("helix.usage_counters.v1")!)).toEqual({ "2026-09-20|a": 1 });
+  });
+
   it("ignores a store that is not an object at all", async () => {
-    store.set("helix.usage_counters.v1", JSON.stringify([1, 2, 3]));
+    store.set("helix.usage_counters.v1", JSON.stringify(42));
     expect(await pendingUsage()).toEqual([]);
   });
 
@@ -91,17 +98,22 @@ describe("reporting", () => {
     expect(await pendingUsage()).toEqual([{ day: "2026-09-20", screen: "tabs", count: 1 }]);
   });
 
+  it("forgets a fully reported entry instead of keeping it at zero", async () => {
+    recordScreenView("tabs", new Date(2026, 8, 20));
+    await settle();
+    await reportUsage({ record: async () => {} });
+    expect(store.get("helix.usage_counters.v1")).toBe("{}");
+  });
+
   it("keeps everything when the upload fails, and sends it again next time", async () => {
     recordScreenView("tabs", new Date(2026, 8, 20));
     await settle();
-    const failing = { record: vi.fn(async () => void (() => { throw new Error("offline"); })()) };
     await reportUsage({
       record: async () => {
         throw new Error("offline");
       },
     });
     expect(await pendingUsage()).toEqual([{ day: "2026-09-20", screen: "tabs", count: 1 }]);
-    expect(failing.record).not.toHaveBeenCalled();
   });
 
   it("says nothing when there is nothing to say", async () => {

@@ -2,27 +2,18 @@ import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 import {
   addMarketExpense,
-  assertNoRuntimeErrors,
   collectRuntimeErrors,
   currentMonthKey,
   isolateExternalData,
+  offscreenControls,
   onboard,
   openRouteForAudit,
   renderedContrast,
   routeRedirectProblem,
 } from "./helpers";
 
-/**
- * What the committed pixel baselines used to do, stated as measurements.
- *
- * A whole-page image caught real regressions, but it could only say "something
- * moved": every glyph rasterizer difference, every rotating placeholder and
- * every clock reading had to be masked or budgeted away before it agreed with
- * itself across two platforms. The risks it actually stood for are each
- * checkable directly — the page must not scroll sideways, a control must not
- * leave the viewport, a figure must stay on one line, a surface must keep its
- * contrast — so they are checked directly here instead.
- */
+// Directly checkable risks stand in for pixel baselines: no sideways scroll, no control
+// outside the viewport, figures on one line, contrast kept.
 async function assertNoSidewaysScroll(page: Page, tag: string): Promise<void> {
   const sideways = await page.evaluate(
     () => document.body.scrollWidth > document.body.clientWidth + 1,
@@ -30,48 +21,9 @@ async function assertNoSidewaysScroll(page: Page, tag: string): Promise<void> {
   expect(sideways, `${tag} scrolls horizontally`).toBe(false);
 }
 
-/** Every interactive control's box lies inside the viewport it was laid out in. */
-async function offscreenControls(page: Page): Promise<string[]> {
-  return page.evaluate(() => {
-    const found: string[] = [];
-    const width = document.documentElement.clientWidth;
-    const belongsToHorizontalScroller = (element: HTMLElement) => {
-      if (element.closest('[data-testid="table-horizontal-header"],[data-testid="table-horizontal-body"]')) {
-        return true;
-      }
-      let ancestor = element.parentElement;
-      while (ancestor && ancestor !== document.body) {
-        const style = getComputedStyle(ancestor);
-        if (
-          (style.overflowX === "auto" || style.overflowX === "scroll") &&
-          ancestor.scrollWidth > ancestor.clientWidth + 1
-        ) {
-          return true;
-        }
-        ancestor = ancestor.parentElement;
-      }
-      return false;
-    };
-    for (const el of Array.from(
-      document.querySelectorAll<HTMLElement>('[role="button"],[role="tab"],[role="switch"],[role="link"]'),
-    )) {
-      const style = getComputedStyle(el);
-      if (style.display === "none" || style.visibility === "hidden") continue;
-      const box = el.getBoundingClientRect();
-      if (box.width === 0 || box.height === 0) continue;
-      if ((box.left < -1 || box.right > width + 1) && !belongsToHorizontalScroller(el)) {
-        found.push(
-          `${(el.getAttribute("aria-label") ?? el.textContent ?? "").trim().slice(0, 30)} @${Math.round(box.left)}..${Math.round(box.right)} of ${width}`,
-        );
-      }
-    }
-    return [...new Set(found)];
-  });
-}
-
 test.beforeEach(async ({ context }) => isolateExternalData(context));
 
-test("main routes have no WCAG A/AA violations @cross-browser", async ({ page }, testInfo) => {
+test("main routes have no WCAG A/AA violations @cross-browser", async ({ page }) => {
   const errors = collectRuntimeErrors(page);
   await onboard(page);
   const routes = ["/helix/", "/helix/cash-flow", "/helix/subscriptions", "/helix/investments", "/helix/settings", "/helix/transaction"];
@@ -79,23 +31,15 @@ test("main routes have no WCAG A/AA violations @cross-browser", async ({ page },
     await openRouteForAudit(page, route);
     const result = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa"]).analyze();
     expect(result.violations, `${route}\n${JSON.stringify(result.violations, null, 2)}`).toEqual([]);
-    // None of these six is guarded today, which is exactly why the check is
-    // here: a walk that only proves `#root` rendered clears routes it never
-    // opened the moment one of them gains a guard.
+    // A walk that only proves `#root` rendered clears routes it never opened once one gains a guard.
     expect(routeRedirectProblem(page, route)).toBeNull();
   }
-  await assertNoRuntimeErrors(errors, testInfo);
+  expect(errors).toEqual([]);
 });
 
-/**
- * The 6-route check above runs on a freshly onboarded, near-empty workspace.
- * Every violation this audit found lived outside that set or only appeared once
- * the workspace had data: `aria-prohibited-attr` on populated matrix cells,
- * `aria-required-attr` on the reorder grips, `color-contrast` under a faded
- * section, and a scroll region no keyboard could reach. This sweep therefore
- * walks EVERY reachable route with real data, and also asserts the WCAG 2.2
- * target size that axe's 2.1 ruleset does not cover.
- */
+// The 6-route check runs on a near-empty workspace; several violations only appeared with data
+// (matrix cells, reorder grips, a faded section, a scroll region), so this walks EVERY
+// reachable route with real data and adds the WCAG 2.2 target size axe 2.1 does not cover.
 const LOCAL_STATIC_ROUTES = [
   "/helix/", "/helix/cash-flow", "/helix/cash-flow/analytics", "/helix/cash-flow/installments",
   "/helix/subscriptions", "/helix/investments", "/helix/investments/setup", "/helix/settings", "/helix/settings/tools", "/helix/settings/categories",
@@ -104,64 +48,25 @@ const LOCAL_STATIC_ROUTES = [
   "/helix/transaction", "/helix/installment-new", "/helix/subscription-form", "/helix/bulk-entry",
   "/helix/columns-editor", "/helix/import-wizard", "/helix/opening-balance",
   "/helix/reconciliation", "/helix/upcoming", "/helix/workspace-template",
-  // Routes this sweep did not know about until 2026-09-05, and one of them was
-  // carrying a violation the whole time: `/helix/privacy` is 3594px of legal
-  // text in a 655px window with nothing focusable in it, so its scroll region
-  // failed `scrollable-region-focusable` — the app was leaning on Chromium's
-  // and Firefox's own focusable-scroller behaviour to make its legal text
-  // readable, which is a bet rather than an affordance. A route list is a
-  // claim about what has been checked, and these made it a false one.
+  // A route list is a claim about what has been checked; /helix/privacy's scroll region once failed unseen.
   "/helix/privacy", "/helix/feedback", "/helix/attention", "/helix/sync-issues",
   "/helix/statement-import",
-  // The two routes this list cannot hold are in `CLOUD_ONLY_ROUTES` below,
-  // with a test of their own rather than a comment.
-  // Carries its instrument in the query string: without one it is the "unknown
-  // instrument" card, which audits a screen nobody reaches. The feed is refused
-  // for every browser test, so this is the empty state of the real layout — the
-  // quote card, the range switch and the offer to fetch the history again.
+  // Without a code it is the "unknown instrument" card, which nobody reaches; the feed is refused
+  // in browser tests, so this audits the real layout's empty state.
   "/helix/market-detail?code=ALTIN",
 ];
 
-/**
- * The routes the sweep above cannot audit, and the reason as an assertion.
- *
- * Both open with `if (!isSupabaseConfigured) return <Redirect href="/(tabs)/
- * settings" />`, and every browser build is exactly that case —
- * `scripts/export-e2e-web.mjs` exports with blank Supabase values on purpose.
- * While they sat in the list above, the sweep audited Settings a second time
- * under their names and reported two cloud screens clean without opening
- * either: worse than an omission.
- *
- * Removing them left a comment doing a test's job, and a comment cannot fail.
- * The test below is what makes the exclusion conditional rather than
- * permanent: the day either guard changes, it goes red and says the route
- * belongs back in the sweep.
- */
+// Both guard on `isSupabaseConfigured` and browser builds export with it blank, so listing them
+// above audited Settings twice under their names. The test below turns the exclusion into an
+// assertion that goes red the day either guard changes.
 const CLOUD_ONLY_ROUTES = ["/helix/account-security", "/helix/data-reset"];
 
 /**
- * WCAG 2.2 SC 2.5.8 (AA): 24x24 CSS px, minus the standard's Inline exception.
- *
- * The exception covers a target sitting IN A SENTENCE, whose size is
- * constrained by the line-height of the non-target text around it.
- * `/helix/feedback` has the only one in this app — the notice link inside the
- * sentence that says what gets sent, 172x19 in a 23px line box — and padding
- * it to 24 would push those words apart to satisfy a rule that exempts them.
- *
- * Three narrowings, each load-bearing, because an exception is the part of a
- * rule that can quietly swallow it:
- *
- *   - HEIGHT only. Line-height constrains height; nothing constrains width, so
- *     a 10px-wide inline control is still a violation.
- *   - The measured height must actually fit the parent's line box, so
- *     `display: inline` on its own buys nothing — react-native-web sets that on
- *     every `Text` (`Text/index.js` base style), which is most of this app.
- *   - The parent must carry DIRECT TEXT NODES, which is what "in a sentence"
- *     means in the DOM. "The parent has other text somewhere" would also be
- *     true of a labelled row, and would exempt every inline control in one.
- *
- * `assertTargetSizeDetectorIsLive` proves all three against injected controls
- * before the sweep trusts any of them.
+ * WCAG 2.2 SC 2.5.8 (AA): 24x24 CSS px, minus the Inline exception for a target in a sentence
+ * (`/helix/feedback`'s notice link, 172x19 in a 23px line box). The exception is narrow on purpose:
+ * height only; the height must fit the parent's line box (RNW sets `display: inline` on every
+ * Text, so inline alone buys nothing); the parent must carry direct text nodes.
+ * `assertTargetSizeDetectorIsLive` proves all three before the sweep trusts them.
  */
 async function undersizedTargets(page: Page): Promise<string[]> {
   return page.evaluate(() => {
@@ -190,15 +95,8 @@ async function undersizedTargets(page: Page): Promise<string[]> {
   });
 }
 
-/**
- * The same self-check the layout sweep runs, for the same reason: a scan whose
- * exception is wrong passes identically to one with nothing left to find.
- *
- * Three injected controls, one per narrowing. The sentence link must be
- * exempt, the narrow one in the same sentence must not be (width), and the
- * inline control standing outside any sentence must not be (no direct text
- * beside it). Removed again before the sweep measures a real screen.
- */
+// Three injected controls, one per narrowing: the sentence link exempt, the narrow one in the same
+// sentence not (width), the inline one outside a sentence not. Removed before the real sweep.
 async function assertTargetSizeDetectorIsLive(page: Page): Promise<void> {
   await page.evaluate(() => {
     const sentence = document.createElement("div");
@@ -249,26 +147,19 @@ async function localReachableRoutes(page: Page): Promise<string[]> {
   ];
 }
 
-test("every local-mode reachable route stays accessible with real data", async ({ page }, testInfo) => {
-  // Per route this costs a navigation, a full-page `[role]` walk and an axe run
-  // over five WCAG tag sets — the expensive one. The budget has to come from
-  // the number of routes rather than stay where it was set when the list was
-  // shorter, or the tail of the sweep races the clock on a loaded runner and
-  // the failure arrives as a timeout instead of as the violation it found.
+test("every local-mode reachable route stays accessible with real data", async ({ page }) => {
+  // The budget follows the route count, or the tail races the clock and fails as a timeout.
   test.setTimeout(300_000);
   const errors = collectRuntimeErrors(page);
   await onboard(page);
   await addMarketExpense(page, "A11y taraması");
   const routes = await localReachableRoutes(page);
-  // Before the sweep trusts the scan, not after.
   await assertTargetSizeDetectorIsLive(page);
   const problems: string[] = [];
   for (const route of routes) {
     await openRouteForAudit(page, route);
     if (route === "/helix/cash-flow") {
-      // The app shell is visible before the async ledger bundle and measured
-      // matrix viewport are ready. Audit the real populated table, not whichever
-      // loading frame happened to win the race.
+      // The shell shows before the async ledger bundle: audit the populated table, not a loading frame.
       await expect(page.getByRole("button", { name: /kolonunu sabitle/ }).first()).toBeVisible();
     }
     if (route === "/helix/settings/computed-columns") {
@@ -280,55 +171,36 @@ test("every local-mode reachable route stays accessible with real data", async (
     for (const violation of result.violations) {
       problems.push(`${route} axe ${violation.id} (${violation.nodes.length}): ${violation.nodes[0]?.html.slice(0, 140)}`);
     }
-    // Last, because by now the axe run has given any guard far longer than the
-    // frame or two a redirect takes. See `openRouteForAudit`.
+    // Last: the axe run has given any guard longer than a redirect takes.
     const redirected = routeRedirectProblem(page, route);
     if (redirected) problems.push(redirected);
   }
   expect(problems, problems.join("\n")).toEqual([]);
-  await assertNoRuntimeErrors(errors, testInfo);
+  expect(errors).toEqual([]);
 });
 
-test("the cloud-only routes are excluded because they redirect, not because they were forgotten", async ({ page }, testInfo) => {
+test("the cloud-only routes are excluded because they redirect, not because they were forgotten", async ({ page }) => {
   const errors = collectRuntimeErrors(page);
   await onboard(page);
   for (const route of CLOUD_ONLY_ROUTES) {
     await openRouteForAudit(page, route);
-    // `toHaveURL` retries, so this waits the guard out rather than racing it.
-    // Red here means the screen is reachable in a browser build now and owes
-    // the sweep above an entry — not that this test needs relaxing.
+    // Red means the screen is reachable in a browser build now and owes the sweep an entry.
     await expect(page, `${route} no longer redirects; it belongs in the route sweep`)
       .toHaveURL(/\/helix\/settings$/);
   }
-  await assertNoRuntimeErrors(errors, testInfo);
+  expect(errors).toEqual([]);
 });
 
-/**
- * The layout rules this project calls non-negotiable, checked from computed style
- * rather than by eye: text is never truncated, toggles share one size, and the
- * page never scrolls sideways. (Status chip width is fixed by `STATUS_W` in the
- * component itself, so it needs no runtime check.)
- *
- * `text-overflow: ellipsis` alone proves nothing — React Native Web sets it on
- * every Text node, so only an element whose content actually exceeds its box is
- * a real truncation. Because that makes a passing run indistinguishable from a
- * broken detector, the scan first injects deliberately clipped, clamped and
- * wrapped controls and asserts it finds all three.
- */
-test("layout non-negotiables hold on every route in both widths", async ({ page, context }, testInfo) => {
-  // Every route twice, once per width, each with a full-document scan. Same
-  // reasoning as the sweep above: the budget follows the route list.
+// `text-overflow: ellipsis` alone proves nothing (RNW sets it on every Text), so only content that
+// exceeds its box counts; the scan first injects clipped, clamped and wrapped controls and must find all three.
+test("layout non-negotiables hold on every route in both widths", async ({ page }) => {
   test.setTimeout(240_000);
-  await isolateExternalData(context);
-  // This audit owns settled geometry; entrance-motion behavior has a separate
-  // regression test. Waiting for fonts plus two paint frames prevents the app
-  // shell from being mistaken for the final Amount fit under full-suite load.
-  await page.emulateMedia({ reducedMotion: "reduce" });
   const errors = collectRuntimeErrors(page);
   await onboard(page);
   await addMarketExpense(page, "Yerleşim taraması");
   const routes = await localReachableRoutes(page);
 
+  // Fonts plus two frames, or the shell is mistaken for the final Amount fit under suite load.
   const waitForSettledLayout = () => page.evaluate(async () => {
     await document.fonts.ready;
     await new Promise<void>((resolve) => {
@@ -375,9 +247,7 @@ test("layout non-negotiables hold on every route in both widths", async ({ page,
         ) {
           truncated.push(`vertical-clip ${el.scrollHeight}>${el.clientHeight}: ${text}`);
         }
-        // Financial figures are atomic scan targets. Ordinary prose should
-        // wrap, but splitting the final digit of ₺12.500,00 onto another line
-        // changes the number's visual meaning and made the matrix unreadable.
+        // Figures are atomic: a wrapped final digit of ₺12.500,00 changes its meaning.
         if (/^-?[₺$€£¥][\d.,]+$/.test(text)) {
           const visualLines = new Set<number>();
           const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
@@ -389,8 +259,7 @@ test("layout non-negotiables hold on every route in both widths", async ({ page,
               visualLines.add(Math.round(rect.top));
             }
           }
-          // Selecting the element itself also returns the boxes of nested SVGs,
-          // buttons and wrappers. Only text-node rects represent painted lines.
+          // Element rects include nested SVGs and wrappers; only text-node rects are painted lines.
           if (visualLines.size > 1) truncated.push(`money-wrap(${visualLines.size}): ${text}`);
         }
         const deliberateTableClamp =
@@ -439,17 +308,14 @@ test("layout non-negotiables hold on every route in both widths", async ({ page,
     }
   }
   expect(problems, problems.join("\n")).toEqual([]);
-  await assertNoRuntimeErrors(errors, testInfo);
+  expect(errors).toEqual([]);
 });
 
-test("large compact negative amounts keep their sign and unit on one visual line", async ({ page }, testInfo) => {
+test("large compact negative amounts keep their sign and unit on one visual line", async ({ page }) => {
   const errors = collectRuntimeErrors(page);
-  await page.emulateMedia({ colorScheme: "light", reducedMotion: "reduce" });
   await onboard(page);
   await addMarketExpense(page, "Büyük tutar yerleşim kontrolü", "9876543,21");
-  // Amount keeps an ASCII minus glued to its currency glyph with an invisible
-  // word joiner; match the painted text without making that layout character
-  // part of the test contract.
+  // Amount glues the minus to the currency glyph with an invisible word joiner; match the painted text.
   const formatted = /^-.*₺9\.877\s+Mn$/u;
   const maxVisualLines = (text: RegExp) => page.getByText(text).evaluateAll((nodes) => Math.max(...nodes.map((node) => {
     const range = document.createRange();
@@ -460,20 +326,17 @@ test("large compact negative amounts keep their sign and unit on one visual line
     Math.min(...nodes.map((node) => Number.parseFloat(getComputedStyle(node).fontSize))),
   );
 
-  // A large signed compact figure is the layout's worst case: the sign and
-  // unit must stay attached while the value remains inside its cell.
   for (const surface of [
     { tag: "dashboard 320 light", width: 320, height: 720, route: "/helix/", scheme: "light" },
     { tag: `month 390 light`, width: 390, height: 844, route: `/helix/cash-flow/${currentMonthKey()}`, scheme: "light" },
     { tag: "dashboard 320 dark", width: 320, height: 720, route: "/helix/", scheme: "dark" },
   ] as const) {
-    await page.emulateMedia({ colorScheme: surface.scheme, reducedMotion: "reduce" });
+    await page.emulateMedia({ colorScheme: surface.scheme });
     await page.setViewportSize({ width: surface.width, height: surface.height });
     await page.goto(surface.route);
     await expect(page.locator("#root")).toBeVisible();
     await expect.poll(() => maxVisualLines(formatted)).toBe(1);
-    // The sign is part of the number: dropping it reads as income on a screen
-    // that is about to owe money. The compact unit must also be painted.
+    // A dropped sign reads as income; the compact unit must also be painted.
     const painted = await page
       .getByText(formatted)
       .evaluateAll((nodes) => nodes.filter((node) => node.getClientRects().length > 0).length);
@@ -482,20 +345,19 @@ test("large compact negative amounts keep their sign and unit on one visual line
     await assertNoSidewaysScroll(page, surface.tag);
     expect(await offscreenControls(page), `${surface.tag} controls outside viewport`).toEqual([]);
   }
-  await page.emulateMedia({ colorScheme: "light", reducedMotion: "reduce" });
+  await page.emulateMedia({ colorScheme: "light" });
 
-  // The largest accepted single entry promotes through the same global scale;
-  // it must still fit without changing the input cap.
+  // The largest accepted entry must still fit without changing the input cap.
   await addMarketExpense(page, "Azami tutar yerleşim kontrolü", "999999999999,99");
   await page.setViewportSize({ width: 320, height: 720 });
   await page.goto("/helix/");
   const maximumFormatted = /^-.*₺1\s+Tr$/u;
   await expect.poll(() => maxVisualLines(maximumFormatted)).toBe(1);
   await expect.poll(() => minRenderedFontSize(maximumFormatted)).toBeGreaterThanOrEqual(11);
-  await assertNoRuntimeErrors(errors, testInfo);
+  expect(errors).toEqual([]);
 });
 
-test("dashboard reflows intact across the viewport and theme matrix", async ({ page }, testInfo) => {
+test("dashboard reflows intact across the viewport and theme matrix", async ({ page }) => {
   const errors = collectRuntimeErrors(page);
   await onboard(page);
   const viewports = [
@@ -505,21 +367,14 @@ test("dashboard reflows intact across the viewport and theme matrix", async ({ p
     { name: "desktop-1440", width: 1440, height: 1000 },
   ];
   for (const scheme of ["light", "dark"] as const) {
-    await page.emulateMedia({ colorScheme: scheme, reducedMotion: "reduce" });
+    await page.emulateMedia({ colorScheme: scheme });
     for (const viewport of viewports) {
       await page.setViewportSize({ width: viewport.width, height: viewport.height });
       await page.goto("/helix/");
       await expect(page.getByRole("tab", { name: "Durum", selected: true })).toBeVisible();
       const tag = `dashboard ${viewport.name} ${scheme}`;
-      // A tab shows its label WHOLE or not at all — never truncated, and never
-      // so crowded that two words read as one. At 320px the widest label
-      // ("Abonelikler", 60px) cannot clear a 58px column, so the bar drops
-      // every label and keeps five icon targets; measured before this rule
-      // could fire, "Mali Tablo" and "Abonelikler" sat 1px apart. From 360px
-      // up the labels are back with room between them.
-      //
-      // The names never go anywhere: they are the tabs' accessible names at
-      // every width, which is what a screen reader and this assertion read.
+      // A tab label is whole or absent: at 320px "Abonelikler" (60px) cannot clear a 58px column,
+      // so the bar drops labels and keeps five icon targets. Names stay accessible at every width.
       const names = ["Durum", "Mali Tablo", "Abonelikler", "Yatırımlar", "Ayarlar"];
       for (const name of names) {
         await expect(page.getByRole("tab", { name, exact: true }), `${tag} ${name}`).toBeVisible();
@@ -529,20 +384,17 @@ test("dashboard reflows intact across the viewport and theme matrix", async ({ p
       if (visibleLabels.length > 0) {
         expect(visibleLabels, `${tag} labels are whole or absent`).toEqual(names);
       }
-      // The dashboard's reason to exist is the balance block; a reflow that
-      // drops it off the layout is the regression the baseline really guarded.
       await expect(page.getByText("Güncel Bakiye", { exact: true }).first(), tag).toBeVisible();
       await assertNoSidewaysScroll(page, tag);
       expect(await offscreenControls(page), `${tag} controls outside viewport`).toEqual([]);
     }
   }
-  await assertNoRuntimeErrors(errors, testInfo);
+  expect(errors).toEqual([]);
 });
 
-test("every primary tab lands on its own screen and fits the phone width @cross-browser", async ({ page }, testInfo) => {
+test("every primary tab lands on its own screen and fits the phone width @cross-browser", async ({ page }) => {
   const errors = collectRuntimeErrors(page);
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.emulateMedia({ colorScheme: "light", reducedMotion: "reduce" });
   await onboard(page);
   const tabs = [
     { name: "cash-flow", route: "/helix/cash-flow", heading: "Mali Tablo" },
@@ -552,34 +404,25 @@ test("every primary tab lands on its own screen and fits the phone width @cross-
   ] as const;
   for (const { name, route, heading } of tabs) {
     await page.goto(route);
-    // The route resolves to its own screen — not a shared shell, not the
-    // dashboard fallback — and the tab bar it was reached through stays put.
     await expect(page.getByRole("heading", { name: heading, exact: true }).first()).toBeVisible();
     await expect(page.getByRole("tab", { name: "Durum" })).toBeVisible();
-    // Soft, so one failing tab still reports the state of the other three.
-    await expect
-      .soft(page.locator("#root"), `tab ${name}`)
-      .toBeVisible();
     const sideways = await page.evaluate(
       () => document.body.scrollWidth > document.body.clientWidth + 1,
     );
     expect.soft(sideways, `tab ${name} scrolls horizontally`).toBe(false);
     expect.soft(await offscreenControls(page), `tab ${name} controls outside viewport`).toEqual([]);
   }
-  await assertNoRuntimeErrors(errors, testInfo);
+  expect(errors).toEqual([]);
 });
 
-// The refund switch turned invisible when it was on: the row painted itself in
-// `primarySoft`, which is the switch's own active track colour, so the control
-// and its background became the same pixel value (1.00:1). Both toggle fills are
-// low-contrast warm neutrals, so the boundary is what makes a switch visible at
-// all — assert it in both states, both themes, for the shared control itself.
-test("switches stay visible in both states and both themes", async ({ page }, testInfo) => {
+// The refund switch painted itself in its own active track colour (1.00:1). Both toggle fills are
+// low-contrast neutrals, so the boundary is what makes a switch visible: assert it in every state and theme.
+test("switches stay visible in both states and both themes", async ({ page }) => {
   const errors = collectRuntimeErrors(page);
   await onboard(page);
 
   for (const scheme of ["light", "dark"] as const) {
-    await page.emulateMedia({ colorScheme: scheme, reducedMotion: "reduce" });
+    await page.emulateMedia({ colorScheme: scheme });
     await page.goto("/helix/transaction");
     await page.getByRole("button", { name: /Gider iadesi veya döviz/ }).click();
     const refund = page.getByRole("switch", { name: "Gider iadesi" });
@@ -589,17 +432,17 @@ test("switches stay visible in both states and both themes", async ({ page }, te
     for (const state of ["off", "on"] as const) {
       if (state === "on") await refund.click();
       await expect(refund).toHaveAttribute("aria-checked", state === "on" ? "true" : "false");
-      // WCAG 1.4.11 for a non-text UI component boundary.
+      // WCAG 1.4.11.
       expect(
         await renderedContrast(track, "boundary"),
         `refund switch ${state} in ${scheme}`,
       ).toBeGreaterThanOrEqual(3);
     }
   }
-  await assertNoRuntimeErrors(errors, testInfo);
+  expect(errors).toEqual([]);
 });
 
-test("follow-up forms keep the quiet control system in both themes", async ({ page }, testInfo) => {
+test("follow-up forms keep the quiet control system in both themes", async ({ page }) => {
   const errors = collectRuntimeErrors(page);
   await page.setViewportSize({ width: 390, height: 844 });
   await onboard(page);
@@ -610,13 +453,12 @@ test("follow-up forms keep the quiet control system in both themes", async ({ pa
     { name: "opening-balance", route: "/helix/opening-balance", heading: "Bakiye Düzeltme" },
   ];
   for (const scheme of ["light", "dark"] as const) {
-    await page.emulateMedia({ colorScheme: scheme, reducedMotion: "reduce" });
+    await page.emulateMedia({ colorScheme: scheme });
     for (const { name, route, heading } of routes) {
       await page.goto(route);
       await expect(page.getByRole("heading", { name: heading, exact: true }).first()).toBeVisible();
       const tag = `follow-up ${name} ${scheme}`;
-      // Type real content first: an empty field paints placeholder ink, and the
-      // colour that has to survive a theme change is the value's.
+      // Real content first: an empty field paints placeholder ink, not the value's.
       if (name === "transaction") {
         const note = page.getByRole("textbox", { name: "Not", exact: true });
         await note.fill("Görsel kontrol");
@@ -626,12 +468,7 @@ test("follow-up forms keep the quiet control system in both themes", async ({ pa
         await sourceName.fill("Görsel yöntem");
         await sourceName.evaluate((element) => (element as HTMLElement).blur());
       }
-      // What the baseline stood for on these four forms was the quiet control
-      // system staying legible when the palette flips: heading ink against the
-      // surface behind it, and the control boundary that is the only thing
-      // making a low-contrast neutral field visible at all. Both are measured
-      // from what the browser actually painted, in both schemes. Soft, so one
-      // failing form still reports the other seven combinations.
+      // Soft, so one failing form still reports the other combinations.
       const title = page.getByRole("heading", { name: heading, exact: true }).first();
       expect.soft(await renderedContrast(title, "text"), `${tag} heading contrast`).toBeGreaterThanOrEqual(4.5);
       const field = page.getByRole("textbox").first();
@@ -645,10 +482,10 @@ test("follow-up forms keep the quiet control system in both themes", async ({ pa
       expect.soft(await offscreenControls(page), `${tag} controls outside viewport`).toEqual([]);
     }
   }
-  await assertNoRuntimeErrors(errors, testInfo);
+  expect(errors).toEqual([]);
 });
 
-test("modal actions stay reachable in a short landscape viewport @cross-browser", async ({ page }, testInfo) => {
+test("modal actions stay reachable in a short landscape viewport @cross-browser", async ({ page }) => {
   const errors = collectRuntimeErrors(page);
   await onboard(page);
   await page.setViewportSize({ width: 844, height: 390 });
@@ -659,8 +496,7 @@ test("modal actions stay reachable in a short landscape viewport @cross-browser"
   await expect(tourModal).toBeVisible();
   const skip = page.getByRole("button", { name: "Geç", exact: true });
   await skip.scrollIntoViewIfNeeded();
-  const skipBox = await skip.boundingBox();
-  expect(skipBox && skipBox.y >= 0 && skipBox.y + skipBox.height <= 390).toBe(true);
+  await expect(skip).toBeInViewport({ ratio: 1 });
   await skip.click();
   await expect(tourModal).toHaveCount(0);
 
@@ -670,11 +506,8 @@ test("modal actions stay reachable in a short landscape viewport @cross-browser"
   const calculatorModal = page.locator('[aria-modal="true"]');
   await expect(calculatorModal).toBeVisible();
   const result = page.getByRole("button", { name: /Sonucu Kullan/ });
-  const resultBox = await result.boundingBox();
-  expect(resultBox && resultBox.y >= 0 && resultBox.y + resultBox.height <= 390).toBe(true);
-  // 390px of height is where a modal stops fitting and starts hiding its own
-  // controls. Every keypad key must be inside the viewport and reachable, not
-  // just the confirm button — a digit pushed below the fold is a dead calculator.
+  await expect(result).toBeInViewport({ ratio: 1 });
+  // Every keypad key must be reachable at 390px, not just confirm: a digit below the fold is a dead calculator.
   const keys = page.locator('[aria-modal="true"] [role="button"]');
   const keyCount = await keys.count();
   expect(keyCount).toBeGreaterThan(10);
@@ -701,17 +534,9 @@ test("modal actions stay reachable in a short landscape viewport @cross-browser"
   await categoryTrigger.click();
   const selectModal = page.locator('[aria-modal="true"]');
   await expect(selectModal).toBeVisible();
-  const selectBox = await selectModal.boundingBox();
-  expect(
-    selectBox && selectBox.y >= 0 && selectBox.y + selectBox.height <= 390,
-    `select modal outside the landscape viewport: ${JSON.stringify(selectBox)}`,
-  ).toBe(true);
+  await expect(selectModal).toBeInViewport({ ratio: 1 });
   const selectHeading = selectModal.getByRole("heading", { name: "Kategori", exact: true });
-  const selectHeadingBox = await selectHeading.boundingBox();
-  expect(
-    selectHeadingBox && selectHeadingBox.y >= 0 && selectHeadingBox.y + selectHeadingBox.height <= 390,
-    `select heading outside the landscape viewport: ${JSON.stringify(selectHeadingBox)}`,
-  ).toBe(true);
+  await expect(selectHeading).toBeInViewport({ ratio: 1 });
   const options = selectModal.getByRole("radiogroup");
   await expect(options).toBeInViewport();
   const lastOption = options.getByRole("radio").last();
@@ -732,34 +557,19 @@ test("modal actions stay reachable in a short landscape viewport @cross-browser"
   await expect(calendarModal).toBeVisible();
   await calendarModal.getByRole("button", { name: "Sonraki", exact: true }).click();
   const calendarHeading = calendarModal.getByRole("heading");
-  const calendarHeadingBox = await calendarHeading.boundingBox();
-  expect(
-    calendarHeadingBox && calendarHeadingBox.y >= 0 && calendarHeadingBox.y + calendarHeadingBox.height <= 390,
-    `calendar heading outside the landscape viewport: ${JSON.stringify(calendarHeadingBox)}`,
-  ).toBe(true);
+  await expect(calendarHeading).toBeInViewport({ ratio: 1 });
   const calendarCancel = calendarModal.getByRole("button", { name: "Vazgeç", exact: true });
   await calendarCancel.scrollIntoViewIfNeeded();
   await expect(calendarCancel).toBeInViewport();
   await calendarCancel.click();
   await expect(calendarModal).toHaveCount(0);
   await expect(dateTrigger).toBeFocused();
-  await assertNoRuntimeErrors(errors, testInfo);
+  expect(errors).toEqual([]);
 });
 
-/**
- * RuleRow, isolated with real props.
- *
- * The component is only reachable once a rule exists, which is why a
- * nested-interactive defect lived in it unseen: every axe sweep hit the empty
- * state instead. An income rule is the cheapest real instance, so this test
- * creates one and then asserts the component's interaction semantics directly.
- *
- * The row used to wrap its ENTIRE content — including two IconButtons that are
- * themselves `role="button"` — in one outer `role="button"`. That is axe's
- * `nested-interactive` rule (wcag2a, SC 4.1.2). The press target is now scoped
- * to the label column, leaving three sibling controls.
- */
-test("RuleRow exposes three sibling controls, not nested interactives", async ({ page }, testInfo) => {
+// RuleRow is only reachable once a rule exists, so sweeps of the empty state missed a nested
+// `role="button"` (axe nested-interactive, SC 4.1.2). The press target is now the label column only.
+test("RuleRow exposes three sibling controls, not nested interactives", async ({ page }) => {
   const errors = collectRuntimeErrors(page);
   await onboard(page);
 
@@ -772,9 +582,7 @@ test("RuleRow exposes three sibling controls, not nested interactives", async ({
 
   // 1. No nested interactive element anywhere on the route.
   const result = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"]).analyze();
-  const nested = result.violations.filter((v) => v.id === "nested-interactive");
-  expect(nested, JSON.stringify(nested.map((v) => v.nodes.map((n) => n.html)))).toEqual([]);
-  expect(result.violations.map((v) => v.id)).toEqual([]);
+  expect(result.violations, JSON.stringify(result.violations.map((v) => [v.id, v.nodes.map((n) => n.html)]))).toEqual([]);
 
   // 2. Label, edit and delete are three separate controls with their own names.
   const edit = page.getByRole("button", { name: "Düzenle · Maaş", exact: true });
@@ -800,26 +608,10 @@ test("RuleRow exposes three sibling controls, not nested interactives", async ({
   }
 
   // 5. Every control is keyboard reachable and separately focusable.
-  const focusables = await page.evaluate(() => {
-    const names = ["Maaş", "Düzenle · Maaş", "Sil · Maaş"];
-    return names.map((name) => {
-      const el = Array.from(document.querySelectorAll('[role="button"]')).find(
-        (node) => (node.getAttribute("aria-label") ?? node.textContent ?? "").trim() === name,
-      ) as HTMLElement | undefined;
-      if (!el) return { name, found: false, focusable: false, focused: false };
-      el.focus();
-      return {
-        name,
-        found: true,
-        focusable: el.tabIndex >= 0,
-        focused: document.activeElement === el,
-      };
-    });
-  });
-  for (const control of focusables) {
-    expect(control.found, control.name).toBe(true);
-    expect(control.focusable, control.name).toBe(true);
-    expect(control.focused, control.name).toBe(true);
+  for (const control of [label, edit, remove]) {
+    await expect(control).toHaveAttribute("tabindex", "0");
+    await control.focus();
+    await expect(control).toBeFocused();
   }
 
   // 6. Pressing the label opens the editor…
@@ -834,5 +626,5 @@ test("RuleRow exposes three sibling controls, not nested interactives", async ({
   await page.goto("/helix/settings/incomes");
   await expect(page.getByRole("button", { name: "Maaş", exact: true })).toBeVisible();
 
-  await assertNoRuntimeErrors(errors, testInfo);
+  expect(errors).toEqual([]);
 });

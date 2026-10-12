@@ -1,10 +1,7 @@
 /**
  * Who owns the Enter key.
  *
- * Lives apart from `keyboard.ts` on purpose: that module imports React Native
- * and therefore cannot load under Vitest at all, which is exactly how this
- * rule's absence stayed invisible while the form's primary Save answered every
- * Enter press on the web.
+ * Apart from `keyboard.ts` so Vitest can load it (that module imports React Native).
  */
 
 /**
@@ -24,12 +21,7 @@ interface FocusTargetLike {
 /**
  * Whether the focused element already owns Enter.
  *
- * The submit shortcut listens on the window in the capture phase, so without
- * this the form's primary Save won every time: focusing the secondary "save and
- * add another" button saved and left the screen, focusing the refund switch
- * committed the entry instead of flipping its sign, and a category chip could
- * never be chosen with the keyboard. A control's own action must win; Enter is
- * a form shortcut only from a single-line field or from nothing interactive.
+ * A control's own Enter action wins; Enter is a form shortcut only from a single-line field or a non-interactive focus.
  */
 export function focusOwnsEnterKey(element: FocusTargetLike | null | undefined): boolean {
   if (!element) return false;

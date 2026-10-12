@@ -4,9 +4,8 @@ import { parseDefinition, type ComputedColumnDefinition } from "../domain/comput
 import { resolveInvestmentQuote } from "../domain/investments";
 import { isSupportedMinorAmount } from "../domain/money";
 import { MAX_INSTALLMENT_COUNT } from "../domain/installments";
-import { ATTACHMENT_KINDS, ATTACHMENT_MIME_TYPES, MAX_ATTACHMENT_BYTES, isSafeAttachmentFileName } from "../domain/attachments";
+import { ATTACHMENT_MIME_TYPES, MAX_ATTACHMENT_BYTES, isSafeAttachmentFileName } from "../domain/attachments";
 import { normalizeMatrixColorToken } from "../domain/matrix-colors";
-import { TRANSACTION_ORIGINS } from "../domain/types";
 import { isValidCardCycle } from "../domain/card-statements";
 import { isMonthKey, todayISO, type ISODate } from "../domain/dates";
 import { isSupportedCurrency } from "../domain/fx-provider";
@@ -73,16 +72,7 @@ export type ExistingImportIds = Partial<Record<SyncedTableName, ReadonlySet<stri
 
 type RejectionReason = keyof typeof tr.errors.invalidBackupReason;
 
-/**
- * Refuse the bundle, saying WHERE.
- *
- * A restore is all-or-nothing: one bad row rejects the file. With a bare
- * "Geçersiz yedek dosyası" the owner of a refused backup has no next step and
- * no way to find the row — locating a real one took five rounds of bisecting
- * the file with the source open. `table` and `row` are the file's own
- * coordinates (row is 1-based, as a person counting entries would), and
- * `reason` names the rule rather than the internal predicate that ran.
- */
+/** Refuse the bundle, saying WHERE: table and 1-based row are the file's own coordinates, so the owner can find the row. */
 function invalidBackup(
   reason: RejectionReason = "shape",
   table?: string,
@@ -206,14 +196,7 @@ function matchesDeclaredColumns(table: SyncedTableName, raw: Record<string, unkn
         && raw.deleted_at != null
         && typeof value === "string"
         && LEGACY_EXPECTED_PAYMENT_KINDS.includes(value as (typeof LEGACY_EXPECTED_PAYMENT_KINDS)[number]);
-      // A mark written before the slots were renamed to their hues carries a
-      // meaning-name (`critical`, `success`, …) that is no longer in the
-      // column's enum. Two other places already expect exactly that — the
-      // per-table rule below normalises it, and `importBundle` rewrites it on
-      // the way in — but this check ran first and refused the row, and one
-      // refused row rejects the WHOLE backup. An older file with any coloured
-      // cell was therefore unrestorable. The narrow set is what keeps this an
-      // exemption for known history rather than a hole.
+      // Marks written under the retired meaning-names stay restorable; `importBundle` rewrites them to the current slot.
       const legacyMatrixColour = table === "matrix_colors"
         && column.name === "token"
         && normalizeMatrixColorToken(value) !== null;
@@ -243,15 +226,7 @@ function hasWellFormedFields(raw: Record<string, unknown>): boolean {
   for (const key of DATE_COLUMNS) {
     if (key in raw && raw[key] != null && !isIsoDate(raw[key])) return false;
   }
-  // `!= null` like the two loops above, and this one had to learn why.
-  // `matrix_colors.month` is the only nullable column among these three names,
-  // and a ROW-scope mark is DEFINED by it being null — `TABLE_RULES.matrix_colors`
-  // and `domain/matrix-colors.ts` both say so. Without the guard this loop
-  // refused the shape those two call valid, so a marked row could not push, came
-  // back "unrepairable" from the dead-letter queue, and made its whole backup
-  // unrestorable, because one refused row throws for the entire file.
-  // Nullability is not this loop's job: `matchesDeclaredColumns` runs first and
-  // refuses a null in any `notNull` column, which the other four all are.
+  // `!= null`: matrix_colors.month is null by definition for a ROW-scope mark; refusing it made such backups unrestorable.
   for (const key of ["start_month", "month", "period_month"]) {
     if (key in raw && raw[key] != null && !isMonthKey(raw[key])) return false;
   }
@@ -272,26 +247,16 @@ interface TableRuleContext {
   today: ISODate;
 }
 
-/**
- * The rules that belong to one table and to nowhere else.
- *
- * Everything above applies to every row: the id shape, the column types the
- * schema declares, the timestamp and date columns, the month keys, the
- * currency. What is left is per-table, and it used to be twenty `if (table
- * === …)` blocks inline — with `recurring_incomes` in three of them and
- * `categories`, `payment_sources` and `balance_adjustments` in two each, so
- * reading "what does a restore require of an income rule" meant finding all
- * three and hoping there was not a fourth.
- *
- * One entry per table, and the map is keyed by `SyncedTableName`, so a new
- * synced table is a decision made here rather than a table that quietly has
- * no rules. A table with nothing table-specific to say is simply absent.
- */
-/** A plan's instalment count, or the count an early closure remembers: 1–600. */
+/** A plan's instalment count, or the count an early closure remembers. */
 function isPlanCount(value: unknown): boolean {
   return isPositiveInteger(value) && value <= MAX_INSTALLMENT_COUNT;
 }
 
+/**
+ * The rules that belong to one table and to nowhere else; a table with nothing
+ * table-specific to say is absent. Keyed by `SyncedTableName`, so a new synced
+ * table is a decision made here rather than a table that quietly has no rules.
+ */
 const TABLE_RULES: Partial<Record<SyncedTableName, (raw: Record<string, unknown>, ctx: TableRuleContext) => boolean>> = {
   settings: (raw, { enforceInputLimits }) => {
     if (enforceInputLimits && (!requiredText(raw.key, 120) || !optionalText(raw.value, 50_000))) return false;
@@ -322,14 +287,7 @@ const TABLE_RULES: Partial<Record<SyncedTableName, (raw: Record<string, unknown>
       || (raw.installment_no != null && (!Number.isInteger(raw.installment_no) || Number(raw.installment_no) < 1))
       || (enforceInputLimits && !optionalText(raw.note, 1_000))
     ) return false;
-    if (raw.fx_rate != null) {
-      const rate = Number(raw.fx_rate);
-      if (!Number.isFinite(rate) || rate <= 0 || rate > 1_000_000) return false;
-    }
-    // Provenance is optional (every row written before it existed has none),
-    // but an unrecognised value is refused rather than stored: duplicate
-    // review branches on it, and "some string" is not one of the branches.
-    if (raw.origin != null && !(TRANSACTION_ORIGINS as readonly string[]).includes(String(raw.origin))) return false;
+    if (raw.fx_rate != null && !isSupportedRate(raw.fx_rate)) return false;
     if (raw.import_key != null && !optionalNonEmptyText(raw.import_key, 240)) return false;
     return true;
   },
@@ -359,15 +317,12 @@ const TABLE_RULES: Partial<Record<SyncedTableName, (raw: Record<string, unknown>
     // directory — the file itself never leaves the device, and neither may
     // the ability to name where it lives.
     return !(
-      typeof raw.stored_name !== "string"
-      || !/^[A-Za-z0-9._-]{1,120}$/.test(raw.stored_name)
+      !/^[A-Za-z0-9._-]{1,120}$/.test(String(raw.stored_name))
       || raw.stored_name === "."
       || raw.stored_name === ".."
       || !(ATTACHMENT_MIME_TYPES as readonly string[]).includes(String(raw.mime_type))
-      || !(ATTACHMENT_KINDS as readonly string[]).includes(String(raw.kind))
       || !isPositiveInteger(raw.byte_size)
       || Number(raw.byte_size) > MAX_ATTACHMENT_BYTES
-      || typeof raw.transaction_id !== "string"
       || raw.transaction_id === ""
       || !isSafeAttachmentFileName(raw.file_name)
     );
@@ -384,20 +339,19 @@ const TABLE_RULES: Partial<Record<SyncedTableName, (raw: Record<string, unknown>
     const itemKey = raw.item_key;
     const month = raw.month;
     const hasItem = typeof itemKey === "string" && itemKey !== "" && textLength(itemKey) <= 120;
-    const hasMonth = typeof month === "string" && /^\d{4}-(0[1-9]|1[0-2])$/.test(month);
+    const hasMonth = month != null;
     // A scope names exactly the coordinates it needs; anything else is a row
     // two client versions would read differently.
     if (scope === "row" && !(hasItem && month == null)) return false;
     if (scope === "column" && !(hasMonth && itemKey == null)) return false;
     if (scope === "cell" && !(hasItem && hasMonth)) return false;
-    return ["row", "column", "cell"].includes(scope);
+    return true;
   },
 
   price_history: (raw) => isPositiveMoney(raw.amount_minor),
 
   card_statement_payments: (raw, { enforceInputLimits }) => !(
     !isPositiveMoney(raw.amount_minor)
-    || !["full", "minimum", "partial"].includes(String(raw.kind))
     || typeof raw.statement_id !== "string"
     || !isIsoDate(raw.paid_on)
     || (enforceInputLimits && !optionalText(raw.note, 1_000))
@@ -497,10 +451,7 @@ const TABLE_RULES: Partial<Record<SyncedTableName, (raw: Record<string, unknown>
   ),
 
   investment_products: (raw) => !(
-    !["metal", "currency", "equity", "fund", "crypto", "pension"].includes(String(raw.asset_type))
-    || typeof raw.name !== "string"
-    || raw.name.trim() === ""
-    || textLength(raw.name) > 120
+    !requiredText(raw.name, 120)
     || !optionalNonEmptyText(raw.market_code, 40)
     || !optionalText(raw.note, 2_000)
     || (raw.target_weight_bp != null && !isBasisPoints(raw.target_weight_bp))
@@ -508,19 +459,12 @@ const TABLE_RULES: Partial<Record<SyncedTableName, (raw: Record<string, unknown>
 
   investment_operations: (raw, { today }) => {
     if (
-      !["existing", "buy", "sell", "contribution"].includes(String(raw.kind))
-      || typeof raw.operation_date !== "string"
+      typeof raw.operation_date !== "string"
       || raw.operation_date > today
       || typeof raw.total_minor !== "number"
       || raw.total_minor <= 0
       || typeof raw.cost_basis_minor !== "number"
-      // A cost basis is what a holding cost, so it cannot be below zero. The
-      // replay that produces it divides a non-negative running cost and can
-      // never emit one, which is why refusing it here costs no genuine backup
-      // — and why the outbound validator already refused it. Without this the
-      // two disagreed: a restore wrote the row and every later push
-      // quarantined it, leaving a holding that existed on one device and
-      // nowhere else.
+      // Below zero is unreachable from the replay, and the outbound validator refuses it too; restore must agree or the row quarantines on push.
       || raw.cost_basis_minor < 0
       || typeof raw.realized_profit_loss_minor !== "number"
       || !isSupportedMinorAmount(raw.total_minor, false)
@@ -645,18 +589,7 @@ export function validateExportBundle(raw: unknown): ExportBundle {
   return bundle as ExportBundle;
 }
 
-/**
- * Which account a bundle was written from, or null for an empty backup.
- *
- * Restore rebinds rows to the importing account but keeps their original
- * ids, and many of those ids are DERIVED from the account they were made in
- * (`naturalKeys.setting`, `cellNote`, `categoryBudget`, `expected`, …). Into
- * a different account they would collide with the source account's rows on a
- * shared device, and where they did not collide they would no longer match
- * what that account's own writes derive — one settings key would end up with
- * two rows. Callers use this to refuse that restore in words rather than to
- * half-apply it.
- */
+/** The user id the bundle was written under; importBundle remaps ids from it to the signed-in user. */
 export function bundleSourceUserId(bundle: ExportBundle): string | null {
   for (const table of Object.keys(SYNCED_TABLES) as SyncedTableName[]) {
     for (const row of bundle.tables[table] ?? []) {

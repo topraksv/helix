@@ -1,25 +1,4 @@
-/**
- * The KVKK notice's body, and the sheet that shows it without leaving a screen.
- *
- * WHY THE BODY LIVES HERE RATHER THAN IN THE ROUTE. Two surfaces have to show
- * this text: `src/app/privacy.tsx`, which Settings links to, and the auth
- * screens, where it has to be readable while an account is being created. A
- * legal instrument that exists twice is a legal instrument that will one day
- * say two things, and the copy people are shown before they consent is the
- * worst possible place for that to happen. So there is one body and two frames
- * around it.
- *
- * The shape carries that this is a legal instrument rather than a help page —
- * numbered sections, because a notice is cited by section; the statutory
- * lettering on the Article 11 rights, because that is how they are referred to;
- * and a measured line length, because these are long sentences and nobody
- * reads a 120-character legal paragraph.
- *
- * `tests/ui/legal-notice.test.ts` asserts that every touchpoint links here, that
- * the address the notice names is the one the feedback function delivers to,
- * and that the iOS privacy manifest declares the same collection this
- * describes.
- */
+/** The KVKK notice: one body in two frames (privacy route and the sign-up sheet), so the text read before consenting cannot drift. */
 
 import { Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from "react-native";
 import Check from "lucide-react-native/icons/check";
@@ -139,20 +118,7 @@ export function LegalNoticeBody() {
   );
 }
 
-/**
- * The notice as an overlay, for the screens that must not navigate away.
- *
- * On the auth screens a push would cost the half-typed form, and until
- * 2026-09-03 it cost more than that: `/privacy` classified as a protected
- * route, so the guard bounced a signed-out reader straight back and the link
- * did nothing at all. `src/domain/app-guard.ts` now answers that route for
- * everyone, and this sheet is the reason it rarely has to — reading the notice
- * is a detour, not a departure.
- *
- * The phone/desktop split and its reasoning are `DialogShell`'s, asked through
- * the same `shouldPresentOptionsAsSheet` so the two agree by construction: a
- * pointer gets a centred box, a thumb gets a sheet it can reach.
- */
+/** The notice over a form that must not navigate away. */
 export function LegalNoticeSheet({ onClose, onAccept }: { onClose: () => void; onAccept?: () => void }) {
   const { palette } = useTheme();
   const reducedMotion = useReducedMotion();
@@ -161,20 +127,12 @@ export function LegalNoticeSheet({ onClose, onAccept }: { onClose: () => void; o
   const titleRef = useModalAccessibility(true, undefined, undefined, false);
 
   return (
-    <Modal transparent animationType={modalAnimationType(reducedMotion)} visible onRequestClose={onClose}>
-      {/* WHY THE SCRIM IS A SIBLING AND NOT A PARENT. This surface has to
-          SCROLL — it is the longest text in the app — and a `Pressable`
-          wrapping a `ScrollView` swallows the drag that would move it. Nesting
-          it that way shipped a notice that could not be read past its first
-          screen and a consent control at the bottom nobody could reach. The
-          dismiss target is therefore painted behind the card rather than
-          around it, which also means a tap inside the card never has to be
-          swallowed to avoid closing the sheet. */}
+    <Modal transparent animationType={modalAnimationType(reducedMotion)} visible onRequestClose={onClose} aria-label={tr.legal.title}>
+      {/* The scrim is a sibling, not a parent: a Pressable around a ScrollView swallows the drag. */}
       <View style={{ flex: 1, justifyContent: asSheet ? "flex-end" : "center", padding: asSheet ? 0 : spacing.lg }}>
         <Pressable
           accessible={false}
           tabIndex={-1}
-          aria-label={tr.common.close}
           onPress={onClose}
           style={[StyleSheet.absoluteFill, { backgroundColor: palette.scrim }]}
         />
@@ -232,14 +190,7 @@ export function LegalNoticeSheet({ onClose, onAccept }: { onClose: () => void; o
             showsVerticalScrollIndicator={Platform.OS === "web"}
           >
             <LegalNoticeBody />
-            {/* WHY ACCEPTANCE LIVES DOWN HERE. It is the last thing in the
-                scroll, after the disclaimer, so the only way to reach it is to
-                travel the whole notice. A tick-box sitting beside the form
-                asks people to declare they read something they were never
-                taken through; this one is placed where the reading ends.
-                Nothing is disabled and no scroll position is measured — the
-                distance is the mechanism, and a measured one would only teach
-                people to fling the list. */}
+            {/* Acceptance is the last thing in the scroll: the distance is the mechanism. */}
             {onAccept ? (
               <Pressable
                 accessibilityRole="checkbox"
@@ -274,7 +225,7 @@ export function LegalNoticeSheet({ onClose, onAccept }: { onClose: () => void; o
                     borderColor: palette.primary,
                   }}
                 />
-                <Text style={[type.small, { flex: 1, color: palette.text, lineHeight: 19 }]}>
+                <Text style={[type.small, { flex: 1, color: palette.text }]}>
                   {tr.legal.consentLabel}
                 </Text>
               </Pressable>
@@ -298,22 +249,6 @@ export function LegalNoticeSheet({ onClose, onAccept }: { onClose: () => void; o
 }
 
 /**
- * The consent gate that stands in front of account creation.
- *
- * Consent has to be given rather than assumed, so this starts unchecked and the
- * submit button stays disabled until it is not — the same "wait for a plausible
- * attempt" rule the e-mail and password fields on that screen already follow.
- *
- * The label and the way to READ what is being accepted sit in the same row on
- * purpose. A consent line whose notice is one screen away is a consent line
- * people tick without opening, so the control that opens it is right there and
- * opens a sheet rather than navigating: the half-typed form survives.
- *
- * It is one Pressable with `accessibilityRole="checkbox"` rather than two, so a
- * screen reader announces one control in one state — the pattern
- * `selection-controls.tsx` already uses for every multi-select tile here.
- */
-/**
  * The sign-up form's side of consent: one button before, one statement after.
  *
  * There is no tick-box here on purpose. Consent is given at the END of the
@@ -331,28 +266,12 @@ export function LegalConsentControl({
   invalid?: boolean;
 }) {
   const { palette } = useTheme();
-  /**
-   * ONE control, in one place, in both states.
-   *
-   * It used to be two: a full-width secondary button before consent, replaced
-   * after it by a tick row with a separate "reopen" link beside it. That is
-   * three affordances for one decision — the form grew a button-sized block,
-   * then swapped it for something a different height, and the way back to the
-   * document was a third target that only existed once you no longer needed
-   * it. The row below is the same height and the same position throughout;
-   * the tick is the state, and pressing it is how the notice opens whether it
-   * has been accepted yet or not.
-   *
-   * Acceptance itself is NOT here and must not be: it lives at the end of the
-   * notice, where the reading ends. This row is a checkbox that reports and a
-   * door that opens, never a box that grants consent to a document nobody was
-   * taken through.
-   */
   return (
     <View style={{ marginBottom: spacing.md }}>
       <Pressable
         accessibilityRole="checkbox"
         accessibilityState={{ checked: consented }}
+        aria-checked={consented}
         accessibilityLabel={consented ? tr.legal.consentGiven : tr.legal.consentOpen}
         accessibilityHint={consented ? tr.legal.consentViewHint : tr.legal.consentHint}
         onPress={onOpen}
@@ -365,15 +284,10 @@ export function LegalConsentControl({
           paddingVertical: spacing.sm,
           borderRadius: radius.md,
           borderWidth: borderWidth.control,
-          // A BOX, and one that changes state visibly. As a bare row it read
-          // as a caption with a tick beside it, and approving changed one
-          // glyph — the only difference between "you still have to do this"
-          // and "this is done" was 14 pixels of check mark. It now carries the
-          // same success tint every completed thing in the app carries, and
-          // the border says it is a control rather than a sentence.
+          // A box whose state is seen: the success tint, not fourteen pixels of tick.
           borderColor: consented ? palette.success + "66" : invalid ? palette.error : palette.controlBorder,
-          backgroundColor: consented ? palette.success + "14" : "transparent",
-          ...interactionSurface(palette, state, { base: "transparent" }),
+          // The tint is the resting fill, so hover and press deepen it instead of replacing it.
+          ...interactionSurface(palette, state, { base: consented ? palette.success + "14" : undefined }),
         })}
       >
         <View

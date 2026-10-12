@@ -17,7 +17,7 @@ import {
   type ISODate,
   type MonthKey,
 } from "./dates";
-import { firstInstallmentMonth, isValidCardCycle, sameCard } from "./card-statements";
+import { firstInstallmentMonth, groupBy, isValidCardCycle, sameCard } from "./card-statements";
 import { splitIntoInstallments, type Minor } from "./money";
 import type { InstallmentPlanLike, TransactionStatus } from "./types";
 
@@ -176,7 +176,7 @@ function sightedShare(plan: SightablePlan, sighting: PlanSighting): Minor | unde
   return planAmounts(plan)[position];
 }
 
-export interface PlanDraftInput {
+interface PlanDraftInput {
   kind: "card_installment" | "loan";
   title: string;
   amountMinor: Minor | null;
@@ -276,4 +276,108 @@ export function planProgress(items: GeneratedInstallment[]): PlanProgress {
     monthlyMinor: unpaid[0]?.amountMinor ?? 0,
     endMonth: last.month,
   };
+}
+
+/**
+ * A plan's purchase (its numbered instalments), what refunds gave back and
+ * what is left, read through `amountOf` so a caller chooses the plan's own
+ * currency or the TRY snapshot.
+ */
+export function planRefundTotals<R extends { installmentNo?: number | null }>(
+  rows: readonly R[],
+  amountOf: (row: R) => Minor,
+): { purchaseMinor: Minor; refundedMinor: Minor; leftMinor: Minor } {
+  const purchaseMinor = rows.filter((row) => row.installmentNo != null).reduce((sum, row) => sum + amountOf(row), 0);
+  // A closed loan's payoff is the one unnumbered row that is not a refund.
+  const refundedMinor = -rows.filter((row) => row.installmentNo == null && amountOf(row) < 0).reduce((sum, row) => sum + amountOf(row), 0);
+  return { purchaseMinor, refundedMinor, leftMinor: purchaseMinor - refundedMinor };
+}
+
+export interface InstallmentPlanSummary<P> {
+  plan: P;
+  title: string;
+  purchaseMinor: Minor;
+  refundedMinor: Minor;
+  /** The purchase less the refunds already recorded — the most a refund may be.
+   *  Every figure here is in the plan's own currency, which is what a refund of
+   *  a foreign purchase is entered in. */
+  leftMinor: Minor;
+  paid: number;
+  pending: number;
+}
+
+/**
+ * Every plan with what it has billed, refunded and still owes. One pass over
+ * the ledger rather than one per plan: an imported workbook brings hundreds of
+ * plans and thousands of rows.
+ */
+export function summarizeInstallmentPlans<
+  P extends { id: string; title: string | null },
+  R extends { installmentPlanId?: string | null; installmentNo?: number | null; amountMinor: Minor; status: TransactionStatus; note?: string | null },
+>(plans: readonly P[], transactions: readonly R[], fallbackTitle: string): InstallmentPlanSummary<P>[] {
+  const rowsByPlan = groupBy(transactions, (row) => row.installmentPlanId || null);
+  return plans.map((plan) => {
+    const rows = rowsByPlan.get(plan.id) ?? [];
+    const instalments = rows.filter((row) => row.installmentNo != null);
+    const pending = instalments.filter((row) => row.status === "pending").length;
+    return {
+      plan,
+      title: installmentDisplayTitle(plan.title, rows.find((row) => row.note)?.note, fallbackTitle),
+      ...planRefundTotals(rows, (row) => row.amountMinor),
+      paid: instalments.length - pending,
+      pending,
+    };
+  });
+}
+
+/**
+ * Every plan's rows as one month's installment view shows them, in one pass.
+ * Refunds are the plan's rows without an instalment number: credits the
+ * statement shows beside the instalments, netted out of what a month costs.
+ * A closed loan's payoff is unnumbered too: it costs its month like an
+ * instalment, and it refunds nothing.
+ */
+export function planRowsByMonth(
+  rows: readonly {
+    installmentPlanId?: string | null;
+    installmentNo?: number | null;
+    amountTryMinor: Minor;
+    effectiveDate: ISODate;
+    cardStatementId?: string | null;
+    status: TransactionStatus;
+  }[],
+  viewMonth: MonthKey,
+): {
+  itemsByPlan: Map<string, GeneratedInstallment[]>;
+  refundedByPlan: Map<string, Minor>;
+  refundInMonth: Map<string, Minor>;
+  /** The statement each card plan's instalment in the viewed month is billed on. */
+  statementInMonth: Map<string, string>;
+} {
+  const itemsByPlan = new Map<string, GeneratedInstallment[]>();
+  const refundedByPlan = new Map<string, Minor>();
+  const refundInMonth = new Map<string, Minor>();
+  const statementInMonth = new Map<string, string>();
+  for (const t of rows) {
+    if (!t.installmentPlanId) continue;
+    if (t.installmentNo == null) {
+      if (t.amountTryMinor < 0) refundedByPlan.set(t.installmentPlanId, (refundedByPlan.get(t.installmentPlanId) ?? 0) - t.amountTryMinor);
+      if (monthKeyOf(t.effectiveDate) === viewMonth) {
+        refundInMonth.set(t.installmentPlanId, (refundInMonth.get(t.installmentPlanId) ?? 0) + t.amountTryMinor);
+      }
+      continue;
+    }
+    if (t.cardStatementId && monthKeyOf(t.effectiveDate) === viewMonth) statementInMonth.set(t.installmentPlanId, t.cardStatementId);
+    const list = itemsByPlan.get(t.installmentPlanId) ?? [];
+    list.push({
+      installmentNo: t.installmentNo,
+      month: monthKeyOf(t.effectiveDate),
+      amountMinor: t.amountTryMinor,
+      effectiveDate: t.effectiveDate,
+      status: t.status,
+    });
+    itemsByPlan.set(t.installmentPlanId, list);
+  }
+  for (const list of itemsByPlan.values()) list.sort((a, b) => a.installmentNo - b.installmentNo);
+  return { itemsByPlan, refundedByPlan, refundInMonth, statementInMonth };
 }

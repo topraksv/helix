@@ -11,12 +11,9 @@ import { findSubscriptionCategory } from "../../domain/subscriptions";
 import { isValidCardCycle } from "../../domain/card-statements";
 import { MAX_SUBSCRIPTION_INTERVAL_MONTHS } from "../../domain/recurrence";
 import { CreditCardCycleRequiredError, SubscriptionCategoryRequiredError } from "./errors";
-import { livePaymentSource } from "./transactions";
+import { livePaymentSource, livePerson } from "./transactions";
+import type { ExpectedRow } from "./expected";
 import { assertRecurringIncomeCategory } from "./rule-validation";
-
-// ---------------------------------------------------------------------------
-// Subscriptions
-// ---------------------------------------------------------------------------
 
 export interface SubscriptionInput {
   id?: string;
@@ -39,6 +36,47 @@ export interface SubscriptionInput {
 }
 
 type RuleKind = "subscription" | "recurring_income";
+type ExpectedDraft = ReturnType<typeof generateExpected>[number];
+
+export function expectedPaymentLike(row: Record<string, unknown> | ExpectedRow): ExpectedPaymentLike {
+  return {
+    id: String(row.id),
+    direction: row.direction as ExpectedPaymentLike["direction"],
+    kind: row.kind as ExpectedPaymentLike["kind"],
+    refId: String(row.ref_id),
+    dueDate: String(row.due_date),
+    amountMinor: Number(row.amount_minor),
+    amountIsEstimated: Boolean(row.amount_is_estimated),
+    currency: String(row.currency),
+    status: row.status as ExpectedPaymentLike["status"],
+  };
+}
+
+/** The pending row a draft becomes; `amount` overrides the draft's when an entered invoice amount is kept. */
+export async function expectedPaymentWrite(
+  userId: string,
+  draft: ExpectedDraft,
+  amount: Pick<ExpectedDraft, "amountMinor" | "amountIsEstimated"> = draft,
+): Promise<RowWrite> {
+  return {
+    table: "expected_payments",
+    row: {
+      id: await deterministicId(naturalKeys.expected(userId, draft.kind, draft.refId, draft.dueDate)),
+      direction: draft.direction,
+      kind: draft.kind,
+      refId: draft.refId,
+      dueDate: draft.dueDate,
+      amountMinor: amount.amountMinor,
+      amountIsEstimated: amount.amountIsEstimated,
+      currency: draft.currency,
+      status: "pending",
+      paidAt: null,
+      autoConfirmed: false,
+      transactionId: null,
+      deletedAt: null,
+    },
+  };
+}
 
 async function refreshRuleExpectedWrites(
   userId: string,
@@ -71,16 +109,7 @@ async function refreshRuleExpectedWrites(
     ? source.subscription.isActive && source.subscription.personIsSelf
     : Boolean(source.income?.isActive && source.income.personIsSelf);
   const obsoleteIds = new Set(obsoleteExpectedIds(
-    rows.map((row) => ({
-      id: String(row.id),
-      direction: row.direction as ExpectedPaymentLike["direction"],
-      kind: row.kind as ExpectedPaymentLike["kind"],
-      refId: String(row.ref_id),
-      dueDate: String(row.due_date),
-      amountMinor: Number(row.amount_minor),
-      currency: String(row.currency),
-      status: row.status as ExpectedPaymentLike["status"],
-    })),
+    rows.map(expectedPaymentLike),
     drafts,
     today,
     sourceActive,
@@ -97,45 +126,28 @@ async function refreshRuleExpectedWrites(
   }
   for (const draft of drafts) {
     const existing = existingByKey.get(`${draft.kind}:${draft.refId}:${draft.dueDate}`);
-    // A variable bill can be corrected before it is paid. Editing the rule
-    // must not silently replace that invoice amount with the forecast again;
-    // switching modes or currencies deliberately starts a fresh estimate.
+    // Editing a variable bill's rule must not replace an invoice amount already entered with the
+    // forecast; switching modes or currencies deliberately starts a fresh estimate.
     const preserveEnteredAmount = Boolean(
       options.preserveVariableAmounts
       && existing
       && existing.status !== "paid"
       && existing.status !== "skipped"
-      && !Boolean(existing.amount_is_estimated)
+      && !existing.amount_is_estimated
       && String(existing.currency) === draft.currency,
     );
-    const amountMinor = preserveEnteredAmount && existing ? Number(existing.amount_minor) : draft.amountMinor;
-    writes.push({
-      table: "expected_payments",
-      row: {
-        id: await deterministicId(naturalKeys.expected(userId, draft.kind, draft.refId, draft.dueDate)),
-        direction: draft.direction,
-        kind: draft.kind,
-        refId: draft.refId,
-        dueDate: draft.dueDate,
-        amountMinor,
-        amountIsEstimated: preserveEnteredAmount ? false : draft.amountIsEstimated,
-        currency: draft.currency,
-        status: "pending",
-        paidAt: null,
-        autoConfirmed: false,
-        transactionId: null,
-        deletedAt: null,
-      },
-    });
+    writes.push(await expectedPaymentWrite(
+      userId,
+      draft,
+      preserveEnteredAmount && existing
+        ? { amountMinor: Number(existing.amount_minor), amountIsEstimated: false }
+        : draft,
+    ));
   }
   return writes;
 }
 
-/**
- * Reuse the live "Abonelikler" expense category or create/revive its
- * deterministic seed row. Repeated taps and multiple devices converge on one
- * id instead of multiplying categories.
- */
+/** Reuse the live "Abonelikler" expense category or create/revive its deterministic seed row, so taps and devices converge on one id. */
 export async function ensureSubscriptionCategory(
   userId: string,
   categoryName: string,
@@ -182,9 +194,7 @@ export async function upsertSubscription(userId: string, input: SubscriptionInpu
   if (!isSupportedCurrency(input.currency)) throw new Error("Invalid subscription currency");
   if (amountMode !== "fixed" && amountMode !== "variable") throw new Error("Invalid subscription amount mode");
   if (amountMode === "variable" && input.autoPay) throw new Error("Variable subscriptions cannot use auto-pay");
-  // A variable bill's cost is genuinely unknown until the first invoice
-  // arrives — 0 is a deliberate "no estimate yet" sentinel there, not a real
-  // price. A fixed subscription always names a real recurring charge.
+  // 0 is the deliberate "no estimate yet" sentinel for a variable bill; a fixed one always has a real price.
   assertSupportedMinorAmount(input.amountMinor, amountMode === "variable");
   if (amountMode === "variable" ? input.amountMinor < 0 : input.amountMinor <= 0) {
     throw new Error("Subscription amount must be positive");
@@ -210,10 +220,7 @@ export async function upsertSubscription(userId: string, input: SubscriptionInpu
     [input.categoryId, userId],
   );
   if (!category) throw new SubscriptionCategoryRequiredError();
-  const person = await sqlite.getFirstAsync<{ is_self: number }>(
-    `SELECT is_self FROM persons WHERE id = ? AND user_id = ? AND deleted_at IS NULL`,
-    [input.personId, userId],
-  );
+  const person = await livePerson(userId, input.personId);
   if (!person) throw new Error("Subscription person is required");
   const source = await livePaymentSource(userId, input.paymentSourceId);
   if (input.paymentSourceId && !source) throw new Error("Subscription payment source does not exist");
@@ -229,10 +236,8 @@ export async function upsertSubscription(userId: string, input: SubscriptionInpu
       )
     : null;
   const writes: RowWrite[] = [];
-  // Price history is the record of what this subscription HAS cost. A variable
-  // bill with no estimate yet has no price to record — writing 0 would both
-  // invent a "it was free once" data point and produce a row the backup
-  // validator rejects, which quietly makes the whole account un-restorable.
+  // A variable bill with no estimate has no price to record: a 0 row would invent a free period and
+  // the backup validator rejects it, making the account un-restorable.
   const recordsPrice = input.amountMinor > 0;
   if (recordsPrice && (!input.id || (previous && (previous.amount_minor !== input.amountMinor || previous.currency !== input.currency)))) {
     writes.push({
@@ -263,9 +268,7 @@ export async function upsertSubscription(userId: string, input: SubscriptionInpu
       categoryId: input.categoryId,
       personId: input.personId,
       isActive: input.isActive,
-      // When the rule was cancelled — not when it was last saved. Re-saving an
-      // already-inactive subscription (renaming it, fixing its note) must keep
-      // the original cancellation date.
+      // Re-saving an already-inactive subscription keeps its original cancellation date.
       canceledAt: input.isActive ? null : (previous?.canceled_at ?? nowIso()),
       trialEndDate: input.trialEndDate,
       autoPay: amountMode === "variable" ? false : input.autoPay,
@@ -337,17 +340,10 @@ export async function upsertRecurringIncome(userId: string, input: RecurringInco
   if (recurrence !== "monthly" && !isISODate(input.anchorDate)) {
     throw new Error("Invalid recurring income anchor date");
   }
-  const sqlite = await getSqliteAsync();
-  const person = await sqlite.getFirstAsync<{ is_self: number }>(
-    `SELECT is_self FROM persons WHERE id = ? AND user_id = ? AND deleted_at IS NULL`,
-    [input.personId, userId],
-  );
+  const person = await livePerson(userId, input.personId);
   if (!person) throw new Error("Recurring income person is required");
   await assertRecurringIncomeCategory(userId, input.categoryId);
   const anchorDate = recurrence === "monthly" ? null : input.anchorDate ?? null;
-  if ((recurrence === "weekly" || recurrence === "biweekly") && !anchorDate) {
-    throw new Error("Recurring income anchor date is required");
-  }
   const id = input.id ?? newId();
   const writes: RowWrite[] = [
     {
@@ -442,5 +438,3 @@ export async function restoreDeletedRule(userId: string, snapshot: RuleDeleteSna
     })),
   ]);
 }
-
-// ---------------------------------------------------------------------------

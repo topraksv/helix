@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { Modal, Pressable, Text, View } from "react-native";
 import Check from "lucide-react-native/icons/check";
 import Pencil from "lucide-react-native/icons/pencil";
@@ -20,22 +20,9 @@ import {
 import { matrixColorStyle, radius, spacing, themeShadow, type, useTheme } from "./theme";
 
 /**
- * Choosing a contextual colour for a row, a column or one cell (spec §1.3).
- *
- * Opened by holding the thing being marked, not by a button in the middle of
- * the screen: the target IS the gesture's context, so the sheet never has to
- * ask "which cell did you mean" and there is no generic dialog sitting in a
- * financial surface offering to colour something.
- *
- * Four theme-owned hues and a reset — deliberately not a colour wheel. Each
- * carries its NAME beside the swatch and an accessible label, so the choice is
- * legible to someone who cannot separate the hues, and the mark it produces is
- * one the theme has already measured in both schemes.
- *
- * The names are the owner's. Renaming one is a rename of the COLOUR, not of
- * this cell: it is stored once for the account and every mark already made in
- * that colour is called the new name from then on. That is said on the rename
- * form rather than being left for someone to discover.
+ * Contextual colour for a row, column or cell (spec §1.3), opened by holding
+ * the target. Four theme hues, each named; renaming renames the hue for the
+ * whole account.
  */
 export function MatrixColorSheet({
   scope,
@@ -60,7 +47,6 @@ export function MatrixColorSheet({
   const { palette } = useTheme();
   const reducedMotion = useReducedMotion();
   const titleRef = useModalAccessibility(true);
-  const sheetRef = useRef<View>(null);
   const [saving, setSaving] = useState(false);
   /** Which hue is being renamed, and the draft name. Only ever one at a time. */
   const [renaming, setRenaming] = useState<MatrixColorToken | null>(null);
@@ -104,7 +90,6 @@ export function MatrixColorSheet({
         onPress={onCancel}
       >
         <Pressable
-          ref={sheetRef}
           accessible={false}
           tabIndex={-1}
           accessibilityViewIsModal

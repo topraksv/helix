@@ -30,17 +30,12 @@
  */
 
 import { deterministicId, naturalKeys } from "../db/ids";
-import { addMonthsToKey, isISODate, monthKeyOf } from "../domain/dates";
+import { declaredMonthOf } from "../domain/balance-declaration";
+import { isISODate } from "../domain/dates";
 import type { SyncedTableName } from "../db/schema";
 import type { ExportBundle } from "./backup-validation";
 
-/**
- * `deterministicId` forces the UUID version nibble ("M" in
- * `xxxxxxxx-xxxx-Mxxx-Nxxx-xxxxxxxxxxxx") to "8"; `uuidv7` always produces
- * "7" there. Measured empirically (not just by spec): 20000 uuidv7 samples,
- * zero with a version nibble other than "7". Index 14 is that character's
- * offset in the canonical 36-char hyphenated string.
- */
+/** `deterministicId` forces the UUID version nibble (index 14) to "8"; `uuidv7` always writes "7" there. */
 export function isDeterministicId(id: unknown): id is string {
   return typeof id === "string" && id.length === 36 && id[14] === "8";
 }
@@ -49,11 +44,6 @@ export function isDeterministicId(id: unknown): id is string {
  * Every natural-key constructor must have one remap resolver. Keeping this
  * exhaustive map beside the algorithm makes adding a new deterministic id a
  * compile-time event instead of a silent restore regression.
- *
- * Nothing reads it at runtime — the `satisfies` clause below IS the check, and
- * it fails the build the moment a key is added to `naturalKeys` without one
- * here (verified: removing `matrixColor` raises TS1360). It stays exported so
- * it is not an unused local.
  *
  * @public
  */
@@ -91,28 +81,24 @@ export const REMAPPED_NATURAL_KEY_COVERAGE = {
  */
 const ONBOARDING_INDEX_CAP = 200;
 
+type Row = Record<string, unknown>;
+/**
+ * A row's natural key under `userId`, or null when the row cannot carry this
+ * template. `ref` reads a referenced id: as stored on the source side, through
+ * the map on the target side, so a parent table must be resolved first.
+ */
+type Template = (userId: string, row: Row, ref: (value: unknown) => string) => string | null;
+
+function text(value: unknown): string {
+  return typeof value === "string" ? value : "";
+}
+
 function remappedOrSame(idMap: ReadonlyMap<string, string>, value: unknown): string {
   const id = String(value ?? "");
   return idMap.get(id) ?? id;
 }
 
-/** Precompute source→target hash pairs for every brute-forced index once per
- *  table, so resolving N unexplained rows costs O(cap), not O(cap × N). */
-async function bruteForceIndexMap(
-  template: (userId: string, index: number) => string,
-  sourceUserId: string,
-  targetUserId: string,
-): Promise<Map<string, string>> {
-  const map = new Map<string, string>();
-  for (let index = 0; index < ONBOARDING_INDEX_CAP; index++) {
-    const sourceHash = await deterministicId(template(sourceUserId, index));
-    const targetHash = await deterministicId(template(targetUserId, index));
-    map.set(sourceHash, targetHash);
-  }
-  return map;
-}
-
-function deterministicRows(bundle: ExportBundle, table: SyncedTableName): Record<string, unknown>[] {
+function deterministicRows(bundle: ExportBundle, table: SyncedTableName): Row[] {
   return (bundle.tables[table] ?? []).filter((row) => isDeterministicId(row.id));
 }
 
@@ -120,365 +106,56 @@ function record(idMap: Map<string, string>, id: string, targetHash: string): voi
   if (targetHash !== id) idMap.set(id, targetHash);
 }
 
-// ---------------------------------------------------------------------------
-// Per-table resolvers, in dependency order (see `buildIdRemap` below for why
-// this order — a table only appears after every table its templates read a
-// referenced id from).
-// ---------------------------------------------------------------------------
-
-/** `selfPerson(userId)` — exactly one row, `is_self`. `onboardingPerson(userId, index)` — the rest. */
-async function resolvePersons(
-  bundle: ExportBundle,
+/**
+ * Each row takes the first template, tried in order, that proves its id; the
+ * rows none proves are returned. Templates are tried per row rather than per
+ * pass so a later row's `ref` sees exactly the map entries it always saw.
+ */
+async function resolveTemplates(
+  rows: Row[],
   sourceUserId: string,
   targetUserId: string,
   idMap: Map<string, string>,
-): Promise<void> {
-  const rows = deterministicRows(bundle, "persons");
-  if (rows.length === 0) return;
-  const selfSourceHash = await deterministicId(naturalKeys.selfPerson(sourceUserId));
-  const selfTargetHash = await deterministicId(naturalKeys.selfPerson(targetUserId));
-  const unresolved: Record<string, unknown>[] = [];
+  templates: Template[],
+): Promise<Row[]> {
+  const sourceRef = (value: unknown) => String(value ?? "");
+  const targetRef = (value: unknown) => remappedOrSame(idMap, value);
+  const unresolved: Row[] = [];
   for (const row of rows) {
     const id = row.id as string;
-    if (id === selfSourceHash) record(idMap, id, selfTargetHash);
-    else unresolved.push(row);
+    let proved = false;
+    for (const template of templates) {
+      const sourceKey = template(sourceUserId, row, sourceRef);
+      if (sourceKey == null || (await deterministicId(sourceKey)) !== id) continue;
+      record(idMap, id, await deterministicId(template(targetUserId, row, targetRef) as string));
+      proved = true;
+      break;
+    }
+    if (!proved) unresolved.push(row);
   }
-  if (unresolved.length === 0) return;
-  const onboardingMap = await bruteForceIndexMap(naturalKeys.onboardingPerson, sourceUserId, targetUserId);
-  for (const row of unresolved) {
-    const id = row.id as string;
-    const targetHash = onboardingMap.get(id);
-    if (targetHash != null) record(idMap, id, targetHash);
-  }
+  return unresolved;
 }
 
-/** `seedCategory(userId, name)` — the only deterministic template for categories. */
-async function resolveCategories(
-  bundle: ExportBundle,
+/** Precomputes source→target hash pairs for every index once, so resolving N
+ *  rows costs O(cap), not O(cap × N). */
+async function resolveByIndex(
+  rows: Row[],
+  template: (userId: string, index: number) => string,
   sourceUserId: string,
   targetUserId: string,
   idMap: Map<string, string>,
 ): Promise<void> {
-  for (const row of deterministicRows(bundle, "categories")) {
-    const id = row.id as string;
-    const name = typeof row.name === "string" ? row.name : "";
-    const sourceHash = await deterministicId(naturalKeys.seedCategory(sourceUserId, name));
-    if (sourceHash !== id) continue;
-    record(idMap, id, await deterministicId(naturalKeys.seedCategory(targetUserId, name)));
-  }
-}
-
-/** `importSource(userId, name)` (spreadsheet import) then `onboardingSource(userId, index)`. */
-async function resolvePaymentSources(
-  bundle: ExportBundle,
-  sourceUserId: string,
-  targetUserId: string,
-  idMap: Map<string, string>,
-): Promise<void> {
-  const rows = deterministicRows(bundle, "payment_sources");
   if (rows.length === 0) return;
-  const unresolved: Record<string, unknown>[] = [];
+  const targetBySource = new Map<string, string>();
+  for (let index = 0; index < ONBOARDING_INDEX_CAP; index++) {
+    const sourceHash = await deterministicId(template(sourceUserId, index));
+    const targetHash = await deterministicId(template(targetUserId, index));
+    targetBySource.set(sourceHash, targetHash);
+  }
   for (const row of rows) {
     const id = row.id as string;
-    const name = typeof row.name === "string" ? row.name : "";
-    const sourceHash = await deterministicId(naturalKeys.importSource(sourceUserId, name));
-    if (sourceHash === id) {
-      record(idMap, id, await deterministicId(naturalKeys.importSource(targetUserId, name)));
-    } else {
-      unresolved.push(row);
-    }
-  }
-  if (unresolved.length === 0) return;
-  const onboardingMap = await bruteForceIndexMap(naturalKeys.onboardingSource, sourceUserId, targetUserId);
-  for (const row of unresolved) {
-    const id = row.id as string;
-    const targetHash = onboardingMap.get(id);
+    const targetHash = targetBySource.get(id);
     if (targetHash != null) record(idMap, id, targetHash);
-  }
-}
-
-/** `fxRate(userId, currency, rateDate)`. */
-async function resolveFxRates(
-  bundle: ExportBundle,
-  sourceUserId: string,
-  targetUserId: string,
-  idMap: Map<string, string>,
-): Promise<void> {
-  for (const row of deterministicRows(bundle, "fx_rates")) {
-    const id = row.id as string;
-    const currency = typeof row.currency === "string" ? row.currency : "";
-    const rateDate = typeof row.rate_date === "string" ? row.rate_date : "";
-    const sourceHash = await deterministicId(naturalKeys.fxRate(sourceUserId, currency, rateDate));
-    if (sourceHash !== id) continue;
-    record(idMap, id, await deterministicId(naturalKeys.fxRate(targetUserId, currency, rateDate)));
-  }
-}
-
-/** `setting(userId, key)` — every settings row's id (`last_entry_at`, `import_batch:*`, …). */
-async function resolveSettings(
-  bundle: ExportBundle,
-  sourceUserId: string,
-  targetUserId: string,
-  idMap: Map<string, string>,
-): Promise<void> {
-  for (const row of deterministicRows(bundle, "settings")) {
-    const id = row.id as string;
-    const key = typeof row.key === "string" ? row.key : "";
-    const sourceHash = await deterministicId(naturalKeys.setting(sourceUserId, key));
-    if (sourceHash !== id) continue;
-    record(idMap, id, await deterministicId(naturalKeys.setting(targetUserId, key)));
-  }
-}
-
-/** `investmentProfile(userId)` — exactly one row. */
-async function resolveInvestmentProfiles(
-  bundle: ExportBundle,
-  sourceUserId: string,
-  targetUserId: string,
-  idMap: Map<string, string>,
-): Promise<void> {
-  const sourceHash = await deterministicId(naturalKeys.investmentProfile(sourceUserId));
-  const targetHash = await deterministicId(naturalKeys.investmentProfile(targetUserId));
-  for (const row of deterministicRows(bundle, "investment_profiles")) {
-    const id = row.id as string;
-    if (sourceHash !== id) continue;
-    record(idMap, id, targetHash);
-  }
-}
-
-/** `importInstallmentPlan(userId, name, monthlyMinor, total, startMonth)` (spreadsheet-reconstructed plans only). */
-async function resolveInstallmentPlans(
-  bundle: ExportBundle,
-  sourceUserId: string,
-  targetUserId: string,
-  idMap: Map<string, string>,
-): Promise<void> {
-  for (const row of deterministicRows(bundle, "installment_plans")) {
-    const id = row.id as string;
-    const title = typeof row.title === "string" ? row.title : "";
-    const monthly = typeof row.monthly_amount_minor === "number" ? row.monthly_amount_minor : NaN;
-    const count = typeof row.installment_count === "number" ? row.installment_count : NaN;
-    const startMonth = typeof row.start_month === "string" ? row.start_month : "";
-    const sourceHash = await deterministicId(
-      naturalKeys.importInstallmentPlan(sourceUserId, title, monthly, count, startMonth),
-    );
-    if (sourceHash !== id) continue;
-    record(idMap, id, await deterministicId(
-      naturalKeys.importInstallmentPlan(targetUserId, title, monthly, count, startMonth),
-    ));
-  }
-}
-
-/** `ccColumn(userId)` — the one auto-created "KK Taksit" computed column, tombstoned on sight in newer builds. */
-async function resolveComputedColumns(
-  bundle: ExportBundle,
-  sourceUserId: string,
-  targetUserId: string,
-  idMap: Map<string, string>,
-): Promise<void> {
-  const sourceHash = await deterministicId(naturalKeys.ccColumn(sourceUserId));
-  const targetHash = await deterministicId(naturalKeys.ccColumn(targetUserId));
-  for (const row of deterministicRows(bundle, "computed_columns")) {
-    const id = row.id as string;
-    if (sourceHash !== id) continue;
-    record(idMap, id, targetHash);
-  }
-}
-
-/**
- * `balanceAdjustment(userId, date)`, then `monthOpeningDeclaration(userId,
- * month)` — a declaration sits on the last day of the month before the one it
- * opens, so its month is read back off that date.
- */
-async function resolveBalanceAdjustments(
-  bundle: ExportBundle,
-  sourceUserId: string,
-  targetUserId: string,
-  idMap: Map<string, string>,
-): Promise<void> {
-  for (const row of deterministicRows(bundle, "balance_adjustments")) {
-    const id = row.id as string;
-    const date = typeof row.date === "string" ? row.date : "";
-    const sourceHash = await deterministicId(naturalKeys.balanceAdjustment(sourceUserId, date));
-    if (sourceHash === id) {
-      record(idMap, id, await deterministicId(naturalKeys.balanceAdjustment(targetUserId, date)));
-      continue;
-    }
-    if (!isISODate(date)) continue;
-    const month = addMonthsToKey(monthKeyOf(date), 1);
-    if (await deterministicId(naturalKeys.monthOpeningDeclaration(sourceUserId, month)) !== id) continue;
-    record(idMap, id, await deterministicId(naturalKeys.monthOpeningDeclaration(targetUserId, month)));
-  }
-}
-
-/** `categoryBudget(userId, month, categoryId)` — needs `categories` resolved first. */
-async function resolveCategoryBudgets(
-  bundle: ExportBundle,
-  sourceUserId: string,
-  targetUserId: string,
-  idMap: Map<string, string>,
-): Promise<void> {
-  for (const row of deterministicRows(bundle, "category_budgets")) {
-    const id = row.id as string;
-    const month = typeof row.month === "string" ? row.month : "";
-    const categoryId = String(row.category_id ?? "");
-    const sourceHash = await deterministicId(naturalKeys.categoryBudget(sourceUserId, month, categoryId));
-    if (sourceHash !== id) continue;
-    const remappedCategoryId = remappedOrSame(idMap, categoryId);
-    record(idMap, id, await deterministicId(naturalKeys.categoryBudget(targetUserId, month, remappedCategoryId)));
-  }
-}
-
-/** `cellNote(userId, month, categoryId)` — needs `categories` resolved first. */
-async function resolveCellNotes(
-  bundle: ExportBundle,
-  sourceUserId: string,
-  targetUserId: string,
-  idMap: Map<string, string>,
-): Promise<void> {
-  for (const row of deterministicRows(bundle, "cell_notes")) {
-    const id = row.id as string;
-    const month = typeof row.month === "string" ? row.month : "";
-    const categoryId = String(row.category_id ?? "");
-    const sourceHash = await deterministicId(naturalKeys.cellNote(sourceUserId, month, categoryId));
-    if (sourceHash !== id) continue;
-    const remappedCategoryId = remappedOrSame(idMap, categoryId);
-    record(idMap, id, await deterministicId(naturalKeys.cellNote(targetUserId, month, remappedCategoryId)));
-  }
-}
-
-
-/**
- * `matrixColor(userId, scope, itemKey, month)` — needs `categories` resolved
- * first, because a row/cell mark keys on the category it marks.
- */
-async function resolveMatrixColors(
-  bundle: ExportBundle,
-  sourceUserId: string,
-  targetUserId: string,
-  idMap: Map<string, string>,
-): Promise<void> {
-  for (const row of deterministicRows(bundle, "matrix_colors")) {
-    const id = row.id as string;
-    const scope = String(row.scope ?? "");
-    const itemKey = row.item_key == null ? "" : String(row.item_key);
-    const month = row.month == null ? "" : String(row.month);
-    const sourceHash = await deterministicId(naturalKeys.matrixColor(sourceUserId, scope, itemKey, month));
-    if (sourceHash !== id) continue;
-    // `item_key` is a category id for row/cell marks; `remapRow` rewrites the
-    // column and the id has to be recomputed from the SAME rewritten value or
-    // the two disagree and a second device creates a duplicate mark.
-    const remappedItemKey = remappedOrSame(idMap, itemKey);
-    record(idMap, id, await deterministicId(naturalKeys.matrixColor(targetUserId, scope, remappedItemKey, month)));
-  }
-}
-
-/**
- * `statementTx(userId, importKey)` — a transaction created from one statement
- * line. The key is the line's own identity and carries no other row's id, so
- * this resolves without ordering constraints.
- */
-async function resolveStatementTransactions(
-  bundle: ExportBundle,
-  sourceUserId: string,
-  targetUserId: string,
-  idMap: Map<string, string>,
-): Promise<void> {
-  for (const row of deterministicRows(bundle, "transactions")) {
-    const id = row.id as string;
-    const importKey = row.import_key == null ? "" : String(row.import_key);
-    if (importKey === "") continue;
-    const sourceHash = await deterministicId(naturalKeys.statementTx(sourceUserId, importKey));
-    if (sourceHash !== id) continue;
-    record(idMap, id, await deterministicId(naturalKeys.statementTx(targetUserId, importKey)));
-  }
-}
-
-/** `cardStatement(userId, sourceId, periodMonth)` — needs `payment_sources` resolved first. */
-async function resolveCreditCardStatements(
-  bundle: ExportBundle,
-  sourceUserId: string,
-  targetUserId: string,
-  idMap: Map<string, string>,
-): Promise<void> {
-  for (const row of deterministicRows(bundle, "credit_card_statements")) {
-    const id = row.id as string;
-    const periodMonth = typeof row.period_month === "string" ? row.period_month : "";
-    const sourceId = String(row.payment_source_id ?? "");
-    const sourceHash = await deterministicId(naturalKeys.cardStatement(sourceUserId, sourceId, periodMonth));
-    if (sourceHash !== id) continue;
-    const remappedSourceId = remappedOrSame(idMap, sourceId);
-    record(idMap, id, await deterministicId(naturalKeys.cardStatement(targetUserId, remappedSourceId, periodMonth)));
-  }
-}
-
-/**
- * `expected(userId, kind, refId, dueDate)` — active kinds point at a
- * subscription or recurring income, neither of which carries a deterministic
- * id. Retired installment/loan tombstones can still be remapped generically
- * so an old backup remains lossless.
- */
-async function resolveExpectedPayments(
-  bundle: ExportBundle,
-  sourceUserId: string,
-  targetUserId: string,
-  idMap: Map<string, string>,
-): Promise<void> {
-  for (const row of deterministicRows(bundle, "expected_payments")) {
-    const id = row.id as string;
-    const kind = typeof row.kind === "string" ? row.kind : "";
-    const dueDate = typeof row.due_date === "string" ? row.due_date : "";
-    const refId = String(row.ref_id ?? "");
-    const sourceHash = await deterministicId(naturalKeys.expected(sourceUserId, kind, refId, dueDate));
-    if (sourceHash !== id) continue;
-    const remappedRefId = remappedOrSame(idMap, refId);
-    record(idMap, id, await deterministicId(naturalKeys.expected(targetUserId, kind, remappedRefId, dueDate)));
-  }
-}
-
-/**
- * `installmentTx(planId, installmentNo)` and `confirmTx(expectedId)` — the
- * only two templates with no userId at all, both living in `transactions`.
- * Needs `installment_plans` and `expected_payments` resolved first.
- * `confirmTx`'s `expectedId` is not a column on the transaction row; it is
- * recovered from the one `expected_payments` row (if any) whose
- * `transaction_id` names this transaction — "the transaction created by
- * confirming this expected item".
- */
-async function resolveTransactions(
-  bundle: ExportBundle,
-  idMap: Map<string, string>,
-): Promise<void> {
-  const expectedIdByTransactionId = new Map<string, string>();
-  for (const row of bundle.tables.expected_payments ?? []) {
-    if (typeof row.transaction_id === "string" && typeof row.id === "string") {
-      expectedIdByTransactionId.set(row.transaction_id, row.id);
-    }
-  }
-  for (const row of deterministicRows(bundle, "transactions")) {
-    const id = row.id as string;
-    if (typeof row.installment_plan_id === "string" && typeof row.installment_no === "number") {
-      const planId = row.installment_plan_id;
-      const sourceHash = await deterministicId(naturalKeys.installmentTx(planId, row.installment_no));
-      if (sourceHash === id) {
-        const remappedPlanId = remappedOrSame(idMap, planId);
-        record(idMap, id, await deterministicId(naturalKeys.installmentTx(remappedPlanId, row.installment_no)));
-        continue;
-      }
-    }
-    if (typeof row.installment_plan_id === "string" && row.installment_no == null) {
-      const planId = row.installment_plan_id;
-      if (await deterministicId(naturalKeys.planPayoff(planId)) === id) {
-        record(idMap, id, await deterministicId(naturalKeys.planPayoff(remappedOrSame(idMap, planId))));
-        continue;
-      }
-    }
-    const expectedId = expectedIdByTransactionId.get(id);
-    if (expectedId == null) continue;
-    const sourceHash = await deterministicId(naturalKeys.confirmTx(expectedId));
-    if (sourceHash !== id) continue;
-    const remappedExpectedId = remappedOrSame(idMap, expectedId);
-    record(idMap, id, await deterministicId(naturalKeys.confirmTx(remappedExpectedId)));
   }
 }
 
@@ -499,22 +176,84 @@ export async function buildIdRemap(
   targetUserId: string,
 ): Promise<ReadonlyMap<string, string>> {
   const idMap = new Map<string, string>();
-  await resolvePersons(bundle, sourceUserId, targetUserId, idMap);
-  await resolveCategories(bundle, sourceUserId, targetUserId, idMap);
-  await resolvePaymentSources(bundle, sourceUserId, targetUserId, idMap);
-  await resolveFxRates(bundle, sourceUserId, targetUserId, idMap);
-  await resolveSettings(bundle, sourceUserId, targetUserId, idMap);
-  await resolveInvestmentProfiles(bundle, sourceUserId, targetUserId, idMap);
-  await resolveInstallmentPlans(bundle, sourceUserId, targetUserId, idMap);
-  await resolveComputedColumns(bundle, sourceUserId, targetUserId, idMap);
-  await resolveBalanceAdjustments(bundle, sourceUserId, targetUserId, idMap);
-  await resolveCategoryBudgets(bundle, sourceUserId, targetUserId, idMap);
-  await resolveCellNotes(bundle, sourceUserId, targetUserId, idMap);
-  await resolveMatrixColors(bundle, sourceUserId, targetUserId, idMap);
-  await resolveStatementTransactions(bundle, sourceUserId, targetUserId, idMap);
-  await resolveCreditCardStatements(bundle, sourceUserId, targetUserId, idMap);
-  await resolveExpectedPayments(bundle, sourceUserId, targetUserId, idMap);
-  await resolveTransactions(bundle, idMap);
+  const resolve = (table: SyncedTableName, ...templates: Template[]) =>
+    resolveTemplates(deterministicRows(bundle, table), sourceUserId, targetUserId, idMap, templates);
+  const resolveRest = (rows: Row[], template: (userId: string, index: number) => string) =>
+    resolveByIndex(rows, template, sourceUserId, targetUserId, idMap);
+
+  await resolveRest(await resolve("persons", (userId) => naturalKeys.selfPerson(userId)), naturalKeys.onboardingPerson);
+  await resolve("categories", (userId, row) => naturalKeys.seedCategory(userId, text(row.name)));
+  await resolveRest(
+    await resolve("payment_sources", (userId, row) => naturalKeys.importSource(userId, text(row.name))),
+    naturalKeys.onboardingSource,
+  );
+  await resolve("fx_rates", (userId, row) => naturalKeys.fxRate(userId, text(row.currency), text(row.rate_date)));
+  await resolve("settings", (userId, row) => naturalKeys.setting(userId, text(row.key)));
+  await resolve("investment_profiles", (userId) => naturalKeys.investmentProfile(userId));
+  await resolve("installment_plans", (userId, row) => naturalKeys.importInstallmentPlan(
+    userId,
+    text(row.title),
+    typeof row.monthly_amount_minor === "number" ? row.monthly_amount_minor : NaN,
+    typeof row.installment_count === "number" ? row.installment_count : NaN,
+    text(row.start_month),
+  ));
+  // The one auto-created "KK Taksit" computed column, tombstoned on sight in newer builds.
+  await resolve("computed_columns", (userId) => naturalKeys.ccColumn(userId));
+  await resolve(
+    "balance_adjustments",
+    (userId, row) => naturalKeys.balanceAdjustment(userId, text(row.date)),
+    // A declaration sits on the last day of the month before the one it
+    // opens, so its month is read back off that date.
+    (userId, row) => {
+      const date = text(row.date);
+      return isISODate(date) ? naturalKeys.monthOpeningDeclaration(userId, declaredMonthOf(date)) : null;
+    },
+  );
+  await resolve("category_budgets", (userId, row, ref) =>
+    naturalKeys.categoryBudget(userId, text(row.month), ref(row.category_id)));
+  await resolve("cell_notes", (userId, row, ref) => naturalKeys.cellNote(userId, text(row.month), ref(row.category_id)));
+  // `item_key` is a category id for row/cell marks; `remapRow` rewrites the
+  // column and the id has to be recomputed from the SAME rewritten value or
+  // the two disagree and a second device creates a duplicate mark.
+  await resolve("matrix_colors", (userId, row, ref) =>
+    naturalKeys.matrixColor(userId, String(row.scope ?? ""), ref(row.item_key), String(row.month ?? "")));
+  // A statement line's own identity carries no other row's id, so it has no
+  // ordering constraint.
+  await resolve("transactions", (userId, row) => {
+    const importKey = String(row.import_key ?? "");
+    return importKey === "" ? null : naturalKeys.statementTx(userId, importKey);
+  });
+  await resolve("credit_card_statements", (userId, row, ref) =>
+    naturalKeys.cardStatement(userId, ref(row.payment_source_id), text(row.period_month)));
+  // Active kinds point at a subscription or recurring income, neither of which
+  // carries a deterministic id; retired installment/loan tombstones still
+  // remap here so an old backup remains lossless.
+  await resolve("expected_payments", (userId, row, ref) =>
+    naturalKeys.expected(userId, text(row.kind), ref(row.ref_id), text(row.due_date)));
+
+  // `installmentTx`, `planPayoff` and `confirmTx` carry no userId. `confirmTx`'s
+  // `expectedId` is not a column on the transaction row; it is recovered from
+  // the one `expected_payments` row (if any) whose `transaction_id` names this
+  // transaction — "the transaction created by confirming this expected item".
+  const expectedIdByTransactionId = new Map<string, string>();
+  for (const row of bundle.tables.expected_payments ?? []) {
+    if (typeof row.transaction_id === "string" && typeof row.id === "string") {
+      expectedIdByTransactionId.set(row.transaction_id, row.id);
+    }
+  }
+  await resolve(
+    "transactions",
+    (_userId, row, ref) => typeof row.installment_plan_id === "string" && typeof row.installment_no === "number"
+      ? naturalKeys.installmentTx(ref(row.installment_plan_id), row.installment_no)
+      : null,
+    (_userId, row, ref) => typeof row.installment_plan_id === "string" && row.installment_no == null
+      ? naturalKeys.planPayoff(ref(row.installment_plan_id))
+      : null,
+    (_userId, row, ref) => {
+      const expectedId = expectedIdByTransactionId.get(row.id as string);
+      return expectedId == null ? null : naturalKeys.confirmTx(ref(expectedId));
+    },
+  );
   return idMap;
 }
 
@@ -553,9 +292,9 @@ function remapSettingsValue(key: string, value: string, idMap: ReadonlyMap<strin
       if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return value;
       const batch = parsed as Record<string, unknown>;
       const out: Record<string, unknown> = { ...batch };
-      if ("transactions" in batch) out.transactions = remapIdArray(batch.transactions, idMap);
-      if ("cellNotes" in batch) out.cellNotes = remapIdArray(batch.cellNotes, idMap);
-      if ("installmentPlans" in batch) out.installmentPlans = remapIdArray(batch.installmentPlans, idMap);
+      for (const field of ["transactions", "cellNotes", "installmentPlans"]) {
+        if (field in batch) out[field] = remapIdArray(batch[field], idMap);
+      }
       return JSON.stringify(out);
     }
     return value;
@@ -576,9 +315,9 @@ function remapComputedColumnDefinition(value: string, idMap: ReadonlyMap<string,
     if (typeof parsed !== "object" || parsed === null) return value;
     const definition = parsed as Record<string, unknown>;
     const out: Record<string, unknown> = { ...definition };
-    if ("categoryIds" in definition) out.categoryIds = remapIdArray(definition.categoryIds, idMap);
-    if ("plusCategoryIds" in definition) out.plusCategoryIds = remapIdArray(definition.plusCategoryIds, idMap);
-    if ("minusCategoryIds" in definition) out.minusCategoryIds = remapIdArray(definition.minusCategoryIds, idMap);
+    for (const field of ["categoryIds", "plusCategoryIds", "minusCategoryIds"]) {
+      if (field in definition) out[field] = remapIdArray(definition[field], idMap);
+    }
     return JSON.stringify(out);
   } catch {
     return value;
@@ -596,16 +335,14 @@ function remapRow(
     // already treats `id` and every `*_id` column as an id for validation, and
     // that same generic rule is what guarantees this remap cannot miss one
     // (a hand-list is exactly how a column gets missed).
-    if ((key === "id" || key.endsWith("_id")) && typeof value === "string" && idMap.has(value)) {
-      out[key] = idMap.get(value);
-      continue;
-    }
-    // `item_key` is a category id for a row/cell mark and a computed-column
-    // key otherwise, so it is a foreign key that the generic `*_id` rule above
-    // cannot see. Without this, restoring into another account leaves every
+    //
+    // `matrix_colors.item_key` is a category id for a row/cell mark and a
+    // computed-column key otherwise, so it is a foreign key the `*_id` rule
+    // cannot see. Without it, restoring into another account leaves every
     // colour pointing at the source account's categories — the marks survive
     // and silently stop matching anything.
-    if (table === "matrix_colors" && key === "item_key" && typeof value === "string" && idMap.has(value)) {
+    const isIdColumn = key === "id" || key.endsWith("_id") || (table === "matrix_colors" && key === "item_key");
+    if (isIdColumn && typeof value === "string" && idMap.has(value)) {
       out[key] = idMap.get(value);
       continue;
     }

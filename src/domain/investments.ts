@@ -193,11 +193,10 @@ export function resolveInvestmentQuote(input: InvestmentQuoteInput): ResolvedInv
   };
 }
 
-export interface InvestmentProductLike {
+interface InvestmentProductLike {
   id: string;
   assetType: InvestmentAssetType;
   name: string;
-  /** Intended share of the portfolio in basis points; null when unplanned. */
 }
 
 export interface InvestmentOperationLike {
@@ -329,11 +328,7 @@ export function buildInvestmentState(input: {
   const cashMinor = checkedCash(Number(cashMinorExact));
   const products = [...states.values()]
     .map<InvestmentProductState>((state) => {
-      const quantity = state.quantityAtoms == null
-        ? null
-        : state.quantityAtoms === 0n
-          ? "0"
-          : quantityFromAtoms(state.quantityAtoms);
+      const quantity = state.quantityAtoms == null ? null : formatInvestmentQuantityAtoms(state.quantityAtoms);
       const averageCostMinor = state.quantityAtoms != null && state.quantityAtoms > 0n
         ? Number(roundedDivision(BigInt(state.costMinor) * QUANTITY_FACTOR, state.quantityAtoms))
         : null;

@@ -1,13 +1,4 @@
-/**
- * A subscription rule is a schedule, not a payment.
- *
- * Creating one must never move the current balance: only a confirmed
- * occurrence does that (spec §4.3, §2.2). The regression this file exists for
- * is an auto-pay rule saved on its own billing day — `subscription-form.tsx`
- * defaults `nextDueDate` to today whenever the billing day is today, and the
- * first maintenance pass then confirmed that occurrence as a REALIZED expense,
- * so the balance dropped the moment the rule was saved.
- */
+// Creating a rule never moves the balance; only a confirmed occurrence does (SPEC §4.3, §2.2).
 import { DatabaseSync } from "node:sqlite";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -222,9 +213,7 @@ describe("adding a subscription never moves the current balance", () => {
    * `runMaintenance` confirms every due auto-pay rule in one pass. A foreign
    * currency with no cached rate for the day makes `confirmExpected` refuse —
    * correctly, because the alternative is inventing a lira figure — and the
-   * pass catches that and moves on. Nothing exercised the catch, so a rule
-   * whose rate had not arrived could have taken every other rule's payment
-   * with it and the suite would have stayed green.
+   * pass catches that and moves on.
    */
   it("leaves an unpriceable auto-payment pending and still takes the others", async () => {
     // Backdated, because auto-pay only fires for a rule that already existed
@@ -250,7 +239,7 @@ describe("adding a subscription never moves the current balance", () => {
    * Confirming an occurrence is where an expectation becomes money, and the
    * shape of that money depends on four things the rule carries: the card it is
    * paid with, the currency it is priced in, the person it belongs to, and
-   * whether its amount is fixed. Each of those was a branch nothing walked.
+   * whether its amount is fixed.
    */
   describe("what a confirmation turns an expectation into", () => {
     function seedCard(): void {
@@ -342,8 +331,7 @@ describe("adding a subscription never moves the current balance", () => {
 
     /**
      * A variable subscription — a utility bill — has no amount until the
-     * invoice arrives. Entering it is a separate step from confirming it, and
-     * the whole of that step was untested.
+     * invoice arrives. Entering it is a separate step from confirming it.
      */
     describe("entering the invoice amount for a variable subscription", () => {
       it("refuses a confirmation while the estimate has not been replaced", async () => {
@@ -410,8 +398,7 @@ describe("adding a subscription never moves the current balance", () => {
    * the row the confirmation created, and a row the owner had already recorded
    * and then matched to the expectation. The first is the confirmation's to
    * remove; the second is the owner's own record of real money, and unlinking
-   * it is the whole of the undo. The rule is written into the module and was
-   * exercised by nothing.
+   * it is the whole of the undo.
    */
   describe("undoing a confirmation", () => {
     async function dueAndConfirmed(): Promise<string> {
@@ -495,10 +482,7 @@ describe("adding a subscription never moves the current balance", () => {
      * is still exactly what confirming THIS occurrence set it to. Every other
      * case has to leave the rule alone: the owner has since moved the charge by
      * hand, a later occurrence was confirmed on top, or the rule's own cycle
-     * fields are corrupt and the date it would compute is not a date. The
-     * happy-path test above makes every clause of that guard true at once, so
-     * on 2026-09-21 eleven mutants of the conjunction survived — each one a
-     * rewind that would overwrite a charge date the owner had chosen.
+     * fields are corrupt and the date it would compute is not a date.
      */
     const nextCharge = () => (harness.db!
       .prepare(`SELECT next_due_date FROM subscriptions WHERE user_id = ? AND deleted_at IS NULL`)

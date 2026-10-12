@@ -17,7 +17,6 @@ import {
   Animated,
   Easing,
   Modal,
-  Platform,
   useWindowDimensions,
   Pressable,
   ScrollView,
@@ -38,11 +37,10 @@ import { selectionTap, selectionTapIfChanged } from "./haptics";
 import { useModalAccessibility } from "./accessibility";
 import { useReducedMotion } from "./motion";
 import { modalAnimationType } from "./modal-motion";
-import { DelayedLoadingIndicator } from "./loading-indicator";
 import { interactionSurface } from "./interaction";
 import { SlideUp } from "./motion-primitives";
 import { Body, DisclosureChevron, FadeIn, Label, Row, controlStateStyle } from "./primitives";
-import { Field } from "./fields";
+import { Field, webOnlyLabel } from "./fields";
 import { shouldBoundIntrinsicControls, shouldPresentOptionsAsSheet, shouldUseTripleTileGrid } from "./responsive";
 import { useContentWidth } from "./viewport";
 import { borderWidth, controlSize, font, iconSize, motion, radius, segmentedMaxWidth, spacing, themeShadow, type, useTheme, type Palette } from "./theme";
@@ -286,9 +284,7 @@ export function Select<T extends string>({
     <View style={{ marginBottom: spacing.md }}>
       {label ? (
         <Label
-          accessible={Platform.OS === "web" ? undefined : false}
-          accessibilityElementsHidden={Platform.OS === "web" ? undefined : true}
-          importantForAccessibility={Platform.OS === "web" ? undefined : "no-hide-descendants"}
+          {...webOnlyLabel}
         >
           {label}
         </Label>
@@ -552,7 +548,6 @@ export function Segmented<T extends string>({
   );
 }
 
-/** Simple chip-row picker (categories, sources, persons); `multi` toggles a set. */
 /**
  * A wrapping grid of multi-select tiles: icon column, label, check when picked.
  *
@@ -570,10 +565,7 @@ export function SelectionGrid({
   tone = "plus",
   countLabel,
   readOnly = false,
-  disabled = false,
   searchable = false,
-  status = "ready",
-  errorMessage,
   emptyMessage,
 }: {
   options: SelectionOption[];
@@ -584,10 +576,7 @@ export function SelectionGrid({
   countLabel?: string;
   /** Render the same tiles as a non-interactive summary. */
   readOnly?: boolean;
-  disabled?: boolean;
   searchable?: boolean;
-  status?: "ready" | "loading" | "error";
-  errorMessage?: string;
   emptyMessage?: string;
 }) {
   const { palette } = useTheme();
@@ -596,24 +585,7 @@ export function SelectionGrid({
   const selectedColor = tone === "plus" ? palette.primary : palette.negative;
   const selectedSoft = tone === "plus" ? palette.primarySoft : palette.negative + "18";
   const selectedInk = tone === "plus" ? palette.primaryText : palette.negativeText;
-  const inactive = readOnly || disabled || status !== "ready";
   const filtered = filterSelectionOptions(options, query);
-
-  if (status === "loading") {
-    return (
-      <View accessibilityLiveRegion="polite" style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingVertical: spacing.md }}>
-        <DelayedLoadingIndicator size={6} label={tr.selection.loading} />
-        <Body muted>{tr.selection.loading}</Body>
-      </View>
-    );
-  }
-  if (status === "error") {
-    return (
-      <View accessibilityRole="alert" accessibilityLiveRegion="assertive" style={{ backgroundColor: palette.error + "14", borderRadius: radius.sm, padding: spacing.md, marginBottom: spacing.md }}>
-        <Body style={{ color: palette.errorText }}>{errorMessage ?? tr.selection.error}</Body>
-      </View>
-    );
-  }
 
   return (
     <View>
@@ -625,7 +597,7 @@ export function SelectionGrid({
           placeholder={tr.selection.searchPlaceholder}
           autoCapitalize="none"
           returnKeyType="search"
-          editable={!inactive}
+          editable={!readOnly}
         />
       ) : null}
       {countLabel ? (
@@ -651,8 +623,8 @@ export function SelectionGrid({
                 key={option.value}
                 accessibilityRole="checkbox"
                 aria-checked={selected}
-                accessibilityState={{ checked: selected, selected, disabled: inactive }}
-                disabled={inactive}
+                accessibilityState={{ checked: selected, selected, disabled: readOnly }}
+                disabled={readOnly}
                 onPress={() => {
                   selectionTap();
                   onToggle(option.value);
@@ -707,16 +679,6 @@ export function SelectionGrid({
   );
 }
 
-/**
- * The single-choice control for a value the user is about to SAVE.
- *
- * The app has exactly two of these and the split is by job, not by taste:
- * `ChipPicker` answers a form question (which cycle, which person, month or
- * day), `Segmented` switches which view of the same data you are looking at
- * (pie or bars, rows or columns). The transaction form used to show three
- * languages at once — icon tiles, chips and underlined tabs — for three
- * questions of the same kind.
- */
 /**
  * One tile, one answer.
  *
@@ -851,58 +813,35 @@ export function ChoiceTile({
   );
 }
 
+/** Single choice for a value the user will save. `Segmented` switches views of the same data; this answers a form question. */
 export function ChipPicker<T extends string>({
   options,
   value,
   onChange,
-  multi,
-  values,
-  onToggle,
   compact = false,
 }: {
   options: { value: T; label: string; disabled?: boolean; hint?: string }[];
   value?: T | null;
   onChange?: (v: T) => void;
-  multi?: boolean;
-  values?: T[];
-  onToggle?: (v: T) => void;
-  /**
-   * Tighter side padding, for a row whose labels are one or two characters.
-   * A month-day row is six numbers and the words "Ayın sonu": at the default
-   * padding the six numbers cost more in padding than in text and pushed the
-   * words onto a second line. The touch target keeps its full height and gains
-   * hit slop to make up the width.
-   */
+  /** Tighter side padding for one- or two-character labels; the target keeps its full height. */
   compact?: boolean;
 }) {
   const { palette } = useTheme();
   return (
     <View style={{ flexDirection: "row", flexWrap: "wrap", gap: compact ? spacing.xs + 2 : spacing.sm, marginBottom: spacing.md }}>
       {options.map((option) => {
-        const selected = multi ? (values ?? []).includes(option.value) : option.value === value;
+        const selected = option.value === value;
         const unavailable = option.disabled === true;
-        // Selecting a chip must not resize it. The border used to thicken and
-        // the label used to gain weight on selection, so every chip after it in
-        // this wrapping row moved — and a row that wraps could re-wrap, which is
-        // how choosing "Ayın sonu" shifted the field underneath it. One border
-        // weight and one font weight for both states; colour carries the choice,
-        // three times over. Paying for the thicker border out of the padding was
-        // tried first and measured 84px against 85: browsers snap a 1.5px border
-        // to a whole device pixel and the padding it was traded against is not.
+        // One border weight and one font weight in both states: selecting must not resize a chip and re-wrap the row.
         return (
           <Pressable
             key={option.value}
             disabled={unavailable}
             onPress={() => {
-              if (multi) {
-                selectionTap();
-                onToggle?.(option.value);
-              } else {
-                selectionTapIfChanged(value, option.value);
-                onChange?.(option.value);
-              }
+              selectionTapIfChanged(value, option.value);
+              onChange?.(option.value);
             }}
-            accessibilityRole={multi ? "checkbox" : "radio"}
+            accessibilityRole="radio"
             accessibilityHint={unavailable ? option.hint : undefined}
             aria-checked={selected}
             accessibilityState={{ checked: selected, selected, disabled: unavailable }}

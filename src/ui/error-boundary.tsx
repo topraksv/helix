@@ -1,11 +1,4 @@
-/**
- * App-wide error boundary. A render-time throw (e.g. a corrupt value that
- * reaches `formatMinor`/`assertMinor`) would otherwise unmount the whole tree
- * to a blank screen with no recourse. This catches it, logs it, and shows a
- * themed recovery screen with a retry that re-mounts the subtree.
- *
- * Must be rendered *inside* ThemeContext.Provider so the fallback is themed.
- */
+/** Catches a render throw so the tree is not left blank; retry remounts. Render inside ThemeContext so the fallback is themed. */
 
 import React from "react";
 import { View } from "react-native";

@@ -21,14 +21,9 @@ export function webPasswordRecoveryRedirectUrl(origin: string, baseUrl: string):
 }
 
 /**
- * Password links carry one-time bearer material after Supabase verifies them.
- * Expo Go's published callback URL is not a stable address — it is reissued
- * with the client, so it cannot be registered as a redirect target — and that
- * is a property of Expo Go rather than of any one SDK. Every native request
- * therefore returns to the same hosted HTTPS recovery screen. The
- * responsive web screen completes recovery safely from a phone browser and
- * can then reopen the stable Expo Go preview channel without forwarding the
- * credentials.
+ * Expo Go's callback URL is reissued with the client, so it cannot be registered as a redirect target:
+ * every native request returns to the hosted HTTPS recovery screen, which finishes in a phone browser
+ * without forwarding the credentials.
  */
 export function passwordRecoveryRequestRedirect(
   runtime:
@@ -40,10 +35,7 @@ export function passwordRecoveryRequestRedirect(
     : webPasswordRecoveryRedirectUrl(PRODUCTION_WEB_ORIGIN, PRODUCTION_WEB_BASE_URL);
 }
 
-/** Recovery credentials are bearer material. Accept them only on the exact
- * callback target the app generated; a matching query on an attacker-owned
- * host, another app's custom scheme, or a sibling route is not a Helix
- * recovery link. */
+/** Recovery credentials are bearer material: accepted only on the exact callback target the app generated. */
 function expectedRecoveryUrl(url: string | null, target: RecoveryTarget): URL | null {
   let parsed: URL;
   try {
@@ -87,13 +79,8 @@ export function parsePasswordRecoveryUrl(url: string | null, target: RecoveryTar
   if (expired) return { kind: "expired" };
   if (params.has("error") || params.has("error_code")) return { kind: "invalid" };
 
-  // The link the recovery e-mail carries now. It lands on this screen with the
-  // token still unspent, instead of passing through Supabase's own verify
-  // endpoint first. That endpoint spends the token on the first GET — a mail
-  // client's link checker, or a second tap after an in-app browser failed —
-  // and hands back a PKCE code only the browser that REQUESTED the reset can
-  // redeem. Both were reported: "the link expired" seconds after it arrived,
-  // and the sign-in screen opening instead of this one.
+  // The e-mail's link lands here with the token unspent. Supabase's verify endpoint spends it on the first GET (a link
+  // checker, a second tap) and returns a PKCE code only the browser that requested the reset can redeem.
   const tokenHash = params.get("token_hash");
   if (tokenHash) return params.get("type") === "recovery" ? { kind: "tokenHash", tokenHash } : { kind: "invalid" };
   // Kept for links already sitting in inboxes from before the template moved.
@@ -108,14 +95,9 @@ export function parsePasswordRecoveryUrl(url: string | null, target: RecoveryTar
 }
 
 /**
- * What a sign-up confirmation or e-mail change link carries when it returns to
- * the Site URL: a token for Auth to check, or Auth's refusal.
- *
- * A bare `code` is deliberately not an answer. It is what Auth's own verify
- * link hands back, and only the browser that signed up holds the PKCE
- * verifier to redeem it, so anywhere else it proves nothing — reading it as
- * "confirmed" let any address carrying `?code=` say so. Read before
- * supabase-js strips the URL.
+ * What a sign-up confirmation or e-mail change link carries back to the Site URL: a token for Auth to check,
+ * or its refusal. A bare `code` is not an answer: only the browser that signed up can redeem it, and
+ * reading it as "confirmed" would let any `?code=` address say so. Read before supabase-js strips the URL.
  */
 export function parseEmailLinkLanding(
   url: string,

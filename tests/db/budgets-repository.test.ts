@@ -6,42 +6,23 @@ const harness = vi.hoisted(() => ({
   beforeTransaction: null as (() => void) | null,
 }));
 
-vi.mock("../../src/db/client", () => ({
-  getSqliteAsync: async () => ({
-    getFirstAsync: async (sql: string, args: unknown[] = []) =>
-      harness.db!.prepare(sql).get(...(args as never[])) ?? null,
-    getAllAsync: async (sql: string, args: unknown[] = []) =>
-      harness.db!.prepare(sql).all(...(args as never[])),
-    runAsync: async (sql: string, args: unknown[] = []) => ({
-      changes: Number(harness.db!.prepare(sql).run(...(args as never[])).changes),
-    }),
-  }),
-  withTransaction: async (task: () => Promise<void>) => {
-    harness.db!.exec("BEGIN");
-    try {
+vi.mock("../../src/db/client", async () => {
+  const { sqliteClientMock } = await import("../helpers");
+  const base = sqliteClientMock(() => harness.db!);
+  return {
+    ...base,
+    withTransaction: (task: () => Promise<void>) => base.withTransaction(async () => {
       const beforeTransaction = harness.beforeTransaction;
       harness.beforeTransaction = null;
       beforeTransaction?.();
       await task();
-      harness.db!.exec("COMMIT");
-    } catch (error) {
-      harness.db!.exec("ROLLBACK");
-      throw error;
-    }
-  },
-}));
+    }),
+  };
+});
 
-vi.mock("../../src/db/ids", () => ({
+vi.mock("../../src/db/ids", async () => ({
   deterministicId: async (key: string) => `det:${key}`,
-  naturalKeys: new Proxy(
-    {},
-    {
-      get:
-        (_target, property) =>
-        (...parts: unknown[]) =>
-          `${String(property)}|${parts.join("|")}`,
-    },
-  ),
+  naturalKeys: (await import("../helpers")).naturalKeysProxy(),
 }));
 
 vi.mock("../../src/sync/engine", () => ({ scheduleSync: vi.fn() }));

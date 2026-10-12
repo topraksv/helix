@@ -18,11 +18,12 @@ import { addInstallmentRefund, FxRateUnavailableError, InstallmentRefundNothingL
 import { useAllTransactionsState, usePlansState, useSourcesState, useUserId } from "../data/hooks";
 import { combineLiveStates } from "../data/live-state";
 import { monthKeyOf, todayISO, type MonthKey } from "../domain/dates";
-import { installmentDisplayTitle } from "../domain/installments";
+import { summarizeInstallmentPlans, type InstallmentPlanSummary } from "../domain/installments";
 import { formatMinorCompact, splitIntoInstallments } from "../domain/money";
 import { tr } from "../i18n/tr";
 import { Body, Button, Card, CardList, CardListSkeleton, ChoiceTile, DataGateScreen, DataStateNotice, EmptyState, Field, ListRow, MoneyField, MonthStepper, PanelHeader, Screen } from "../ui/components";
 import { appAlert } from "../ui/dialog";
+import { withCurrency } from "../ui/installment-text";
 import { scheduleSync } from "../sync/engine";
 import { spacing } from "../ui/theme";
 import { navigateBack } from "../ui/navigation";
@@ -31,52 +32,8 @@ import { useOperationGuard } from "../ui/operation-guard";
 import { useDirtyExitGuard, useDraftDirty } from "../ui/dirty-exit";
 
 type Plan = ReturnType<typeof usePlansState>["data"][number];
-type Row = ReturnType<typeof useAllTransactionsState>["data"][number];
 
-interface PlanSummary {
-  plan: Plan;
-  title: string;
-  purchaseMinor: number;
-  refundedMinor: number;
-  /** The purchase less the refunds already recorded — the most a refund may be.
-   *  Every figure here is in the plan's own currency, which is what a refund of
-   *  a foreign purchase is entered in. */
-  leftMinor: number;
-  paid: number;
-  pending: number;
-}
-
-/**
- * Every plan with what it has billed, refunded and still owes. One pass over
- * the ledger rather than one per plan: an imported workbook brings hundreds of
- * plans and thousands of rows.
- */
-function summarizePlans(plans: Plan[], transactions: Row[]): PlanSummary[] {
-  const rowsByPlan = new Map<string, Row[]>();
-  for (const row of transactions) {
-    if (!row.installmentPlanId) continue;
-    const list = rowsByPlan.get(row.installmentPlanId) ?? [];
-    list.push(row);
-    rowsByPlan.set(row.installmentPlanId, list);
-  }
-  return plans.map((plan) => {
-    const rows = rowsByPlan.get(plan.id) ?? [];
-    const instalments = rows.filter((row) => row.installmentNo != null);
-    const purchaseMinor = instalments.reduce((sum, row) => sum + row.amountMinor, 0);
-    // A closed loan's payoff is the one unnumbered row that is not a refund.
-    const refundedMinor = -rows.filter((row) => row.installmentNo == null && row.amountMinor < 0).reduce((sum, row) => sum + row.amountMinor, 0);
-    const pending = instalments.filter((row) => row.status === "pending").length;
-    return {
-      plan,
-      title: installmentDisplayTitle(plan.title, rows.find((row) => row.note)?.note, tr.installments.plan),
-      purchaseMinor,
-      refundedMinor,
-      leftMinor: purchaseMinor - refundedMinor,
-      paid: instalments.length - pending,
-      pending,
-    };
-  });
-}
+type PlanSummary = InstallmentPlanSummary<Plan>;
 
 function planLine(summary: PlanSummary, sourceName: Map<string, string>): string {
   return [
@@ -211,7 +168,7 @@ function RefundForm({
     <Card>
       <PanelHeader icon={Undo2} title={summary.title} description={planLine(summary, sourceName)} />
       <MoneyField
-        label={summary.plan.currency === "TRY" ? tr.installments.refundAmount : `${tr.installments.refundAmount} · ${summary.plan.currency}`}
+        label={withCurrency(tr.installments.refundAmount, summary.plan.currency)}
         value={amountRaw}
         onChangeMinor={(raw, minor) => {
           setAmountRaw(raw);
@@ -271,7 +228,7 @@ export default function InstallmentRefundScreen() {
   if (!ready) return <DataGateScreen status={status} retry={retry} skeleton={<CardListSkeleton />}>{title}</DataGateScreen>;
 
   const sourceName = new Map(sourcesState.data.map((source) => [source.id, source.name]));
-  const summaries = summarizePlans(plansState.data, transactionsState.data);
+  const summaries = summarizeInstallmentPlans(plansState.data, transactionsState.data, tr.installments.plan);
   const selected = summaries.find((summary) => summary.plan.id === planChoice);
   return (
     <Screen width="focus">

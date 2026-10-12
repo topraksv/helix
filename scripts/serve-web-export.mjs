@@ -1,40 +1,17 @@
-/**
- * Serve a production web export the way GitHub Pages does: the preview and
- * the browser suite. Helix and Gital run this same file; Helix's second server
- * for the suite went on 2026-10-09.
- *
- *   node scripts/serve-web-export.mjs <export-dir> [port]
- *
- * WHY THIS EXISTS RATHER THAN `expo start --web`. On SDK 57 the web dev server
- * cannot bundle this app at all: `MetroBundlerDevServer` sets
- * `splitChunks: isExporting && …`, so chunk splitting is off in development,
- * while `serializeChunks` still sends a Web Worker down the standalone-chunk
- * path and asserts a chunk that was therefore never produced. `expo-sqlite`'s
- * web driver is a worker, so every page answers 500 with "Worker chunk not
- * found" — measured in both applications. Exporting takes the other branch
- * and works.
- *
- * So this serves the real artifact instead of a development one. What that
- * costs is fast refresh; what it buys is that the thing being looked at is the
- * thing that deploys — same minification, same chunk boundaries, same
- * `baseUrl`. Re-run it after a change.
- *
- * The routing mirrors Pages deliberately: under `app.json`'s `experiments.baseUrl`, a
- * directory falls back to its `index.html`, an extensionless path tries
- * `<path>.html` first, and anything unresolved — a dynamic route's real path
- * among them — is the export's `404.html` with status 404, which boots the
- * router at that path. Getting that wrong locally is how a deep-link bug
- * reaches production unnoticed: Gital's copy answered such a path with the
- * shell and a 200, which Pages never does.
- */
+// Serves a production web export the way GitHub Pages does: usage `node scripts/serve-web-export.mjs <export-dir> <port>`.
+// Under app.json's experiments.baseUrl a directory falls back to its index.html, an extensionless path tries <path>.html first,
+// and anything unresolved (a dynamic route's real path included) is 404.html with status 404, never the shell with a 200.
 
 import { createServer } from "node:http";
 import { readFile, stat } from "node:fs/promises";
 import { extname, join, normalize, resolve, sep } from "node:path";
 
 const root = resolve(process.argv[2] ?? "dist");
-// The port the owner's browser already has open from `expo start --web`.
-const port = Number(process.argv[3] ?? 8082);
+const port = Number(process.argv[3]);
+if (!Number.isInteger(port) || port <= 0) {
+  console.error("usage: node scripts/serve-web-export.mjs <export-dir> <port>");
+  process.exit(1);
+}
 const { name, experiments } = JSON.parse(await readFile(new URL("../app.json", import.meta.url), "utf8")).expo;
 const baseUrl = experiments.baseUrl;
 
@@ -107,12 +84,7 @@ createServer(async (request, response) => {
     });
     response.end(await readFile(file));
   } catch (error) {
-    // The detail goes to whoever started the server, not down the socket. A
-    // stack trace in a response body names absolute paths, module layout and
-    // Node internals to anyone who can reach the port — and this one binds a
-    // port on a developer machine, which is not always only that machine.
-    // CodeQL flags the pattern rather than this instance, and it is right to:
-    // the difference between a preview server and a real one is a habit.
+    // The detail goes to the console, not down the socket: a stack trace in a body names paths and internals to anyone who can reach the port.
     console.error("serve-web-export: request failed", error);
     response.writeHead(500, { "content-type": "text/plain; charset=utf-8" });
     response.end("Internal error");

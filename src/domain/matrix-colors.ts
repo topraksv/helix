@@ -1,23 +1,12 @@
 /**
  * Contextual colours on Mali Tablo rows, columns and cells (spec §1.3).
  *
- * ## Four slots, and why they are named after their hue
- *
- * What is stored is a SLOT, never a colour value. `ui/theme.ts` owns what each
- * slot looks like in light and dark, which is what keeps a marked cell readable
- * in both themes and lets the palette change without stranding a stored hex
- * below its contrast floor. It is also why there is no colour wheel.
- *
- * The slots used to be named for meanings the app chose (`success`,
- * `critical`, …). They are named for their hue now because the MEANING is the
- * owner's: the four labels are editable and stored once for the whole account,
- * so a slot called `success` that a person has renamed "Ödenmedi" would be a
- * lie in the database. The hue is the only thing this module can promise, so it
- * is the only thing the identifier claims.
- *
- * Four rather than five: at five the fills were 2.7 ΔE apart on the shipped
- * palettes, which is not a difference anyone can act on across a table of
- * numbers. See `matrixColorStyle` for the measurement.
+ * What is stored is a SLOT, never a colour value: `ui/theme.ts` owns what each
+ * looks like in light and dark, so the palette can change without stranding a
+ * stored hex below its contrast floor. Slots are named for their hue because
+ * the MEANING is the owner's (labels are editable account-wide); a slot called
+ * `success` renamed "Ödenmedi" would lie in the database. Four, not five: five
+ * fills were too close to tell apart across a table of numbers.
  */
 
 import type { MonthKey } from "./dates";
@@ -28,15 +17,10 @@ export type MatrixColorToken = (typeof MATRIX_COLOR_TOKENS)[number];
 export type MatrixColorScope = "row" | "column" | "cell";
 
 /**
- * What the five meaning-named slots become.
- *
- * A stored mark outlives the vocabulary it was written in: rows already in the
- * ledger, rows arriving from a device that has not updated, and rows inside a
- * backup taken before the change. Dropping them would silently unmark cells the
- * owner marked, which is invisible — the mark is simply gone.
- *
- * `neutral` and `info` both land on yellow: both meant "look at this", which is
- * what yellow says, and the fifth hue is the one that was removed.
+ * What the retired meaning-named slots become. A stored mark outlives its
+ * vocabulary (old rows, un-updated devices, older backups), and dropping one
+ * would silently unmark a cell. `neutral` and `info` both meant "look at this",
+ * which is what yellow says.
  */
 const LEGACY_MATRIX_COLOR_TOKENS: Readonly<Record<string, MatrixColorToken>> = {
   critical: "red",
@@ -51,13 +35,7 @@ export function isMatrixColorToken(value: unknown): value is MatrixColorToken {
   return typeof value === "string" && (MATRIX_COLOR_TOKENS as readonly string[]).includes(value);
 }
 
-/**
- * A slot this build can DISPLAY, which is a wider set than the one it writes.
- *
- * Reading accepts the retired names so no existing mark disappears; writing
- * goes through `isMatrixColorToken` so nothing new is stored in the old
- * vocabulary and the two never mix in fresh data.
- */
+/** A slot this build can DISPLAY: reading accepts the retired names, writing goes through `isMatrixColorToken`. */
 export function normalizeMatrixColorToken(value: unknown): MatrixColorToken | null {
   if (isMatrixColorToken(value)) return value;
   return typeof value === "string" ? LEGACY_MATRIX_COLOR_TOKENS[value] ?? null : null;
@@ -73,11 +51,9 @@ export interface MatrixColorLike {
 }
 
 /**
- * The coordinates a scope requires, checked as one rule.
- *
- * A "row" mark carrying a month is not a row mark with extra information — it
- * is a row that another client version would read as a cell. Refusing the
- * shape here is what stops two devices disagreeing about what is coloured.
+ * The coordinates a scope requires, as one rule: a "row" mark carrying a month
+ * would be read as a cell by another client version, so two devices would
+ * disagree about what is coloured.
  */
 export function isValidColorTarget(target: {
   scope: unknown;
@@ -92,8 +68,7 @@ export function isValidColorTarget(target: {
   return false;
 }
 
-
-export interface MatrixColorIndex {
+interface MatrixColorIndex {
   row: ReadonlyMap<string, MatrixColorToken>;
   column: ReadonlyMap<string, MatrixColorToken>;
   cell: ReadonlyMap<string, MatrixColorToken>;
@@ -117,13 +92,9 @@ export function buildColorIndex(rows: readonly MatrixColorLike[]): MatrixColorIn
 }
 
 /**
- * The token that applies to one cell, given every stored mark.
- *
- * Specificity, not recency: a cell's own mark beats the column it sits in,
- * which beats the row it sits on. Anything else makes colouring a whole month
- * silently erase the one cell someone had already singled out — and there is
- * no way to see that happen, because the mark is still stored, it just stops
- * showing.
+ * The token that applies to one cell: specificity, not recency. A cell's own
+ * mark beats its column, which beats its row; otherwise colouring a month would
+ * silently hide a cell already singled out.
  */
 export function resolveCellToken(
   index: MatrixColorIndex,
@@ -140,13 +111,7 @@ export function resolveCellToken(
 // What the owner calls each slot
 // ---------------------------------------------------------------------------
 
-/**
- * How long a slot's name may be.
- *
- * It is drawn beside a swatch in the sheet and spoken in every marked cell's
- * accessibility label, so it is a name and not a sentence. Long enough for
- * "Kontrol edilmeli" (16) with room to spare.
- */
+/** How long a slot's name may be: it is drawn beside a swatch and spoken in every marked cell's label, so a name, not a sentence. */
 export const MATRIX_COLOR_LABEL_MAX = 24;
 
 /** The names the owner has chosen. An absent slot keeps its shipped default. */
@@ -173,20 +138,13 @@ export function parseMatrixColorLabels(value: unknown): MatrixColorLabels | null
   return labels;
 }
 
-/**
- * A slot's name: the owner's, or the shipped default.
- *
- * Defaults are Turkish copy and live in `i18n`, so they are passed in rather
- * than imported — this module stays free of presentation strings, and the
- * resolution rule stays testable without one.
- */
+/** A slot's name: the owner's, or the shipped default, passed in so this module holds no presentation strings. */
 export function matrixColorLabel(
   token: MatrixColorToken,
   labels: MatrixColorLabels | null,
   defaults: Readonly<Record<MatrixColorToken, string>>,
 ): string {
-  const own = labels?.[token]?.trim();
-  return own && own.length > 0 ? own : defaults[token];
+  return labels?.[token]?.trim() || defaults[token];
 }
 
 /**

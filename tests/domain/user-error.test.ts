@@ -1,12 +1,4 @@
-/**
- * The engine/user message boundary.
- *
- * Screens used to render `e.message` verbatim, so a repository error written in
- * English ("Invalid opening balance month") or a platform failure reached a
- * Turkish user at the exact moment a financial write failed. The rule is not
- * "hide every message": authored `tr.*` text has to survive, or the import and
- * backup diagnostics collapse into one useless sentence.
- */
+/** The engine/user message boundary: authored `tr.*` text survives, anything else becomes the generic message. */
 
 import { describe, expect, it } from "vitest";
 import { UserFacingError, userMessage } from "../../src/domain/user-error";

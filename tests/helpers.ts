@@ -11,11 +11,7 @@ import type { AdjustmentLike, TxLike } from "../src/domain/types";
  * Today's balance in one pass: the opening plus every counted row and every
  * adjustment dated today or earlier.
  *
- * A second, deliberately naive path to the figure the ledger chain produces,
- * for the suites that hold the two against each other. It lived in `src` once
- * and no screen called it; a release was justified with its number while the
- * app showed the chain's. `openingBalanceMinor` must be the balance at the
- * anchor `resolveLedgerAnchor` returned, because this sums with no month window.
+ * A second, deliberately naive path to the ledger chain's figure, for suites that hold the two against each other. `openingBalanceMinor` must be the balance at the anchor `resolveLedgerAnchor` returned: this sums with no month window.
  */
 export function directBalance(input: {
   openingBalanceMinor: number;
@@ -69,11 +65,7 @@ export function required<T>(value: T | undefined | null, context = "required tes
 /**
  * The `src/db/client` surface, backed by a real `node:sqlite` database.
  *
- * Six repository suites carried a byte-identical copy of this adapter, so a
- * change to how the tests see the driver had to be made six times or not at
- * all. The suites that intercept particular SQL, count acquisitions or
- * simulate a migration failure keep their own — those differences are the
- * point of those suites.
+ * Suites that intercept SQL, count acquisitions or simulate a migration failure keep their own adapter.
  *
  * `db` is a getter, not a database: the file is created in `beforeEach`, long
  * after the hoisted `vi.mock` factory that calls this has run. `onAcquire` is
@@ -107,12 +99,14 @@ export function sqliteClientMock(db: () => DatabaseSync, onAcquire?: () => void)
   };
 }
 
+/** The `naturalKeys` of `db/ids` as a mock: `name<sep>part<sep>part`, so a test can name the id a repository derives. */
+export const naturalKeysProxy = (sep = "|") =>
+  new Proxy({}, { get: (_t, p) => (...parts: unknown[]) => `${String(p)}${sep}${parts.join(sep)}` });
+
 /**
  * Every migration statement, in order, ready to `exec` into a fresh database.
  *
- * Eleven suites built this list themselves from the same directory with the
- * same breakpoint split. Read once at module load, because the migrations do
- * not change between tests and re-reading them per suite is pure I/O.
+ * Read once at module load: migrations do not change between tests.
  */
 export const migrationStatements: string[] = (() => {
   const dir = join(process.cwd(), "src/db/migrations");

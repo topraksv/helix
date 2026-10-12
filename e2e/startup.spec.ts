@@ -1,26 +1,12 @@
-/**
- * What the app costs to open, measured in the browser.
- *
- * The bundle budget in `scripts/check-web-budget.mjs` bounds the BYTES; this
- * bounds what the browser does with them. They answer different questions: a
- * change can keep every byte and still push the first paint out by loading the
- * database, the fonts and the first query in the wrong order.
- *
- * The ceilings are deliberately loose. A CI runner is a noisy clock and a
- * timing test that fails on variance gets skipped, then deleted — which is
- * worse than not having it. These are set to catch a change that alters the
- * ORDER of magnitude (a synchronous migration on the boot path, a font that
- * blocks paint, an entry bundle that doubles), not one that costs 40 ms.
- */
+// Ceilings are loose on purpose: they catch an order-of-magnitude change (a synchronous
+// migration on the boot path, a blocking font), not 40 ms of variance on a noisy runner.
+// `scripts/check-web-budget.mjs` bounds the bytes; this bounds what the browser does with them.
 
 import { expect, test } from "@playwright/test";
-import { isolateExternalData } from "./helpers";
+import { isolateExternalData, onboard } from "./helpers";
 
-/** The paint the user reads as "it opened". */
 const FIRST_CONTENTFUL_PAINT_BUDGET_MS = 6_000;
-/** Onboarding interactive: the whole boot path, database included. */
 const FIRST_SCREEN_BUDGET_MS = 15_000;
-/** Bytes the browser must fetch before it can show anything. */
 const INITIAL_SCRIPT_BUDGET_BYTES = 4_500_000;
 
 test.beforeEach(async ({ context }) => isolateExternalData(context));
@@ -28,18 +14,10 @@ test.beforeEach(async ({ context }) => isolateExternalData(context));
 test("opens within its measured startup budget @cross-browser", async ({ page }, testInfo) => {
   const startedAt = Date.now();
   await page.goto("/helix/");
-  // The first thing a new account is shown. Waiting on a real heading — not on
-  // a network event — is what makes this the user's startup and not the
-  // server's.
   await expect(page.getByRole("heading", { name: "Hoş geldin", exact: true })).toBeVisible();
   const firstScreenMs = Date.now() - startedAt;
 
-  // The paint HAS happened — the heading above is on screen — but Chromium
-  // fills the paint-timing buffer asynchronously, so reading it straight away
-  // returns null on roughly one run in eight. Measured, not guessed: eight
-  // consecutive runs gave 320, 356, 348, 516, null, 356, 356, 368 ms. Waiting
-  // for the entry turns that race into a wait; asserting it exists without
-  // waiting is what made this test flaky in a full suite run.
+  // Chromium fills the paint-timing buffer asynchronously; reading it at once returns null about one run in eight.
   await page.waitForFunction(
     () => performance.getEntriesByType("paint").some((entry) => entry.name === "first-contentful-paint"),
     null,
@@ -49,9 +27,7 @@ test("opens within its measured startup budget @cross-browser", async ({ page },
     performance.getEntriesByType("paint").find((entry) => entry.name === "first-contentful-paint")?.startTime ?? null,
   );
 
-  // Every script the document itself pulls in — the initial load, before any
-  // navigation. Route code lives in here on purpose (asyncRoutes), so this is
-  // the honest figure.
+  // Route code is in the initial load on purpose (asyncRoutes), so this is the honest figure.
   const initialScriptBytes = await page.evaluate(() =>
     performance
       .getEntriesByType("resource")
@@ -66,42 +42,18 @@ test("opens within its measured startup budget @cross-browser", async ({ page },
   });
 
   expect(firstScreenMs, "first usable screen").toBeLessThan(FIRST_SCREEN_BUDGET_MS);
-  // Still asserted: the wait above can only end with the entry present, so a
-  // null here would mean the metric itself disappeared.
-  expect(paint, "first-contentful-paint entry").not.toBeNull();
   expect(paint ?? Infinity, "first contentful paint").toBeLessThan(FIRST_CONTENTFUL_PAINT_BUDGET_MS);
   expect(initialScriptBytes, "scripts fetched before the first screen").toBeLessThan(INITIAL_SCRIPT_BUDGET_BYTES);
-  // And that it measured anything at all: a zero here would pass every ceiling
-  // above while proving nothing.
+  // A zero would pass every ceiling above while proving nothing.
   expect(initialScriptBytes, "resource timing available").toBeGreaterThan(500_000);
 });
 
-/**
- * The ledger is built before the user asks for it, not during the transition.
- *
- * A bottom-tab screen mounts on first focus by default, which puts the whole
- * tree — build, style, commit — on the thread that is drawing the navigator's
- * fade. Measured at 6x CPU throttling on the exact sequence the owner
- * described (sit on the dashboard, reload, go straight to Mali Tablo): two long
- * tasks, 112ms, the longest 58ms, and nothing on any later visit.
- * `useWarmRoute` moves that into idle.
- *
- * The assertion is the STATE, not the timing. A long-task threshold on a CI
- * runner is a coin toss; "the table exists before anyone opened its tab" is the
- * thing that has to stay true, and it is exactly what stops being true if the
- * warm-up is removed or the navigator stops honouring `preload`.
- */
+// Asserts the STATE, not timing (a long-task threshold on CI is a coin toss): `useWarmRoute`
+// preloads the table so its mount does not land on the navigator's fade.
 test("has the ledger mounted before its tab is opened", async ({ page }) => {
-  await page.goto("/helix/");
-  await expect(page.getByRole("heading", { name: "Hoş geldin", exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "Hemen Kullanmaya Başla" }).click();
-  const skipTour = page.getByRole("button", { name: "Geç", exact: true });
-  await skipTour.waitFor({ state: "visible", timeout: 5_000 }).catch(() => {});
-  if (await skipTour.isVisible().catch(() => false)) await skipTour.click();
-  await expect(page.getByRole("tab", { name: "Durum", selected: true })).toBeVisible();
+  await onboard(page);
 
-  // The dashboard is still the selected tab; the ledger's own column headers
-  // are nonetheless in the tree, which can only be true if it was preloaded.
+  // Durum is still selected, yet the ledger's column headers are in the tree: only preloading explains it.
   await expect(page.getByTestId("table-column-label").first()).toBeAttached({ timeout: 15_000 });
   await expect(page.getByRole("tab", { name: "Durum", selected: true })).toBeVisible();
 });

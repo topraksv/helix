@@ -1,13 +1,6 @@
-# Password recovery and the way back out of it.
-#
-# `src/app/_layout.tsx` exempts recovery routes from the signed-in and
-# onboarding guards, and `tests/app-guard.test.ts` protects that boundary. A
-# recovery screen that cannot be left is an account that cannot be reached.
-#
-# Recovery is a STATE of the auth surface here, not a native Stack push, so the
-# way back is the screen's own return link and not an edge swipe. Finding that
-# out is exactly what a native test is for: an edge-swipe assertion would have
-# passed on Android and quietly meant nothing on iOS.
+# Password recovery and the way back. `src/app/_layout.tsx` exempts recovery routes from the guards
+# (`tests/app-guard.test.ts`). Recovery is a state of the auth surface, not a Stack push, so the way
+# back is the screen's own link: an edge-swipe assertion would pass on Android and mean nothing on iOS.
 appId: com.toprak.helix
 ---
 - launchApp:
@@ -28,12 +21,9 @@ appId: com.toprak.helix
     direction: DOWN
     timeout: 10000
 - assertVisible: "Yenileme Bağlantısı Gönder"
-# Never reveal whether an address has an account: the form asks for one and
-# promises a link, and says nothing about who is registered.
+# Never reveal whether an address has an account.
 - assertNotVisible: "Hesabına giriş yap"
-# The reset screen's own way back, not the sign-up screen's. "Zaten hesabım
-# var" describes somebody who came here to create one; a person recovering the
-# account they already have is told where the link goes instead.
+# The reset screen's own way back, not the sign-up screen's "Zaten hesabım var".
 - scrollUntilVisible:
     element:
       text: "Giriş ekranına dön"

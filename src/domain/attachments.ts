@@ -1,16 +1,12 @@
 /**
  * Receipts, invoices and warranty documents kept beside a transaction (spec §2.5).
  *
- * Every rule an attachment has to obey lives here, as pure functions, because
- * three layers have to agree about them: the picker that accepts a file, the
- * repository that writes the row, and `backup-validation.ts`, which is the
- * last gate a restored or synced row passes. A rule living in only one of
- * those is a rule a restore can walk around.
+ * Every rule lives here because the picker, the repository and
+ * `backup-validation.ts` (the last gate for a restored or synced row) must
+ * agree; a rule in only one of them is one a restore can walk around.
  *
- * The bytes never leave the device (see `attachments` in `db/schema.ts`), so
- * the risk here is not exfiltration through sync — it is a stored name that
- * addresses somewhere it should not, and a display name that lies about what
- * the file is.
+ * The bytes never leave the device, so the risk is a stored name that addresses
+ * somewhere it should not, and a display name that lies about the file.
  */
 
 /** What the app will store. Anything else is refused at the picker. */
@@ -21,7 +17,7 @@ export const ATTACHMENT_MIME_TYPES = [
   "image/heic",
   "image/webp",
 ] as const;
-export type AttachmentMimeType = (typeof ATTACHMENT_MIME_TYPES)[number];
+type AttachmentMimeType = (typeof ATTACHMENT_MIME_TYPES)[number];
 
 export const ATTACHMENT_KINDS = ["receipt", "invoice", "warranty", "other"] as const;
 export type AttachmentKind = (typeof ATTACHMENT_KINDS)[number];
@@ -32,17 +28,8 @@ export type AttachmentKind = (typeof ATTACHMENT_KINDS)[number];
  */
 export const MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024;
 
-/** One canonical extension per accepted type, used to build the stored name. */
-const EXTENSION_BY_MIME: Record<AttachmentMimeType, string> = {
-  "application/pdf": "pdf",
-  "image/jpeg": "jpg",
-  "image/png": "png",
-  "image/heic": "heic",
-  "image/webp": "webp",
-};
-
-/** Extensions the accepted types may legitimately arrive with. */
-const ALLOWED_EXTENSIONS: Record<AttachmentMimeType, readonly string[]> = {
+/** Extensions each type may arrive with; the first is canonical and builds the stored name. */
+const ALLOWED_EXTENSIONS: Record<AttachmentMimeType, readonly [string, ...string[]]> = {
   "application/pdf": ["pdf"],
   "image/jpeg": ["jpg", "jpeg"],
   "image/png": ["png"],
@@ -98,7 +85,7 @@ export type AttachmentRejection =
   | "too_large"
   | "empty";
 
-export interface AcceptedAttachment {
+interface AcceptedAttachment {
   fileName: string;
   mimeType: AttachmentMimeType;
   byteSize: number;
@@ -144,7 +131,7 @@ export function classifyAttachment(candidate: {
 export function storedAttachmentName(id: string, mimeType: AttachmentMimeType): string {
   const safeId = id.replace(/[^A-Za-z0-9-]/g, "");
   if (safeId === "") throw new Error("Attachment id has no storable characters");
-  return `${safeId}.${EXTENSION_BY_MIME[mimeType]}`;
+  return `${safeId}.${ALLOWED_EXTENSIONS[mimeType][0]}`;
 }
 
 /** A stored basename this app could have written. Anything else is refused. */

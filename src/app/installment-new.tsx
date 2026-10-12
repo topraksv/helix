@@ -8,9 +8,9 @@ import { useAllTransactionsState, useAnsweredForId, useCategoriesState, usePerso
 import { combineLiveStates } from "../data/live-state";
 import { classifyRecordId } from "../domain/route-params";
 import { addMonthsToKey, monthKeyOf, todayISO, type ISODate, type MonthKey } from "../domain/dates";
-import { isValidInstallmentCount, planAmounts, planDraft, planForSighting, planProgress, type GeneratedInstallment } from "../domain/installments";
+import { isValidInstallmentCount, planAmounts, planDraft, planForSighting, planProgress, planRefundTotals, type GeneratedInstallment } from "../domain/installments";
 import { formatMinorCompact, formatMinorInput } from "../domain/money";
-import { installmentSplitText } from "../ui/installment-text";
+import { installmentSplitText, withCurrency } from "../ui/installment-text";
 import { dateLabel, monthLabel, tr } from "../i18n/tr";
 import CalendarRange from "lucide-react-native/icons/calendar-range";
 import ChevronLeft from "lucide-react-native/icons/chevron-left";
@@ -20,12 +20,12 @@ import Landmark from "lucide-react-native/icons/landmark";
 import Trash from "lucide-react-native/icons/trash";
 import Undo2 from "lucide-react-native/icons/undo-2";
 import type { LucideIcon } from "lucide-react-native";
-import { categoryIconComponent,  } from "../ui/category-icon";
+import { categoryIconComponent } from "../ui/category-icon";
 import { PaymentSourceLogo } from "../ui/logo";
 import { Badge, Body, Button, Card, CardList, ChoiceTile, DataGateScreen, DataStateNotice, FadeIn, Field, Heading, IconButton, Label, ListRow, MetricStrip, MoneyField, PanelHeader, Row, Screen, SegmentBar, Segmented, Select, Spread } from "../ui/components";
 import { useSubmitOnEnter } from "../ui/keyboard";
 import { appAlert, appConfirm } from "../ui/dialog";
-import { placeholderPools, useRotatingPlaceholder } from "../ui/placeholders";
+import { useRotatingPlaceholder } from "../ui/placeholders";
 import { scheduleSync } from "../sync/engine";
 import { font, radius, spacing, type, useTheme } from "../ui/theme";
 import { navigateBack } from "../ui/navigation";
@@ -123,25 +123,14 @@ export default function PlanModal() {
   if (!record) return <Redirect href="/(tabs)/cash-flow/installments" />;
   if (record.mode === "edit" && !existing) {
     if (!answered) {
-      return (
-        <Screen scroll={false}>
-          <DataStateNotice status={plansState.status} retry={plansState.retry} />
-        </Screen>
-      );
+      return <DataGateScreen status={plansState.status} retry={plansState.retry} scroll={false} />;
     }
     return <Redirect href="/(tabs)/cash-flow/installments" />;
   }
   return <PlanForm key={existing?.id ?? "new"} existing={existing} />;
 }
 
-/**
- * What the plan being edited has actually done so far.
- *
- * Opening "edit" on a running plan showed an empty form with the same words as
- * "new": you could not see which month you were in, how many instalments had
- * been paid or what was left, so there was nothing to edit AGAINST. The rows
- * are the plan's own transactions, exactly as the list screen reads them.
- */
+/** The plan's own rows, read as the list screen reads them, so an edit has something to edit against. */
 function PlanState({ planId }: { planId: string }) {
   const transactionsState = useAllTransactionsState();
   const items: GeneratedInstallment[] = transactionsState.data
@@ -204,8 +193,7 @@ function PlanRefunds({ planId }: { planId: string }) {
   const rows = transactionsState.data.filter((t) => t.installmentPlanId === planId);
   // A closed loan's payoff is the one unnumbered row that is not a refund.
   const refunds = rows.filter((t) => t.installmentNo == null && t.amountTryMinor < 0).sort((a, b) => a.effectiveDate.localeCompare(b.effectiveDate));
-  const purchaseMinor = rows.filter((t) => t.installmentNo != null).reduce((sum, t) => sum + t.amountTryMinor, 0);
-  const refundedMinor = -refunds.reduce((sum, t) => sum + t.amountTryMinor, 0);
+  const { purchaseMinor, refundedMinor, leftMinor } = planRefundTotals(rows, (t) => t.amountTryMinor);
   const undo = useUndo();
   const remove = (id: string, amountMinor: number) => {
     void (async () => {
@@ -235,7 +223,7 @@ function PlanRefunds({ planId }: { planId: string }) {
             items={[
               { label: tr.installments.purchaseTotal, minor: purchaseMinor },
               { label: tr.installments.refundsTotal, minor: -refundedMinor },
-              { label: tr.installments.netTotal, minor: purchaseMinor - refundedMinor },
+              { label: tr.installments.netTotal, minor: leftMinor },
             ]}
           />
         ) : (
@@ -311,7 +299,7 @@ function savedPlanInput(plan: Plan, persons: Person[], factor: number) {
 
 /**
  * What a bank can still do to a running loan: close it early, or change what
- * is left of it (owner decision, 2026-09-13).
+ * is left of it.
  *
  * Every action works on the plan as it is SAVED, never on the form beside it,
  * so an edit half-typed there cannot leak into a payoff. A closure removes
@@ -412,14 +400,13 @@ function RestructureLoanCard({
       setBusy(false);
     }
   });
-  const currencySuffix = plan.currency === "TRY" ? "" : ` · ${plan.currency}`;
   return (
     <Card>
       <PanelHeader icon={CalendarRange} title={tr.installments.restructureTitle} description={tr.installments.restructureHint} />
       <Row>
         <View style={{ flex: 1 }}>
           <MoneyField
-            label={`${tr.installments.restructureMonthly}${currencySuffix}`}
+            label={withCurrency(tr.installments.restructureMonthly, plan.currency)}
             value={monthlyRaw}
             onChangeMinor={(raw, minor) => {
               setMonthlyRaw(raw);
@@ -485,7 +472,7 @@ function CloseLoanCard({ plan, instalments }: { plan: Plan; instalments: PlanRow
       <PanelHeader icon={Landmark} title={tr.installments.closeTitle} description={tr.installments.closeHint} />
       <DateField label={tr.installments.closedOnField} value={closedOn} onChange={setClosedOn} max={today} />
       <MoneyField
-        label={`${tr.installments.payoffAmount}${plan.currency === "TRY" ? "" : ` · ${plan.currency}`}`}
+        label={withCurrency(tr.installments.payoffAmount, plan.currency)}
         value={payoffRaw}
         onChangeMinor={(raw, minor) => {
           setPayoffRaw(raw);
@@ -550,7 +537,7 @@ function planFields(plan: ExistingPlan | undefined): PlanFields {
   };
 }
 
-/** A plan keeps the currency it was bought in; saving a USD plan as TRY at a factor of 1 once rewrote 100 USD as ₺100. */
+/** A plan keeps the currency it was bought in; saving it as TRY at factor 1 would rewrite 100 USD as ₺100. */
 function usePlanRate(userId: string, plan: ExistingPlan | undefined) {
   const currency = plan?.currency ?? "TRY";
   useFxRates();
@@ -568,7 +555,7 @@ function usePlanForm(existing: ExistingPlan | undefined) {
   const operationGuard = useOperationGuard();
   const undo = useUndo();
   const router = useRouter();
-  const data = combineLiveStates([sourcesState, personsState, categoriesState, transactionsState]);
+  const data = combineLiveStates([sourcesState, personsState, categoriesState, transactionsState, plansState]);
   const persons = personsState.data;
   const close = () => navigateBack(router, "/(tabs)/cash-flow/installments");
   const [fields, setFields] = useState(() => planFields(existing));
@@ -645,7 +632,7 @@ type PlanFormModel = ReturnType<typeof usePlanForm>;
 
 function PlanDetailsCard({ form }: { form: PlanFormModel }) {
   const { fields, set, draft, currency, amountMode } = form;
-  const titlePlaceholder = useRotatingPlaceholder(placeholderPools.installment);
+  const titlePlaceholder = useRotatingPlaceholder(tr.placeholders.installment);
   const amountLabel = amountMode === "total" ? tr.installments.totalAmount : tr.installments.monthlyAmount;
   return (
     <Card>
@@ -662,7 +649,7 @@ function PlanDetailsCard({ form }: { form: PlanFormModel }) {
         onChange={set("modeChoice")}
       />
       <MoneyField
-        label={currency === "TRY" ? amountLabel : `${amountLabel} · ${currency}`}
+        label={withCurrency(amountLabel, currency)}
         value={fields.amountRaw}
         onChangeMinor={(raw, minor) => {
           set("amountRaw")(raw);

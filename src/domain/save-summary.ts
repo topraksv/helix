@@ -1,19 +1,14 @@
 /**
  * What a save actually did, in one line the owner can check against.
  *
- * A ledger write is not self-evident: the same amount can land in this month
- * or the next (a card's statement cycle), can move today's balance or only the
- * forecast (pending vs realized), and can be invisible on the screen the owner
- * returns to. "Kaydedildi" says none of that, so the two questions it leaves —
- * *what* changed and *what it did to my money* — had to be answered by going
- * and looking.
- *
- * Pure, so the sentence can be asserted without a renderer, and so the same
- * rules apply wherever a write is confirmed.
+ * The same amount can land in this month or the next (a card's statement
+ * cycle) and can move today's balance or only the forecast; "Kaydedildi" says
+ * neither. Pure, so the sentence can be asserted without a renderer.
  */
 
-import type { ISODate } from "./dates";
+import { monthKeyOf, type ISODate } from "./dates";
 import type { Minor } from "./money";
+import { signedBalanceEffectOf } from "./transactions";
 import type { TransactionOrigin, TransactionStatus, TransactionType } from "./types";
 
 /** The written row, as far as a confirmation is concerned. */
@@ -30,27 +25,21 @@ export interface SavedTransaction {
  * How a saved row lands on the two figures the dashboard shows.
  *
  * `balanceMinor` is the signed effect on the CONFIRMED balance and is zero
- * unless the row is realized, self-owned and not in the future — the same
- * three conditions `countsTowardBalance` applies, restated here rather than
- * imported so this stays a pure description of one row rather than a second
- * balance engine. `projectedMinor` is the effect on the forecast, which a
- * pending or future row does reach.
+ * unless the row is realized, self-owned and not in the future (the conditions
+ * of `countsTowardBalance`, restated to keep this a description of one row).
+ * `projectedMinor` is the effect on the forecast, which a pending or future
+ * row does reach.
  */
-export interface SaveEffect {
+interface SaveEffect {
   balanceMinor: Minor;
   projectedMinor: Minor;
   /** True when the row changes the forecast but not today's balance. */
   forecastOnly: boolean;
 }
 
-function signedEffect(saved: SavedTransaction): Minor {
-  // A transfer leaves the ledger the same way an expense does: it is money
-  // that is no longer available, whatever it was moved into.
-  return saved.type === "income" ? saved.amountTryMinor : -saved.amountTryMinor;
-}
-
 export function saveEffect(saved: SavedTransaction, today: ISODate): SaveEffect {
-  const signed = signedEffect(saved);
+  // A transfer leaves the ledger like an expense: that money is no longer available.
+  const signed = signedBalanceEffectOf(saved.type, saved.amountTryMinor, null);
   const counts = saved.status === "realized" && saved.effectiveDate <= today && saved.personIsSelf;
   const projected = saved.personIsSelf ? signed : 0;
   return {
@@ -63,15 +52,14 @@ export function saveEffect(saved: SavedTransaction, today: ISODate): SaveEffect 
 /**
  * Which month the row will actually be found in.
  *
- * A card expense bought today is filed under its statement's due month, so
- * "saved" and "visible where I was looking" are different months and the owner
- * has no way to tell without being told.
+ * A card expense is filed under its statement's due month, which may not be
+ * the month the owner was looking at.
  */
 export function landsInAnotherMonth(effectiveDate: ISODate, enteredFor: ISODate): boolean {
-  return effectiveDate.slice(0, 7) !== enteredFor.slice(0, 7);
+  return monthKeyOf(effectiveDate) !== monthKeyOf(enteredFor);
 }
 
-export type SaveSummaryKind = "created" | "updated" | "deleted";
+type SaveSummaryKind = "created" | "updated" | "deleted";
 
 /**
  * The parts a confirmation is built from. The renderer supplies the words; this
@@ -102,7 +90,7 @@ export function buildSaveSummary(input: {
     effect,
     otherMonth:
       enteredFor && landsInAnotherMonth(input.saved.effectiveDate, enteredFor)
-        ? input.saved.effectiveDate.slice(0, 7)
+        ? monthKeyOf(input.saved.effectiveDate)
         : null,
     undoable: input.undoable ?? true,
   };

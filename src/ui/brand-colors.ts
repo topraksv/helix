@@ -175,23 +175,9 @@ export const BRAND: Record<string, { color: string; mark?: string }> = {
 };
 
 /**
- * Monogram plate for a brand chip.
- *
- * The mark used to be drawn straight onto the brand colour, with the ink picked
- * by NTSC "perceived brightness" on GAMMA-ENCODED sRGB. WCAG contrast uses
- * LINEARIZED luminance, and the two diverge most in saturated greens and cyans
- * where this table is dense: 49 chips failed AA and 16 fell below even 3:1.
- * Measuring properly fixed the worst of it, but twelve brand colours still land
- * at 4.30–4.41:1 — and the mark is normal-size text (`size * 0.42`, ~17 px on a
- * 40 px tile), so 4.5:1 genuinely applies and neither ink can reach it.
- *
- * A brand colour belongs to the brand, so instead of tinting it the mark now
- * sits on a NEUTRAL PLATE inside the tile. Contrast then stops depending on the
- * brand at all: it is the theme's own text-on-surface pair, which
- * `tests/ui/theme-contrast.test.ts` already guarantees. The plate itself is chosen
- * by measured contrast against the brand colour so its edge clears the 3:1
- * non-text boundary of WCAG 1.4.11, and the tile keeps the full brand colour
- * around it.
+ * The monogram sits on a neutral plate inside the brand tile, so its contrast
+ * is the theme's text-on-surface pair; the plate is picked to clear 3:1
+ * against the brand colour (WCAG 1.4.11).
  */
 interface BrandPlate {
   /** Fill behind the monogram. */

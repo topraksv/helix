@@ -13,22 +13,14 @@ interface AsyncFieldState {
 }
 
 /**
- * A text control whose default arrives asynchronously.
+ * A text control whose default arrives asynchronously. Seeding `useState` from
+ * an unresolved live query freezes the placeholder, and a save button comparing
+ * the frozen draft to the later value stays enabled and overwrites the real
+ * setting. So dirtiness is the presence of a draft, never value equality.
  *
- * Seeding `useState` from an unresolved live query froze the placeholder: the
- * settings reminder field captured the fallback `3` forever, and because the
- * save button compared the frozen draft against the later-resolved value
- * (`3 !== 7`), it stayed ENABLED — one tap silently overwrote the user's real
- * setting with the placeholder.
- *
- * Dirtiness is therefore the presence of a draft, never value equality:
- * `draft === null` means "the user has not typed", which is a different fact
- * from "the draft happens to equal the stored value".
- *
- * `resolved === null` means the value is not known yet (still loading, or the
- * read failed). Saving is refused in that state even when the user has typed,
- * because writing over a value that was never loaded is exactly the overwrite
- * this function exists to prevent.
+ * `resolved === null` means not known yet (loading, or the read failed): saving
+ * is refused even when the user has typed, since it would overwrite a value
+ * that was never loaded.
  */
 export function asyncFieldState(
   draft: string | null,
@@ -38,7 +30,6 @@ export function asyncFieldState(
   const edited = draft !== null;
   const value = draft ?? resolved ?? "";
   if (resolved === null) return { value, edited, canSave: false };
-  // `value` is `draft ?? resolved`, so a difference from `resolved` already
-  // proves a draft exists — an extra `edited &&` here would be unreachable.
+  // `value` is `draft ?? resolved`, so a difference from `resolved` already proves a draft exists.
   return { value, edited, canSave: value !== resolved && isValid(value) };
 }

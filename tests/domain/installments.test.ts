@@ -9,6 +9,9 @@ import {
   planDraft,
   planForSighting,
   planProgress,
+  planRefundTotals,
+  planRowsByMonth,
+  summarizeInstallmentPlans,
   type PlanSighting,
 } from "../../src/domain/installments";
 import { installmentShareRange, splitIntoInstallments } from "../../src/domain/money";
@@ -46,6 +49,8 @@ describe("splitIntoInstallments", () => {
   it("falls back to truncation when rounding would leave the first instalment nothing", () => {
     expect(splitIntoInstallments(5, 6)).toEqual([5, 0, 0, 0, 0, 0]);
     expect(splitIntoInstallments(1, 3)).toEqual([1, 0, 0]);
+    // Half a kuruş per share rounds up past the total; the truncated share is not zero.
+    expect(splitIntoInstallments(6, 4)).toEqual([3, 1, 1, 1]);
   });
 
   it("preserves the exact total", () => {
@@ -61,14 +66,7 @@ describe("splitIntoInstallments", () => {
   });
 });
 
-/**
- * What the two plan screens show BEFORE the schedule exists.
- *
- * Both used to divide the total themselves with `Math.trunc`, so a preview
- * and the schedule it previewed were different numbers: "3 taksit x ₺333,33"
- * for a ₺1.000,00 purchase adds up to ₺999,99, and the row the app then wrote
- * for the last month was ₺333,34. One split now answers both.
- */
+/** Preview and schedule come from one split: ₺1.000,00 over 3 is 333,34 + 333,33 + 333,33, not 3 × 333,33. */
 describe("installmentShareRange", () => {
   it("reports the same two figures the schedule will use", () => {
     for (const [total, count] of [[1000_00, 3], [999_99, 7], [123_45, 12], [1, 3], [600_00, 6]] as const) {
@@ -128,8 +126,7 @@ describe("installment count bounds (DoS guard)", () => {
     expect(isValidInstallmentCount(2.5)).toBe(false);
   });
 
-  // Regression: an unbounded count (e.g. 9999) would materialize thousands of
-  // rows in one transaction and freeze the UI. The engine now refuses it.
+  // An unbounded count would materialize thousands of rows in one transaction.
   it("planAmounts throws on an absurd count instead of allocating it", () => {
     expect(() => planAmounts({ totalAmountMinor: 600_00, monthlyAmountMinor: null, installmentCount: 9999 })).toThrow();
     expect(() => generateSchedule(plan({ installmentCount: 100_000 }), "2026-07-05")).toThrow();
@@ -187,6 +184,14 @@ describe("generateSchedule", () => {
       "2026-07-05",
     );
     expect(items.map((i) => i.amountMinor)).toEqual([2367213, 2367213, 2367213]);
+  });
+
+  it("falls back to day 1 rather than throwing inside an installment schedule", () => {
+    const schedule = generateSchedule(plan({ installmentCount: 3, totalAmountMinor: 30_000, dueDay: 0 }), "2026-07-20");
+    expect(schedule).toHaveLength(3);
+    for (const item of schedule) expect(item.effectiveDate).toMatch(/^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/);
+    expect(schedule[0]?.effectiveDate).toBe("2026-07-01");
+    expect(generateSchedule(plan({ installmentCount: 1, totalAmountMinor: 100, dueDay: 45 }), "2026-07-20")[0]?.effectiveDate).toBe("2026-07-01");
   });
 });
 
@@ -311,6 +316,7 @@ describe("planDraft", () => {
   /** "Already paid N" places the start; on an edit only once it is corrected. */
   it("moves the start by what was already paid", () => {
     expect(draft({ paidText: "2" })).toMatchObject({ paidChanged: true, resolvedStart: "2026-07" });
+    expect(draft({ paidText: "-1" }), "a new plan's count is a change only when something was paid").toMatchObject({ paidChanged: false });
     const edit = { existingStartMonth: "2026-03" as const, startChoice: "2026-03" as const, storedPaid: 5 };
     expect(draft({ ...edit })).toMatchObject({ paid: 5, paidChanged: false, resolvedStart: "2026-03", reschedule: false });
     expect(draft({ ...edit, paidText: "5" })).toMatchObject({ paidChanged: false, reschedule: false });
@@ -325,21 +331,7 @@ describe("planDraft", () => {
     expect(draft({ dueDayText: "40" })).toMatchObject({ dueDayValid: true, dueDay: 5 });
   });
 
-  /**
-   * A refusal has to BE a refusal. `resolvedStart` derived from `paid` and
-   * `dueDay` before either was read for validity, so the very inputs the two
-   * tests above call invalid were the ones that reached `deriveStartMonth` —
-   * but only on a draft that also moves the start, which is why both of those
-   * tests passed while the form crashed. `planDraft` runs unguarded in the
-   * hook body of `installment-new.tsx`, so the throw replaced the form with
-   * the error boundary instead of showing the refusal it had already computed.
-   *
-   * Reproduced 2026-09-21 before the fix: a loan due day of `0` threw
-   * `Invalid day of month: 0`, `-1` already-paid on an edit threw `paidCount
-   * cannot be negative`, and `1.5` invented the month key `"2026-8.5"` — the
-   * same class of syntactically-invalid string `clampDayToMonth` was hardened
-   * against in `dates.ts`.
-   */
+  /** Validity is checked before the start is derived: `planDraft` runs unguarded in the form's hook body, so a throw here replaces the form with the error boundary. */
   it("refuses corrupt input that also moves the start, rather than throwing on it", () => {
     const edit = { existingStartMonth: "2026-03" as const, startChoice: "2026-03" as const, storedPaid: 5 };
     for (const dueDayText of ["0", "32", "7.5", "x"]) {
@@ -369,5 +361,143 @@ describe("planDraft", () => {
       { card: null },
     ]) expect(draft(over), JSON.stringify(over)).toMatchObject({ valid: false });
     expect(draft({ paidText: "6" })).toMatchObject({ valid: true });
+  });
+});
+
+describe("plan input refusals and same-day boundaries", () => {
+  it("rejects impossible plan inputs and reports a fully paid plan exactly", () => {
+    expect(() => planAmounts({ totalAmountMinor: null, monthlyAmountMinor: null, installmentCount: 2 })).toThrow(
+      "Plan needs either totalAmountMinor or monthlyAmountMinor",
+    );
+    expect(() => deriveStartMonth(-1, "2026-07")).toThrow("paidCount cannot be negative");
+    // Without a today nothing has auto-realized, so the reference month is the next unpaid one.
+    expect(deriveStartMonth(2, "2026-07", 1)).toBe("2026-05");
+    expect(() => planProgress([])).toThrow("Plan has no installments");
+    expect(planProgress([
+      { installmentNo: 1, month: "2026-07", amountMinor: 500, effectiveDate: "2026-07-01", status: "realized" },
+    ])).toEqual({ paid: 1, total: 1, remaining: 0, remainingMinor: 0, monthlyMinor: 0, endMonth: "2026-07" });
+  });
+
+  it("pins installment whitespace, error, and same-day boundaries", () => {
+    expect(installmentDisplayTitle(null, "Laptop   taksiti", "fallback")).toBe("Laptop taksiti");
+    expect(() => planAmounts({ totalAmountMinor: 100, monthlyAmountMinor: null, installmentCount: 0 }))
+      .toThrow(`Installment count out of range (1–${MAX_INSTALLMENT_COUNT}): 0`);
+    expect(generateSchedule(plan({ installmentCount: 1, totalAmountMinor: 100, dueDay: 18 }), "2026-07-18")[0]?.status).toBe("realized");
+    expect(deriveStartMonth(0, "2026-07", 18, "2026-07-18")).toBe("2026-08");
+  });
+});
+
+describe("a plan's purchase, refunds and what is left", () => {
+  const rows = [
+    { installmentNo: 1, amountMinor: 100_00, amountTryMinor: 4_000_00 },
+    { installmentNo: 2, amountMinor: 100_00, amountTryMinor: 4_100_00 },
+    { installmentNo: null, amountMinor: -30_00, amountTryMinor: -1_200_00 },
+    { installmentNo: undefined, amountMinor: -1, amountTryMinor: -40 },
+    // A closed loan's payoff: unnumbered and positive, so it refunds nothing.
+    { installmentNo: null, amountMinor: 50_00, amountTryMinor: 2_000_00 },
+    { installmentNo: null, amountMinor: 0, amountTryMinor: 0 },
+  ];
+
+  it("reads whichever amount the caller names", () => {
+    expect(planRefundTotals(rows, (row) => row.amountMinor)).toEqual({ purchaseMinor: 200_00, refundedMinor: 30_01, leftMinor: 169_99 });
+    expect(planRefundTotals(rows, (row) => row.amountTryMinor)).toEqual({ purchaseMinor: 8_100_00, refundedMinor: 1_200_40, leftMinor: 6_899_60 });
+  });
+
+  it("counts instalment zero as numbered and leaves nothing when refunds equal the purchase", () => {
+    const totals = planRefundTotals([
+      { installmentNo: 0, amountMinor: 500 },
+      { installmentNo: null, amountMinor: -500 },
+    ], (row) => row.amountMinor);
+    expect(totals).toEqual({ purchaseMinor: 500, refundedMinor: 500, leftMinor: 0 });
+  });
+
+  it("is zero for a plan with no rows", () => {
+    const totals = planRefundTotals([], () => 1);
+    expect(totals.purchaseMinor).toBe(0);
+    expect(totals.leftMinor).toBe(0);
+    expect(totals.refundedMinor === 0).toBe(true);
+  });
+
+  it("does not read a closed loan's payoff as a refund", () => {
+    const totals = planRefundTotals([{ installmentNo: 1, amountMinor: 500 }, { installmentNo: null, amountMinor: 300 }], (row) => row.amountMinor);
+    expect(totals.leftMinor).toBe(500);
+    // A negative instalment is still an instalment: only unnumbered rows refund.
+    expect(planRefundTotals([{ installmentNo: 1, amountMinor: -500 }], (row) => row.amountMinor).leftMinor).toBe(-500);
+  });
+});
+
+describe("every plan's refund summary", () => {
+  const plans = [
+    { id: "p1", title: null },
+    { id: "p2", title: "Telefon" },
+    { id: "p3", title: "" },
+  ];
+  const row = (planId: string | null, installmentNo: number | null, amountMinor: number, status: "pending" | "realized", note: string | null = null) =>
+    ({ installmentPlanId: planId, installmentNo, amountMinor, status, note });
+
+  it("groups rows by plan, counts paid and pending instalments and nets refunds", () => {
+    const summaries = summarizeInstallmentPlans(plans, [
+      row("p1", 1, 100, "realized", "Laptop; taksit"),
+      row("p1", 2, 100, "pending"),
+      row("p1", 3, 100, "pending"),
+      row("p1", null, -50, "realized"),
+      row("p2", 1, 200, "realized"),
+      row(null, 1, 999, "pending"),
+      row("p9", 1, 999, "pending"),
+    ], "Taksit");
+    expect(summaries).toEqual([
+      { plan: plans[0], title: "Laptop", purchaseMinor: 300, refundedMinor: 50, leftMinor: 250, paid: 1, pending: 2 },
+      { plan: plans[1], title: "Telefon", purchaseMinor: 200, refundedMinor: -0, leftMinor: 200, paid: 1, pending: 0 },
+      { plan: plans[2], title: "Taksit", purchaseMinor: 0, refundedMinor: -0, leftMinor: 0, paid: 0, pending: 0 },
+    ]);
+  });
+
+  it("does not count a pending refund as a pending instalment", () => {
+    const [summary] = summarizeInstallmentPlans([plans[0]!], [row("p1", 1, 100, "realized"), row("p1", null, -10, "pending")], "Taksit");
+    expect(summary).toMatchObject({ paid: 1, pending: 0, refundedMinor: 10, leftMinor: 90 });
+  });
+});
+
+describe("a month's view of every plan's rows", () => {
+  const row = (planId: string | null, installmentNo: number | null, amountTryMinor: number, effectiveDate: string, cardStatementId: string | null = null) =>
+    ({ installmentPlanId: planId, installmentNo, amountTryMinor, effectiveDate, cardStatementId, status: "pending" as const });
+
+  it("orders each plan's instalments by number and keeps their month", () => {
+    const { itemsByPlan } = planRowsByMonth([
+      row("p1", 2, 200, "2026-08-15"),
+      row("p1", 1, 100, "2026-07-15"),
+      row(null, 1, 999, "2026-07-15"),
+      row("", 1, 999, "2026-07-15"),
+    ], "2026-07");
+    expect([...itemsByPlan.keys()]).toEqual(["p1"]);
+    expect(itemsByPlan.get("p1")).toEqual([
+      { installmentNo: 1, month: "2026-07", amountMinor: 100, effectiveDate: "2026-07-15", status: "pending" },
+      { installmentNo: 2, month: "2026-08", amountMinor: 200, effectiveDate: "2026-08-15", status: "pending" },
+    ]);
+  });
+
+  it("totals refunds over all months and nets every unnumbered row in the viewed month", () => {
+    const { refundedByPlan, refundInMonth, itemsByPlan } = planRowsByMonth([
+      row("p1", null, -30, "2026-06-30"),
+      row("p1", null, -20, "2026-07-01"),
+      row("p1", null, 500, "2026-07-31"),
+      row("p1", null, 0, "2026-07-10"),
+      row("p2", null, -5, "2026-08-01"),
+      row("p3", null, 0, "2026-06-01"),
+    ], "2026-07");
+    expect(refundedByPlan).toEqual(new Map([["p1", 50], ["p2", 5]]));
+    expect(refundInMonth).toEqual(new Map([["p1", 480]]));
+    expect(itemsByPlan.size).toBe(0);
+  });
+
+  it("records the statement of the viewed month's instalment only", () => {
+    const { statementInMonth } = planRowsByMonth([
+      row("p1", 1, 100, "2026-06-15", "s-june"),
+      row("p1", 2, 100, "2026-07-15", "s-july"),
+      row("p2", 1, 100, "2026-07-15", null),
+      row("p3", null, -10, "2026-07-15", "s-refund"),
+      row("p1", 3, 100, "2026-08-15", "s-august"),
+    ], "2026-07");
+    expect(statementInMonth).toEqual(new Map([["p1", "s-july"]]));
   });
 });

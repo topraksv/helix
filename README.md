@@ -243,8 +243,8 @@ değil ve hiçbiri klasöre taşınamaz.
 |---|---|
 | `package.json`, `package-lock.json`, `.npmrc`, `.nvmrc` | npm ve Node sürüm kilidi |
 | `app.json`, `eas.json`, `metro.config.js`, `babel.config.js`, `plugins/` | Expo derleme zinciri |
-| `tsconfig.json`, `eslint.config.js`, `.editorconfig` | Tip ve biçim |
-| `vitest.config.mts`, `vitest.coverage.config.mts`, `vitest.mutation.config.mts` | Üç ayrı koşu: hızlı, eşikli, mutasyon |
+| `tsconfig.json`, `eslint.config.js` | Tip ve biçim |
+| `vitest.config.mts`, `vitest.mutation.config.mts` | İki ayrı koşu: eşikli, mutasyon |
 | `stryker.config.mjs`, `stryker.ci.config.mjs` | Yerel ve CI mutasyon kapsamı |
 | `playwright.config.ts` | Tarayıcı süiti |
 | `lint-baseline.json`, `mutation-baseline.json` | Cırcır tabanları — sayı düşebilir, yükselemez |

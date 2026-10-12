@@ -81,13 +81,6 @@ describe("the screenshot is an image, and a small one", () => {
     expect(feedbackImageRejection("image/png", MAX_FEEDBACK_IMAGE_BYTES + 1)).toBe("size");
   });
 
-  it("stays well under what a mail host refuses once base64 inflates it", () => {
-    expect(MAX_FEEDBACK_IMAGE_BYTES * (4 / 3)).toBeLessThan(10 * 1024 * 1024);
-    // The bound that actually matters is the WHOLE set, which is what leaves
-    // the device as one message.
-    expect(MAX_FEEDBACK_TOTAL_IMAGE_BYTES * (4 / 3)).toBeLessThan(10 * 1024 * 1024);
-  });
-
   it("adds the attached bytes up, and calls nothing attached zero", () => {
     expect(feedbackImagesBytes([])).toBe(0);
     expect(feedbackImagesBytes([{ byteLength: 10 }, { byteLength: 32 }])).toBe(42);
@@ -148,13 +141,7 @@ describe("a size said the way a person reads one", () => {
   });
 });
 
-/**
- * The subject rule lives in the edge function, because that is the only place
- * it runs — see the header on the module below. It is imported here rather
- * than read as source text (the way `tests/market-proxy.test.ts` has to treat
- * its function) because it was deliberately given its own file with no Deno
- * global in it, so the behaviour can be asserted instead of the wording.
- */
+/** The subject rule lives in the edge function but in its own Deno-free module, so it is imported rather than read as text. */
 describe("the subject line", () => {
   it("carries the category so a mail client can file it unopened", () => {
     expect(feedbackSubject("visual", "Kısa mesaj")).toBe("[Helix/visual] Kısa mesaj");

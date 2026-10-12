@@ -70,7 +70,7 @@ let recoveryClient: ReturnType<typeof createRecoveryClient> = null;
  * Needs no PKCE verifier, so the link works in whichever browser the mail app
  * opens. And it touches nothing the device is signed in with: the account the
  * link belongs to may not be the one this workspace belongs to, and the tab it
- * opens in may not be the tab that holds Helix. A save refused after the token
+ * opens in may not be the tab that holds the app. A save refused after the token
  * was spent — the old password chosen again, a dropped connection — keeps the
  * session, so the next press does not need a link that no longer exists.
  */
@@ -112,54 +112,16 @@ const LAST_EMAIL_KEY = "helix.last_email";
 const LOCAL_OWNER_KEY = "helix.local_owner";
 /** A failed invalidation wipe must be retried even if the same account returns. */
 const LOCAL_WIPE_PENDING_OWNER = "__helix_wipe_pending__";
-/**
- * Entry-form "smart default" keys (`helix.last.<transaction type>`), written by
- * `src/app/transaction.tsx`.
- *
- * They look like a device preference and are not one: the stored value is a
- * category id and a payment-source id, which exist only inside ONE account's
- * workspace. On web the backing store is `localStorage`, so leaving them behind
- * left the previous account's row ids readable on a shared browser after
- * sign-out. `tests/domain/privacy.test.ts` checks this list against the writer so the
- * two cannot drift apart.
- */
+/** Entry-form defaults (`helix.last.<type>`) hold ids that exist only in one account's workspace; `tests/domain/privacy.test.ts` checks the list against the writer. */
 const ENTRY_DEFAULT_KEYS = ["helix.last.income", "helix.last.expense", "helix.last.transfer"];
 
-/**
- * Cash-flow matrix pin keys (`helix.matrix.pinned*`), written by
- * `src/app/(tabs)/cash-flow/index.tsx`.
- *
- * The same mistake as the entry defaults, one key family over, and it survived
- * the fix for those because it looks even more like a layout preference than
- * they did. What `togglePin` stores is a COLUMN KEY, and
- * `src/domain/cash-flow-matrix.ts` builds those from `category.id` and
- * `column.id` — ids that exist only inside one account's workspace. Only the
- * `opening`/`closing` system rows are account-independent.
- *
- * The reader validates a pin against the live columns, so a stale one is never
- * shown to the next account; it was still the previous account's id sitting in
- * a store the session no longer owned. `helix.matrix.pinned` is the pre-split
- * single key, cleared too because a device that never opened the matrix after
- * the migration still holds it.
- */
+/** Matrix pins are column keys built from category ids, so they too belong to one account; `helix.matrix.pinned` is the pre-split key a device may still hold. */
 const MATRIX_PIN_KEYS = ["helix.matrix.pinned", "helix.matrix.pinned.rows", "helix.matrix.pinned.columns"];
 
-/**
- * Device-local state that belongs to the ACCOUNT rather than the device.
- *
- * The sync banner reports the last result of the account that produced it —
- * its error text, and the `attention` state that counts that account's
- * quarantined rows. Neither describes the next account, and nothing recomputes
- * them until its first sync completes, so a signed-in user could read the
- * previous one's sync failure as their own. Reset with the workspace, not after
- * it.
- */
+/** Device-local state that belongs to the account: the sync banner would show the previous account's failure until the next first sync. Reset with the workspace, not after it. */
 async function clearAccountScopedDeviceState(): Promise<void> {
   useSyncStatus.getState().set({ state: "idle", lastSyncAt: null, error: null, remoteChangeAt: null });
-  // The diagnostics watermark says "everything up to here is already in the
-  // account's incident table". A different account has no such table, so the
-  // next owner of this device would silently skip every incident recorded
-  // before they signed in.
+  // The diagnostics watermark is per account: kept, the next owner would skip every incident recorded before they signed in.
   await resetDiagnosticUploads();
   await Promise.all(
     [...ENTRY_DEFAULT_KEYS, ...MATRIX_PIN_KEYS].map((key) => kv.remove(key).catch(() => {})),
@@ -174,13 +136,21 @@ async function clearAccountScopedDeviceState(): Promise<void> {
  */
 async function discardForeignSupabaseSession(): Promise<void> {
   const supabase = getSupabase();
-  if (!supabase) return;
+  if (supabase) await endAuthSession(supabase, "local");
+}
+
+/** Signs out with the flag up, so the SIGNED_OUT listener leaves the workspace alone. */
+async function endAuthSession(supabase: NonNullable<ReturnType<typeof getSupabase>>, scope: "local" | "global"): Promise<void> {
   explicitSignOutInProgress = true;
   try {
-    await signOutWithLocalFallback((options) => supabase.auth.signOut(options));
+    await signOutWithLocalFallback((options) => supabase.auth.signOut(options), scope);
   } finally {
     explicitSignOutInProgress = false;
   }
+}
+
+async function forgetAccount(): Promise<void> {
+  for (const key of [LOCAL_OWNER_KEY, LAST_USER_KEY, LAST_EMAIL_KEY]) await kv.remove(key).catch(() => {});
 }
 
 /**
@@ -192,13 +162,8 @@ async function discardForeignSupabaseSession(): Promise<void> {
  * owner marker would go stale).
  */
 async function ensureWorkspaceFor(userId: string): Promise<string | null> {
-  /**
-   * Read, write and verify — all three, because this marker is the only record
-   * that the wipe below happened, and the local database outlives the store
-   * that holds it. A read that FAILS must not be read as "no previous owner":
-   * that is the answer that skips the wipe, so guessing it would hand the
-   * previous account's rows to this one.
-   */
+  // Read, write and verify: this marker is the only record that the wipe happened. A failed read must not
+  // pass for "no previous owner", the answer that skips the wipe and hands the previous account's rows on.
   let owner: string | null;
   try {
     owner = await kv.get(LOCAL_OWNER_KEY);
@@ -218,17 +183,7 @@ async function ensureWorkspaceFor(userId: string): Promise<string | null> {
     }
   }
   if (owner !== userId) {
-    /**
-     * `kv` is best-effort by contract: it drops a write the browser refuses
-     * rather than failing its caller, which is right for a preference and
-     * wrong for this. So prove the marker landed instead of assuming it, and
-     * refuse the sign-in exactly as a failed wipe does when it did not.
-     *
-     * Not a hypothetical: with site data blocked, `kv.get` above already
-     * answered null for a device that HAD an owner, so the wipe was skipped
-     * and only the write's own failure stopped the sign-in. This is the check
-     * that was doing that job by accident.
-     */
+    // `kv` drops a write the browser refuses, so prove the marker landed and refuse the sign-in as a failed wipe does.
     const recorded = await kv
       .set(LOCAL_OWNER_KEY, userId)
       .then(() => kv.get(LOCAL_OWNER_KEY))
@@ -322,7 +277,7 @@ interface SessionStore {
   /** Read a recovery link. A token link is held unspent until save; older code
    *  and token links are exchanged for a short-lived session here — except in
    *  a `standalone` tab, where that session would be shared with the tab that
-   *  holds Helix, so only a token link is accepted. */
+   *  holds the app, so only a token link is accepted. */
   preparePasswordRecovery: (url: string | null, options?: { standalone?: boolean }) => Promise<"ready" | "expired" | "invalid">;
   /** Spend a held recovery token, update the password and end that session. */
   completePasswordRecovery: (newPassword: string) => Promise<string | null>;
@@ -613,12 +568,7 @@ export const useSession = create<SessionStore>((set, get) => ({
       await resetLocalWorkspace();
     } catch {
       if (userId) {
-        // The wipe failed, so the session stays alive and its background work
-        // is restored. That work MUST be session-scoped: a bare
-        // an unowned floating `Promise.allSettled(...)` had no owner, so `stopSyncSession`
-        // could not await it, and if the user retried the sign-out and signed
-        // into another account, `rescheduleAll` for the old account could still
-        // land and schedule its notifications under the new one.
+        // Restored as session work so stopSyncSession awaits it before another account signs in.
         startSyncSession(userId);
         connectMarkets();
         void runSyncSessionTask(userId, async () => {
@@ -633,23 +583,13 @@ export const useSession = create<SessionStore>((set, get) => ({
     // wipe above keeps the session, and a session that stays keeps its documents.
     await endLocalSession();
     const supabase = getSupabase();
-    if (supabase) {
-      explicitSignOutInProgress = true;
-      try {
-        await signOutWithLocalFallback((options) => supabase.auth.signOut(options));
-      } finally {
-        explicitSignOutInProgress = false;
-      }
-    }
-    await kv.remove(LOCAL_OWNER_KEY);
-    await kv.remove(LAST_USER_KEY);
-    await kv.remove(LAST_EMAIL_KEY);
+    if (supabase) await endAuthSession(supabase, "local");
+    await forgetAccount();
     return null;
   },
 
   deleteAccount: async (options) => {
-    const state = get();
-    const userId = state.userId;
+    const userId = get().userId;
     if (!userId) return null;
     await stopSyncSession(userId);
     // Erase the cloud account FIRST: if it fails (offline / RPC missing), abort
@@ -661,29 +601,27 @@ export const useSession = create<SessionStore>((set, get) => ({
     // and invalidates the credentials — deleting only the app tables (the old
     // behavior) left auth.users intact, so re-signup hit "already registered"
     // and the deleted account could still sign in.
-    if (isSupabaseConfigured) {
-      const supabase = getSupabase();
-      if (supabase) {
-        // Storage has no foreign key to the account, so nothing cascades the
-        // documents away, and nothing on the server repeats this removal (see
-        // `purgeRemoteAttachments`). A second attempt absorbs a dropped
-        // request; past that the owner decides, because a receipt left behind
-        // an identity that no longer exists is theirs to accept, and an
-        // unreachable file must never by itself keep an account alive.
-        const purge = () => purgeRemoteAttachments(userId).catch(() => false);
-        if (!((await purge()) || (await purge())) && !options?.force) {
-          startSyncSession(userId);
-          return DELETE_DOCUMENTS_REMAIN;
-        }
-        const { error } = await supabase.rpc("delete_own_account");
-        if (error) {
-          startSyncSession(userId);
-          // An expired session gets its precise remedy; every other failure
-          // (offline, RPC missing, server error) keeps the accurate "nothing
-          // was deleted" message instead of a raw English engine string.
-          const friendly = friendlyAuthError(error.message);
-          return friendly === tr.auth.errSessionExpired ? friendly : tr.account.deleteCloudFailed;
-        }
+    const supabase = getSupabase();
+    if (supabase) {
+      // Storage has no foreign key to the account, so nothing cascades the
+      // documents away, and nothing on the server repeats this removal (see
+      // `purgeRemoteAttachments`). A second attempt absorbs a dropped
+      // request; past that the owner decides, because a receipt left behind
+      // an identity that no longer exists is theirs to accept, and an
+      // unreachable file must never by itself keep an account alive.
+      const purge = () => purgeRemoteAttachments(userId).catch(() => false);
+      if (!((await purge()) || (await purge())) && !options?.force) {
+        startSyncSession(userId);
+        return DELETE_DOCUMENTS_REMAIN;
+      }
+      const { error } = await supabase.rpc("delete_own_account");
+      if (error) {
+        startSyncSession(userId);
+        // An expired session gets its precise remedy; every other failure
+        // (offline, RPC missing, server error) keeps the accurate "nothing
+        // was deleted" message instead of a raw English engine string.
+        const friendly = friendlyAuthError(error.message);
+        return friendly === tr.auth.errSessionExpired ? friendly : tr.account.deleteCloudFailed;
       }
     }
     // Cloud is erased (or local-only mode): stop timers/streams, wipe the device,
@@ -691,20 +629,9 @@ export const useSession = create<SessionStore>((set, get) => ({
     disconnectMarkets();
     clearRateCache();
     await Promise.all([clearAccountNotifications(true).catch(() => {}), clearAccountScopedDeviceState()]);
-    const supabase = getSupabase();
-    // The revocation is a round trip and the wipe is local, and neither needs
-    // the other, so they run side by side; both settle before the session ends.
-    const revoke = (async () => {
-      if (!supabase) return;
-      explicitSignOutInProgress = true;
-      try {
-        // The identity itself is gone, so every device's token should go with
-        // it — this is the one deliberate global revocation.
-        await signOutWithLocalFallback((options) => supabase.auth.signOut(options), "global");
-      } finally {
-        explicitSignOutInProgress = false;
-      }
-    })();
+    // The revocation is a round trip and the wipe is local, so they run side by side.
+    // The identity is gone, so every device's token goes with it: the one global revocation.
+    const revoke = supabase ? endAuthSession(supabase, "global") : Promise.resolve();
     const [, wiped] = await Promise.all([revoke, resetLocalWorkspace().then(() => true, () => false)]);
     if (!wiped) {
       // The cloud identity is already gone, so keep the local owner marker and
@@ -717,9 +644,7 @@ export const useSession = create<SessionStore>((set, get) => ({
       return tr.errors.workspaceResetFailed;
     }
     await endLocalSession();
-    await kv.remove(LOCAL_OWNER_KEY);
-    await kv.remove(LAST_USER_KEY);
-    await kv.remove(LAST_EMAIL_KEY);
+    await forgetAccount();
     return null;
   },
 
@@ -730,19 +655,10 @@ export const useSession = create<SessionStore>((set, get) => ({
     // sessions have no account to rate limit, so they use a stable placeholder.
     const brakeOwner = get().userId ?? LOCAL_ONLY_USER_ID;
     if (isVerificationBlocked(verificationBrake, brakeOwner, Date.now())) return tr.auth.errRateLimit;
-    // The store's e-mail is empty after an offline bootstrap (no live Supabase
-    // session at launch). Recover it from the auth session or the device record
-    // before failing — returning "Supabase not configured" here mislabeled
-    // every verification (including a merely wrong password) with a setup error.
+    // After an offline start the store has no address; Auth or the device may.
     let email = get().email;
     if (!email) {
-      try {
-        const { data } = await supabase.auth.getUser();
-        email = data.user?.email ?? null;
-      } catch {
-        email = null;
-      }
-      if (!email) email = await kv.get(LAST_EMAIL_KEY);
+      email = (await supabase.auth.getUser().catch(() => null))?.data.user?.email ?? (await kv.get(LAST_EMAIL_KEY).catch(() => null));
       if (!email) return tr.auth.errSessionExpired;
       set({ email });
     }
@@ -773,8 +689,7 @@ export const useSession = create<SessionStore>((set, get) => ({
     const supabase = getSupabase();
     if (!supabase) return tr.errors.supabaseNotConfigured;
     const { error } = await supabase.auth.updateUser({ email: newEmail.trim() });
-    if (error) return friendlyAuthError(error.message);
-    return null;
+    return error ? friendlyAuthError(error.message) : null;
   },
 
   changePassword: async (currentPassword, newPassword) => {
@@ -782,7 +697,6 @@ export const useSession = create<SessionStore>((set, get) => ({
     if (!supabase) return tr.errors.supabaseNotConfigured;
     if (!isValidNewPassword(newPassword)) return tr.auth.errWeakPassword;
     const { error } = await supabase.auth.updateUser({ current_password: currentPassword, password: newPassword });
-    if (error) return friendlyAuthError(error.message);
-    return null;
+    return error ? friendlyAuthError(error.message) : null;
   },
 }));

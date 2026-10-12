@@ -3,12 +3,7 @@
  * the small status marks. Nothing here renders another Helix component, so
  * nothing here can take part in an import cycle.
  *
- * It exists because `components.tsx` had grown to 2,483 lines holding forty
- * exports, which made every one of them a level-C change and forced a
- * `components ⇄ calculator` cycle: the calculator needed `Button` and
- * `FadeIn`, and the only place to get them was the module that also holds
- * everything else. `components.tsx` re-exports all of this, so no screen has
- * to know the split happened.
+ * Leaf layer: renders no other Helix component, so nothing here can join an import cycle. `components.tsx` re-exports it.
  */
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
@@ -49,7 +44,6 @@ export function controlStateStyle(palette: Palette, active: boolean, error = fal
   };
 }
 
-
 /**
  * The chevron on anything that opens and closes.
  *
@@ -69,7 +63,7 @@ export function DisclosureChevron({
 }) {
   const { palette } = useTheme();
   const reducedMotion = useReducedMotion();
-  const progress = useRef(new Animated.Value(open ? 1 : 0)).current;
+  const [progress] = useState(() => new Animated.Value(open ? 1 : 0));
   const settled = useRef(open);
   useEffect(() => {
     // A list of thirty closed disclosures should not run thirty 120ms
@@ -100,7 +94,6 @@ export function DisclosureChevron({
 }
 
 /** Shared reduced-motion-aware entrance. */
-
 export function FadeIn({
   children,
   delay = 0,
@@ -108,7 +101,6 @@ export function FadeIn({
   style,
   replayToken,
   testID,
-  accessibilityViewIsModal,
   accessibilityRole,
   accessibilityLiveRegion,
 }: {
@@ -127,7 +119,6 @@ export function FadeIn({
   /** Reset and replay without remounting the child tree. */
   replayToken?: string | number;
   testID?: string;
-  accessibilityViewIsModal?: boolean;
   accessibilityRole?: ViewProps["accessibilityRole"];
   accessibilityLiveRegion?: ViewProps["accessibilityLiveRegion"];
 }) {
@@ -151,7 +142,6 @@ export function FadeIn({
   return (
     <Animated.View
       testID={testID}
-      accessibilityViewIsModal={accessibilityViewIsModal}
       accessibilityRole={accessibilityRole}
       accessibilityLiveRegion={accessibilityLiveRegion}
       style={[
@@ -167,8 +157,6 @@ export function FadeIn({
   );
 }
 
-/** Screen scaffold with safe areas and bounded wide-screen content. */
-
 export function Row({ children, style, gap = spacing.md, ...props }: {
   children: ReactNode;
   style?: StyleProp<ViewStyle>;
@@ -183,7 +171,6 @@ export function Spread({ children, style, ...props }: {
 } & Omit<ViewProps, "children" | "style">) {
   return <View {...props} style={[{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }, style]}>{children}</View>;
 }
-
 
 /**
  * How many lines of text a leading mark still centres itself against.
@@ -310,12 +297,10 @@ export function Body({
 export function Eyebrow({
   children,
   color,
-  align,
   style,
 }: {
   children: string;
   color?: string;
-  align?: "left" | "center" | "right";
   style?: StyleProp<TextStyle>;
 }) {
   const { palette } = useTheme();
@@ -325,7 +310,7 @@ export function Eyebrow({
       accessibilityLabel={web ? undefined : children}
       style={[
         type.eyebrow,
-        { color: color ?? palette.textSecondary, textAlign: align },
+        { color: color ?? palette.textSecondary },
         web && { textTransform: "uppercase" as const },
         style,
       ]}
@@ -346,8 +331,6 @@ export function Label({
   const { palette } = useTheme();
   return <Text {...props} style={[type.label, { color: palette.textSecondary, marginBottom: spacing.xs + 2 }, style]}>{children}</Text>;
 }
-
-/** Section title used between card groups. */
 
 interface AmountProps {
   minor: number;
@@ -468,7 +451,7 @@ function Figure({
       } : undefined}
       style={[
         large || hero ? type.amountLg : type.amount,
-        { color: resolved, ...(large || hero ? { alignSelf: "stretch" as const } : null), flexShrink: 1, minWidth: 0, maxWidth: "100%", textAlign: "right" },
+        { color: resolved, ...(large || hero ? { alignSelf: "stretch" as const } : null), flexShrink: 1, textAlign: "right" },
         style,
         // A caller may request a smaller starting role, but never gets to
         // override a measured fit on the final style layer. That override was
@@ -497,7 +480,6 @@ export function Button({
   icon: IconCmp,
   size = "md",
   haptic: hapticKind = "none",
-  accessibilityHint,
   subject,
   expanded,
   testID,
@@ -519,7 +501,6 @@ export function Button({
   icon?: LucideIcon;
   size?: "md" | "sm";
   haptic?: HapticKind;
-  accessibilityHint?: string;
   /** The record it acts on, spoken after the label where a list repeats the same verb per row (UI.md §4). */
   subject?: string;
   expanded?: boolean;
@@ -547,16 +528,10 @@ export function Button({
       testID={testID}
       accessibilityRole="button"
       accessibilityLabel={subject ? `${label} · ${subject}` : label}
-      accessibilityHint={accessibilityHint}
       aria-expanded={expanded}
       accessibilityState={{ disabled: Boolean(disabled || loading), busy: Boolean(loading), expanded }}
       disabled={disabled || loading}
-      // `hitSlop` used to stand in for the missing height. It does nothing on
-      // the web, so a "small" button really was 36pt tall there. The box is the
-      // minimum target now and the type scale keeps it reading as the compact
-      // one; 44 against the regular 48 is a smaller step than 36 was, which
-      // also settles the button-next-to-field alignment this file used to
-      // work around per call site.
+      // The box is the target; `hitSlop` does nothing on web.
       onPress={() => {
         haptic(hapticKind);
         onPress();
@@ -573,11 +548,7 @@ export function Button({
           gap: spacing.sm,
           alignItems: "center",
           justifyContent: "center",
-          // Three weights that cannot be confused: primary is a brand fill,
-          // secondary is the same fill under a real outline, disabled is the
-          // fill alone. They used to differ only in text colour, so a disabled
-          // "Kaydet" and an enabled "Kaydet ve Yeni Ekle" rendered as the same
-          // beige block and the form's primary action was unfindable.
+          // Primary fill, secondary fill + outline, disabled fill alone — distinguishable by more than text colour.
           borderWidth: visuallyDisabled ? 0 : variant === "secondary" ? borderWidth.control : 0,
           borderColor: toned ? toneColor + "8C" : palette.controlBorder,
           opacity: state.pressed && variant === "danger" ? stateOpacity.pressed : 1,
@@ -601,21 +572,7 @@ export function Button({
   );
 }
 
-/**
- * The shape of content that has not arrived.
- *
- * The app had one placeholder — two flat grey blocks in the dashboard's hero —
- * and nothing anywhere else, so a loading screen showed three different
- * behaviours at once: a grey box where the balance goes, three dots where the
- * data notice goes, and simply nothing where the other cards go. Then all of
- * it appeared in one frame and the page jumped twice.
- *
- * A skeleton is not a spinner and must not read as one: it says "something of
- * about this size is coming here". The pulse is deliberately slow and shallow
- * — a fast or high-contrast shimmer competes with the content that replaces
- * it — and Reduce Motion holds it still at the midpoint rather than removing
- * it, because the SHAPE is the message and only the movement is decoration.
- */
+/** Placeholder shape for content not yet loaded. Slow and shallow; Reduce Motion holds it at the midpoint because the shape is the message. */
 export function Skeleton({
   width,
   height,
@@ -629,7 +586,7 @@ export function Skeleton({
 }) {
   const { palette } = useTheme();
   const reducedMotion = useReducedMotion();
-  const pulse = useRef(new Animated.Value(reducedMotion ? 0.5 : 0)).current;
+  const [pulse] = useState(() => new Animated.Value(reducedMotion ? 0.5 : 0));
   useEffect(() => {
     if (reducedMotion) {
       pulse.setValue(0.5);
@@ -670,8 +627,6 @@ export function IconButton({
   icon: IconCmp,
   onPress,
   disabled,
-  expanded,
-  iconSize: iconSizeValue,
   tone = "default",
   size = controlSize.compact,
   label,
@@ -680,8 +635,6 @@ export function IconButton({
   icon: LucideIcon;
   onPress: () => void;
   disabled?: boolean;
-  expanded?: boolean;
-  iconSize?: number;
   tone?: "default" | "danger" | "primary";
   size?: number;
   label?: string;
@@ -699,7 +652,7 @@ export function IconButton({
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={label}
-      accessibilityState={{ disabled: Boolean(disabled), ...(expanded == null ? {} : { expanded }) }}
+      accessibilityState={{ disabled: Boolean(disabled) }}
       disabled={disabled}
       onPress={() => {
         haptic(hapticKind);
@@ -734,7 +687,7 @@ export function IconButton({
             transform: [{ translateY: state.pressed && !disabled ? 1 : 0 }],
           }}
         >
-          <IconCmp accessible={false} size={iconSizeValue ?? Math.round(size * 0.5)} color={color} strokeWidth={2.2} />
+          <IconCmp accessible={false} size={Math.round(size * 0.5)} color={color} strokeWidth={2.2} />
         </View>
       )}
     </Pressable>
@@ -790,25 +743,7 @@ export function Badge({
   );
 }
 
-/** Shared width for matching status and action controls. */
-
-/**
- * A ghost button that opens a section, laid out by its words rather than by
- * its target.
- *
- * Measured on the transaction form: the box is 44pt because that is the
- * smallest thing a finger may be asked to hit, and the label inside it is a
- * 16pt line — 14pt of transparent target above the words and 14 below. Every
- * call site then added its own `spacing.md` on top of that, so "Gider iadesi
- * veya döviz" carried 26pt of air above the words and 34 below, against the
- * 12pt every other pair of rows on the same form is separated by. It read as a
- * section break rather than a link, which is what the owner reported.
- *
- * Giving the transparent half back to the layout is the whole fix: the target
- * keeps all 44pt, and the neighbours space themselves from the ink. Nothing
- * here buys a target with a prop the web ignores — that was the `hitSlop`
- * mistake this button already carries a comment about.
- */
+/** A ghost button whose 44pt target gives its transparent half back to the layout, so neighbours space from the words, not the box. */
 const DISCLOSURE_SLACK = Math.round((controlSize.minimumTarget - 16) / 2);
 
 export function InlineDisclosure(props: Parameters<typeof Button>[0]) {
@@ -827,23 +762,7 @@ export function InlineDisclosure(props: Parameters<typeof Button>[0]) {
   );
 }
 
-/**
- * A rule between two things, and the space around it belongs to what it
- * separates.
- *
- * Two blocks need air on both sides of the line, which is the default. ROWS do
- * not: a `ListRow` carries its own vertical padding INSIDE its pressable, so a
- * divider that adds eight more on each side pushes the rule away from both
- * rows — and because the padding is inside the pressable and the margin is
- * outside it, the hovered row lights a band that stops short of the line.
- * That is the "the fill does not reach the edge" defect, reported twice, and
- * the gap between Freeze and Delete Account is the same eight pixels seen from
- * the other side.
- *
- * So a divider between rows is `flush` and the rows own the spacing, exactly
- * as `Card`'s `rows` prop makes the card give its own padding up to them.
- * `tests/design-system-contract` holds the two together.
- */
+/** Between rows use `flush`: a ListRow pads inside its pressable, so outer margin leaves an unlit band between the hover fill and the rule. */
 export function Divider({ flush = false }: { flush?: boolean } = {}) {
   const { palette } = useTheme();
   return (
@@ -856,16 +775,6 @@ export function Divider({ flush = false }: { flush?: boolean } = {}) {
     />
   );
 }
-
-/**
- * Card list with separators only between rows.
- *
- * The rows arrive as a list: each one enters a beat after the one above it,
- * inside `motion.stagger.budget` however long the list is. A slab of twenty
- * rows appearing at once reads as a screenshot, and the cascade is the one
- * moment the app can show that these are separate things. Reduce Motion drops
- * every delay, so the list is simply present.
- */
 
 /**
  * Progress as countable steps, not as a smear.

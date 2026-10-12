@@ -1,23 +1,10 @@
 /**
- * How the Helix workbook's record sheets are written.
+ * The record sheets (Abonelikler, Yatırımlar): one heading table for writer and
+ * reader, so a renamed column is still found. The ledger grid is built in
+ * services/export-import.ts.
  *
- * The workbook has two halves and they are not the same kind of document.
- *
- * **Mali Tablo** is written as the import wizard's own month grid — months down
- * the first column, category names on the header row — because that is the one
- * shape the app can read back. It is built in `services/export-import.ts`
- * straight from a `GROUP BY` and needs no column table: a grid's columns are
- * the owner's own category names, not a schema.
- *
- * **Abonelikler** and **Yatırımlar** are records: one row per subscription or
- * investment operation, written to be read by a person and by Excel, and read
- * back so the owner can edit them there and import them again (owner decision,
- * 2026-09-14). This file is their column table in both directions — one
- * heading table, so a column the writer renames is a column the reader finds.
- *
- * `.claude/rules/export-import-contract.md` states the standing rule: a new
- * user-facing field on a subscription or an investment is not finished until it
- * has a column here.
+ * `.claude/rules/export-import-contract.md`: a new user-facing field on a
+ * subscription or an investment is not finished until it has a column here.
  */
 import { deneutralizeFormula, neutralizeFormula } from "./workbook-format-guard";
 import { normalizedMonthlyLoadMinor } from "./analytics";
@@ -37,16 +24,7 @@ export const WORKBOOK_SHEETS = {
   investments: "Yatırımlar",
 } as const;
 
-/**
- * A cell's value as the workbook carries it.
- *
- * Dates and money are written as TEXT in the app's own notation rather than as
- * Excel serial numbers and floats. A serial date is a number whose meaning
- * depends on the reader's locale and epoch, and a float is the wrong container
- * for money — the ledger is integer minor units everywhere else, and letting a
- * spreadsheet round-trip it through binary floating point is how ₺1.234,56
- * comes back as ₺1.234,5599999999999.
- */
+/** Dates and money are written as text: a serial date depends on locale and epoch, and a float corrupts kuruş. */
 type WorkbookCell = string;
 
 export interface WorkbookColumn<Row> {
@@ -54,13 +32,7 @@ export interface WorkbookColumn<Row> {
   header: string;
   /** How the value leaves the app. */
   write: (row: Row) => WorkbookCell;
-  /**
-   * What this column holds, in one line.
-   *
-   * Documentation rather than a string the app renders: `tests/workbook-format`
-   * fails a column that carries none, so a field added here cannot arrive
-   * undescribed, and the format is stated beside the code that implements it.
-   */
+  /** What this column holds, in one line; a test fails a column without one. */
   hint: string;
 }
 
@@ -99,12 +71,7 @@ export interface InvestmentRow {
 
 /* ------------------------------------------------------------------ cells */
 
-/**
- * Money as text in the app's own notation, never as an Excel number.
- *
- * Thousands separators are omitted even though a reader would accept them: a
- * bare "1234,56" is unambiguous in every locale Excel might open the file in.
- */
+/** Money as text, never an Excel number. No thousands separator: a bare "1234,56" is unambiguous in every locale. */
 export const writeMoney = (minor: number): string => (minor / 100).toFixed(2).replace(".", ",");
 
 /** `GG.AA.YYYY`, because that is the form a Turkish spreadsheet is kept in. */
@@ -117,41 +84,19 @@ export const writeFlag = (value: boolean): string => (value ? "evet" : "");
 
 /* ---------------------------------------------------------------- columns */
 
-const money = <Row>(header: string, hint: string, get: (row: Row) => number): WorkbookColumn<Row> => ({
-  header,
-  hint,
-  write: (row) => writeMoney(get(row)),
-});
+const column = <Value>(format: (value: Value) => string) =>
+  <Row>(header: string, hint: string, get: (row: Row) => Value): WorkbookColumn<Row> => ({
+    header,
+    hint,
+    write: (row) => format(get(row)),
+  });
 
-const date = <Row>(header: string, hint: string, get: (row: Row) => string): WorkbookColumn<Row> => ({
-  header,
-  hint,
-  write: (row) => writeDate(get(row)),
-});
-
-/**
- * Free text, guarded against being read as a formula.
- *
- * A category called `=SUM(A1:A9)` is a spreadsheet's problem, not a ledger's,
- * and this file is opened in a spreadsheet.
- */
-const text = <Row>(header: string, hint: string, get: (row: Row) => string): WorkbookColumn<Row> => ({
-  header,
-  hint,
-  write: (row) => neutralizeFormula(get(row)),
-});
-
-const flag = <Row>(header: string, hint: string, get: (row: Row) => boolean): WorkbookColumn<Row> => ({
-  header,
-  hint,
-  write: (row) => writeFlag(get(row)),
-});
-
-const whole = <Row>(header: string, hint: string, get: (row: Row) => number): WorkbookColumn<Row> => ({
-  header,
-  hint,
-  write: (row) => String(get(row)),
-});
+const money = column(writeMoney);
+const date = column(writeDate);
+const flag = column(writeFlag);
+const whole = column((value: number) => String(value));
+/** Free text is guarded against being read as a formula: this file is opened in a spreadsheet. */
+const text = column(neutralizeFormula);
 
 /** A closed set written in the language the sheet is read in. */
 const enumeration = <Row>(
@@ -159,26 +104,13 @@ const enumeration = <Row>(
   hint: string,
   get: (row: Row) => string,
   labels: Readonly<Record<string, string>>,
-): WorkbookColumn<Row> => ({
-  header,
-  hint,
-  write: (row) => labels[get(row)] ?? get(row),
-});
+): WorkbookColumn<Row> => column((value: string) => labels[value] ?? value)(header, hint, get);
 
 /**
- * The labels a closed set is written with, taken from the app's own vocabulary
- * wherever the app already has one.
- *
- * `ASSET_TYPES` did not, and it cost: this file had invented "Metal", "Hisse"
- * and "Emeklilik" while every screen says "Kıymetli Maden", "Borsa" and "BES".
- * A workbook that names a holding differently from the screen it was exported
- * from is a second vocabulary for one concept, and the owner is the person who
- * has to reconcile them.
- *
- * `OPERATION_KINDS` is the deliberate exception. `tr.investments` has labels
- * for these, but they are ACTIONS — "Mevcut yatırımı ekle", "Alış ekle" — and a
- * table column holds a noun. Sentences in a cell would be the same mistake from
- * the other side.
+ * Labels come from the app's own vocabulary wherever it has one, so the
+ * workbook never names a holding differently from the screen. `OPERATION_KINDS`
+ * is the exception: `tr.investments` labels those as actions ("Alış ekle"), and
+ * a table column holds a noun.
  */
 const AMOUNT_MODES = { fixed: "Sabit", variable: "Değişken" } as const;
 const SUBSCRIPTION_CYCLES = {
@@ -249,7 +181,7 @@ export const WORKBOOK_COLUMNS = {
 /* ------------------------------------------------------------- month grid */
 
 /** One category's total for one month, as the export's `GROUP BY` returns it. */
-export interface LedgerTotal {
+interface LedgerTotal {
   item: string;
   /** `YYYY-MM`. */
   month: string;
@@ -313,18 +245,10 @@ function instalmentNote(instalments: readonly LedgerInstalment[]): string {
 }
 
 /**
- * Pivot monthly totals into the grid the import wizard reads.
- *
- * One grid per year, because a sheet carries ONE dominant year: two years in a
- * sheet would put both under whichever had more months, and the wizard's own
- * per-year column membership would then be wrong for half the file.
- *
- * Pure, and here rather than beside the query, so the step that decides whether
- * the export is importable can be tested without a database — which is the
- * check the first version of this feature did not have and needed.
- *
- * The wizard matches "Ocak 2026" by name, so the month names come from the
- * same table the wizard reads.
+ * Pivot monthly totals into the grid the import wizard reads. One grid per
+ * year, because a sheet carries ONE dominant year: two years would both be put
+ * under whichever had more months. Month names come from the table the wizard
+ * reads, since it matches "Ocak 2026" by name.
  */
 export function buildLedgerGrids(totals: readonly LedgerTotal[], instalments: readonly LedgerInstalment[] = []): [year: number, grid: string[][], notes: LedgerNote[]][] {
   const byYear = new Map<number, { months: Set<string>; items: Map<string, Map<string, number>> }>();
@@ -373,15 +297,9 @@ export function buildLedgerGrids(totals: readonly LedgerTotal[], instalments: re
 /* ------------------------------------------------------- database → sheet */
 
 /**
- * The step between a query and a sheet, kept here and not beside the query.
- *
- * `services/export-import.ts` imports `react-native` and SQLite, so nothing in
- * it can be loaded by the node test environment — and a hundred lines of row
- * mapping living there is a hundred lines nothing measures. It showed up as the
- * mutation gate reporting that file detecting LESS than it used to, which is
- * exactly what an untested addition looks like from the outside.
- *
- * So the file keeps the SQL and this keeps the decisions.
+ * The step between a query and a sheet. `services/export-import.ts` imports
+ * `react-native` and SQLite, which the node test environment cannot load, so it
+ * keeps the SQL and this keeps the decisions.
  */
 const str = (value: unknown): string => (value == null ? "" : String(value));
 const num = (value: unknown): number => Number(value) || 0;
@@ -492,7 +410,7 @@ export interface RecordProblem {
   column: string | null;
 }
 
-export interface RecordSheet<T> {
+interface RecordSheet<T> {
   records: T[];
   problems: RecordProblem[];
 }

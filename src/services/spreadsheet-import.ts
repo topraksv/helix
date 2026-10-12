@@ -16,8 +16,8 @@
 import type * as XLSXTypes from "xlsx";
 import { tr } from "../i18n/tr";
 import { UserFacingError } from "../domain/user-error";
-import type { MonthKey } from "../domain/dates";
-import { addMonthsToKey, todayISO, yearOf } from "../domain/dates";
+import { addMonthsToKey, todayISO, yearOf, type MonthKey } from "../domain/dates";
+import { MAX_INSTALLMENT_COUNT } from "../domain/installments";
 import { isSupportedMinorAmount, roundHalfAwayFromZero, type Minor } from "../domain/money";
 import { readInvestmentSheet, readSubscriptionSheet, WORKBOOK_SHEETS, type InvestmentRecord, type RecordProblem, type SubscriptionRecord } from "../domain/workbook-format";
 
@@ -95,7 +95,7 @@ export interface ParsedSheet {
   openingCandidates: { label: string; month: MonthKey; minor: Minor }[];
 }
 
-export interface UnparsedSheet {
+interface UnparsedSheet {
   sheetName: string;
   reason: string;
 }
@@ -130,31 +130,21 @@ const MONTH_ABBR = MONTH_NAMES.map((m) => m.slice(0, 3));
 // `\bnet\b` so "İnternet Abonelikleri" is NOT mistaken for a balance column.
 const BALANCE_HINTS = /bakiye|devir|kalan|toplam|\bnet\b|eldeki|ay ba[sş]|birikim/i;
 
-/**
- * A column that names where money actually came from, rather than summing the
- * columns beside it.
- *
- * `BALANCE_HINTS` runs before the income check and swallowed these whole. The
- * one that matters is **"Net Maaş"** — the commonest payroll heading in a
- * Turkish household sheet — which `\bnet\b` classified as a balance column, so
- * every month's salary was dropped from the import and the chained balance ran
- * further into the red with each month. "Net Ücret" went the same way.
- *
- * The discriminator is a concrete SOURCE, not the word "gelir": "Toplam Gelir"
- * is a sum of the columns already being imported and must stay skipped, or the
- * month is counted twice.
- */
+// A concrete income SOURCE overrides BALANCE_HINTS ("Net Maaş" is salary); "Toplam Gelir" is a sum and must stay skipped or the month counts twice.
 const FLOW_SOURCE_HINTS = /maa[sş]|[üu]cret|prim|ikramiye|mesai|burs|har[çc]l[ıi]k|kira geliri/i;
 
-/**
- * Whether a column is a balance or a running total rather than a flow.
- *
- * Exported because the importer offers these back: they are excluded by
- * DEFAULT, not silently, so a sheet whose heading this rule reads wrongly can
- * be corrected by the person who wrote the sheet.
- */
+/** Balance and running-total columns are excluded by default and offered back in the wizard. */
 export function isBalanceLikeColumn(label: string): boolean {
   return BALANCE_HINTS.test(label) && !FLOW_SOURCE_HINTS.test(label);
+}
+/**
+ * Whether a column stays out of the import. The owner's choice is by label and
+ * holds in every sheet; without one, the column's own sheet decides. A default
+ * applied by label leaked across years: the owner's 2021 sheet keeps a running
+ * balance under "Maaş", and excluding that label dropped every later salary.
+ */
+export function isColumnExcluded(column: Pick<ParsedColumn, "label" | "balanceLike">, excluded: ReadonlySet<string>, included: ReadonlySet<string>): boolean {
+  return excluded.has(column.label) || (column.balanceLike && !included.has(column.label));
 }
 const OPENING_HINTS = /ay ba[sş]|eldeki|devir|a[çc][ıi]l[ıi][sş]/i;
 const INCOME_HINTS = /maa[sş]|gelir|prim|kira geliri|burs|ek gelir/i;
@@ -189,14 +179,7 @@ export function extractDueDay(label: string): { label: string; dueDay: number | 
 }
 
 
-// --- what the sheet's own balance formula says the columns are ----------------
-// A heading is a guess; a formula is the owner's own statement. "Kalan" in the
-// 2022-2023 sheet of the file this was measured against adds Maaş and "Ek" and
-// subtracts eleven columns — and leaves Kira, Askerlik and "Yemek + Ek Gelir"
-// out of the arithmetic altogether. Reading that off the formula reproduces the
-// owner's own closing balance to the kuruş; reading it off the headings put the
-// ledger 600.000 TL below it by 2024, because "Ek" is income and looks like
-// nothing, and a "Düzenleme Tarihi" column is not money at all.
+// The sheet's own balance formula says which columns are income or expense better than their headings do.
 
 /** Grid column index (0-based) for a spreadsheet column letter: "A" → 0. */
 function columnLetterIndex(letters: string): number {
@@ -411,10 +394,7 @@ function rowIsBlank(row: RawCell[]): boolean {
  */
 export function parseSheet(grid: RawCell[][], sheetName: string): ParsedSheet | UnparsedSheet {
   const fail = (reason: string): UnparsedSheet => ({ sheetName, reason });
-  // An "Yatırım" (investment) sheet holds holdings/quantities ("24gr altın",
-  // "760$"), not income/expense rows. Parsing it as a ledger produces junk
-  // columns ("Altın", "*Üstteki tabloda…*") and inflates a year's month count.
-  // It is skipped here; investments get their own home later.
+  // An "Yatırım" sheet holds holdings and quantities, not ledger rows; parsed as one it inflates the month count.
   if (/^\s*yat[ıi]r[ıi]m/i.test(sheetName)) return fail(tr.importer.reasonInvestmentSheet);
   if (grid.length < 2) return fail(tr.importer.reasonTooSmall);
 
@@ -441,11 +421,7 @@ export function parseSheet(grid: RawCell[][], sheetName: string): ParsedSheet | 
   const months = body.map((r) => parseMonthLabel(r[0]?.v)!);
   const firstMonth = months[0]!;
 
-  // Every named column is KEPT and carries its own classification. Balance and
-  // total columns used to be dropped here, which made the parser's reading of a
-  // heading final and invisible: a sheet whose salary column is called "Net
-  // Maaş" lost its salary and there was no way to say otherwise. They are now
-  // excluded by default and offered back in the wizard.
+  // Every named column is kept with its own classification; balance and total columns are excluded by default, not dropped.
   const keepIdx: number[] = [];
   let openingColIdx = -1;
   header.forEach((label, i) => {
@@ -463,10 +439,7 @@ export function parseSheet(grid: RawCell[][], sheetName: string): ParsedSheet | 
       label,
       kindGuess: role == null ? (INCOME_HINTS.test(label) ? "income" : "expense") : role > 0 ? "income" : "expense",
       isInvestment: INVESTMENT_HINTS.test(label),
-      // A column the owner's own balance line leaves out of its arithmetic is
-      // excluded by default for the same reason a running total is: importing
-      // it puts the ledger at odds with the file it came from. Offered back in
-      // the wizard, like every other default this parser sets.
+      // A column the balance line leaves out of its arithmetic is excluded by default, like a running total.
       balanceLike: isBalanceLikeColumn(header[i]!) || (roles != null && role == null),
       dueDay,
     };
@@ -477,11 +450,7 @@ export function parseSheet(grid: RawCell[][], sheetName: string): ParsedSheet | 
   const cells: CellData[][] = body.map((r) => keepIdx.map((i) => toCellData(r[i + 1])));
 
   const openingColumn = openingColIdx < 0 ? null : extractDueDay(header[openingColIdx]!).label;
-  // EVERY column that carries a figure in the first month, under the same
-  // label the rest of the wizard shows for it. Offering only the balance-like
-  // ones made the choice depend on the very heading rule it exists to correct:
-  // the list then held names the owner did not recognise as columns of theirs,
-  // and the column their opening balance is actually in was missing from it.
+  // Every column with a figure in the first month, not just balance-like ones: the list must not depend on the heading rule it corrects.
   const openingCandidates: ParsedSheet["openingCandidates"] = [];
   keepIdx.forEach((index, position) => {
     const label = columns[position]!.label;
@@ -578,8 +547,7 @@ interface InstallmentNote {
 
 const SECTION_BORDER_CHARS = new Set("═=-–—_*·•");
 
-/** Linear-time banner parsing. A single overlapping regexp made a malformed
- * 20k-character workbook comment consume seconds of CPU before rejection. */
+/** Linear-time: one overlapping regexp took seconds on a 20k-character comment. */
 function sectionBannerLabel(line: string): string | null {
   let start = 0;
   while (start < line.length && SECTION_BORDER_CHARS.has(line[start]!)) start += 1;
@@ -638,13 +606,7 @@ function installmentTail(line: string): InstallmentTail | null {
   return { paidNo: paid.value, total: total.value, index: cursor };
 }
 
-/**
- * Split a card-grouped installment comment into its individual installment
- * lines. Parsing is done by anchored-tail match + a whitespace split (NOT one
- * greedy regex) — a real workbook has long, irregular comment lines and a
- * backtracking pattern ("<name>\s{2,}<amt>\s+<n>/<m>") caused catastrophic
- * ReDoS on them, hanging the whole import.
- */
+/** Split a card-grouped instalment comment into lines. Anchored-tail match, not one greedy regex: that caused catastrophic ReDoS. */
 export function parseInstallmentComment(comment: string): InstallmentNote[] {
   const notes: InstallmentNote[] = [];
   let card = "";
@@ -659,7 +621,7 @@ export function parseInstallmentComment(comment: string): InstallmentNote[] {
     const tail = installmentTail(line);
     if (!tail) continue;
     const { paidNo, total } = tail;
-    if (total < 1 || total > 600 || paidNo < 1 || paidNo > total) continue;
+    if (total < 1 || total > MAX_INSTALLMENT_COUNT || paidNo < 1 || paidNo > total) continue;
     // Everything before the "n/m": "<name>  <amount>" — amount is the last token.
     const parts = line.slice(0, tail.index).trim().split(/\s+/);
     if (parts.length < 2) continue;
@@ -683,37 +645,24 @@ interface ImportInstallmentPlanSpec {
 }
 
 /**
- * Reconstruct the distinct installment plans across a workbook's instalment
- * comments. Pure (no DB) so it is thoroughly unit-testable:
- *  - a plan appears once per month it is active → deduped by its SCHEDULE
- *    alone (monthly amount, count, start month). Neither the item's name nor
- *    the card's is part of the key, because a workbook kept by hand renames
- *    both: the owner's file writes one home loan "Ev Kredisi" in the 2026
- *    sheet and "Kredi" in the 2025 one, and keying on the name made that two
- *    plans over the same 24 months — 23.672,13 landing twice, the 46k the
- *    owner reported. Two genuinely different purchases sharing an amount to
- *    the kuruş, a count AND a start month collapse into one; that costs a row
- *    on the Taksitler screen, where the alternative costs the balance.
- *  - the longest name seen wins, so the fuller "Ev Kredisi" survives "Kredi".
- *  - the start month is derived from paid/total and is invariant across mentions.
- *  - cards flagged informational ("ℹ️ not in totals") are excluded.
- *  - excluded columns and non-selected years are skipped.
+ * Reconstruct the distinct instalment plans across a workbook's comments, pure.
+ * Deduped by SCHEDULE alone (monthly amount, count, start month), never by name:
+ * a hand-kept workbook renames the same plan between sheets and a name key counted it twice.
+ * The longest name wins; cards flagged informational, excluded columns and unselected years are skipped.
  */
 export function collectInstallmentPlans(
   sheets: ParsedSheet[],
-  opts: { excludedLabels?: string[]; informationalCards?: string[]; yearAllowed?: (y: number) => boolean } = {},
+  opts: { excludedLabels?: string[]; includedLabels?: string[]; informationalCards?: string[]; yearAllowed?: (y: number) => boolean } = {},
 ): ImportInstallmentPlanSpec[] {
   const excluded = new Set(opts.excludedLabels ?? []);
+  const included = new Set(opts.includedLabels ?? []);
   const informational = new Set((opts.informationalCards ?? []).map((n) => n.toLocaleLowerCase("tr-TR")));
   const allow = opts.yearAllowed ?? (() => true);
   const byKey = new Map<string, ImportInstallmentPlanSpec>();
   for (const sheet of sheets) {
     sheet.columns.forEach((col, index) => {
-      // The comment is the evidence; the column heading decides nothing. One
-      // "Kredi Kartı" column holding both single charges and instalments is
-      // the common shape, and requiring `/taksit/` in the heading found no
-      // plans in it at all.
-      if (excluded.has(col.label)) return;
+      // The comment is the evidence; the heading decides nothing.
+      if (isColumnExcluded(col, excluded, included)) return;
       for (const [r, month] of sheet.months.entries()) {
         if (!allow(yearOf(month))) continue;
         const comment = sheet.cells[r]?.[index]?.comment;
@@ -775,7 +724,7 @@ export function parseWorkbook(wb: XLSXTypes.WorkBook, xlsx: XlsxModule): ParsedW
   for (const name of wb.SheetNames) {
     const worksheet = wb.Sheets[name];
     if (!worksheet) throw new UserFacingError(tr.importer.workbookTooComplex);
-    const ref = worksheet?.["!fullref"] ?? worksheet?.["!ref"];
+    const ref = worksheet["!fullref"] ?? worksheet["!ref"];
     if (ref) {
       const range = xlsx.utils.decode_range(ref);
       const rows = range.e.r - range.s.r + 1;
@@ -794,7 +743,7 @@ export function parseWorkbook(wb: XLSXTypes.WorkBook, xlsx: XlsxModule): ParsedW
     for (const row of grid) {
       for (const cell of row) {
         const s = typeof cell?.v === "string" ? cell.v : "";
-        if (s.includes("ℹ️") || s.includes("ℹ")) {
+        if (s.includes("ℹ")) {
           const label = s.replace(/ℹ️|ℹ/g, "").trim();
           if (label) informational.add(label);
         }
@@ -817,13 +766,17 @@ function readRecords(name: string, grid: RawCell[][], into: WorkbookRecords): bo
   const text = grid.map((row) => row.map(recordCellText));
   if (title === WORKBOOK_SHEETS.subscriptions) {
     const sheet = readSubscriptionSheet(text);
-    if (sheet) into.subscriptions.push(...sheet.records);
-    if (sheet) into.problems.push(...sheet.problems);
+    if (sheet) {
+      into.subscriptions.push(...sheet.records);
+      into.problems.push(...sheet.problems);
+    }
     return sheet != null;
   }
   const sheet = readInvestmentSheet(text);
-  if (sheet) into.investments.push(...sheet.records);
-  if (sheet) into.problems.push(...sheet.problems);
+  if (sheet) {
+    into.investments.push(...sheet.records);
+    into.problems.push(...sheet.problems);
+  }
   return sheet != null;
 }
 
@@ -840,7 +793,7 @@ function recordCellText(cell: RawCell | undefined): string {
  * binary XLS and CSV are not ZIP containers and continue to the normal parser.
  */
 export function validateWorkbookContainer(data: Uint8Array): void {
-  if (data.byteLength > MAX_WORKBOOK_BYTES) throw new Error(tr.importer.fileTooLarge);
+  if (data.byteLength > MAX_WORKBOOK_BYTES) throw new UserFacingError(tr.importer.fileTooLarge);
   if (data.byteLength < 4) return;
   const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
   if (view.getUint32(0, true) !== 0x04034b50 && view.getUint32(0, true) !== 0x06054b50) return;

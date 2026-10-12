@@ -7,7 +7,7 @@ import BellRing from "lucide-react-native/icons/bell-ring";
 import CalendarClock from "lucide-react-native/icons/calendar-clock";
 import Repeat2 from "lucide-react-native/icons/repeat-2";
 import { Redirect, Stack, useLocalSearchParams, useRouter } from "expo-router";
-import { createRecordId, CreditCardCycleRequiredError, ensureSubscriptionCategory, upsertSubscription } from "../data/repo";
+import { CreditCardCycleRequiredError, ensureSubscriptionCategory, upsertSubscription } from "../data/repo";
 import { useAnsweredForId, useCategoriesState, usePersonsState, useSourcesState, useSubscriptionsState, useUserId } from "../data/hooks";
 import { combineLiveStates } from "../data/live-state";
 import { classifyRecordId } from "../domain/route-params";
@@ -26,7 +26,7 @@ import { Amount, Body, Button, Card, ChipPicker, DataGateScreen, DataStateNotice
 import { useSubmitOnEnter } from "../ui/keyboard";
 import { appAlert } from "../ui/dialog";
 import { DateField } from "../ui/calendar";
-import { placeholderPools, useRotatingPlaceholder } from "../ui/placeholders";
+import { useRotatingPlaceholder } from "../ui/placeholders";
 import { devError } from "../services/logger";
 import { navigateBack } from "../ui/navigation";
 import { useOperationGuard } from "../ui/operation-guard";
@@ -42,6 +42,20 @@ const SOURCE_MARK = 22;
 // Same quick-day set as the recurring-income form (no "20"; six chips fit one
 // row on a phone).
 const QUICK_DAYS = [1, 5, 10, 15, 25, 28] as const;
+
+function EquivalentColumn({ label, minor, currency }: { label: string; minor: number | null; currency: string }) {
+  const { palette } = useTheme();
+  return (
+    <View style={{ flex: 1, minWidth: 0 }}>
+      <Text style={[type.small, { color: palette.textSecondary, fontSize: type.micro.fontSize }]}>{label}</Text>
+      {minor == null ? (
+        <Text style={[type.amountSm, { color: palette.text, marginTop: 2 }]}>—</Text>
+      ) : (
+        <Amount minor={minor} currency={currency} colorized={false} style={{ fontSize: type.label.fontSize, textAlign: "left", marginTop: 2 }} />
+      )}
+    </View>
+  );
+}
 
 function SubscriptionFormArtwork({
   name,
@@ -155,23 +169,9 @@ function SubscriptionFormArtwork({
         </View>
       ) : (
         <View style={{ flexDirection: "row", alignItems: "stretch" }}>
-          <View style={{ flex: 1, minWidth: 0 }}>
-            <Text style={[type.small, { color: palette.textSecondary, fontSize: type.micro.fontSize }]}>{tr.subs.monthlyEquivalent}</Text>
-            {monthlyMinor == null ? (
-              <Text style={[type.amountSm, { color: palette.text, marginTop: 2 }]}>—</Text>
-            ) : (
-              <Amount minor={monthlyMinor} currency={currency} colorized={false} style={{ fontSize: type.label.fontSize, textAlign: "left", marginTop: 2 }} />
-            )}
-          </View>
+          <EquivalentColumn label={tr.subs.monthlyEquivalent} minor={monthlyMinor} currency={currency} />
           <View style={{ width: StyleSheet.hairlineWidth, backgroundColor: palette.border, marginHorizontal: spacing.sm }} />
-          <View style={{ flex: 1, minWidth: 0 }}>
-            <Text style={[type.small, { color: palette.textSecondary, fontSize: type.micro.fontSize }]}>{tr.subs.annualEquivalent}</Text>
-            {annualMinor == null ? (
-              <Text style={[type.amountSm, { color: palette.text, marginTop: 2 }]}>—</Text>
-            ) : (
-              <Amount minor={annualMinor} currency={currency} colorized={false} style={{ fontSize: type.label.fontSize, textAlign: "left", marginTop: 2 }} />
-            )}
-          </View>
+          <EquivalentColumn label={tr.subs.annualEquivalent} minor={annualMinor} currency={currency} />
         </View>
       )}
     </View>
@@ -191,10 +191,9 @@ export default function SubscriptionFormModal() {
   if (record.mode === "edit" && !existing) {
     if (!answered) {
       return (
-        <Screen scroll={false}>
+        <DataGateScreen status={subscriptionsState.status} retry={subscriptionsState.retry} scroll={false}>
           <Stack.Screen options={{ title: tr.subs.edit }} />
-          <DataStateNotice status={subscriptionsState.status} retry={subscriptionsState.retry} />
-        </Screen>
+        </DataGateScreen>
       );
     }
     return <Redirect href="/(tabs)/subscriptions" />;
@@ -280,7 +279,6 @@ function useSubscriptionForm(existing: ExistingSubscription | undefined) {
   const patch = (next: Partial<SubscriptionFields>) => setFields((current) => ({ ...current, ...next }));
   const [busy, setBusy] = useState(false);
   const [showCategoryOffer, setShowCategoryOffer] = useState(false);
-  const [draftId] = useState(() => existing?.id ?? createRecordId());
   const { amountMinor: _parsed, showCurrency: _currencyShown, ...draft } = fields;
   const { allowExit, confirmDiscard } = useDirtyExitGuard(useDraftDirty(JSON.stringify(draft), data.ready) && !busy);
 
@@ -310,27 +308,30 @@ function useSubscriptionForm(existing: ExistingSubscription | undefined) {
     const nextDueDate = cycle === "yearly" && fields.yearlyRenewalDate
       ? fields.yearlyRenewalDate
       : unchanged ? existing.nextDueDate : existing ? nextDueAfter(now, now, intervalMonths, billingDay) : firstDueDate(now, billingDay, intervalMonths);
-    await upsertSubscription(userId, {
-      id: existing ? draftId : undefined,
-      name: fields.name.trim(),
-      amountMinor: fields.amountMinor ?? 0,
-      amountMode,
-      currency: fields.currency,
-      cycle,
-      intervalMonths,
-      billingDay,
-      nextDueDate,
-      paymentSourceId: fields.sourceId,
-      categoryId,
-      personId: personId!,
-      isActive: fields.isActive,
-      trialEndDate: fields.isTrial ? fields.trialDate : null,
-      autoPay: amountMode === "variable" ? false : fields.autoPay,
-      // Logos are derived from the name; a stored domain still serves as a favicon fallback.
-      websiteDomain: existing?.websiteDomain || null,
-      note: fields.note.trim() || null,
-    });
-    scheduleSync(userId);
+    try {
+      await upsertSubscription(userId, {
+        id: existing?.id,
+        name: fields.name.trim(),
+        amountMinor: fields.amountMinor ?? 0,
+        amountMode,
+        currency: fields.currency,
+        cycle,
+        intervalMonths,
+        billingDay,
+        nextDueDate,
+        paymentSourceId: fields.sourceId,
+        categoryId,
+        personId: personId!,
+        isActive: fields.isActive,
+        trialEndDate: fields.isTrial ? fields.trialDate : null,
+        autoPay: amountMode === "variable" ? false : fields.autoPay,
+        // Logos are derived from the name; a stored domain still serves as a favicon fallback.
+        websiteDomain: existing?.websiteDomain || null,
+        note: fields.note.trim() || null,
+      });
+    } finally {
+      scheduleSync(userId);
+    }
     allowExit(close);
   };
 
@@ -392,7 +393,7 @@ function ToggleRow({ label, hint, value, onChange, disabled }: { label: string; 
 
 function SubscriptionIdentityCard({ form }: { form: SubscriptionFormModel }) {
   const { fields, patch } = form;
-  const namePlaceholder = useRotatingPlaceholder(placeholderPools.subscription);
+  const namePlaceholder = useRotatingPlaceholder(tr.placeholders.subscription);
   const variable = fields.amountMode === "variable";
   return (
     <Card>

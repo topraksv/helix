@@ -6,14 +6,17 @@
  * Confirmation is the source of truth; automation only assists.
  */
 
-import { addMonthsToKey, isMonthDay, lastDayOf, monthKeyOf, type ISODate } from "./dates";
-import { dayIntervalDatesInRange, dueDateInMonth, dueDatesInRange } from "./recurrence";
+import { addDaysISO, addMonthsToKey, isMonthDay, lastDayOf, monthKeyOf, type ISODate } from "./dates";
+import { dayIntervalDatesInRange, dueDateInMonth, dueDatesInRange, nextDueAfter } from "./recurrence";
 import type { Minor } from "./money";
+import { signedBalanceEffectOf } from "./transactions";
 import type {
+  CategoryKind,
   ExpectedKind,
   ExpectedPaymentLike,
   RecurringIncomeLike,
   SubscriptionLike,
+  TransactionType,
   TxLike,
 } from "./types";
 
@@ -76,16 +79,9 @@ export function generateExpected(
     // there is no due date to anchor on, so the rule generates nothing rather
     // than an invented one. Same contract as an invalid interval.
     if (!isMonthDay(sub.billingDay)) continue;
-    // A free trial cannot create a charge before it ends. If the trial ends
-    // after the stored next due date, use the first scheduled billing date on
-    // or after that boundary as the generation anchor.
+    // A trial blocks charges before it ends: the first scheduled date on or after its end.
     let anchor = sub.nextDueDate;
-    if (sub.trialEndDate && sub.trialEndDate > anchor) {
-      const trialMonthDue = dueDateInMonth(monthKeyOf(sub.trialEndDate), sub.billingDay);
-      anchor = trialMonthDue >= sub.trialEndDate
-        ? trialMonthDue
-        : dueDateInMonth(addMonthsToKey(monthKeyOf(sub.trialEndDate), sub.intervalMonths), sub.billingDay);
-    }
+    if (sub.trialEndDate && sub.trialEndDate > anchor) anchor = nextDueAfter(sub.nextDueDate, addDaysISO(sub.trialEndDate, -1), sub.intervalMonths, sub.billingDay);
     for (const dueDate of dueDatesInRange(anchor, sub.intervalMonths, sub.billingDay, today, horizon)) {
       const draft: ExpectedDraft = {
         direction: "out",
@@ -233,6 +229,22 @@ function pendingOccurrences(transactions: readonly TxLike[]): Set<string> {
 /** What an expectation does to the balance, signed the way a row's effect is. */
 export function expectationEffect(item: Pick<PlannedExpectation, "direction" | "amountTryMinor">): Minor {
   return item.direction === "in" ? item.amountTryMinor : -item.amountTryMinor;
+}
+
+/**
+ * What one category's cell does to the owner's balance: the owner's own rows,
+ * signed by the category's kind, plus what its planned expectations will do.
+ */
+export function selfCellEffect(
+  rows: readonly { personId: string; type: TransactionType; amountTryMinor: Minor }[],
+  selfIds: ReadonlySet<string>,
+  categoryKind: CategoryKind | null,
+  planned: readonly Pick<PlannedExpectation, "direction" | "amountTryMinor">[],
+): Minor {
+  return rows.filter((t) => selfIds.has(t.personId)).reduce(
+    (sum, t) => sum + signedBalanceEffectOf(t.type, t.amountTryMinor, categoryKind),
+    0,
+  ) + planned.reduce((sum, entry) => sum + expectationEffect(entry), 0);
 }
 
 /**

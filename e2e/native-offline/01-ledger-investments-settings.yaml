@@ -1,8 +1,5 @@
-# Local-only native acceptance: onboarding, ledger persistence, settings and investments.
-#
-# This flow requires a build whose Supabase values were empty at build time; it
-# deliberately lives outside e2e/native so the cloud-entry suite can keep using
-# a normal configured build. It proves native SQLite writes, not just rendering.
+# Local-only native acceptance: onboarding, ledger persistence, settings and investments, proving native
+# SQLite writes. Needs a build with empty Supabase values, so it lives outside e2e/native.
 appId: com.toprak.helix
 ---
 - launchApp:
@@ -62,9 +59,7 @@ appId: com.toprak.helix
       visible: "Continue"
     commands:
       - tapOn: "Continue"
-# "Zamanlama" is a static heading that has already scrolled above the viewport
-# here. Targeting it made Maestro tap the native header instead of exercising
-# the visible save action a person can actually reach.
+# "Zamanlama" is a heading already scrolled above the viewport: targeting it taps the native header.
 - scrollUntilVisible:
     element:
       text: "Kaydet"
@@ -140,8 +135,7 @@ appId: com.toprak.helix
 - tapOn:
     id: "investment-unit-price"
 - inputText: "100,00"
-# Centre-scrolling performs a real drag. Screen's on-drag policy dismisses the
-# iOS decimal pad before Maestro targets the save action below it.
+# Centre-scrolling is a real drag, which dismisses the iOS decimal pad before the save action is targeted.
 - scrollUntilVisible:
     element:
       id: "investment-operation-save"
@@ -162,8 +156,7 @@ appId: com.toprak.helix
 - assertVisible: ".*SASA.*"
 - assertVisible: ".*₺1.000,00.*"
 
-# Kill the process rather than reloading JavaScript. Both values above must be
-# read back from the native SQLite file after a fresh process owns it.
+# Kill the process, not reload JavaScript: both values must be read back from the SQLite file by a fresh process.
 - stopApp
 - launchApp
 - extendedWaitUntil:

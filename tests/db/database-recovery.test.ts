@@ -168,7 +168,8 @@ describe("database corruption recovery", () => {
     expect(harness.open).toHaveBeenCalledTimes(2);
     await vi.advanceTimersByTimeAsync(1);
     expect(harness.open).toHaveBeenCalledTimes(3);
-    await vi.advanceTimersByTimeAsync(150 * (3 + 4 + 5 + 6));
+    // The three waits left; after the sixth refusal the error comes back at once.
+    await vi.advanceTimersByTimeAsync(150 * (3 + 4 + 5));
     await expect(outcome).resolves.toBe(held);
     expect(harness.open).toHaveBeenCalledTimes(6);
     expect(harness.moves).toEqual([]);

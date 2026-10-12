@@ -55,7 +55,6 @@ describe("friendly auth errors", () => {
     expect(friendlyAuthError("Email not confirmed")).toBe(tr.auth.errEmailNotConfirmed);
     expect(friendlyAuthError("Email address not authorized")).toBe(tr.auth.errEmailDelivery);
     expect(friendlyAuthError("Error sending recovery email")).toBe(tr.auth.errEmailDelivery);
-    // What Auth answers a sign-up when its SMTP refuses, measured on Gital's live project 2026-09-28.
     expect(friendlyAuthError("Error sending confirmation email")).toBe(tr.auth.errEmailDelivery);
     expect(friendlyAuthError("Error sending email change email")).toBe(tr.auth.errEmailDelivery);
     expect(friendlyAuthError("Unable to validate email address: invalid format")).toBe(tr.auth.errInvalidEmail);
@@ -64,8 +63,7 @@ describe("friendly auth errors", () => {
   it("maps expired sessions and server failures instead of a generic fallback", () => {
     expect(friendlyAuthError("Invalid Refresh Token: Refresh Token Not Found")).toBe(tr.auth.errSessionExpired);
     expect(friendlyAuthError("JWT expired")).toBe(tr.auth.errSessionExpired);
-    // Auth's same-password refusal contains "password should be", which the
-    // weak-password rule used to claim.
+    // "password should be" is also inside Auth's same-password refusal; it must not read as weak.
     expect(friendlyAuthError("New password should be different from the old password.")).toBe(tr.auth.errSamePassword);
     expect(friendlyAuthError("same_password")).toBe(tr.auth.errSamePassword);
     expect(friendlyAuthError("Internal Server Error")).toBe(tr.auth.errService);
@@ -83,13 +81,8 @@ describe("server-side password policy", () => {
     expect(config).toMatch(/\[auth\.email\][\s\S]*?^enable_confirmations = true$/m);
   });
 
-  /**
-   * The reset e-mail's link is the fix for two reported failures, so it is
-   * held here rather than trusted to the dashboard. Auth's own verify endpoint
-   * spends the token on the first GET and returns a PKCE code only the browser
-   * that requested the reset can redeem: a link checker produced "the link has
-   * expired" seconds after delivery, and a phone's mail app opened sign-in.
-   */
+  // Auth's verify endpoint spends the token on the first GET and returns a PKCE
+  // code only the requesting browser can redeem, so the link carries the token itself.
   it("sends reset links that reach the app with the token unspent, for five minutes", () => {
     expect(config).toMatch(/^otp_expiry = 300$/m);
     expect(config).toMatch(/\[auth\.email\.template\.recovery\][\s\S]*?^content_path = "\.\/supabase\/templates\/recovery\.html"$/m);
@@ -98,13 +91,8 @@ describe("server-side password policy", () => {
     expect(template).not.toContain("{{ .ConfirmationURL }}");
   });
 
-  /**
-   * The same shape as the reset link, for a different reason. Auth's verify
-   * endpoint confirmed on the first GET and handed back a PKCE code, and a
-   * code only the signing-up browser can redeem proves nothing to any other:
-   * the app said "confirmed" to any address carrying `?code=`, a forged one
-   * included. A token hash is checked by Auth itself, from any browser.
-   */
+  // A PKCE code proves nothing to any browser but the signing-up one; a token hash
+  // is checked by Auth itself, from any browser.
   it("sends sign-up confirmations to the app with a token Auth checks", () => {
     expect(config).toMatch(/\[auth\.email\.template\.confirmation\][\s\S]*?^content_path = "\.\/supabase\/templates\/confirmation\.html"$/m);
     const template = readFileSync(join(process.cwd(), "supabase/templates/confirmation.html"), "utf8");
@@ -292,36 +280,17 @@ describe("password recovery e-mail request", () => {
     }
   });
 
-  it("still surfaces actionable network and rate-limit failures", async () => {
-    const networkError = await requestPasswordRecoveryEmail(
-      {
-        resetPasswordForEmail: async () => ({ error: { message: "Failed to fetch" } }),
-      },
-      "kisi@example.com",
-      "https://topraksv.github.io/helix/reset-password",
-    );
-    const rateLimitError = await requestPasswordRecoveryEmail(
-      {
-        resetPasswordForEmail: async () => ({ error: { message: "Request rate limit reached" } }),
-      },
-      "kisi@example.com",
-      "https://topraksv.github.io/helix/reset-password",
-    );
-
-    expect(networkError).toBe(tr.auth.errNetwork);
-    expect(rateLimitError).toBe(tr.auth.errRateLimit);
-  });
-
-  it("does not report success when the project's mail transport rejects delivery", async () => {
+  it.each([
+    ["Failed to fetch", tr.auth.errNetwork],
+    ["Request rate limit reached", tr.auth.errRateLimit],
+    ["Email address not authorized", tr.auth.errEmailDelivery],
+  ])("surfaces the actionable failure %s", async (message, expected) => {
     const error = await requestPasswordRecoveryEmail(
-      {
-        resetPasswordForEmail: async () => ({ error: { message: "Email address not authorized" } }),
-      },
+      { resetPasswordForEmail: async () => ({ error: { message } }) },
       "kisi@example.com",
       "https://topraksv.github.io/helix/reset-password",
     );
-
-    expect(error).toBe(tr.auth.errEmailDelivery);
+    expect(error).toBe(expected);
   });
 });
 
@@ -386,53 +355,46 @@ describe("sign-up confirmation resend", () => {
   });
 });
 
+/** A sign-out client that records the scope of every call and answers with `answer`. */
+function recordSignOut(answer: (scope: string | undefined) => { error: Error | null } = () => ({ error: null })) {
+  const calls: Array<string | undefined> = [];
+  const client = async (options?: { scope?: "local" | "global" | "others" }) => {
+    calls.push(options?.scope);
+    return answer(options?.scope);
+  };
+  return { calls, client };
+}
+
 describe("session sign-out", () => {
-  /**
-   * Supabase defaults `signOut()` to `scope: "global"`, which revokes every
-   * refresh token the account holds. Leaving the scope implicit meant signing
-   * out of the web app killed the phone: its refresh was rejected, the
-   * invalidation path wiped that device — unsynced rows included — and
-   * "Cihazlarını Güncelle" could only answer 401 until the user signed in
-   * again. An ordinary sign-out ends THIS device's session and nothing else.
-   */
+  // Supabase defaults `signOut()` to global scope, which would sign out every other device too.
   it("ends only this device's session by default", async () => {
-    const calls: Array<string | undefined> = [];
-    await signOutWithLocalFallback(async (options) => {
-      calls.push(options?.scope);
-      return { error: null };
-    });
+    const { calls, client } = recordSignOut();
+    await signOutWithLocalFallback(client);
     expect(calls).toEqual(["local"]);
   });
 
   it("revokes every device only when the caller asks for it", async () => {
-    const calls: Array<string | undefined> = [];
-    await signOutWithLocalFallback(async (options) => {
-      calls.push(options?.scope);
-      return { error: null };
-    }, "global");
+    const { calls, client } = recordSignOut();
+    await signOutWithLocalFallback(client, "global");
     expect(calls).toEqual(["global"]);
   });
 
   it("falls back to a local revoke when a global sign-out returns an error", async () => {
-    const calls: Array<string | undefined> = [];
-    await signOutWithLocalFallback(async (options) => {
-      calls.push(options?.scope);
-      return { error: options?.scope === "local" ? null : new Error("offline") };
-    }, "global");
+    const { calls, client } = recordSignOut((scope) => ({ error: scope === "local" ? null : new Error("offline") }));
+    await signOutWithLocalFallback(client, "global");
     expect(calls).toEqual(["global", "local"]);
   });
 
   it("retries locally when the local revoke itself fails", async () => {
-    const calls: Array<string | undefined> = [];
     let first = true;
-    await signOutWithLocalFallback(async (options) => {
-      calls.push(options?.scope);
+    const { calls, client } = recordSignOut(() => {
       if (first) {
         first = false;
         throw new Error("transport");
       }
       return { error: null };
     });
+    await signOutWithLocalFallback(client);
     // A persisted session that survives a failed revoke would silently reopen
     // the account on the next bootstrap.
     expect(calls).toEqual(["local", "local"]);

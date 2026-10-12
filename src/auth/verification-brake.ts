@@ -1,22 +1,4 @@
-/**
- * Local brake on password re-verification.
- *
- * Every verification attempt is a real sign-in, so hammering it would trip
- * Supabase's shared login rate limit for the whole account. After
- * `MAX_FAILURES` consecutive failures the brake engages for `COOLDOWN_MS`.
- *
- * The brake belongs to ONE ACCOUNT'S attempt streak, not to the device. It was
- * previously two module-level numbers with no owner, so five wrong passwords on
- * account A left account B blocked on its first attempt with a rate-limit
- * message that was untrue for B. Resetting at sign-out alone does not fix that:
- * `session.ts` moves `userId` on ten different paths, and a *different* account
- * can sign in directly without signing out first (`ensureWorkspaceFor` handles
- * the workspace switch). Keying the state to its owner closes every one of those
- * paths — including paths added later — because a brake that belongs to someone
- * else is simply not this user's brake.
- *
- * Pure and owner-injected so the whole state space is testable without Supabase.
- */
+/** Pauses password re-verification after VERIFY_MAX_FAILURES; keyed to the account that earned it, so another account's streak never blocks this one. Pure. */
 
 export const VERIFY_MAX_FAILURES = 5;
 export const VERIFY_COOLDOWN_MS = 30_000;

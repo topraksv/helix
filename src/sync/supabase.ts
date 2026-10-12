@@ -20,7 +20,7 @@ export const isSupabaseConfigured = Boolean(url && anonKey);
 
 let client: SupabaseClient<Database> | null = null;
 let passwordRecoveryUserId: string | null = null;
-type EmailLinkAnswer = "confirmed" | "changeConfirmed" | "unusable";
+type EmailLinkAnswer = "confirmed" | "changeConfirmed" | "unusable" | "offline";
 let emailLinkLanding: Promise<EmailLinkAnswer> | null = null;
 const authEventListeners = new Set<(event: AuthChangeEvent, session: Session | null) => void>();
 
@@ -56,15 +56,9 @@ export function subscribeSupabaseAuthEvents(
 }
 
 /**
- * A client for redeeming a reset link that shares nothing with the app's own.
- *
- * On web the app's session lives in localStorage, and supabase-js mirrors it
- * to every tab over a BroadcastChannel named after its storage key. A reset
- * link redeemed through that client handed the account it belongs to — the
- * owner's partner's, opened on the owner's computer — to the tab already
- * running Helix, and signed that tab out when the reset finished. An
- * unpersisted session stays in this document's memory, and supabase-js opens
- * the cross-tab channel only for a persisted one.
+ * A client for redeeming a reset link that shares nothing with the app's own: on web supabase-js mirrors a
+ * persisted session to every tab, so the link's account would land in the tab already running the app.
+ * An unpersisted session stays in this document's memory.
  */
 export function createRecoveryClient(): SupabaseClient<Database> | null {
   if (!isSupabaseConfigured) return null;
@@ -94,6 +88,11 @@ function landEmailLink(href: string): Promise<EmailLinkAnswer> | null {
   globalThis.history.replaceState(globalThis.history.state, "", address.href);
   const verifier = createRecoveryClient()!;
   return verifier.auth.verifyOtp({ token_hash: landing.tokenHash, type: landing.type }).then(async ({ error }) => {
+    if (error?.name === "AuthRetryableFetchError") {
+      // Never reached Auth, so nothing was spent: the link goes back for a reload.
+      globalThis.history.replaceState(globalThis.history.state, "", href);
+      return "offline";
+    }
     if (error) return "unusable";
     await verifier.auth.signOut({ scope: "local" });
     // One side of a change is not the change: with both addresses asked,

@@ -40,7 +40,7 @@ import {
 import { tr } from "../i18n/tr";
 import { Body, Button, Card, Divider, Label, ListRow, PanelHeader, Screen, Spread, Toggle } from "../ui/components";
 import { DateField } from "../ui/calendar";
-import { appAlert, appConfirm, appPrompt } from "../ui/dialog";
+import { appAlert, appConfirm, confirmWithPassword } from "../ui/dialog";
 import { spacing, type, useTheme } from "../ui/theme";
 import { navigateBack } from "../ui/navigation";
 import { useOperationGuard } from "../ui/operation-guard";
@@ -54,13 +54,7 @@ import { rescheduleAll } from "../services/notifications";
 
 const EMPTY_RANGE: ResetRange = { from: null, to: null };
 
-/**
- * Each scope wears the mark the rest of the app already gives it — the two tab
- * icons for the financial table and investments, the subscription screen's own
- * repeat mark, and so on. A checklist of six irreversible choices is the last
- * place to invent a seventh vocabulary, and every one of these is already in
- * the bundle.
- */
+/** Each scope wears the mark the app already gives it; an irreversible checklist is no place for new vocabulary. */
 const SCOPE_ICONS: Record<ResetScope, typeof WalletCards> = {
   ledger: WalletCards,
   installments: CreditCard,
@@ -69,6 +63,10 @@ const SCOPE_ICONS: Record<ResetScope, typeof WalletCards> = {
   budgets: Target,
   investments: Landmark,
 };
+
+function Note({ children }: { children: string }) {
+  return <Body muted style={{ fontSize: type.small.fontSize, marginTop: spacing.sm }}>{children}</Body>;
+}
 
 export default function DataResetScreen() {
   // Same gate as the screen this is reached from: the password re-check below
@@ -156,19 +154,7 @@ function CloudDataResetScreen() {
         operation: "delete",
       });
       if (!accepted) return;
-      const password = await appPrompt(tr.account.confirmPasswordTitle, tr.dataReset.passwordBody, {
-        secure: true,
-        placeholder: tr.auth.password,
-        confirmLabel: tr.dataReset.confirmLabel,
-        danger: true,
-        operation: "delete",
-      });
-      if (password == null) return;
-      const verifyError = await verifyPassword(password);
-      if (verifyError) {
-        void appAlert(verifyError, tr.errors.title);
-        return;
-      }
+      if (!(await confirmWithPassword(verifyPassword, { body: tr.dataReset.passwordBody, confirmLabel: tr.dataReset.confirmLabel, operation: "delete" }))) return;
       setRunning(true);
       let outcome;
       try {
@@ -183,12 +169,7 @@ function CloudDataResetScreen() {
         setRunning(false);
       }
 
-      // Past this line the rows are gone, and nothing below is allowed to
-      // claim otherwise. Everything that follows is bookkeeping the workspace
-      // repeats on its own — a sync it will schedule again, reminders it
-      // replans on every foreground — and each of them used to be able to
-      // turn a finished reset into "hiçbir şey silinmedi; tekrar dene", which
-      // sent the owner to press a button that then found nothing left to do.
+      // Past this line the rows are gone: nothing below may claim otherwise. What follows is bookkeeping the workspace repeats on its own.
       scheduleSync(userId);
       setScopes([]);
       setRange(EMPTY_RANGE);
@@ -197,16 +178,7 @@ function CloudDataResetScreen() {
           ? (outcome.tidied ? tr.dataReset.done(outcome.deleted) : tr.dataReset.donePartialTidy(outcome.deleted))
           : tr.dataReset.doneNothing,
       );
-      // The OS holds its own copy of every reminder, and nothing in the write
-      // path can reach it: the maintenance pass rebuilds the obligations, but
-      // the notifications built FROM those obligations are scheduled by the
-      // operating system and survive the rows that justified them. Without
-      // this, a subscription deleted here still buzzed on its due date until
-      // the next foreground maintenance kick.
-      //
-      // A statement, not an expression with `.catch` hung off it: a throw
-      // BEFORE the promise exists would walk straight past that and out to the
-      // handler below, which is the shape of the bug this whole flow is fixing.
+      // The OS keeps its own copy of every reminder and survives the rows that justified it, so they are replanned here. A try statement, not `.catch`: a throw before the promise exists would escape to the handler below.
       try {
         await rescheduleAll(userId);
       } catch (error) {
@@ -280,10 +252,10 @@ function CloudDataResetScreen() {
               range does not reach is the one thing a person cannot see from
               the count alone. */}
           {scopes.some((scope) => UNDATED_SCOPES.includes(scope)) ? (
-            <Body muted style={{ fontSize: type.small.fontSize, marginTop: spacing.sm }}>{tr.dataReset.undatedNote}</Body>
+            <Note>{tr.dataReset.undatedNote}</Note>
           ) : null}
           {scopes.includes("investments") && range.to != null ? (
-            <Body muted style={{ fontSize: type.small.fontSize, marginTop: spacing.sm }}>{tr.dataReset.investmentTailNote}</Body>
+            <Note>{tr.dataReset.investmentTailNote}</Note>
           ) : null}
         </Card>
 
@@ -311,15 +283,13 @@ function CloudDataResetScreen() {
               <Divider />
               <Label>{tr.dataReset.summaryTotal(preview.total)}</Label>
               {preview.clearsLedgerAnchor ? (
-                <Body muted style={{ fontSize: type.small.fontSize, marginTop: spacing.sm }}>{tr.dataReset.anchorNote}</Body>
+                <Note>{tr.dataReset.anchorNote}</Note>
               ) : null}
               {preview.clearsInvestmentWallet ? (
-                <Body muted style={{ fontSize: type.small.fontSize, marginTop: spacing.sm }}>{tr.dataReset.walletNote}</Body>
+                <Note>{tr.dataReset.walletNote}</Note>
               ) : null}
               {preview.straddlingPlans > 0 ? (
-                <Body muted style={{ fontSize: type.small.fontSize, marginTop: spacing.sm }}>
-                  {tr.dataReset.straddling(preview.straddlingPlans)}
-                </Body>
+                <Note>{tr.dataReset.straddling(preview.straddlingPlans)}</Note>
               ) : null}
             </>
           )}

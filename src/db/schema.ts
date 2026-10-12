@@ -447,7 +447,7 @@ export const UNPULLED = "unpulled:";
 /** Tables that participate in Supabase sync, in FK-safe upsert order. */
 export const SYNCED_TABLES = {
   persons,
-  categories: categories,
+  categories,
   category_budgets: categoryBudgets,
   investment_profiles: investmentProfiles,
   investment_products: investmentProducts,

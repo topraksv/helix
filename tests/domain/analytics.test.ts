@@ -2,9 +2,10 @@ import { describe, expect, it } from "vitest";
 import {
   categoryRangeMatrix,
   creditCardSplit,
-  monthlySeries,
+  creditCardSplitsByMonth,
   distributionForRange,
   fixedVsVariable,
+  monthlySeries,
   normalizedMonthlyLoadMinor,
 } from "../../src/domain/analytics";
 import { tx } from "../helpers";
@@ -153,5 +154,56 @@ describe("normalizedMonthlyLoadMinor", () => {
   it("amortizes yearly subscriptions to a monthly load", () => {
     expect(normalizedMonthlyLoadMinor(1200_00, 12)).toBe(100_00);
     expect(normalizedMonthlyLoadMinor(1000_00, 12)).toBe(83_33);
+  });
+
+  it("never returns a non-integer that formatMinor would throw on", () => {
+    // formatMinor throws on a non-integer during render.
+    for (const interval of [0, -1, NaN, 1.5]) {
+      const value = normalizedMonthlyLoadMinor(120_000, interval);
+      expect(Number.isSafeInteger(value)).toBe(true);
+    }
+  });
+});
+
+describe("range endpoints and card-row splits", () => {
+  const rows = [
+    tx({ id: "start", type: "expense", amountTryMinor: 100, effectiveDate: "2026-07-01", categoryId: "food", categoryKind: "expense" }),
+    tx({ id: "end", type: "expense", amountTryMinor: 200, effectiveDate: "2026-07-31", categoryId: "food", categoryKind: "expense", installmentPlanId: "plan" }),
+    tx({ id: "before", type: "expense", amountTryMinor: 1_000, effectiveDate: "2026-06-30", categoryId: "food", categoryKind: "expense" }),
+    tx({ id: "after", type: "expense", amountTryMinor: 2_000, effectiveDate: "2026-08-01", categoryId: "food", categoryKind: "expense" }),
+    tx({ id: "transfer", type: "transfer", amountTryMinor: 300, effectiveDate: "2026-07-10", categoryId: "invest", categoryKind: "expense" }),
+    tx({ id: "income", type: "income", amountTryMinor: 400, effectiveDate: "2026-07-10", categoryId: "salary", categoryKind: "income" }),
+  ];
+
+  it("includes both range endpoints and keeps each flow class exact", () => {
+    expect([...categoryRangeMatrix(rows, "2026-07", "2026-07", "2026-12-31").entries()]).toEqual([
+      ["food", { categoryId: "food", monthly: new Map([["2026-07", 300]]), ytdMinor: 300 }],
+      ["salary", { categoryId: "salary", monthly: new Map([["2026-07", 400]]), ytdMinor: 400 }],
+    ]);
+    expect(distributionForRange(rows, "2026-07-01", "2026-07-31", "2026-12-31")).toEqual({
+      expenseByCategory: new Map([["food", 300]]),
+      uncategorizedExpenseMinor: 0,
+      expenseTotalMinor: 300,
+      transferTotalMinor: 300,
+      incomeTotalMinor: 400,
+      workbookRemainderMinor: 0,
+    });
+    expect(fixedVsVariable(rows, "2026-07-01", "2026-07-31", "2026-12-31"))
+      .toEqual({ fixedMinor: 200, variableMinor: 100 });
+  });
+
+  it("separates single and installment card rows and pins interval fallback", () => {
+    const cardRows = [
+      tx({ type: "expense", amountTryMinor: 100, effectiveDate: "2026-07-01", paymentSourceId: "card", categoryKind: "expense" }),
+      tx({ type: "expense", amountTryMinor: 200, effectiveDate: "2026-07-02", paymentSourceId: "card", installmentPlanId: "plan", categoryKind: "expense" }),
+      tx({ type: "income", amountTryMinor: 999, effectiveDate: "2026-07-03", paymentSourceId: "card", categoryKind: "income" }),
+    ];
+    expect(creditCardSplitsByMonth(cardRows, new Set(["card"]), "2026-12-31"))
+      .toEqual(new Map([["2026-07", { singleMinor: 100, installmentMinor: 200 }]]));
+    expect(creditCardSplit(cardRows, new Set(["card"]), "2026-08", "2026-12-31"))
+      .toEqual({ singleMinor: 0, installmentMinor: 0 });
+    expect(normalizedMonthlyLoadMinor(101, 1)).toBe(101);
+    expect(normalizedMonthlyLoadMinor(101, 0)).toBe(101);
+    expect(normalizedMonthlyLoadMinor(101, 2)).toBe(51);
   });
 });

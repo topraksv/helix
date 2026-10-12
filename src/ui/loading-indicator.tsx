@@ -22,22 +22,12 @@ export interface ProgressValue {
   total: number;
 }
 
-export function DelayedLoading({
-  active = true,
-  children,
-}: {
-  active?: boolean;
-  children: ReactNode;
-}) {
+export function DelayedLoading({ children }: { children: ReactNode }) {
   const [visible, setVisible] = useState(false);
   useEffect(() => {
-    if (!active) {
-      setVisible(false);
-      return;
-    }
     const timer = setTimeout(() => setVisible(true), motion.loadingReveal);
     return () => clearTimeout(timer);
-  }, [active]);
+  }, []);
   return visible ? children : null;
 }
 
@@ -58,7 +48,7 @@ export function LoadingIndicator({
   const ink = color ?? palette.primary;
   const reducedMotion = useReducedMotion();
   // One value per dot, so each sits at its own point in the same cycle.
-  const values = useRef(Array.from({ length: DOTS }, () => new Animated.Value(0))).current;
+  const [values] = useState(() => Array.from({ length: DOTS }, () => new Animated.Value(0)));
 
   useEffect(() => {
     if (reducedMotion || progress) return;
@@ -82,11 +72,9 @@ export function LoadingIndicator({
     ? Math.min(Math.max(progress.completed, 0), Math.max(progress.total, 1))
     : 0;
   const total = progress ? Math.max(progress.total, 1) : 1;
-  // The bar used to jump from phase to phase, which reads as a stall between
-  // steps and then a lurch. A width is layout, so this one is off the native
-  // driver by necessity — it runs at most once per completed phase.
+  // Width is layout, so this one is off the native driver.
   const ratio = completed / total;
-  const fill = useRef(new Animated.Value(ratio)).current;
+  const [fill] = useState(() => new Animated.Value(ratio));
   const settledRatio = useRef(ratio);
   useEffect(() => {
     if (settledRatio.current === ratio) return;

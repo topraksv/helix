@@ -7,11 +7,11 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Modal, Platform, Pressable, ScrollView, Text, View, useWindowDimensions } from "react-native";
 import Delete from "lucide-react-native/icons/delete";
-import { formatMinorCompact, majorToMinor, MAX_AMOUNT_MAJOR_DIGITS } from "../domain/money";
+import { CALC_START, feedbackOf, formatNumber, keyFrom, press as pressKey, previewOf, resultOf, shownOf, type CalcKey } from "../domain/calculator";
+import { formatMinorCompact, majorToMinor } from "../domain/money";
 import { tr } from "../i18n/tr";
 import { radius, spacing, themeShadow, type, useTheme } from "./theme";
 import { Button, FadeIn } from "./primitives";
-import { calculatorKeyHaptic } from "./calculator-feedback";
 import { haptic } from "./haptics";
 import { useModalAccessibility } from "./accessibility";
 import { useReducedMotion } from "./motion";
@@ -19,86 +19,7 @@ import { interactionSurface } from "./interaction";
 import { modalAnimationType } from "./modal-motion";
 import { isShortLandscape } from "./responsive";
 
-type Op = "+" | "-" | "×" | "÷";
-
-interface CalcState {
-  current: string; // digits being typed, "" = show accumulator
-  accumulator: number | null;
-  op: Op | null;
-  /** Set after an illegal operation (÷0); display shows an error until cleared. */
-  error?: boolean;
-}
-
-const INITIAL: CalcState = { current: "0", accumulator: null, op: null };
-
-function apply(a: number, b: number, op: Op): number {
-  if (op === "+") return a + b;
-  if (op === "-") return a - b;
-  if (op === "×") return a * b;
-  return a / b; // callers guard b === 0 (÷0 → error state, never 0)
-}
-
-function toNumber(s: string): number {
-  return Number(s.replace(",", ".")) || 0;
-}
-
-function display(state: CalcState): string {
-  const raw = state.current !== "" ? toNumber(state.current) : (state.accumulator ?? 0);
-  // Show live typing verbatim (keeps trailing comma), otherwise format nicely.
-  if (state.current !== "" && /,$|^-?\d+$|,\d{0,2}$/.test(state.current) === false) return state.current;
-  if (state.current !== "" && state.current.endsWith(",")) return state.current;
-  return new Intl.NumberFormat("tr-TR", { maximumFractionDigits: 6 }).format(raw);
-}
-
-function useCalculator() {
-  const [state, setState] = useState<CalcState>(INITIAL);
-
-  const press = (key: string) => {
-    setState((s) => {
-      if (key === "C") return INITIAL;
-      // After an error, the next keypress (other than C) starts fresh.
-      if (s.error) s = INITIAL;
-      if (key === "⌫") {
-        if (s.current === "") return s;
-        const next = s.current.slice(0, -1);
-        return { ...s, current: next === "" || next === "-" ? "0" : next };
-      }
-      if (key === ",") {
-        const cur = s.current === "" ? "0" : s.current;
-        return cur.includes(",") ? s : { ...s, current: cur + "," };
-      }
-      if (/^\d$/.test(key)) {
-        const cur = s.current === "0" ? "" : s.current;
-        const [integer, fraction = ""] = cur.split(",");
-        if ((!cur.includes(",") && (integer ?? "").replace("-", "").length >= MAX_AMOUNT_MAJOR_DIGITS) || fraction.length >= 6) return s;
-        return { ...s, current: cur + key };
-      }
-      if (key === "+" || key === "-" || key === "×" || key === "÷") {
-        const operand = s.current !== "" ? toNumber(s.current) : (s.accumulator ?? 0);
-        const chaining = s.op != null && s.current !== "" && s.accumulator != null;
-        if (chaining && s.op === "÷" && operand === 0) return { ...INITIAL, error: true };
-        const acc = chaining ? apply(s.accumulator!, operand, s.op!) : operand;
-        if (majorToMinor(acc) == null) return { ...INITIAL, error: true };
-        return { current: "", accumulator: acc, op: key };
-      }
-      if (key === "=") {
-        if (s.op == null || s.accumulator == null) return s;
-        const operand = s.current !== "" ? toNumber(s.current) : s.accumulator;
-        if (s.op === "÷" && operand === 0) return { ...INITIAL, error: true };
-        const result = apply(s.accumulator, operand, s.op);
-        if (majorToMinor(result) == null) return { ...INITIAL, error: true };
-        return { current: String(result).replace(".", ","), accumulator: null, op: null };
-      }
-      return s;
-    });
-  };
-
-  // An error state has no usable value; NaN disables "use result".
-  const value = state.error ? NaN : state.current !== "" ? toNumber(state.current) : (state.accumulator ?? 0);
-  return { state, press, value, text: state.error ? tr.calc.error : display(state) };
-}
-
-const KEYS: string[][] = [
+const KEYS: CalcKey[][] = [
   ["C", "⌫", "÷", "×"],
   ["7", "8", "9", "-"],
   ["4", "5", "6", "+"],
@@ -128,19 +49,18 @@ function CalculatorLine({ text, color, main = false }: { text: string; color: st
 
 export function CalculatorPad({
   onResult,
-  resultLabel,
-  onEscape,
   landscape = false,
 }: {
   onResult?: (major: number) => void;
-  resultLabel?: string;
-  /** Escape key handler (popup passes its close); otherwise Escape clears. */
-  onEscape?: () => void;
   /** Short modal landscape uses two panels so every action is visible at once. */
   landscape?: boolean;
 }) {
   const { palette, scheme } = useTheme();
-  const { state, press, value, text } = useCalculator();
+  const [state, setState] = useState(CALC_START);
+  const press = (key: CalcKey) => setState((s) => pressKey(s, key));
+  // The previewed result while an operation waits, so what a field takes is what is shown.
+  const value = resultOf(state);
+  const text = state.error ? tr.calc.error : shownOf(state);
 
   // Physical-keyboard support on web (desktop): map number/operator keys to the
   // same `press()` the on-screen keys use. Reads live values through refs so the
@@ -153,8 +73,6 @@ export function CalculatorPad({
   valueRef.current = value;
   const onResultRef = useRef(onResult);
   onResultRef.current = onResult;
-  const onEscapeRef = useRef(onEscape);
-  onEscapeRef.current = onEscape;
   useEffect(() => {
     if (Platform.OS !== "web" || typeof window === "undefined") return;
     const token = {};
@@ -163,23 +81,14 @@ export function CalculatorPad({
       if (kbStack[kbStack.length - 1] !== token) return; // only the topmost calc
       const t = e.target as HTMLElement | null;
       if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
-      const k = e.key;
-      const p = pressRef.current;
-      if (/^[0-9]$/.test(k)) p(k);
-      else if (k === "." || k === ",") p(",");
-      else if (k === "+") p("+");
-      else if (k === "-") p("-");
-      else if (k === "*" || k === "x" || k === "X") p("×");
-      else if (k === "/") p("÷");
-      else if (k === "Enter" || k === "=") {
-        if (stateRef.current.op != null) p("=");
-        else if (onResultRef.current) onResultRef.current(valueRef.current);
-        else p("=");
-      } else if (k === "Backspace") p("⌫");
-      else if (k === "Escape") {
-        if (onEscapeRef.current) onEscapeRef.current();
-        else p("C");
-      } else if (k === "c" || k === "C" || k === "Delete") p("C");
+      const key = keyFrom(e.key);
+      if (e.key === "Escape") {
+        // In the popup the Modal's own keyup closes it; closing here as well
+        // would close the sheet underneath too.
+        if (onResultRef.current) return;
+        pressRef.current("C");
+      } else if (key === "=" && stateRef.current.op == null && onResultRef.current) onResultRef.current(valueRef.current);
+      else if (key) pressRef.current(key);
       else return; // leave keys we don't handle to the browser
       e.preventDefault();
     };
@@ -191,10 +100,7 @@ export function CalculatorPad({
     };
   }, []);
   // Live preview of the pending operation before "=" is pressed (3 × 5 → = 15).
-  const preview =
-    state.op != null && state.current !== "" && state.accumulator != null
-      ? apply(state.accumulator, toNumber(state.current), state.op)
-      : null;
+  const preview = previewOf(state);
   const resultMinor = majorToMinor(value);
 
   const keyStyle = (key: string) => {
@@ -214,7 +120,7 @@ export function CalculatorPad({
         accessibilityLiveRegion="polite"
         accessibilityLabel={tr.a11y.calculatorDisplay(
           text,
-          preview == null ? undefined : new Intl.NumberFormat("tr-TR", { maximumFractionDigits: 6 }).format(preview),
+          preview == null ? undefined : formatNumber(preview),
         )}
         style={{
           backgroundColor: palette.surfaceAlt,
@@ -228,12 +134,12 @@ export function CalculatorPad({
         }}
     >
       <CalculatorLine
-        text={state.op ? `${new Intl.NumberFormat("tr-TR").format(state.accumulator ?? 0)} ${state.op}` : " "}
+        text={state.op ? `${formatNumber(state.accumulator ?? 0)} ${state.op}` : " "}
         color={palette.textSecondary}
       />
       <CalculatorLine text={text} color={palette.text} main />
       <CalculatorLine
-        text={preview != null ? `= ${new Intl.NumberFormat("tr-TR", { maximumFractionDigits: 6 }).format(preview)}` : " "}
+        text={preview != null ? `= ${formatNumber(preview)}` : " "}
         color={preview != null ? palette.primaryText : "transparent"}
       />
     </View>
@@ -250,7 +156,7 @@ export function CalculatorPad({
                   accessibilityRole="button"
                   accessibilityLabel={tr.a11y.calculatorKey(key)}
                   onPress={() => {
-                    haptic(calculatorKeyHaptic(state, key));
+                    haptic(feedbackOf(state, key));
                     press(key);
                   }}
                   style={(state) => [
@@ -262,12 +168,7 @@ export function CalculatorPad({
                       justifyContent: "center",
                     },
                     themeShadow.card(palette),
-                    // A key used to dim itself to 70% under a finger and do
-                    // nothing at all under a pointer — the one control in the
-                    // app with a private press and no hover. `bg` is its
-                    // resting fill, so the shared surface composites into it
-                    // and the keypad now answers a pointer like everything
-                    // else does.
+                    // `bg` is the resting fill; the shared surface composites into it.
                     interactionSurface(palette, state, { base: bg }),
                   ]}
                 >
@@ -286,7 +187,7 @@ export function CalculatorPad({
   const resultNode = onResult ? (
     <View style={{ marginTop: landscape ? spacing.md : spacing.lg }}>
       <Button
-        label={resultMinor == null ? tr.calc.resultUnavailable : `${resultLabel ?? tr.calc.useResult} · ${formatMinorCompact(resultMinor)}`}
+        label={resultMinor == null ? tr.calc.resultUnavailable : `${tr.calc.useResult} · ${formatMinorCompact(resultMinor)}`}
         onPress={() => onResult(value)}
         disabled={resultMinor == null}
         haptic="success"
@@ -324,20 +225,14 @@ export function CalculatorModal({
   const { width, height } = useWindowDimensions();
   const shortLandscape = isShortLandscape(width, height);
   return (
-    <Modal transparent animationType={modalAnimationType(reducedMotion)} visible onRequestClose={onClose}>
+    <Modal transparent animationType={modalAnimationType(reducedMotion)} visible onRequestClose={onClose} aria-label={tr.a11y.calculatorTitle}>
       <Pressable
         accessible={false}
         tabIndex={-1}
         style={{ flex: 1, backgroundColor: palette.scrim, alignItems: "center", justifyContent: "center", padding: spacing.lg }}
         onPress={onClose}
       >
-        {/* The scroller only exists so a short viewport can reach the whole pad;
-            it must not decide where the pad sits. On web its default
-            `flexGrow: 1` stretched it to the full overlay height while the
-            content stayed pinned to the top, which is what pushed the popup up
-            and off screen. Growing the CONTENT and centring it there keeps the
-            pad centred whenever it fits and scrollable when it does not —
-            identically on both platforms. */}
+        {/* The scroller grows and centres its content; its own web flexGrow pinned the pad to the top. */}
         <ScrollView
           style={{ alignSelf: "stretch", maxHeight: Math.max(240, height - spacing.lg * 2) }}
           contentContainerStyle={{ flexGrow: 1, alignItems: "center", justifyContent: "center" }}
@@ -352,7 +247,6 @@ export function CalculatorModal({
               </View>
               <CalculatorPad
                 landscape={shortLandscape}
-                onEscape={onClose}
                 onResult={(v) => {
                   onResult(v);
                   onClose();

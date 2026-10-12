@@ -87,7 +87,7 @@ function isValidUtf8(bytes: Uint8Array): boolean {
 
 async function readBoundedResponse(response: Response, maxBytes: number, message: string): Promise<Uint8Array> {
   const contentLength = Number(response.headers.get("content-length"));
-  assertKnownSize([Number.isFinite(contentLength) ? contentLength : null], maxBytes, message);
+  assertKnownSize([contentLength], maxBytes, message);
 
   if (!response.body) {
     const bytes = new Uint8Array(await response.arrayBuffer());

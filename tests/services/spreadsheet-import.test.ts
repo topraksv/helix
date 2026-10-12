@@ -167,10 +167,9 @@ describe("parseSheet — vertical block", () => {
   /**
    * Every named column is kept and carries its own classification.
    *
-   * Balance and total columns used to be DROPPED here, which made the parser's
-   * reading of a heading final and invisible. They are excluded by default —
-   * importing a running total counts the month twice — but they survive into
-   * the sheet so the importer can offer them back.
+   * Balance and total columns are excluded by default — importing a running
+   * total counts the month twice — but they survive into the sheet so the
+   * importer can offer them back.
    */
   it("keeps every named column and flags the balance ones", () => {
     const s = asSheet(parseSheet(sheet2026(), "Gelir-Gider 2026"));
@@ -527,7 +526,7 @@ describe("parseWorkbook — multi-sheet, different columns per year", () => {
   });
 });
 
-// --- installment comment parsing (item 8) ----------------------------------
+// --- installment comment parsing ----------------------------------
 // Fictional template data — mirrors the comment SHAPE only, no real records.
 describe("parseInstallmentComment", () => {
   it("splits a ═-banner card comment into per-item installments", () => {
@@ -603,7 +602,7 @@ describe("parseInstallmentComment", () => {
   });
 });
 
-// --- due-day extraction from column headers (item 7) -----------------------
+// --- due-day extraction from column headers -----------------------
 describe("extractDueDay", () => {
   it("pulls a trailing day off a bill column", () => {
     expect(extractDueDay("Elektrik 06")).toEqual({ label: "Elektrik", dueDay: 6 });
@@ -623,7 +622,7 @@ describe("extractDueDay", () => {
   });
 });
 
-// --- installment plan collection across a workbook (item 8 wiring) ----------
+// --- installment plan collection across a workbook ----------
 // Fictional template data; asserts the dedup / start-month / merge rules that a
 // real one-shot migration depends on.
 const col = (label: string) => ({ label, kindGuess: "expense" as const, isInvestment: false, balanceLike: false, dueDay: null });
@@ -709,12 +708,7 @@ describe("collectInstallmentPlans", () => {
     expect(collectInstallmentPlans([sheet]).map((plan) => plan.name)).toEqual(["Fatura"]);
   });
 
-  /**
-   * The reported failure: one home loan written "Ev Kredisi" in the 2026 sheet
-   * and "Kredi" in the 2025 one became two plans over the same 24 months, and
-   * every month from the start carried 23.672,13 twice — the 46.000 the owner
-   * saw. A plan is its schedule; the words around it are what a person retypes.
-   */
+  // A plan is its schedule; the words around it are what a person retypes.
   it("collapses one schedule written under two names, keeping the fuller one", () => {
     const plans = collectInstallmentPlans([
       taksitSheet("2026", [["2026-01", "══ Garanti ══\nEv Kredisi  23.672,13  16/24"]]),
@@ -737,15 +731,7 @@ describe("collectInstallmentPlans", () => {
   });
 });
 
-/**
- * A heading that names where money came from is not a balance column.
- *
- * `BALANCE_HINTS` ran before the income check and swallowed the whole heading.
- * The one that matters is "Net Maaş" — the commonest payroll heading in a
- * Turkish household sheet — which `\bnet\b` read as a balance column. Every
- * month's salary was dropped from the import and the chained balance ran
- * further into the red with each month, which is exactly what the owner saw.
- */
+// "Net Maaş" is income, not a balance column.
 describe("which headings are balances and which are money arriving", () => {
   it("rescues a concrete income source from the balance filter", () => {
     for (const label of ["Net Maaş", "Net Ücret", "Maaş", "Ek Gelirler", "Kira Geliri", "Prim", "İkramiye", "Mesai Ücreti"]) {

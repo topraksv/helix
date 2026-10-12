@@ -1,11 +1,7 @@
 /**
  * What the app is in the middle of doing to the account.
  *
- * Signing out, freezing and deleting all end the same way: the session drops,
- * the root guard falls back to its waiting view, and that view used to say
- * "Hesabın eşitleniyor" — the sentence written for the first pull after a
- * sign-in — no matter which of the three the user had just confirmed. Deleting
- * an account is not syncing it.
+ * Sign-out, freeze and delete all fall back to the root waiting view, which must name the operation rather than "syncing".
  *
  * The guard renders before the navigator and its providers, so this is a module
  * store rather than context: the action records what it is about to do, the

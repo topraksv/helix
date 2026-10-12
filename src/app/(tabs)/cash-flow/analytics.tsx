@@ -14,11 +14,12 @@ import Target from "lucide-react-native/icons/target";
 import { categoryRangeMatrix, distributionForRange, monthlySeries } from "../../../domain/analytics";
 import { addMonthsToKey, firstDayOf, lastDayOf, makeMonthKey, monthKeyOf, monthRange, todayISO, yearOf, type MonthKey } from "../../../domain/dates";
 import { formatMinorCompact } from "../../../domain/money";
-import { isWorkbookRemainderRow, signedBalanceEffectOf } from "../../../domain/transactions";
+import { signedBalanceEffectOf } from "../../../domain/transactions";
 import { filterTransactions, sortTransactions, type TransactionSortMode } from "../../../domain/transaction-search";
 import { budgetProgress } from "../../../domain/budgets";
-import { categoryIconComponent,  } from "../../../ui/category-icon";
+import { categoryIconComponent } from "../../../ui/category-icon";
 import { PaymentSourceLogo } from "../../../ui/logo";
+import { transactionBadge } from "../../../ui/transaction-row";
 import { transactionDateText } from "../../../ui/transaction-date";
 import { monthLabel, monthName, shortMonthLabel, tr } from "../../../i18n/tr";
 import {
@@ -103,11 +104,7 @@ function useTransactionSearch({ transactions, categoryById, sources, categoryFil
   // filter. Without it, clearing the payment method back to "Tümü" emptied
   // the list even though the owner had just told the screen what to search.
   const active = deferredQuery.trim() !== "" || transactionType != null || categoryFilter != null || sourceFilter != null || searchScope === "all";
-  // The token line calls the money formatter — an `Intl.NumberFormat` — once
-  // per transaction the account has: measured 65 ms at 100k rows. Built from
-  // the render it was rebuilt on every keystroke in the box above it, every
-  // filter chip and every layout measurement. It follows the data now, and
-  // still only exists while a search is actually open.
+  // Follows the data, not the render: it formats every transaction, and only while a search is open.
   const index = useMemo(
     () => (!active ? [] : transactions.map((transaction) => ({
       ...transaction,
@@ -313,6 +310,7 @@ function ResultRow({ transaction: t, first, last, categoryById, sourceName }: { 
   const router = useRouter();
   const { palette } = useTheme();
   const category = t.categoryId ? categoryById.get(t.categoryId) : undefined;
+  const badge = transactionBadge(t);
   return (
     <View
       style={[
@@ -342,13 +340,9 @@ function ResultRow({ transaction: t, first, last, categoryById, sourceName }: { 
               {sourceName ? ` · ${sourceName}` : ""}
               {t.note ? ` · ${t.note}` : ""}
             </Body>
-            {isWorkbookRemainderRow(t) ? (
+            {badge ? (
               <View style={{ marginTop: spacing.xs, alignItems: "flex-start" }}>
-                <Badge text={tr.analysis.remainderBadge} tone="muted" />
-              </View>
-            ) : t.amountTryMinor < 0 ? (
-              <View style={{ marginTop: spacing.xs, alignItems: "flex-start" }}>
-                <Badge text={tr.tx.reversalLabel(t.type)} tone={t.type === "income" ? "negative" : "positive"} />
+                <Badge text={badge.text} tone={badge.tone} />
               </View>
             ) : null}
           </View>
@@ -518,14 +512,7 @@ function CategoryTable({ rows, monthKeys, currentMonth, compact, selected, onSel
           cells: [
             ...monthKeys.map((m) => {
               const v = data.monthly.get(m) ?? null;
-              // A month with no activity prints nothing, exactly as the ledger's
-              // own cells do (`hasPrintableValue` in `cash-flow/index.tsx`).
-              // This table greyed a ₺0,00 instead, so a category used once in a
-              // twelve-month window drew eleven zeros and read eleven of them
-              // out — the same disagreement between drawn and spoken that
-              // `docs/UI.md` §7 was written after. The Toplam column below
-              // keeps its zero: a year that nets to nothing is an answer, not
-              // an absence, which is the balance-column half of the same rule.
+              // An idle month prints nothing, as ledger cells do; the Toplam column keeps a real zero.
               if (v === null || v === 0) return null;
               return <Amount key={m} minor={v} colorized={false} color={palette.text} style={[...amountStyle, { fontVariant: ["tabular-nums"] }]} />;
             }),
@@ -579,9 +566,7 @@ export default function AnalysisScreen() {
   const colors = useSeriesColors();
   const { status: dataStatus, ready: dataReady, retry: retryData } = combineLiveStates([categoriesState, personsState, sourcesState, budgetsState, transactionsState]);
 
-  // These walk the whole transaction list, and used to do it on every render —
-  // every keystroke in the search box, every filter chip and every layout
-  // measurement. Derived from the data, not the render.
+  // Derived from the data, not the render: these walk every transaction.
   const txLike = useTxLike();
   const categoryById = useMemo(() => new Map(categories.map((category) => [category.id, category])), [categories]);
   // The analysis matrix is an all-flow view: transfer/investment categories
@@ -605,8 +590,7 @@ export default function AnalysisScreen() {
 
   const periodDistribution = useMemo(() => distributionForRange(txLike, firstDayOf(startMonth), lastDayOf(endMonth), today), [txLike, startMonth, endMonth, today]);
   const donut = distributionDonutData(periodDistribution, colors, (id) => categoryById.get(id)?.name ?? tr.common.none);
-  // One full scan of the ledger per month in the window — up to thirteen of
-  // them, and every one of them ran again for a keystroke the chart cannot see.
+  // One ledger scan per month in the window; memoized against unrelated keystrokes.
   const barGroups = useMemo(
     () => monthKeys.map((m) => {
       const label = shortMonthLabel(m);
@@ -641,8 +625,7 @@ export default function AnalysisScreen() {
   };
 
   if (!dataReady) {
-    // Same `Screen`, same width, same scroll mode as the ready state: differing
-    // in all three, the page re-mounted with its heading when data landed.
+    // Same Screen, width and scroll mode as the ready state, or the page remounts when data lands.
     return <DataGateScreen status={dataStatus} retry={retryData} scroll={false} width="workspace" />;
   }
 

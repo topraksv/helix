@@ -12,6 +12,7 @@ import {
   usePersonsState,
   useRecurringIncomesState,
   useSourcesState,
+  useStatementPaymentsState,
   useSubscriptionsState,
   useUserId,
 } from "../data/hooks";
@@ -45,7 +46,8 @@ export default function UpcomingScreen() {
   const incomesState = useRecurringIncomesState();
   const sourcesState = useSourcesState();
   const statementsState = useCreditCardStatementsState();
-  const { status, retry } = combineLiveStates([transactionsState, categoriesState, personsState, expectedState, subscriptionsState, incomesState, sourcesState, statementsState]);
+  const paymentsState = useStatementPaymentsState();
+  const { status, ready, retry } = combineLiveStates([transactionsState, categoriesState, personsState, expectedState, subscriptionsState, incomesState, sourcesState, statementsState, paymentsState]);
   const categories = categoriesState.data;
   const { transactions: txLike, byStatement } = useCardSettlement();
   const statementPaidMinor = useMemo(
@@ -54,8 +56,7 @@ export default function UpcomingScreen() {
   );
   const today = todayISO();
   const categoryById = useMemo(() => new Map(categories.map((category) => [category.id, category.name])), [categories]);
-  // Walks every transaction the account has, so it follows the data rather
-  // than the render.
+  // Walks every transaction the account has, so it follows the data rather than the render.
   const timeline = useMemo(() => buildUpcomingTimeline({
     expected: expectedState.data,
     transactions: txLike,
@@ -93,7 +94,6 @@ export default function UpcomingScreen() {
     item.kind === "expected"
     && item.expectedId != null
     && isVariableSubscriptionOccurrence({ kind: item.sourceType, refId: item.refId }, subscriptionById);
-  const amountUnknown = hasUnknownAmount;
 
   const openItem = (item: UpcomingTimelineItem) => {
     if (item.status === "late") return router.push("/reconciliation");
@@ -101,10 +101,7 @@ export default function UpcomingScreen() {
     if (item.kind === "transaction") return router.push({ pathname: "/transaction", params: { id: item.refId } });
     if (item.sourceType === "subscription") return router.push({ pathname: "/subscription-form", params: { id: item.refId } });
     if (item.sourceType === "recurring_income") return router.push("/incomes");
-    // A card statement asks "what is on this statement, and is it paid?", and
-    // the statement's own screen answers both. It used to fall through to the
-    // catch-all below and open the payment-source list — the screen for ADDING
-    // a card — which answers a question nobody on this row was asking.
+    // The statement's own screen answers "what is on it, and is it paid?"; the catch-all below is the screen for adding a card.
     if (item.sourceType === "card_statement") {
       return router.push({ pathname: "/card-statement", params: { card: item.refId, ...(item.statementId ? { statement: item.statementId } : {}) } });
     }
@@ -145,7 +142,7 @@ export default function UpcomingScreen() {
           }}
         />
       ) : null}
-      {status === "loading" || status === "error" ? null : grouped.length === 0 ? (
+      {!ready ? null : grouped.length === 0 ? (
         <EmptyState icon={PartyPopper} title={tr.dashboard.noUpcoming} hint={tr.dashboard.upcomingHint} />
       ) : grouped.map(([month, items]) => (
         <View key={month}>
@@ -183,21 +180,13 @@ export default function UpcomingScreen() {
                   </View>
                 )}
                 title={item.name ?? item.categoryName ?? tr.common.paymentFallback}
-                subtitle={`${sourceLabel(item)} · ${dateLabel(item.date)}${item.paidMinor ? ` · ${tr.dashboard.cardStatementPaid(formatMinorCompact(item.paidMinor))}` : ""}${item.amountIsEstimated ? ` · ${amountUnknown(item) ? tr.subs.unknownAmount : tr.subs.estimatedAmount}` : ""}`}
-                /* The amount is a column, not the tail of a sentence. Buried in
-                   the subtitle it left the middle of every row empty while the
-                   figures it should be scanned against stayed unaligned. Same
-                   string, same value — read down instead of across. */
-                /* One line, in the order the eye needs it: the state that
-                   qualifies the figure, the figure, then the way in. The
-                   amount reads last because it is what you scan down the
-                   column, and it takes the warning colour when it is late so
-                   the state is not carried by a chip alone. */
+                subtitle={`${sourceLabel(item)} · ${dateLabel(item.date)}${item.paidMinor ? ` · ${tr.dashboard.cardStatementPaid(formatMinorCompact(item.paidMinor))}` : ""}${item.amountIsEstimated ? ` · ${hasUnknownAmount(item) ? tr.subs.unknownAmount : tr.subs.estimatedAmount}` : ""}`}
+                /* The amount is a column scanned down, not the tail of a sentence. It comes after the state that qualifies it, and takes the warning colour when late so the state is not carried by a chip alone. */
                 right={(
                   <Row gap={spacing.sm}>
                     {item.status === "late" ? <Badge tone="error" text={tr.dashboard.late} /> : null}
-                    {item.amountIsEstimated && !amountUnknown(item) ? <Badge tone="warning" text={tr.subs.estimatedBadge} /> : null}
-                    {amountUnknown(item) ? (
+                    {item.amountIsEstimated && !hasUnknownAmount(item) ? <Badge tone="warning" text={tr.subs.estimatedBadge} /> : null}
+                    {hasUnknownAmount(item) ? (
                       <Body muted style={[type.amountSm, { textAlign: "right" }]}>{tr.subs.unknownAmount}</Body>
                     ) : (
                       <Amount

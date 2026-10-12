@@ -60,14 +60,7 @@ describe("workbook format", () => {
     expect(cells["İşlem Tarihi"]).toBe("01.02.2026");
   });
 
-  /**
-   * Every column, not a sample of them.
-   *
-   * The two tests above check the cells a reader would notice first, and
-   * mutation testing showed what that misses: replacing a column's accessor
-   * with `() => undefined` survived on five of them, because nothing asserted
-   * that "Ödeme Günü" reads `billingDay` rather than some other number.
-   */
+  /** Every column reads its own field. */
   it("reads its own field in every column", () => {
     const subscriptionCells = SUBSCRIPTION_COLUMNS.map((column) => column.write(subscription));
     expect(subscriptionCells).toEqual([
@@ -93,15 +86,7 @@ describe("workbook format", () => {
     expect(byInvestmentHeader("Toplam", { ...investment, totalMinor: 222 })).toBe("2,22");
   });
 
-  /**
-   * One vocabulary, not two.
-   *
-   * This file once wrote "Metal", "Hisse" and "Emeklilik" while every screen in
-   * the app said "Kıymetli Maden", "Borsa" and "BES" — a workbook naming a
-   * holding differently from the screen it came from, which leaves the owner to
-   * reconcile two names for one thing. `knip` found the unused export that hid
-   * it; this keeps it found.
-   */
+  /** The workbook names asset types and cycles as the screens do. */
   it("names an asset type and a cycle the way the app names them", () => {
     const assetColumn = INVESTMENT_COLUMNS.find((column) => column.header === "Varlık Türü")!;
     for (const [stored, label] of Object.entries(tr.investments.types)) {
@@ -226,6 +211,7 @@ describe("workbook format", () => {
         [1, 1, "═══ Axess ═══\nBuzdolabı yeni  1000,00  1/2\n═══ Bonus ═══\nTelefon  1500,00  1/2"],
         [2, 1, "═══ Axess ═══\nBuzdolabı yeni  1000,00  2/2\n═══ Bonus ═══\nTelefon  1500,00  2/2"],
       ]);
+      expect(notesOf(instalments("c", { card: " Bonus ", title: " Telefon " }))[0]![2], "edges trimmed").toBe("═══ Bonus ═══\nTelefon  1500,00  1/2");
     });
 
     it("leaves out a plan that is not whole in the ledger", () => {
@@ -238,6 +224,8 @@ describe("workbook format", () => {
       expect(notesOf(plan.map((row, index) => ({ ...row, instalmentNo: 2 - index }))), "off its schedule").toEqual([]);
       expect(notesOf(plan.map((row, index) => (index === 1 ? { ...row, item: "Market", monthlyMinor: 100 } : row))), "over two columns").toEqual([]);
       expect(notesOf(plan, cells(150000, 0)), "over a cell netting to zero").toEqual([]);
+      const single = { planId: "s", item: "Kart", month: "2026-01", card: "Bonus", title: "Kulaklık", instalmentNo: 1, count: 1, monthlyMinor: 50000 };
+      expect(notesOf([single, ...plan], cells(200000, 160000)), "sharing a cell with a plan that dropped").toEqual([]);
       expect(notesOf(plan, cells(150000).filter((cell) => cell.month !== "2026-02" || cell.item !== "Kart")), "over a cell with no figure").toEqual([]);
     });
 
@@ -261,14 +249,7 @@ describe("workbook format", () => {
     });
   });
 
-  /**
-   * The step between a query and a sheet.
-   *
-   * It lived beside the SQL, where no node test could reach it, and the mutation
-   * gate reported the file detecting less than it had — which is what a hundred
-   * untested lines look like from the outside. Moved here it is ordinary logic
-   * with ordinary tests.
-   */
+  /** The step between a query and a sheet. */
   describe("database rows into sheet rows", () => {
     it("reads a subscription row, and does not divide by a missing interval", () => {
       const row = toSubscriptionRow({
@@ -318,7 +299,7 @@ describe("workbook format", () => {
 });
 
 /**
- * The record sheets come back (owner decision, 2026-09-14): what the writer
+ * The record sheets come back: what the writer
  * puts in a cell is what the reader takes out, and what a spreadsheet does to
  * a retyped cell is still read rather than refused.
  */
@@ -346,6 +327,12 @@ describe("reading the record sheets back", () => {
         },
       ],
     });
+  });
+
+  it("reads a closed set from its stored value as well as its label", () => {
+    const sheet = sheetOf(SUBSCRIPTION_COLUMNS, [subscription]);
+    sheet[1]![sheet[0]!.indexOf("Döngü")] = "monthly";
+    expect(readSubscriptionSheet(sheet)?.records[0]?.cycle).toBe("monthly");
   });
 
   it("reads back every investment field it writes, and an amount-only contribution as one", () => {

@@ -14,7 +14,7 @@ import { getSqliteAsync, withTransaction } from "./client";
 import { SYNCED_TABLES, type SyncedTableName } from "./schema";
 import type { AnySettingKey } from "../domain/settings";
 import { deterministicId, naturalKeys } from "./ids";
-import { convertOutboundRow } from "../sync/outbound-validation";
+import { convertOutboundRow, outboundPolicy } from "../sync/outbound-validation";
 import { resolveTombstoneVersion } from "../sync/tombstone-policy";
 
 export interface RowWrite {
@@ -51,22 +51,7 @@ function toDbShape(table: SyncedTableName, row: Record<string, unknown>): Record
   return out;
 }
 
-/**
- * Columns an upsert may never rewrite on the UPDATE branch.
- *
- * `created_at` is insert-only by definition, but it used to be in the
- * `DO UPDATE SET` list. Combined with the `createdAt: row.createdAt ?? timestamp`
- * stamp below, that meant every builder which constructs a row LITERAL rather
- * than spreading `fromDbShape(previous)` silently reset the row's creation time
- * on each edit — budgets, subscription/income rules, expected-payment confirms
- * and the maintenance re-upserts all did. `transactions.ts` worked around it by
- * reading and re-supplying `created_at`, which is a per-caller fix for a
- * property of the write layer.
- *
- * Excluding it here fixes every caller at once, and makes the value truthful
- * for `maintenance.ts`'s `ORDER BY created_at ASC` duplicate-self repair. `id`
- * is excluded for the obvious reason: it is the conflict target.
- */
+/** `created_at` is set once; an edit that re-supplied it would reset the row's age. */
 const UPSERT_IMMUTABLE_COLUMNS = new Set(["id", "created_at"]);
 
 export function upsertSql(table: SyncedTableName, dbRow: Record<string, unknown>): { sql: string; args: SQLiteBindValue[] } {
@@ -87,9 +72,7 @@ export function upsertSql(table: SyncedTableName, dbRow: Record<string, unknown>
   };
 }
 
-/** The one dynamic-row boundary where values arrive as `unknown` (drizzle-
- *  shaped rows are string/number/null after this normalization) — the single
- *  narrow cast that replaced the old blanket `as never[]` on every SQL call. */
+/** The one dynamic-row boundary where values arrive as `unknown`; rows are string/number/null after this. */
 function normalizeForSqlite(value: unknown): SQLiteBindValue {
   if (typeof value === "boolean") return value ? 1 : 0;
   if (value === undefined) return null;
@@ -295,25 +278,9 @@ export async function writeRowBatchesAtomically(
       for (const write of batch) await persist(write.table, write.row, states);
     }
     if (lastEntryId) {
-      const lastEntryBatch: RowWrite[] = [{
-        table: "settings",
-        row: {
-          id: lastEntryId,
-          createdAt: nowIso(),
-          deletedAt: null,
-          key: "last_entry_at",
-          value: JSON.stringify(nowIso()),
-        },
-      }];
-      const states = await loadBatchState(lastEntryBatch);
       const timestamp = nowIso();
-      await persist("settings", {
-        id: lastEntryId,
-        createdAt: timestamp,
-        deletedAt: null,
-        key: "last_entry_at",
-        value: JSON.stringify(timestamp),
-      }, states);
+      const row = { id: lastEntryId, createdAt: timestamp, deletedAt: null, key: "last_entry_at", value: JSON.stringify(timestamp) };
+      await persist("settings", row, await loadBatchState([{ table: "settings", row }]));
     }
     if (validateAfter) await validateAfter(sqlite);
   });
@@ -326,47 +293,15 @@ export async function pendingOutboxCount(): Promise<number> {
   return row?.n ?? 0;
 }
 
-/**
- * What a retry can honestly report.
- *
- * `unrepairable` is the outcome this used to be missing, and its absence is
- * why the owner could press "Yeniden Dene" for ever and watch the same rows
- * come back. A quarantine says the row the server saw was invalid; retrying
- * queued THE SAME LOCAL ROW again, the next push found it invalid for the same
- * reason, and quarantined it again. The button was a loop with a spinner on it.
- */
+/** What a retry reports; `unrepairable` means the current local row would be quarantined again, so nothing is queued. */
 export type DeadLetterRetry = "requeued" | "missing" | "unsupported" | "unrepairable";
-
-/**
- * The outbound rules for one table, derived from the schema this build has.
- *
- * The same two sets `sync/engine.ts` builds for its push, so the check here and
- * the check that will actually run cannot disagree — a retry that says "this
- * will be accepted" and then is not would be worse than no check at all.
- */
-function outboundPolicy(table: SyncedTableName): { allowedColumns: Set<string>; booleanColumns: Set<string> } {
-  const allowedColumns = new Set<string>();
-  const booleanColumns = new Set<string>();
-  for (const column of Object.values(getTableColumns(SYNCED_TABLES[table]))) {
-    allowedColumns.add(column.name);
-    if (column.columnType === "SQLiteBoolean") booleanColumns.add(column.name);
-  }
-  return { allowedColumns, booleanColumns };
-}
 
 /**
  * Requeue the current local version of a quarantined row (spec §10.3).
  *
- * The dead letter stores the rejected snapshot for forensics, not as an
- * editable source of truth. Retrying that raw payload would repeat the same
- * validation failure, so this reads the current owned row and lets the normal
- * write boundary create a fresh outbox event. A missing row keeps its dead
- * letter: dropping the only local recovery clue would be data loss.
- *
- * And it now checks BEFORE it queues. `convertOutboundRow` is the same gate the
- * push runs, so if the current row would fail it again, nothing is queued and
- * the caller is told the row itself needs changing — which is a thing a person
- * can actually do, unlike pressing the same button a fourth time.
+ * The dead letter keeps the rejected snapshot for forensics; retrying that payload would fail again, so
+ * this re-writes the current owned row. A missing row keeps its dead letter, the only local recovery clue.
+ * `convertOutboundRow` is the gate the push runs, so a row that would fail it is not queued.
  */
 export async function requeueSyncDeadLetter(
   userId: string,
@@ -385,13 +320,10 @@ export async function requeueSyncDeadLetter(
     [dead.row_id, userId],
   );
   if (!current) return "missing";
-  // Checked against a COPY: `convertOutboundRow` coerces the row it is handed,
-  // and the local row must not be edited by a question about it.
+  // A copy: `convertOutboundRow` coerces the row it is handed.
   if (!convertOutboundRow(table, { ...current }, outboundPolicy(table)).ok) return "unrepairable";
 
-  // Keep the original quarantine until the new outbox write succeeds. If the
-  // local database changes between these two operations, the next retry uses
-  // the newest snapshot and the old clue remains harmlessly visible.
+  // The quarantine stays until the new outbox write succeeds.
   await writeRows(userId, [{ table, row: fromDbShape(table, current) }], false);
   await withTransaction(async () => {
     await sqlite.runAsync(`DELETE FROM sync_dead_letters WHERE id = ?`, [deadLetterId]);
@@ -400,17 +332,8 @@ export async function requeueSyncDeadLetter(
 }
 
 /**
- * Forget one quarantine, without touching the row it points at.
- *
- * The only exit a dead letter had was a retry that could succeed, so a
- * quarantine whose local row no longer exists — the common case after a delete,
- * and every case after a payload from another account — was permanent. It sat
- * on the settings screen for ever, said something alarming about data, and had
- * no button that could make it true again.
- *
- * This deletes the CLUE, never the record: the local row, if there still is
- * one, is untouched and still on the device. Returns whether there was
- * anything to forget, so a caller cannot report success for a no-op.
+ * Forget one quarantine, never the row it points at: a retry cannot clear a dead letter whose local row is gone.
+ * Returns whether there was anything to forget.
  */
 export async function discardSyncDeadLetter(deadLetterId: number): Promise<boolean> {
   const sqlite = await getSqliteAsync();
@@ -446,11 +369,7 @@ export async function restoreRow(
 
 /** snake_case DB row → camelCase Drizzle shape. */
 export function fromDbShape(table: SyncedTableName, dbRow: object): Record<string, unknown> {
-  // `object`, not `Record<string, unknown>`: a typed `SELECT` result is an
-  // interface, and TypeScript refuses those to an index signature. Every call
-  // site therefore carried an `as unknown as` — the strongest cast the
-  // language has, spent on a technicality, in the write paths where a real one
-  // would be most expensive to miss. The one narrowing lives here instead.
+  // `object`, not `Record<string, unknown>`: TypeScript refuses a typed `SELECT` result (an interface) to an index signature.
   const source = dbRow as Record<string, unknown>;
   const columns = getTableColumns(SYNCED_TABLES[table]);
   const out: Record<string, unknown> = {};

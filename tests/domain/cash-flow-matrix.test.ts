@@ -3,6 +3,22 @@ import { buildCashFlowMatrixModel } from "../../src/domain/cash-flow-matrix";
 import { buildLedger, monthFlowTotals } from "../../src/domain/balance";
 import { tx } from "../helpers";
 
+/** The arguments every case repeats; a case names only what it is about. */
+const matrixModel = (overrides: Partial<Parameters<typeof buildCashFlowMatrixModel>[0]>) =>
+  buildCashFlowMatrixModel({
+    year: 2026,
+    yearMonths: [],
+    categories: [],
+    computedColumns: [],
+    transactions: [],
+    creditCardIds: new Set(),
+    liveCategoryIds: new Set(),
+    today: "2026-12-31",
+    openingLabel: "Ay Başı",
+    closingLabel: "Güncel Bakiye",
+    ...overrides,
+  });
+
 describe("cash-flow matrix model", () => {
   it("keeps category, computed, system and missing-category values in parity", () => {
     const transactions = [
@@ -17,19 +33,14 @@ describe("cash-flow matrix model", () => {
       adjustments: [],
       today: "2026-12-31",
     });
-    const model = buildCashFlowMatrixModel({
-      year: 2026,
+    const model = matrixModel({
       yearMonths: ledger,
       categories: [{ id: "food", name: "Market" }],
       computedColumns: [{
         id: "sum", name: "Toplam", definition: JSON.stringify({ op: "sum", categoryIds: ["food"] }),
       }],
       transactions,
-      creditCardIds: new Set(),
       liveCategoryIds: new Set(["food"]),
-      today: "2026-12-31",
-      openingLabel: "Ay Başı",
-      closingLabel: "Güncel Bakiye",
     });
 
     expect(model.months).toHaveLength(12);
@@ -40,10 +51,7 @@ describe("cash-flow matrix model", () => {
     expect(model.uncategorizedTotal).toBe(25_00);
   });
 
-  // A computed column reads `byCategory` AND the month's income/expense. The
-  // first already carried planned rows and the second did not, so "Net Akış"
-  // printed 0 in a future month whose Market cell, one column to the left in
-  // the same row, showed the planned 500,00.
+  // A computed column must read the same rows the cells show, planned ones included.
   it("evaluates a computed column against the same rows the cells show", () => {
     const transactions = [
       tx({ id: "planned", type: "expense", categoryId: "food", amountTryMinor: 500_00, effectiveDate: "2026-09-10", status: "pending" }),
@@ -57,31 +65,22 @@ describe("cash-flow matrix model", () => {
       today: "2026-07-25",
       includePendingInCells: true,
     });
-    const model = buildCashFlowMatrixModel({
-      year: 2026,
+    const model = matrixModel({
       yearMonths: ledger,
       categories: [{ id: "food", name: "Market" }],
       computedColumns: [{
         id: "net", name: "Net Akış", definition: JSON.stringify({ op: "income_minus_expense" }),
       }],
       transactions,
-      creditCardIds: new Set(),
       liveCategoryIds: new Set(["food"]),
       today: "2026-07-25",
-      openingLabel: "Ay Başı",
-      closingLabel: "Güncel Bakiye",
     });
 
     const categoryCell = model.columns[0]?.values.get("2026-09");
     const computedCell = model.columns[1]?.values.get("2026-09");
     expect(categoryCell).toBe(500_00);
     expect(computedCell).toBe(-500_00);
-    // The row has to add up ON ITS OWN FACE. This assertion used to say the
-    // balance columns "stay on the realized chain" — which is exactly the
-    // defect: the Market cell one column to the left showed the planned
-    // 500,00 while the balance column repeated Ay Başı unchanged, and the month card a
-    // tap away reported the difference. Opening + every cell = closing, in
-    // every month, whatever the rows in it are waiting on.
+    // The row adds up on its own face: opening + every cell = closing, in every month.
     const opening = model.columns[2]?.values.get("2026-09");
     const closing = model.columns[3]?.values.get("2026-09");
     expect(opening).toBe(1_000_00);
@@ -89,8 +88,7 @@ describe("cash-flow matrix model", () => {
     expect(closing).toBe((opening ?? 0) - (categoryCell ?? 0));
   });
 
-  // The grid and the month card are one tap apart and used to disagree by the
-  // whole planned amount. They read the same accessor now; this is the guard.
+  // The grid and the month card read the same accessor.
   it("agrees with the month card on opening and closing, month for month", () => {
     const transactions = [
       tx({ id: "realized", type: "income", categoryId: "salary", amountTryMinor: 10_000_00, effectiveDate: "2026-07-10", status: "realized" }),
@@ -106,17 +104,12 @@ describe("cash-flow matrix model", () => {
       today: "2026-08-23",
       includePendingInCells: true,
     });
-    const model = buildCashFlowMatrixModel({
-      year: 2026,
+    const model = matrixModel({
       yearMonths: ledger,
       categories: [{ id: "food", name: "Market" }, { id: "salary", name: "Maaş" }],
-      computedColumns: [],
       transactions,
-      creditCardIds: new Set(),
       liveCategoryIds: new Set(["food", "salary"]),
       today: "2026-08-23",
-      openingLabel: "Ay Başı",
-      closingLabel: "Güncel Bakiye",
     });
 
     const opening = model.columns.find((c) => c.key === "opening");
@@ -131,11 +124,7 @@ describe("cash-flow matrix model", () => {
     expect(closing?.values.get("2026-10")).toBe(37_000_00);
   });
 
-  /**
-   * A workspace that starts in July has no January. The grid drew all twelve
-   * months regardless, so its first year opened on six blank rows — and a
-   * blank row in a ledger reads as lost data, not as a month that never was.
-   */
+  /** A workspace that starts in July has no January: a blank month reads as lost data. */
   it("drops the months before the workspace existed, and only those", () => {
     const ledger = buildLedger({
       openingBalanceMinor: 0,
@@ -146,17 +135,9 @@ describe("cash-flow matrix model", () => {
       today: "2026-08-23",
       includePendingInCells: true,
     });
-    const model = (startMonth?: string) => buildCashFlowMatrixModel({
-      year: 2026,
+    const model = (startMonth?: string) => matrixModel({
       yearMonths: ledger,
-      categories: [],
-      computedColumns: [],
-      transactions: [],
-      creditCardIds: new Set(),
-      liveCategoryIds: new Set(),
       today: "2026-08-23",
-      openingLabel: "Ay Başı",
-      closingLabel: "Güncel Bakiye",
       startMonth: startMonth as never,
     });
 
@@ -174,17 +155,9 @@ describe("cash-flow matrix model", () => {
    * must reach it rather than produce a headless grid.
    */
   it("keeps a full year when every month of it precedes the start", () => {
-    const model = buildCashFlowMatrixModel({
+    const model = matrixModel({
       year: 2024,
-      yearMonths: [],
-      categories: [],
-      computedColumns: [],
-      transactions: [],
-      creditCardIds: new Set(),
-      liveCategoryIds: new Set(),
       today: "2026-08-23",
-      openingLabel: "Ay Başı",
-      closingLabel: "Güncel Bakiye",
       startMonth: "2026-07" as never,
     });
     expect(model.months).toHaveLength(12);
@@ -199,19 +172,7 @@ describe("cash-flow matrix model", () => {
       adjustments: [],
       today: "2026-12-31",
     });
-    const build = (showOpening: boolean | undefined) => buildCashFlowMatrixModel({
-      year: 2026,
-      yearMonths: ledger,
-      categories: [],
-      computedColumns: [],
-      transactions: [],
-      creditCardIds: new Set(),
-      liveCategoryIds: new Set(),
-      today: "2026-12-31",
-      openingLabel: "Ay Başı",
-      closingLabel: "Güncel Bakiye",
-      showOpening,
-    });
+    const build = (showOpening: boolean | undefined) => matrixModel({ yearMonths: ledger, showOpening });
 
     // The closing balance has no such switch: it is the figure the whole
     // ledger exists to produce, so hiding it would empty the table of its
@@ -230,19 +191,51 @@ describe("cash-flow matrix model", () => {
       adjustments: [],
       today: "2026-12-31",
     });
-    const model = buildCashFlowMatrixModel({
-      year: 2026,
-      yearMonths: ledger,
-      categories: [],
-      computedColumns: [],
-      transactions: [],
-      creditCardIds: new Set(),
-      liveCategoryIds: new Set(),
-      today: "2026-12-31",
-      openingLabel: "Ay Sonu",
-      closingLabel: "Toplam",
-    });
+    const model = matrixModel({ yearMonths: ledger, openingLabel: "Ay Sonu", closingLabel: "Toplam" });
 
     expect(model.columns.map((column) => column.label)).toEqual(["Ay Sonu", "Toplam"]);
+  });
+});
+
+describe("cash-flow matrix slots and column metadata", () => {
+  it("does not invent an uncategorized column for an exact zero", () => {
+    const model = matrixModel({ today: "2026-07-18", openingLabel: "Açılış", closingLabel: "Kapanış" });
+    expect(model.hasUncategorized).toBe(false);
+    expect(model.uncategorizedTotal).toBe(0);
+  });
+
+  it("pins all twelve slots, column metadata, corrupt definitions, card splits, and orphan totals", () => {
+    const transactions = [
+      tx({ type: "expense", amountTryMinor: 100, effectiveDate: "2026-01-05", categoryId: "food", categoryKind: "expense", paymentSourceId: "card" }),
+      tx({ type: "expense", amountTryMinor: 200, effectiveDate: "2026-01-06", categoryId: "orphan", categoryKind: "expense", paymentSourceId: "card", installmentPlanId: "plan" }),
+    ];
+    const ledger = buildLedger({ openingBalanceMinor: 1_000, startMonth: "2026-01", endMonth: "2026-01", transactions, adjustments: [], today: "2026-12-31" });
+    const model = matrixModel({
+      yearMonths: ledger, categories: [{ id: "food", name: "Market" }],
+      computedColumns: [
+        { id: "card-single", name: "Tek", definition: '{"op":"cc_split","part":"single"}' },
+        { id: "card-installment", name: "Taksit", definition: '{"op":"cc_split","part":"installment"}' },
+        { id: "broken", name: "Bozuk", definition: "{" },
+      ],
+      transactions, creditCardIds: new Set(["card"]), liveCategoryIds: new Set(["food"]),
+      openingLabel: "Açılış", closingLabel: "Kapanış",
+    });
+
+    expect(model.months.map(({ month, data }) => [month, data?.month ?? null])).toEqual([
+      ["2026-01", "2026-01"], ["2026-02", null], ["2026-03", null], ["2026-04", null],
+      ["2026-05", null], ["2026-06", null], ["2026-07", null], ["2026-08", null],
+      ["2026-09", null], ["2026-10", null], ["2026-11", null], ["2026-12", null],
+    ]);
+    expect(model.columns.map(({ key, label, categoryId, computed, system }) => ({ key, label, categoryId, computed, system }))).toEqual([
+      { key: "food", label: "Market", categoryId: "food", computed: false, system: false },
+      { key: "card-single", label: "Tek", categoryId: null, computed: true, system: false },
+      { key: "card-installment", label: "Taksit", categoryId: null, computed: true, system: false },
+      { key: "broken", label: "Bozuk", categoryId: null, computed: true, system: false },
+      { key: "opening", label: "Açılış", categoryId: null, computed: false, system: true },
+      { key: "closing", label: "Kapanış", categoryId: null, computed: false, system: true },
+    ]);
+    expect(model.columns.map((column) => column.values.get("2026-01"))).toEqual([100, 100, 200, null, 1_000, 700]);
+    expect({ hasUncategorized: model.hasUncategorized, uncategorizedTotal: model.uncategorizedTotal })
+      .toEqual({ hasUncategorized: true, uncategorizedTotal: 200 });
   });
 });

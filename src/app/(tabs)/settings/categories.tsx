@@ -6,8 +6,7 @@ import { StyleSheet, View } from "react-native";
 import { useRouter } from "expo-router";
 import { useBalanceColumns, useCategoriesState, useUserId } from "../../../data/hooks";
 import { combineLiveStates } from "../../../data/live-state";
-import { categoryReferenceUsage, createCategory, deleteCategoryWithBudgets, reorderCategoryGroup, restoreCategoryWithBudgets, setBalanceColumns, updateCategory } from "../../../data/repo";
-import type { CategoryReferenceUsage } from "../../../data/repo";
+import { categoryReferenceUsage, createCategory, deleteCategoryWithBudgets, reorderCategoryGroup, restoreCategoryWithBudgets, setBalanceColumns, updateCategory, type CategoryReferenceUsage } from "../../../data/repo";
 import { CategoryIcon } from "../../../ui/category-icon";
 import { scheduleSync } from "../../../sync/engine";
 import { appAlert, appConfirm } from "../../../ui/dialog";
@@ -20,10 +19,10 @@ import LayoutTemplate from "lucide-react-native/icons/layout-template";
 import Pencil from "lucide-react-native/icons/pencil";
 import Plus from "lucide-react-native/icons/plus";
 import Trash from "lucide-react-native/icons/trash";
-import { Badge, Body, Button, Card, ChipPicker, CardListSkeleton, DataGateScreen, DataStateNotice, Divider, EmptyState, FadeIn, Field, IconButton, PanelHeader, Row, Screen, Spread, Toggle } from "../../../ui/components";
+import { Badge, Body, Button, Card, ChipPicker, CardListSkeleton, DataGateScreen, DataStateNotice, Divider, EmptyState, FadeIn, Field, IconButton, InlineEditRow, PanelHeader, Row, Screen, Spread, Toggle, ToggleRow } from "../../../ui/components";
 import { CategoryDeleteSheet, UNCATEGORIZED_CHOICE } from "../../../ui/category-delete-sheet";
 import { DraggableList, ReorderGrip } from "../../../ui/draggable-list";
-import { placeholderPools, useRotatingPlaceholder } from "../../../ui/placeholders";
+import { useRotatingPlaceholder } from "../../../ui/placeholders";
 import { useUndo } from "../../../ui/undo";
 import { iconSize, radius, spacing, type, useTheme } from "../../../ui/theme";
 import { useOperationGuard } from "../../../ui/operation-guard";
@@ -31,14 +30,7 @@ import { useDirtyExitGuard } from "../../../ui/dirty-exit";
 import { WorkspaceSplit } from "../../../ui/workspace-layout";
 import { MAX_BALANCE_COLUMN_LABEL } from "../../../domain/matrix-preferences";
 
-/**
- * The two balance columns, named by the owner.
- *
- * It sits at the very bottom of the column list because that is what it is
- * about: the last two columns of the Mali Tablo, which every other card here
- * cannot reach. They are not categories, so they have no row above; they are
- * not computed columns either, so the other tab does not own them.
- */
+/** The two balance columns, named by the owner; neither categories nor computed columns. */
 function BalanceColumnsCard() {
   const userId = useUserId();
   const { palette } = useTheme();
@@ -46,13 +38,7 @@ function BalanceColumnsCard() {
   const [editing, setEditing] = useState<"opening" | "closing" | null>(null);
   const [draft, setDraft] = useState("");
 
-  /**
-   * A name left as the app's own stores NOTHING.
-   *
-   * Otherwise renaming a column to what it is already called would freeze
-   * today's wording into the account: a later build renaming "Ay Başı" would
-   * leave this workspace on the old name with nothing on screen explaining why.
-   */
+  /** A name equal to the default stores null, so a later rename of the default still reaches this account. */
   const stored = (value: string, fallback: string) => {
     const trimmed = value.trim();
     return trimmed === "" || trimmed === fallback ? null : trimmed;
@@ -77,25 +63,24 @@ function BalanceColumnsCard() {
     showOpening: current.showOpening,
   });
 
-  /** The same row every column in this screen gets: its name, and a pencil. */
   const row = (which: "opening" | "closing", name: string, fieldLabel: string, fallback: string, below?: ReactNode) => (
     <View style={{ paddingVertical: spacing.sm }}>
       {editing === which ? (
-        <View style={{ gap: spacing.sm }}>
-          <Field
-            label={fieldLabel}
-            noMargin
-            autoFocus
-            value={draft}
-            maxLength={MAX_BALANCE_COLUMN_LABEL}
-            placeholder={tr.settings.balanceColumnsPlaceholder(fallback)}
-            onChangeText={setDraft}
-          />
-          <Row gap={spacing.sm} style={{ justifyContent: "flex-end" }}>
-            <Button label={tr.common.cancel} size="sm" variant="ghost" onPress={() => setEditing(null)} />
-            <Button label={tr.common.save} size="sm" variant="secondary" onPress={() => write(saved(which))} />
-          </Row>
-        </View>
+        <InlineEditRow
+          field={(
+            <Field
+              label={fieldLabel}
+              noMargin
+              autoFocus
+              value={draft}
+              maxLength={MAX_BALANCE_COLUMN_LABEL}
+              placeholder={tr.settings.balanceColumnsPlaceholder(fallback)}
+              onChangeText={setDraft}
+            />
+          )}
+          onCancel={() => setEditing(null)}
+          onSave={() => write(saved(which))}
+        />
       ) : (
         <>
           <Spread>
@@ -120,26 +105,18 @@ function BalanceColumnsCard() {
       <PanelHeader icon={Scale} title={tr.settings.balanceColumnsTitle} description={tr.settings.balanceColumnsHint} />
       {row("closing", current.closingLabel, tr.settings.balanceClosingLabel, tr.cashflow.closing)}
       <View style={{ borderBottomWidth: StyleSheet.hairlineWidth, borderColor: palette.border }} />
-      {/* The switch sits UNDER the month-opening row and nowhere else, because
-          it is that row's own: the closing balance is the figure the whole
-          ledger exists to produce and has no such choice. Character for
-          character the line every category carries, so one rule keeps one
-          control. */}
+      {/* The visibility switch belongs to the opening row only; the closing balance is always shown. */}
       {row("opening", current.openingLabel, tr.settings.balanceOpeningLabel, tr.cashflow.opening, (
-        <Spread style={{ marginTop: spacing.xs }}>
-          <Body muted style={{ fontSize: type.small.fontSize, flex: 1, paddingRight: spacing.sm }}>
-            {tr.settings.columnVisible}
-          </Body>
-          <Toggle
-            label={`${current.openingLabel} · ${tr.settings.columnVisible}`}
-            value={current.showOpening}
-            onValueChange={(showOpening) => write({
-              openingLabel: stored(current.openingLabel, tr.cashflow.opening),
-              closingLabel: stored(current.closingLabel, tr.cashflow.closing),
-              showOpening,
-            })}
-          />
-        </Spread>
+        <ToggleRow
+          name={current.openingLabel}
+          text={tr.settings.columnVisible}
+          value={current.showOpening}
+          onValueChange={(showOpening) => write({
+            openingLabel: stored(current.openingLabel, tr.cashflow.opening),
+            closingLabel: stored(current.closingLabel, tr.cashflow.closing),
+            showOpening,
+          })}
+        />
       ))}
     </Card>
   );
@@ -204,10 +181,7 @@ export default function CategoriesScreen({ header }: { header?: ReactNode } = {}
   const [adding, setAdding] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
-  // "Yatırım kategorisi" is a rarely-changed classification of the category,
-  // not a per-row switch: it belongs to the row being edited, alongside its
-  // name. It is persisted as `isTransfer` — the product concept is investment,
-  // the stored column keeps its original name (see ARCHITECTURE.md).
+  // Persisted as `isTransfer`; the product calls it investment (see ARCHITECTURE.md).
   const [editInvestment, setEditInvestment] = useState(false);
   const [deleteResolution, setDeleteResolution] = useState<{
     category: CategoryItem;
@@ -229,7 +203,7 @@ export default function CategoriesScreen({ header }: { header?: ReactNode } = {}
       setEditInvestment(category.isTransfer);
     }, editDraftDirty);
   };
-  const categoryPlaceholder = useRotatingPlaceholder(placeholderPools.category);
+  const categoryPlaceholder = useRotatingPlaceholder(tr.placeholders.category);
   const { status: dataStatus, ready: dataReady, retry: retryData } = combineLiveStates([categoriesState]);
 
   const add = async () => {
@@ -260,26 +234,15 @@ export default function CategoriesScreen({ header }: { header?: ReactNode } = {}
     }
   };
 
-  // Commit a drag reorder within a kind group (which is what the Mali Tablo
-  // matrix renders as its column/row order). `sortOrder` is a synced column, so
-  // the new order propagates to every device — consistent with how the rest of
-  // the workspace syncs (there is no device-local ordering pref here). We
-  // reassign the group's own existing sortOrder slots onto the new order, so
-  // the other kind's rows keep their positions untouched.
+  // Reuses the group's own sortOrder slots, so the other kind keeps its positions. sortOrder syncs.
   const applyOrder = async (kind: "expense" | "income", orderedIds: string[]) => {
-    try {
-      await reorderCategoryGroup(userId, categories, kind, orderedIds);
-      scheduleSync(userId);
-    } catch {
-      void appAlert(tr.errors.saveFailed, tr.errors.title);
-    }
+    await reorderCategoryGroup(userId, categories, kind, orderedIds);
+    scheduleSync(userId);
   };
 
   const deleteCategory = async (c: CategoryItem, replacementChoice?: string | null) => {
     const replacementId = replacementChoice === UNCATEGORIZED_CHOICE ? null : replacementChoice;
-    const snapshot = replacementChoice === undefined
-      ? await deleteCategoryWithBudgets(userId, c.id)
-      : await deleteCategoryWithBudgets(userId, c.id, replacementId);
+    const snapshot = await deleteCategoryWithBudgets(userId, c.id, replacementId);
     scheduleSync(userId);
     setDeleteResolution(null);
     if (snapshot) {
@@ -383,10 +346,7 @@ export default function CategoriesScreen({ header }: { header?: ReactNode } = {}
               onPress={() => router.push("/workspace-template")}
             />
           </Card>
-          {/* Under the maker, in its own column. Standing below the split it
-              was a full-width strip under two columns of cards, which reads as
-              a footer for the page rather than as what it is: two more columns
-              of the same table, edited the same way. */}
+          {/* Under the maker: two more columns of the same table, not a page footer. */}
           <BalanceColumnsCard />
           </View>
         )}
@@ -417,31 +377,23 @@ export default function CategoriesScreen({ header }: { header?: ReactNode } = {}
               renderRow={(c, handle, index) =>
                 editingId === c.id ? (
                   <View>
-                    <View style={{ paddingVertical: spacing.sm, gap: spacing.sm }}>
-                      {/* The name is the point of this row, so it gets the
-                          whole width; two full-size actions beside it left
-                          about a third of a phone for what was renamed. */}
-                      <Field accessibilityLabel={`${tr.common.edit} · ${c.name}`} noMargin value={editName} onChangeText={setEditName} />
-                      <Row gap={spacing.sm} style={{ justifyContent: "flex-end" }}>
-                        <Button label={tr.common.cancel} size="sm" variant="ghost" onPress={() => setEditingId(null)} />
-                        <Button
-                          label={tr.common.save}
-                          size="sm"
-                          variant="secondary"
-                          disabled={!editName.trim()}
-                          onPress={() => {
-                            void update(
-                              c,
-                              c.kind === "expense"
-                                ? { name: editName.trim(), isTransfer: editInvestment }
-                                : { name: editName.trim() },
-                            ).then((saved) => {
-                              if (saved) setEditingId(null);
-                            });
-                          }}
-                        />
-                      </Row>
-                    </View>
+                    {/* The name gets the row's full width while it is edited. */}
+                    <InlineEditRow
+                      style={{ paddingVertical: spacing.sm }}
+                      field={<Field accessibilityLabel={`${tr.common.edit} · ${c.name}`} noMargin value={editName} onChangeText={setEditName} />}
+                      onCancel={() => setEditingId(null)}
+                      saveDisabled={!editName.trim()}
+                      onSave={() => {
+                        void update(
+                          c,
+                          c.kind === "expense"
+                            ? { name: editName.trim(), isTransfer: editInvestment }
+                            : { name: editName.trim() },
+                        ).then((saved) => {
+                          if (saved) setEditingId(null);
+                        });
+                      }}
+                    />
                     {c.kind === "expense" ? (
                       <Spread style={{ paddingBottom: spacing.sm }}>
                         <View style={{ flex: 1, paddingRight: spacing.md }}>
@@ -474,9 +426,6 @@ export default function CategoriesScreen({ header }: { header?: ReactNode } = {}
                         {c.isTransfer ? <Badge testID="category-transfer-marker" text={tr.cashflow.transfer} /> : null}
                       </Row>
                       <Row gap={spacing.sm} style={{ alignItems: "center" }}>
-                        {/* Every column repeats these two controls, so the
-                            accessible name has to say WHICH column it acts on
-                            — "Düzenle" alone was ambiguous once per row. */}
                         <IconButton
                           icon={Pencil}
                           label={`${tr.common.edit} · ${c.name}`}
@@ -485,10 +434,7 @@ export default function CategoriesScreen({ header }: { header?: ReactNode } = {}
                         <IconButton icon={Trash} tone="danger" label={`${tr.common.delete} · ${c.name}`} haptic="none" onPress={() => void remove(c)} />
                       </Row>
                     </Spread>
-                    <Spread style={{ marginTop: spacing.xs }}>
-                      <Body muted style={{ fontSize: type.small.fontSize, flex: 1, paddingRight: spacing.sm }}>{tr.settings.columnVisible}</Body>
-                      <Toggle label={`${c.name} · ${tr.settings.columnVisible}`} value={c.isColumn} onValueChange={(v) => void update(c, { isColumn: v })} />
-                    </Spread>
+                    <ToggleRow name={c.name} text={tr.settings.columnVisible} value={c.isColumn} onValueChange={(v) => void update(c, { isColumn: v })} />
                   </View>
                 )
               }

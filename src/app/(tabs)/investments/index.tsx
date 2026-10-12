@@ -3,18 +3,13 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import ArrowDownToLine from "lucide-react-native/icons/arrow-down-to-line";
 import ArrowUpFromLine from "lucide-react-native/icons/arrow-up-from-line";
-import Bitcoin from "lucide-react-native/icons/bitcoin";
-import ChartNoAxesCombined from "lucide-react-native/icons/chart-no-axes-combined";
-import Coins from "lucide-react-native/icons/coins";
 import Landmark from "lucide-react-native/icons/landmark";
 import PackagePlus from "lucide-react-native/icons/package-plus";
 import Pencil from "lucide-react-native/icons/pencil";
 import Plus from "lucide-react-native/icons/plus";
 import Sparkles from "lucide-react-native/icons/sparkles";
 import Trash from "lucide-react-native/icons/trash";
-import Umbrella from "lucide-react-native/icons/umbrella";
 import WalletCards from "lucide-react-native/icons/wallet-cards";
-import type { LucideIcon } from "lucide-react-native";
 import {
   deleteInvestmentOperation,
   restoreInvestmentOperation,
@@ -39,6 +34,7 @@ import { Donut, useSeriesColors, walletDonutSlices } from "../../../ui/charts";
 import { interactionSurface } from "../../../ui/interaction";
 import { actionTileMetrics, circle, density, font, iconSize, radius, spacing, type, useTheme } from "../../../ui/theme";
 import { useContentWidth, useMeasuredWidth } from "../../../ui/viewport";
+import { ASSET_TYPE_ICONS } from "../../../ui/category-icon";
 import { WorkspaceGrid } from "../../../ui/workspace-layout";
 import { appAlert, appConfirm } from "../../../ui/dialog";
 import { scheduleSync } from "../../../sync/engine";
@@ -46,18 +42,8 @@ import { userMessage } from "../../../domain/user-error";
 import { useUndo } from "../../../ui/undo";
 import { shouldUseCompactInvestmentHero, shouldUseDesktopInvestmentHero, shouldUseTallInvestmentHero } from "../../../ui/responsive";
 
-// Every peer section inside the wallet uses the same 16pt boundary. Internal
-// label/value gaps stay smaller; mixing those two scales was what made the
-// transfer panel look twice as far from the bar on the desktop layout.
+// Every peer section inside the wallet uses one 16pt boundary; internal label/value gaps stay smaller.
 const INVESTMENT_SECTION_GAP = spacing.lg;
-const ASSET_ICONS: Record<InvestmentAssetType, LucideIcon> = {
-  metal: Coins,
-  currency: WalletCards,
-  equity: ChartNoAxesCombined,
-  fund: Landmark,
-  crypto: Bitcoin,
-  pension: Umbrella,
-};
 
 function Stat({
   label,
@@ -111,21 +97,10 @@ function TransferMetric({
   stacked?: boolean;
 }) {
   const { palette } = useTheme();
-  // The glyphs are container-relative on purpose — `ArrowDownToLine` and
-  // `ArrowUpFromLine` say "into this wallet" and "out of this wallet", which is
-  // a different question from the dashboard's `ArrowDownLeft`/`ArrowUpRight`,
-  // where the container is your balance. Two metaphors, two glyph families, no
-  // collision.
-  //
-  // The COLOUR was the collision. Money moving into the investment wallet
-  // leaves the spendable balance, and it was painted with `positive` — the
-  // token this app reserves for income — so the figure that reduces what you
-  // can spend was the green one. A transfer is neither income nor expense, and
-  // the app already has that idea (`isTransfer`), so both directions take
-  // neutral ink and let the label carry the direction.
+  // Glyphs are wallet-relative (into/out of this wallet). A transfer is neither
+  // income nor expense, so neither direction takes positive ink: money into the
+  // wallet leaves the spendable balance.
   const Icon = direction === "in" ? ArrowDownToLine : ArrowUpFromLine;
-  const iconColor = palette.textSecondary;
-  const iconBackground = palette.surfaceAlt;
   return (
     <View style={{ flex: stacked ? undefined : 1, width: stacked ? "100%" : undefined, minWidth: 0, flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
       <View
@@ -137,22 +112,19 @@ function TransferMetric({
           borderRadius: radius.full,
           alignItems: "center",
           justifyContent: "center",
-          backgroundColor: iconBackground,
+          backgroundColor: palette.surfaceAlt,
         }}
       >
-        <Icon accessible={false} size={14} color={iconColor} strokeWidth={2.2} />
+        <Icon accessible={false} size={14} color={palette.textSecondary} strokeWidth={2.2} />
       </View>
       <View style={{ flex: 1, minWidth: 0 }}>
         <Text style={[type.small, { color: palette.textSecondary }]}>{label}</Text>
         <Amount
           minor={minor}
           colorized={false}
-          color={minor === 0 ? palette.textSecondary : direction === "in" ? palette.positiveText : palette.text}
+          color={minor === 0 ? palette.textSecondary : palette.text}
           accessibilityLabel={`${label}: ${formatMinorCompact(minor)}`}
-          // Zero is not a gain. The inbound metric was painted green whatever
-          // it held, so a wallet that had never received a transfer still
-          // reported "₺0,00" in the colour this app reserves for money coming
-          // in.
+          // Zero is not a gain, so it takes muted ink.
           style={[type.amountSm, { marginTop: 1, textAlign: "left" }]}
         />
       </View>
@@ -260,12 +232,7 @@ export default function InvestmentsScreen() {
   const router = useRouter();
   const userId = useUserId();
   const undo = useUndo();
-  // The hero composes itself from the card it is actually in. Reading the page
-  // column instead was fine at 100% zoom and wrong everywhere else: at 175% the
-  // same 1920 monitor reports 1097 CSS px, the layout picked its widest
-  // arrangement, and a 204px ring sat in a column that no longer had room for
-  // it beside the balance. A measured box is right at every zoom, on a tablet,
-  // and inside whatever column the card ends up in.
+  // Measured from the card, not the page column, so the layout is right at every zoom.
   const [heroWidth, onHeroLayout] = useMeasuredWidth(0);
   const contentColumn = useContentWidth();
   const heroBox = heroWidth > 0 ? heroWidth - density.dashboard.cardPadding * 2 : contentColumn;
@@ -286,9 +253,7 @@ export default function InvestmentsScreen() {
     () => new Set(personsState.data.filter((person) => person.isSelf).map((person) => person.id)),
     [personsState.data],
   );
-  // Hoisted so a per-row filter below never rebuilds a Date and formats a
-  // string once per transaction; hook order stays unconditional, so this
-  // block sits above both early returns further down.
+  // Hoisted above the early returns to keep hook order unconditional.
   const today = todayISO();
   const transferCategoryIds = useMemo(
     () => new Set(categoriesState.data.filter((category) => category.isTransfer).map((category) => category.id)),
@@ -368,15 +333,7 @@ export default function InvestmentsScreen() {
   if (!state) {
     return (
       <Screen title={tr.investments.title}>
-        {/* Two different failures wore one sentence. `DataStateNotice` says
-            the device's finance data could not be READ, which is true while a
-            query is still failing and false once every query has answered: at
-            that point the rows arrived and the REPLAY refused them — an
-            oversold holding, a wallet that paid out more than it took in.
-            Telling someone their data is unreadable when the ledger has told
-            us exactly what is wrong with it hides the one sentence that could
-            lead anywhere. `userMessage` is the same mapping the delete path
-            above already uses for these codes. */}
+        {/* A replay refusal (oversold, wallet overdrawn) gets its own message; DataStateNotice covers only read failures. */}
         {status === "ready" ? (
           <EmptyState
             icon={Landmark}
@@ -443,13 +400,7 @@ export default function InvestmentsScreen() {
           />
         </View>
       )}
-      {/* Stays on the shared compact formatter, which is a tested invariant of
-          this design system: one display policy for money, so a new surface
-          cannot quietly pick a different unit. It does mean a wallet total of
-          ₺1.000.000,00 prints as "₺1 Mn" beside parts that are exact, because
-          the compact threshold is set by the narrowest matrix cell rather than
-          by this card. Changing that is a change to the money policy itself,
-          not to this line. */}
+      {/* The shared compact formatter is the money display policy; a "₺1 Mn" total beside exact parts is that policy, not this line. */}
       <Text style={[type.small, { color: palette.textSecondary, marginTop: spacing.xs }]}>
         {tr.investments.portfolioTotal}: {formatMinorCompact(totalCapital)}
       </Text>
@@ -468,11 +419,7 @@ export default function InvestmentsScreen() {
     <View
       testID="investment-transfer-summary"
       style={{
-        // Two transfer lines read as rows under the balance they belong to, at
-        // every width. Paired side by side to save height, a phone gave each
-        // one about 120pt of text column and "Yatırımdan çekilen" wrapped, so
-        // the two halves of one box were different heights and neither label
-        // finished on its own line.
+        // Stacked rows at every width: paired, a phone wraps the labels unevenly.
         flexDirection: "column",
         gap: spacing.sm,
         marginTop: INVESTMENT_SECTION_GAP,
@@ -488,10 +435,6 @@ export default function InvestmentsScreen() {
   const portfolioMetrics = (
     <MetricStrip
       testID="investment-portfolio-metrics"
-      // These three labels are long enough to wrap unevenly on a phone
-      // ("Yatırılmış maliyet" over two lines beside a one-line "Aktif
-      // ürünler"), which left-aligned reads as three columns that failed to
-      // line up rather than as one row of figures.
       align="center"
       style={{ marginTop: INVESTMENT_SECTION_GAP }}
       items={[
@@ -514,15 +457,7 @@ export default function InvestmentsScreen() {
           {compact ? (
             <>
               {cashSummary}
-              {/* The same ring the two wider branches draw, and the same one
-                  the analysis screen draws on a phone — not a second picture
-                  of the same fact. A phone used to get a column of ranked
-                  bars here: a different shape, a different reading, and no
-                  way to select a holding at all, so the one surface with no
-                  pointer was also the only one where the distribution could
-                  not be interrogated. `Donut` already stacks its legend under
-                  the ring below the pairing width, which is the layout that
-                  column of bars was reaching for. */}
+              {/* The same ring at every width, so the phone can select a holding too. */}
               <View testID="investment-distribution-chart" style={{ marginTop: INVESTMENT_SECTION_GAP }}>
                 <Eyebrow>{tr.investments.distribution}</Eyebrow>
                 <View style={{ marginTop: spacing.md }}>
@@ -544,13 +479,7 @@ export default function InvestmentsScreen() {
               </View>
             </View>
           ) : (
-            // The middle band is the desktop arrangement at a smaller scale,
-            // not a third layout: balance, its transfer lines and the metric
-            // strip in one column, the ring in the other. The metrics used to
-            // sit in a full-width strip below both columns instead of inside
-            // the left one — the ring centred against a shorter column there
-            // than it did on desktop, so it sat at a different height in the
-            // card depending on the breakpoint alone.
+            // The desktop arrangement at a smaller scale, so the ring sits at the same height at every breakpoint.
             <View style={{ flexDirection: "row", alignItems: "stretch", gap: spacing.lg }}>
               <View style={{ flex: 1, minWidth: 0 }}>
                 {cashSummary}
@@ -565,16 +494,9 @@ export default function InvestmentsScreen() {
         </HeroCard>
       </View>
 
-      {/* These four are the page's primary actions and they belong to the
-          wallet above them, so they span the same width the hero does. Bounded
-          to a cluster they read as a half-empty second row under a full-width
-          card — the tiles themselves keep their own even share of the row. */}
+      {/* The wallet's primary actions span the hero's width; tiles share it evenly. */}
       <View
         testID="investment-actions"
-        // The band spans the page and its four tiles share it evenly, the same
-        // rule the ledger's toolbar follows: a control that changes where it
-        // lives every time the window does is a control the user has to find
-        // again. Bounded, it read as a narrow island under a full-width card.
         style={{
           width: "100%",
           flexDirection: "row",
@@ -619,7 +541,7 @@ export default function InvestmentsScreen() {
         <WorkspaceGrid testID="investment-products" layout="stack">
           {visibleActive.map((product) => {
             const resultPositive = product.realizedProfitLossMinor >= 0;
-            const ProductIcon = ASSET_ICONS[product.assetType];
+            const ProductIcon = ASSET_TYPE_ICONS[product.assetType];
             return (
               <Card key={product.id} style={{ marginBottom: spacing.md }}>
                 <Spread style={{ alignItems: "center", gap: spacing.sm }}>
@@ -671,13 +593,7 @@ export default function InvestmentsScreen() {
                     compact={compact}
                     label={product.realizedProfitLossMinor === 0 ? tr.investments.realizedResult : resultPositive ? tr.investments.realizedProfit : tr.investments.realizedLoss}
                     accent={product.realizedProfitLossMinor === 0 ? palette.border : resultPositive ? palette.positive : palette.negative}
-                    /* ₺0,00, not "—". The hero four rows above states the same
-                       quantity for the whole portfolio as ₺0,00, and one
-                       screen cannot spell zero two ways: an em dash reads as
-                       "not recorded", which is a different claim from "nothing
-                       has been realised yet". The label already carries the
-                       distinction — it says "Gerçekleşen sonuç" rather than
-                       kâr or zarar when there is no direction. */
+                    /* ₺0,00, not "—": the hero states the same quantity as ₺0,00, and a dash would mean "not recorded". */
                     value={(
                       <Amount
                         minor={product.realizedProfitLossMinor}

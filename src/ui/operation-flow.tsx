@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useState } from "react";
 import { Animated, Easing, Platform, StyleSheet, Text, View } from "react-native";
 import Check from "lucide-react-native/icons/check";
 import CheckCircle2 from "lucide-react-native/icons/circle-check";
@@ -12,7 +12,7 @@ import Snowflake from "lucide-react-native/icons/snowflake";
 import Trash from "lucide-react-native/icons/trash";
 import WalletCards from "lucide-react-native/icons/wallet-cards";
 import type { LucideIcon } from "lucide-react-native";
-import { circle, radius, spacing, type, type Palette, useTheme } from "./theme";
+import { circle, radius, spacing, type, useTheme } from "./theme";
 import { Eyebrow } from "./primitives";
 import { tr } from "../i18n/tr";
 import { useReducedMotion } from "./motion";
@@ -29,8 +29,11 @@ export type OperationFlowKind =
   | "freeze"
   | "reactivate";
 
+/** The kinds a dialog is ever opened with. */
+export type DialogOperation = Extract<OperationFlowKind, "sign-out" | "local-sign-out" | "delete" | "freeze">;
+
 type Tone = "primary" | "secondary" | "success" | "warning" | "destructive";
-type Visual = readonly [LucideIcon, Tone?];
+type Visual = readonly [LucideIcon, Tone];
 const operationVisuals: Record<OperationFlowKind, Visual> = {
   "sign-in": [KeyRound, "primary"],
   "sign-up": [ShieldCheck, "success"],
@@ -43,14 +46,6 @@ const operationVisuals: Record<OperationFlowKind, Visual> = {
   freeze: [Snowflake, "warning"],
   reactivate: [KeyRound, "success"],
 };
-
-function operationColor(palette: Palette, tone: Tone): string {
-  if (tone === "destructive") return palette.destructive;
-  if (tone === "warning") return palette.warning;
-  if (tone === "success") return palette.success;
-  if (tone === "secondary") return palette.secondary;
-  return palette.primary;
-}
 
 /** One operation-specific visual and one caption; callers cannot duplicate it. */
 export function OperationFlow({
@@ -66,28 +61,23 @@ export function OperationFlow({
   presentation?: "inline" | "waiting" | "hero";
 }) {
   const { palette } = useTheme();
-  const [Icon, tone = "primary"] = operationVisuals[kind];
-  const color = operationColor(palette, tone);
+  const [Icon, tone] = operationVisuals[kind];
+  const color = palette[tone];
   const destructive = tone === "destructive";
   const hero = presentation === "hero";
   const waiting = presentation === "waiting";
   const reducedMotion = useReducedMotion();
-  const pulse = useRef(new Animated.Value(0)).current;
+  const [pulse] = useState(() => new Animated.Value(0));
   useEffect(() => {
     if (!waiting) return;
     if (reducedMotion) {
       pulse.setValue(0.7);
       return;
     }
-    const loop = Animated.loop(
-      Animated.sequence([
-        // opacity/scale only, so this loop is native-driver eligible; it must
-        // not run on the JS bridge exactly when sign-out/deletion/freeze are
-        // busy on that thread. Web has no native driver, hence the OS check.
-        Animated.timing(pulse, { toValue: 1, duration: 1100, easing: Easing.inOut(Easing.quad), useNativeDriver: Platform.OS !== "web" }),
-        Animated.timing(pulse, { toValue: 0, duration: 1100, easing: Easing.inOut(Easing.quad), useNativeDriver: Platform.OS !== "web" }),
-      ]),
-    );
+    // Opacity/scale only, so the loop stays off the JS thread the operation is busy on.
+    const step = (toValue: number) =>
+      Animated.timing(pulse, { toValue, duration: 1100, easing: Easing.inOut(Easing.quad), useNativeDriver: Platform.OS !== "web" });
+    const loop = Animated.loop(Animated.sequence([step(1), step(0)]));
     loop.start();
     return () => loop.stop();
   }, [waiting, reducedMotion, pulse]);
@@ -204,10 +194,8 @@ export function OperationFlow({
   );
 }
 
-function operationEyebrow(kind: OperationFlowKind): string {
+function operationEyebrow(kind: DialogOperation): string {
   switch (kind) {
-    case "sign-in":
-      return tr.auth.signInSignatureEyebrow;
     case "sign-out":
       return tr.auth.signOutSignatureEyebrow;
     case "local-sign-out":
@@ -216,8 +204,6 @@ function operationEyebrow(kind: OperationFlowKind): string {
       return tr.account.freezeSignatureEyebrow;
     case "delete":
       return tr.account.deleteSignatureEyebrow;
-    default:
-      return tr.app.name;
   }
 }
 
@@ -309,7 +295,6 @@ function DialogFact({
 }
 
 function DialogPlan({ children }: { children: React.ReactNode }) {
-
   return (
     <View testID="operation-dialog-plan" style={{ marginTop: spacing.lg, gap: spacing.sm }}>
       <Eyebrow>{tr.common.operationPlan}</Eyebrow>
@@ -357,19 +342,18 @@ export function OperationDialogHeader({
   message,
   testID,
 }: {
-  kind: OperationFlowKind;
+  kind: DialogOperation;
   title: string;
   message: string;
-  testID?: string;
+  testID: string;
 }) {
   const { palette } = useTheme();
-  const [Icon, tone = "primary"] = operationVisuals[kind];
-  const color = operationColor(palette, tone);
+  const color = palette[operationVisuals[kind][1]];
   const eyebrow = operationEyebrow(kind);
 
   return (
     <View
-      testID={testID ?? `operation-dialog-${kind}`}
+      testID={testID}
       style={{ width: "100%" }}
     >
       {kind === "sign-out" ? (
@@ -412,7 +396,7 @@ export function OperationDialogHeader({
             <DialogStep index="3" icon={KeyRound} title={tr.account.freezeDialogReturnTitle} detail={tr.account.freezeDialogReturnDetail} color={palette.primary} last />
           </View>
         </>
-      ) : kind === "delete" ? (
+      ) : (
         <>
           <DialogHeading icon={Trash} eyebrow={eyebrow} title={title} color={palette.destructive} shape="square" />
           <DialogMessage label={tr.account.deleteDialogSection} message={message} color={palette.destructive} tone="danger" />
@@ -430,11 +414,6 @@ export function OperationDialogHeader({
             ))}
             <Text style={[type.small, { color: palette.errorText, marginTop: spacing.xs }]}>{tr.account.deleteDialogIrreversible}</Text>
           </View>
-        </>
-      ) : (
-        <>
-          <DialogHeading icon={Icon} eyebrow={eyebrow} title={title} color={color} />
-          <DialogMessage label={tr.common.operationSummary} message={message} color={color} />
         </>
       )}
     </View>

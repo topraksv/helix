@@ -1,11 +1,4 @@
-/**
- * Settings tool workspace: calculator plus a live currency converter.
- *
- * The two headings inside are SECTION headings. They used to be `Title`, which
- * is the 26pt serif role the page title uses — so this screen drew two page
- * titles side by side under a stack header that was already showing the real
- * one, and its heading hierarchy sat one step above every sibling in Settings.
- */
+/** Settings tools: calculator and live currency converter. Inner headings are section headings. */
 
 import { View } from "react-native";
 import { shouldUseWideWorkspace } from "../../../ui/responsive";

@@ -27,10 +27,9 @@ interface LedgerCategoryOrder {
 }
 
 /**
- * Settings exposes two independent sortable lists: expenses, then incomes.
- * A single global sort-order pass can interleave those lists because their
- * numeric slots were created at different times. Recreate the exact ordering
- * contract the user edited before resolving each year's membership.
+ * Settings exposes two independent sortable lists, expenses then incomes; one
+ * global sort-order pass could interleave them. Recreate the order the user
+ * edited before resolving each year's membership.
  */
 export function orderLedgerCategories<T extends LedgerCategoryOrder>(categories: readonly T[]): T[] {
   return [...categories].sort((left, right) =>
@@ -48,12 +47,8 @@ export function resolveYearColumns<T extends YearColumnCategory>(
   dataCategoryIds: ReadonlySet<string>,
 ): T[] {
   const active = categories.filter((c) => c.isColumn);
-  // `column_years` is a synced `settings` value read through an unchecked
-  // `JSON.parse(...) as T`, so its shape is a claim rather than a guarantee.
-  // A non-array entry (`{"2026": 5}` from a hand-edited backup or a tampered
-  // sync) made `for (const id of ids)` throw "is not iterable" during render of
-  // the Mali Tablo screen — the uncatchable white screen this codebase already
-  // guards route params against. Ignore malformed entries instead.
+  // `column_years` is synced and read unchecked, so a non-array entry (a hand-edited
+  // backup, a tampered sync) would throw during render: ignore malformed entries.
   const yearColIds = columnYears[String(year)];
   if (!Array.isArray(yearColIds)) return active;
 
@@ -63,9 +58,8 @@ export function resolveYearColumns<T extends YearColumnCategory>(
     for (const id of ids) claimed.add(id);
   }
 
-  // Membership: active columns recorded for this year, plus any active column
-  // that gained data in the year
-  // (self-heal) and — on the live year — unclaimed columns.
+  // Membership: active columns recorded for this year, plus any that gained data
+  // in the year (self-heal) and, on the live year, unclaimed columns.
   const activeIds = new Set(active.map((category) => category.id));
   const member = new Set<string>();
   for (const id of yearColIds) if (activeIds.has(id)) member.add(id);
@@ -74,7 +68,5 @@ export function resolveYearColumns<T extends YearColumnCategory>(
     if (dataCategoryIds.has(c.id) || (year === maxYear && !claimed.has(c.id))) member.add(c.id);
   }
 
-  // Display order = the caller's category order (sortOrder), so reordering
-  // columns in settings is reflected 1:1 in the table for every year.
   return active.filter((category) => member.has(category.id));
 }

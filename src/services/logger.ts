@@ -15,20 +15,7 @@ export function devWarning(scope: string, message: string): void {
   }
 }
 
-/**
- * Everything that fails outside a `try` and outside a React render.
- *
- * `ErrorBoundary` already records what a render throws, and a `catch` hands
- * what it caught to `devError`. Between them sits the class of failure nobody
- * was recording at all: a rejected promise with no `.catch`, and a throw from a
- * timer, an event listener or a native callback. Those are the ones that end a
- * session, so the incident log was missing exactly the incidents worth having.
- *
- * Both handlers DELEGATE and never swallow. Replacing React Native's global
- * handler without calling the previous one would suppress the red box in
- * development and the native crash report in production, which would trade a
- * loud failure for a quiet row in a table — the opposite of the point.
- */
+// Both handlers delegate to the previous one: swallowing it would hide the red box and the native crash report.
 interface GlobalErrorUtils {
   getGlobalHandler?: () => ((error: unknown, isFatal?: boolean) => void) | undefined;
   setGlobalHandler?: (handler: (error: unknown, isFatal?: boolean) => void) => void;

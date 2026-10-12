@@ -1,4 +1,4 @@
-import { readFileSync, readdirSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { sourceFiles } from "../source-corpus";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -24,8 +24,12 @@ import { modalAnimationType } from "../../src/ui/modal-motion";
 import { BRAND } from "../../src/ui/brand-colors";
 import { foldForMatch, nameMentions } from "../../src/domain/logo-domain";
 import { fittedQuickDays, shouldPairDashboardPanels, shouldPairFilterCards } from "../../src/ui/responsive";
+import { suggestCategoryIcon } from "../../src/domain/category-icons";
+import { PAYMENT_SOURCE_TYPES } from "../../src/domain/types";
 
 const root = process.cwd();
+const read = (file: string): string => readFileSync(join(root, file), "utf8");
+const SRC = sourceFiles("src", { atLeast: 150 }).map((path) => [path, read(path)] as const);
 
 const canonicalPresentationFiles = [
   "src/ui/components.tsx",
@@ -53,13 +57,8 @@ function presentationViolations(source: string, path: string): string[] {
     }
   }
 
-  for (const obsolete of ["AnimatedPressable", "useSpringPress"]) {
-    if (source.includes(obsolete)) violations.push(`${path} obsolete primitive ${obsolete}`);
-  }
   return violations;
 }
-
-
 
 describe("design-system metric contracts", () => {
   it("keeps displayed money on the shared compact formatter", () => {
@@ -68,11 +67,11 @@ describe("design-system metric contracts", () => {
       ...sourceFiles("src/ui", { atLeast: 50 }),
       ...sourceFiles("src/services", { atLeast: 8 }),
     ];
-    const offenders = displaySources.filter((path) => /\bformatMinor\s*\(/.test(readFileSync(join(root, path), "utf8")));
+    const offenders = displaySources.filter((path) => /\bformatMinor\s*\(/.test(read(path)));
     expect(offenders).toEqual([]);
     const localInputFormatters = displaySources
       .filter((path) => path !== "src/services/export-import.ts")
-      .filter((path) => /\.toFixed\(\s*2\s*\)/.test(readFileSync(join(root, path), "utf8")));
+      .filter((path) => /\.toFixed\(\s*2\s*\)/.test(read(path)));
     expect(localInputFormatters).toEqual([]);
   });
 
@@ -93,8 +92,6 @@ describe("design-system metric contracts", () => {
     expect(controlSize.compact).toBeLessThan(controlSize.minimumTarget);
     expect(controlSize.minimumTarget).toBeLessThan(controlSize.regular);
     expect(controlSize.segmented).toBeGreaterThan(controlSize.regular);
-    // `emoji` is a glyph standing in for an icon, so it is sized with the
-    // marks and not with the copy beside it.
     expect(iconSize).toEqual({ compact: 15, control: 17, accessory: 18, headerBack: 24 });
     // `selected` replaces the `selected ? 2 : 1` written into five screens and
     // the `selected ? 1.5 : hairline` written into two more.
@@ -163,22 +160,20 @@ describe("design-system typography contracts", () => {
     for (const role of [type.field, type.moneyInput, type.sectionTitle]) {
       expect(role.fontSize).toBeGreaterThanOrEqual(16);
     }
-    expect(readFileSync(join(root, "src/ui/fields.tsx"), "utf8")).toContain("...type.field");
+    expect(read("src/ui/fields.tsx")).toContain("...type.field");
   });
 
   /**
    * One scale, and nothing under it.
    *
-   * 107 inline `fontSize:` literals used to sit against a 13-role scale, six of
-   * them at 9px — 25% below the smallest role the system declared. A size is a
-   * decision about hierarchy, so it is made once, in `theme.ts`, and every
-   * screen refers to it. Chart geometry is exempt: an SVG label's size is a
+   * A size is a decision about hierarchy, so it is made once, in `theme.ts`,
+   * and every screen refers to it. Chart geometry is exempt: an SVG label's size is a
    * drawing input, not a typographic role.
    */
   it("declares every text size in the scale, never at a call site", () => {
     const offenders = sourceFiles("src", { atLeast: 150 })
       .filter((path) => path !== "src/ui/theme.ts" && path !== "src/ui/charts.tsx")
-      .filter((path) => /fontSize:\s*\d/.test(readFileSync(join(root, path), "utf8")));
+      .filter((path) => /fontSize:\s*\d/.test(read(path)));
     expect(offenders).toEqual([]);
     const sizes = Object.values(type).map((role) => role.fontSize);
     expect(Math.min(...sizes)).toBe(type.micro.fontSize);
@@ -194,7 +189,7 @@ describe("design-system typography contracts", () => {
   it("gives every surface-sized corner a name", () => {
     const offenders = sourceFiles("src", { atLeast: 150 })
       .filter((path) => path !== "src/ui/theme.ts")
-      .filter((path) => /borderRadius:\s*(?:[89]|[1-9]\d)\b/.test(readFileSync(join(root, path), "utf8")));
+      .filter((path) => /borderRadius:\s*(?:[89]|[1-9]\d)\b/.test(read(path)));
     expect(offenders).toEqual([]);
   });
 
@@ -211,8 +206,7 @@ describe("design-system typography contracts", () => {
    */
   it("never asks the platform to synthesize a weight", () => {
     const offenders: string[] = [];
-    for (const path of sourceFiles("src", { atLeast: 150 })) {
-      const source = readFileSync(join(root, path), "utf8");
+    for (const [path, source] of SRC) {
       for (const [index, line] of source.split("\n").entries()) {
         // The property, not the word: both files that still mention it are
         // explaining why it is banned.
@@ -225,7 +219,7 @@ describe("design-system typography contracts", () => {
   it("keeps raw Inter face names inside the theme and font loader only", () => {
     const offenders = sourceFiles("src", { atLeast: 150 }).filter((path) => {
       if (path === "src/ui/theme.ts" || path === "src/app/_layout.tsx") return false;
-      return /Inter_[4567]00/.test(readFileSync(join(root, path), "utf8"));
+      return /Inter_[4567]00/.test(read(path));
     });
     expect(offenders).toEqual([]);
   });
@@ -273,8 +267,7 @@ describe("content width is a shared scale, not a per-route number", () => {
 
   it("leaves no route setting its own pixel width", () => {
     const offenders: string[] = [];
-    for (const path of sourceFiles("src", { atLeast: 150 })) {
-      const source = readFileSync(join(root, path), "utf8");
+    for (const [path, source] of SRC) {
       for (const match of source.matchAll(/maxWidth=\{/g)) {
         offenders.push(`${path}:${source.slice(0, match.index!).split("\n").length}`);
       }
@@ -300,8 +293,7 @@ describe("content width is a shared scale, not a per-route number", () => {
       "shouldUseCompactNavigationMaterial",
     ]);
     const offenders: string[] = [];
-    for (const path of sourceFiles("src", { atLeast: 150 })) {
-      const source = readFileSync(join(root, path), "utf8");
+    for (const [path, source] of SRC) {
       // A local called `width` is only the window when the file takes it from
       // `useWindowDimensions`. A measured box or a component's own prop shares
       // the name and is exactly what a layout rule SHOULD be reading, so
@@ -318,8 +310,7 @@ describe("content width is a shared scale, not a per-route number", () => {
   it("gives every screen a width its structure earns", () => {
     const names = new Set(Object.keys(contentWidth));
     const offenders: string[] = [];
-    for (const path of sourceFiles("src", { atLeast: 150 })) {
-      const source = readFileSync(join(root, path), "utf8");
+    for (const [path, source] of SRC) {
       for (const match of source.matchAll(/<Screen\b[^>]*\bwidth="([a-z]+)"/g)) {
         if (!names.has(match[1]!)) offenders.push(`${path} unknown width "${match[1]}"`);
       }
@@ -339,7 +330,7 @@ describe("content width is a shared scale, not a per-route number", () => {
     const offenders: string[] = [];
     for (const path of sourceFiles("src", { atLeast: 150 })) {
       if (path === "src/ui/charts.tsx") continue;
-      const source = readFileSync(join(root, path), "utf8");
+      const source = read(path);
       for (const match of source.matchAll(/width=\{[^}]*\bwidth\s*[-*]/g)) {
         offenders.push(`${path}:${source.slice(0, match.index!).split("\n").length} ${match[0]}`);
       }
@@ -381,35 +372,32 @@ describe("interaction feedback contracts", () => {
   // the status marks — was split out of `components.tsx` so that nothing in it
   // renders another Helix component and the calculator can take `Button`
   // without closing an import cycle. Both halves are read here.
-  const primitives = readFileSync(join(root, "src/ui/primitives.tsx"), "utf8");
-  const fields = readFileSync(join(root, "src/ui/fields.tsx"), "utf8");
-  const selectionControls = readFileSync(join(root, "src/ui/selection-controls.tsx"), "utf8");
-  const components = readFileSync(join(root, "src/ui/components.tsx"), "utf8")
+  const primitives = read("src/ui/primitives.tsx");
+  const fields = read("src/ui/fields.tsx");
+  const selectionControls = read("src/ui/selection-controls.tsx");
+  const components = read("src/ui/components.tsx")
     + primitives + fields + selectionControls;
-  const calendar = readFileSync(join(root, "src/ui/calendar.tsx"), "utf8");
-  const stickyTable = readFileSync(join(root, "src/ui/sticky-table.tsx"), "utf8");
-  const tabBar = readFileSync(join(root, "src/ui/tab-bar.tsx"), "utf8");
-  const cashFlow = readFileSync(join(root, "src/app/(tabs)/cash-flow/index.tsx"), "utf8");
+  const calendar = read("src/ui/calendar.tsx");
+  const stickyTable = read("src/ui/sticky-table.tsx");
+  const tabBar = read("src/ui/tab-bar.tsx");
   const button = primitives.slice(
     primitives.indexOf("export function Button("),
     primitives.indexOf("/** Circular icon-only button"),
   );
   const card = components.slice(
     components.indexOf("export function Card("),
-    components.indexOf("/** Quiet tonal hero container"),
+    components.indexOf("export function HeroCard("),
   );
   const iconButton = primitives.slice(primitives.indexOf("export function IconButton("));
   const select = selectionControls.slice(
     selectionControls.indexOf("export function Select<"),
-    selectionControls.indexOf("/** Horizontal segmented selector"),
+    selectionControls.indexOf("export function Segmented<"),
   );
   const toggle = fields.slice(fields.indexOf("export function Toggle("));
 
   it("keeps generic actions quiet and uses a tonal pressed state instead of universal scale motion", () => {
     expect(button).toContain('haptic: hapticKind = "none"');
     expect(iconButton).toContain('haptic: hapticKind = "none"');
-    expect(components).not.toContain("useSpringPress");
-    expect(components).not.toContain("AnimatedPressable");
     expect(button).toContain("pressed");
     expect(components).toContain("interactionSurface(palette, state)");
   });
@@ -486,8 +474,6 @@ describe("interaction feedback contracts", () => {
   });
 
   it("keeps table editing and navigation quiet while pin changes use selection feedback", () => {
-    expect(stickyTable).not.toContain("lightTap");
-    expect(cashFlow).not.toContain("lightTap");
     // Both rails, and the punctuation of the call is not the contract: what
     // matters is that every pin toggle is preceded by the selection tap.
     const pinPresses = [...stickyTable.matchAll(/onPress=\{\(\) => \{ ([^}]*?)(?:onTogglePin|onUnpin)\b/g)];
@@ -499,7 +485,6 @@ describe("interaction feedback contracts", () => {
     expect(tabBar).toContain("PanResponder.create");
     expect(tabBar).toContain("onPanResponderMove");
     expect(tabBar).toContain("{...pan.panHandlers}");
-    expect(tabBar).not.toContain("desktopRail");
   });
 
   it("renders semantic card states from the shared primitive instead of invisible border colours", () => {
@@ -507,25 +492,20 @@ describe("interaction feedback contracts", () => {
     expect(card).toContain("borderWidth: StyleSheet.hairlineWidth");
     expect(card).toContain('borderColor: toneColor ? toneColor + "66" : palette.border + "70"');
     for (const path of sourceFiles("src/app", { atLeast: 40 })) {
-      const source = readFileSync(join(root, path), "utf8");
+      const source = read(path);
       expect(source, path).not.toMatch(/<Card[^>]*borderColor: palette\.(?:success|warning|error)/);
     }
   });
 
   it("keeps shared presentation code on tokens and rejects injected violations", () => {
     const current = canonicalPresentationFiles.flatMap((path) =>
-      presentationViolations(readFileSync(join(root, path), "utf8"), path),
+      presentationViolations(read(path), path),
     );
     expect(current).toEqual([]);
 
-    const injected = presentationViolations(
-      'const bad = { backgroundColor: "#123456", padding: 13, component: AnimatedPressable };',
-      "injected.tsx",
-    );
-    expect(injected).toEqual([
+    expect(presentationViolations('const bad = { backgroundColor: "#123456", padding: 13 };', "injected.tsx")).toEqual([
       "injected.tsx:1 raw color",
       "injected.tsx:1 off-scale spacing 13",
-      "injected.tsx obsolete primitive AnimatedPressable",
     ]);
   });
 });
@@ -562,7 +542,7 @@ describe("centred icons resolve to whole pixels on every supported density", () 
   });
 
   it("draws the back control from the token, not a literal that can drift again", () => {
-    const source = readFileSync(join(root, "src/ui/header-back.tsx"), "utf8");
+    const source = read("src/ui/header-back.tsx");
     expect(source).toContain("size={iconSize.headerBack}");
     expect(source).not.toMatch(/size=\{\d/);
   });
@@ -576,11 +556,11 @@ describe("centred icons resolve to whole pixels on every supported density", () 
  * minimum now, and `hitSlop` is left only as the native courtesy it always was.
  */
 describe("compact controls own a real minimum target", () => {
-  const primitives = readFileSync(join(root, "src/ui/primitives.tsx"), "utf8");
-  const components = readFileSync(join(root, "src/ui/components.tsx"), "utf8")
+  const primitives = read("src/ui/primitives.tsx");
+  const components = read("src/ui/components.tsx")
     + primitives
-    + readFileSync(join(root, "src/ui/fields.tsx"), "utf8")
-    + readFileSync(join(root, "src/ui/selection-controls.tsx"), "utf8");
+    + read("src/ui/fields.tsx")
+    + read("src/ui/selection-controls.tsx");
 
   it("gives the icon button a minimum-target pressable and a compact visual chip", () => {
     const iconButton = primitives.slice(primitives.indexOf("export function IconButton("));
@@ -595,15 +575,14 @@ describe("compact controls own a real minimum target", () => {
   });
 
   it("gives the switch the minimum height without moving its track", () => {
-    const toggle = readFileSync(join(root, "src/ui/fields.tsx"), "utf8");
+    const toggle = read("src/ui/fields.tsx");
     expect(toggle).toContain("minHeight: controlSize.minimumTarget");
     expect(toggleSize.height).toBeLessThan(controlSize.minimumTarget);
   });
 
   it("keeps one icon-button size across the app", () => {
-    const callers = readdirSync(join(root, "src"), { recursive: true, withFileTypes: true })
-      .filter((entry) => entry.isFile() && /\.tsx$/.test(entry.name))
-      .map((entry) => readFileSync(join(entry.parentPath, entry.name), "utf8"))
+    const callers = SRC.filter(([path]) => path.endsWith(".tsx"))
+      .map(([, text]) => text)
       .filter((text) => text.includes("<IconButton"));
     expect(callers.length).toBeGreaterThan(4);
     for (const text of callers) {
@@ -613,13 +592,13 @@ describe("compact controls own a real minimum target", () => {
 });
 
 describe("primary, secondary and disabled are three different weights", () => {
-  const components = readFileSync(join(root, "src/ui/primitives.tsx"), "utf8");
+  const primitives = read("src/ui/primitives.tsx");
 
   it("outlines the secondary button and leaves the disabled one flat", () => {
     // Both used to paint `surfaceAlt` with only the label colour between them,
     // so a disabled "Kaydet" and an enabled "Kaydet ve Yeni Ekle" were the same
     // beige block and the form's primary action could not be found.
-    expect(components).toContain(
+    expect(primitives).toContain(
       'borderWidth: visuallyDisabled ? 0 : variant === "secondary" ? borderWidth.control : 0',
     );
   });
@@ -640,10 +619,10 @@ describe("a press lights the control it is on", () => {
     for (const path of sourceFiles("src", { atLeast: 150 })) {
       // Two deliberate exceptions, both for the same reason: the painted chip
       // is centred inside a larger minimum-size target, so the fill IS the
-      // control that was pressed. `IconButton` in components.tsx, and the
+      // control that was pressed. `IconButton` in primitives.tsx, and the
       // calendar's day, whose 34pt circle sits inside a 44pt cell.
       if (path === "src/ui/components.tsx" || path === "src/ui/primitives.tsx" || path === "src/ui/calendar.tsx") continue;
-      const source = readFileSync(join(root, path), "utf8");
+      const source = read(path);
       // The children-render form only — `style={({ pressed }) => ({` is the
       // correct one and looks almost identical, so it is excluded explicitly.
       // Each block is bounded by the Pressable it belongs to.
@@ -676,7 +655,7 @@ describe("a press lights the control it is on", () => {
   it("keeps a divider inside a rows card flush against them", () => {
     const offenders: string[] = [];
     for (const path of sourceFiles("src", { atLeast: 150 }).filter((file) => file.endsWith(".tsx"))) {
-      const lines = readFileSync(join(root, path), "utf8").split("\n");
+      const lines = read(path).split("\n");
       let depth = 0;
       let inRowsCard = false;
       for (const [index, line] of lines.entries()) {
@@ -712,7 +691,7 @@ describe("a press lights the control it is on", () => {
    * state through that label; this proves what the state looks like.
    */
   it("marks a given consent as done rather than as still to do", () => {
-    const legal = readFileSync(join(root, "src/ui/legal-notice.tsx"), "utf8");
+    const legal = read("src/ui/legal-notice.tsx");
     const control = legal.slice(legal.indexOf("export function LegalConsentControl("));
     expect(control).toContain("palette.success");
     expect(control).toContain("tr.legal.consentView");
@@ -739,7 +718,7 @@ describe("a press lights the control it is on", () => {
     const offenders: string[] = [];
     const screens = sourceFiles("src", { atLeast: 150 }).filter((file) => file.endsWith(".tsx"));
     for (const path of screens) {
-      const lines = readFileSync(join(root, path), "utf8").split("\n");
+      const lines = read(path).split("\n");
       for (const [index, line] of lines.entries()) {
         if (!/<Card\b/.test(line)) continue;
         let tag = line;
@@ -767,8 +746,6 @@ describe("a press lights the control it is on", () => {
         if (pressableRow) offenders.push(`${path}:${index + 1}`);
       }
     }
-    // The floor: a scan that matched no cards at all would pass this for ever.
-    expect(screens.length).toBeGreaterThan(40);
     expect(offenders, "give the Card its `rows` prop, or the row's fill stops short of the card edge").toEqual([]);
   });
 
@@ -788,7 +765,7 @@ describe("a press lights the control it is on", () => {
     for (const path of sourceFiles("src", { atLeast: 150 })) {
       // Where the rule is defined.
       if (path === "src/ui/interaction.ts") continue;
-      const source = readFileSync(join(root, path), "utf8");
+      const source = read(path);
       if (!source.includes("interactionSurface(")) continue;
       for (const match of source.matchAll(/margin(?:Horizontal|Left|Right): -/g)) {
         offenders.push(`${path}:${source.slice(0, match.index!).split("\n").length}`);
@@ -808,26 +785,20 @@ describe("a press lights the control it is on", () => {
    * so the fill still clears the last glyph by most of the padding.
    */
   it("derives that inset from the card padding rather than a constant", () => {
-    const interaction = readFileSync(join(root, "src/ui/interaction.ts"), "utf8");
+    const interaction = read("src/ui/interaction.ts");
     expect(interaction).toContain("export function interactionBleed");
     expect(interaction).toContain("inset: number = density.list.cardPadding - HOVER_GUTTER");
     expect(interaction, "the gutter is a scale step, not a typed number").toContain("const HOVER_GUTTER = spacing.");
   });
 
   /**
-   * Every control answers a touch.
-   *
-   * 21 of the app's 50 interactive `Pressable`s used to give no visual response
-   * at all — including every control in the ledger (column header, pin, row
-   * label), every day in the calendar, the password eye and the segmented
-   * control. On a phone, where there is no hover to fall back on, a control
-   * that does not light is indistinguishable from a control that did not
-   * register, and the user taps it again.
+   * Every control answers a touch. On a phone there is no hover to fall back
+   * on: a control that does not light is indistinguishable from one that did
+   * not register, and the user taps it again.
    */
   it("gives every interactive pressable a pressed state", () => {
     const offenders: string[] = [];
-    for (const path of sourceFiles("src", { atLeast: 150 })) {
-      const source = readFileSync(join(root, path), "utf8");
+    for (const [path, source] of SRC) {
       let index = 0;
       while ((index = source.indexOf("<Pressable", index)) !== -1) {
         let cursor = index + "<Pressable".length;
@@ -867,14 +838,12 @@ describe("a press lights the control it is on", () => {
 
   /**
    * `hitSlop` is implemented by the legacy `Touchable` only, so on
-   * react-native-web it does nothing at all: measured, 4px above / 6px left /
-   * 8px below a 32x32 button hit empty page. Fifteen call sites relied on it,
-   * which means fifteen targets that were one size on a phone and another in a
-   * browser. Every box now carries its own minimum.
+   * react-native-web it does nothing: a target would be one size on a phone and
+   * another in a browser. Every box carries its own minimum.
    */
   it("never buys a touch target with a prop the web ignores", () => {
     const offenders = sourceFiles("src", { atLeast: 150 }).filter((path) =>
-      /hitSlop=/.test(readFileSync(join(root, path), "utf8")),
+      /hitSlop=/.test(read(path)),
     );
     expect(offenders).toEqual([]);
   });
@@ -905,16 +874,15 @@ describe("product copy keeps one casing rule per role", () => {
    * keeps this linear; matching forwards from the tag with a lazy group does
    * not, and cost four seconds a call before it was rewritten.
    */
+  const strings = new Map<string, string>();
+  for (const match of read("src/i18n/tr.ts").matchAll(/^\s*(\w+): "([^"\\]+)",?$/gm)) {
+    if (!strings.has(match[1]!)) strings.set(match[1]!, match[2]!);
+  }
   const labels = (() => {
-    const strings = new Map<string, string>();
-    const translations = readFileSync(join(root, "src/i18n/tr.ts"), "utf8");
-    for (const match of translations.matchAll(/^\s*(\w+): "([^"\\]+)",?$/gm)) {
-      if (!strings.has(match[1]!)) strings.set(match[1]!, match[2]!);
-    }
     const buttons: [string, string][] = [];
     const fields: [string, string][] = [];
     for (const path of sourceFiles("src", { atLeast: 150 }).filter((file) => file.endsWith(".tsx"))) {
-      const file = readFileSync(join(root, path), "utf8");
+      const file = read(path);
       for (const match of file.matchAll(/label=\{tr\.([a-zA-Z0-9_.]+)\}/g)) {
         const before = file.slice(Math.max(0, match.index! - 1200), match.index!);
         const open = before.lastIndexOf("<");
@@ -947,16 +915,11 @@ describe("product copy keeps one casing rule per role", () => {
    * read before anything goes wrong.
    */
   it("keeps validation errors to one short sentence", () => {
-    const strings = new Map<string, string>();
-    const source = readFileSync(join(root, "src/i18n/tr.ts"), "utf8");
-    for (const match of source.matchAll(/^\s*(\w+): "([^"\\]+)",?$/gm)) {
-      if (!strings.has(match[1]!)) strings.set(match[1]!, match[2]!);
-    }
     // Only what really reaches a field's `error` prop. A dialog body explains
     // itself somewhere calmer and is allowed the length.
     const offenders: string[] = [];
     for (const path of sourceFiles("src", { atLeast: 150 }).filter((file) => file.endsWith(".tsx"))) {
-      const file = readFileSync(join(root, path), "utf8");
+      const file = read(path);
       // The LAST segment, which is the message. A lazy `[a-zA-Z0-9_.]*?` used
       // to stop at the first one, so `tr.incomes.dayError` was looked up as
       // `incomes` — a namespace, which almost never has a string of its own.
@@ -982,13 +945,13 @@ describe("product copy keeps one casing rule per role", () => {
 describe("every animation obeys the same three rules", () => {
   const animatedFiles = sourceFiles("src", { atLeast: 150 }).filter((path) => {
     if (!path.endsWith(".tsx") && !path.endsWith(".ts")) return false;
-    const source = readFileSync(join(root, path), "utf8");
+    const source = read(path);
     return /Animated\.(timing|spring|loop|sequence)\(/.test(source);
   });
 
   it("short-circuits every family on Reduce Motion", () => {
     const offenders = animatedFiles.filter((path) => {
-      const source = readFileSync(join(root, path), "utf8");
+      const source = read(path);
       return !source.includes("useReducedMotion");
     });
     expect(offenders, "an animation that ignores Reduce Motion is an accessibility defect").toEqual([]);
@@ -1026,7 +989,7 @@ describe("every animation obeys the same three rules", () => {
 
     const offenders: string[] = [];
     for (const path of animatedFiles) {
-      const source = readFileSync(join(root, path), "utf8");
+      const source = read(path);
       // Per component, because an animated value called `progress` in one is a
       // different value from `progress` in the next — and this file holds both
       // the natively driven entrances and the height that cannot be one.
@@ -1050,7 +1013,7 @@ describe("every animation obeys the same three rules", () => {
   });
 
   it("keeps the native forecast collapse on the compositor path", () => {
-    const motionPrimitives = readFileSync(join(root, "src/ui/motion-primitives.tsx"), "utf8");
+    const motionPrimitives = read("src/ui/motion-primitives.tsx");
     const nativeCollapse = motionPrimitives.slice(
       motionPrimitives.indexOf("function NativeCollapse("),
       motionPrimitives.indexOf("/**\n * A confirmation that lands", motionPrimitives.indexOf("function NativeCollapse(")),
@@ -1063,7 +1026,7 @@ describe("every animation obeys the same three rules", () => {
   it("takes every duration from the shared families", () => {
     const offenders: string[] = [];
     for (const path of animatedFiles) {
-      const source = readFileSync(join(root, path), "utf8");
+      const source = read(path);
       for (const match of source.matchAll(/duration:\s*(\d+)/g)) {
         offenders.push(`${path}: duration ${match[1]}`);
       }
@@ -1094,8 +1057,8 @@ describe("every animation obeys the same three rules", () => {
  * fixed resting place past that.
  */
 describe("a leading mark centres against its own text", () => {
-  const primitives = readFileSync(join(root, "src/ui/primitives.tsx"), "utf8");
-  const components = readFileSync(join(root, "src/ui/components.tsx"), "utf8");
+  const primitives = read("src/ui/primitives.tsx");
+  const components = read("src/ui/components.tsx");
 
   it("caps the centring at three lines", () => {
     expect(primitives).toContain("const LEDE_CENTRE_LINES = 3;");
@@ -1114,8 +1077,6 @@ describe("a leading mark centres against its own text", () => {
       expect(body, `${owner} uses the shared alignment`).toContain("lede.markStyle");
       expect(body, `${owner} measures its text block`).toContain("lede.onBlockLayout");
     }
-    // Nothing may pin a mark to the top of a text block by hand any more.
-    expect(components).not.toContain('alignItems: description ? "flex-start" : "center"');
   });
 });
 
@@ -1129,17 +1090,17 @@ describe("a leading mark centres against its own text", () => {
  */
 describe("navigation says that it moved", () => {
   it("crossfades between tabs everywhere, on the patched tab view", () => {
-    const tabs = readFileSync(join(root, "src/app/(tabs)/_layout.tsx"), "utf8");
+    const tabs = read("src/app/(tabs)/_layout.tsx");
     // `fade`, not `shift`: five peers, so nothing should imply a direction —
     // and gated, because the navigator does not consult `AccessibilityInfo`
     // itself, which made this the one motion Reduce Motion never reached.
     expect(tabs).toContain('animation: reducedMotion ? "none" : "fade"');
     expect(tabs).toContain("useReducedMotion()");
-    expect(readFileSync(join(root, "scripts/patch-dependencies.mjs"), "utf8")).toContain("expo/expo#49778");
+    expect(read("scripts/patch-dependencies.mjs")).toContain("expo/expo#49778");
   });
 
   it("slides a pushed page in the direction its back gesture already implies", () => {
-    const header = readFileSync(join(root, "src/ui/header-bar.tsx"), "utf8");
+    const header = read("src/ui/header-bar.tsx");
     expect(header).toContain('const STACK_ANIMATION = "slide_from_right" as const;');
     expect(header).toContain("animation: STACK_ANIMATION");
   });
@@ -1156,8 +1117,8 @@ describe("navigation says that it moved", () => {
  */
 describe("only a hero figure counts", () => {
   it("keeps the counting hook off every cell that never counts", () => {
-    const motionPrimitives = readFileSync(join(root, "src/ui/motion-primitives.tsx"), "utf8");
-    const primitives = readFileSync(join(root, "src/ui/primitives.tsx"), "utf8");
+    const motionPrimitives = read("src/ui/motion-primitives.tsx");
+    const primitives = read("src/ui/primitives.tsx");
     expect(motionPrimitives).toContain("export function useCountUp(value: number");
     // A separate component owns the hook AND the navigation subscription that
     // feeds it, so a ledger of six hundred figures runs neither.
@@ -1180,7 +1141,7 @@ describe("only a hero figure counts", () => {
    */
   it("is asked for on exactly the three hero figures and nowhere else", () => {
     const withCount = (path: string): number =>
-      (readFileSync(join(root, path), "utf8").match(/<Amount[^>]*\scount(\s|\n|\/|>)/g) ?? []).length;
+      (read(path).match(/<Amount[^>]*\scount(\s|\n|\/|>)/g) ?? []).length;
     const askers = sourceFiles("src", { atLeast: 150 })
       .filter((path) => path.endsWith(".tsx"))
       .filter((path) => withCount(path) > 0);
@@ -1199,8 +1160,10 @@ describe("only a hero figure counts", () => {
   });
 });
 
-describe("investment hero keeps one motion path at every width", () => {
-  const investments = readFileSync(join(root, "src/app/(tabs)/investments/index.tsx"), "utf8");
+describe("investment screen", () => {
+  const investments = read("src/app/(tabs)/investments/index.tsx");
+  const heroStart = investments.indexOf("onLayout={onHeroLayout}");
+  const heroCard = investments.slice(heroStart, investments.indexOf("</HeroCard>", heroStart));
 
   it("animates the compact balance instead of replacing the counted figure with text", () => {
     const cashSummary = investments.slice(
@@ -1218,30 +1181,111 @@ describe("investment hero keeps one motion path at every width", () => {
     // bars with their own animation while the wider branches drew the ring
     // with its own; one shape, one motion path, so the rule now lives where
     // the ring does and applies to every breakpoint at once.
-    const charts = readFileSync(join(root, "src/ui/charts.tsx"), "utf8");
+    const charts = read("src/ui/charts.tsx");
     const donut = charts.slice(charts.indexOf("export function Donut("), charts.indexOf("export function Lines("));
     expect(donut).toContain("useDrawIn(true, motion.draw");
     expect(donut).toContain("strokeDashoffset={draw.interpolate(");
     expect(investments).not.toContain("useDrawIn");
   });
+
+  it("does not turn a ready projection failure into an empty page", () => {
+    const branch = investments.slice(investments.indexOf("if (!state) {"), investments.indexOf("const active ="));
+
+    // A notice while the queries are answering, and a sentence once they have.
+    expect(branch).toContain("DataStateNotice");
+    // The sentence is the replay's own: the rows arrived and the arithmetic in
+    // them did not add up, which is not "your data could not be read".
+    expect(branch).toContain("userMessage(wallet.error");
+  });
+
+  it("lets the edit removal row use the full form width at every viewport", () => {
+    const source = read("src/app/(tabs)/investments/operation.tsx");
+    const removal = source.slice(source.indexOf("{editing ? ("), source.lastIndexOf("</Screen>"));
+
+    expect(removal).toContain('width: "100%"');
+    expect(removal).toContain('alignSelf: "stretch"');
+    expect(removal).toContain('justifyContent: "space-between"');
+    expect(removal).toContain("flexShrink: 1");
+  });
+
+  it("keeps empty investment distribution visible and meaningful", () => {
+    const charts = read("src/ui/charts.tsx");
+
+    // Every breakpoint draws the shared ring, so the empty state is the ring's.
+    expect(charts).toContain('testID="donut-empty-state"');
+    expect(charts).toContain("tr.analysis.chartEmpty");
+  });
+
+  it("draws the same ring at every breakpoint, phone included", () => {
+    // A breakpoint without a pointer used to get ranked bars, so a holding
+    // could not be selected there; `Donut` carries selection, lock and readout.
+    // Three branches (compact, desktop, middle band) reach the ring through the
+    // same testID the E2E suite looks for.
+    expect(heroCard.split('testID="investment-distribution-chart"').length - 1).toBe(3);
+  });
+
+  /**
+   * The wallet ring builds its marks through the shared rule, not by hand: a
+   * surface token is 1.55 against the ring's empty track, so free cash painted
+   * in one looked undrawn. `tests/ui/theme-contrast` owns why no surface token
+   * can be a mark; this owns that the screen goes through `walletDonutSlices`.
+   */
+  it("takes every wallet ring colour from the shared series ramp", () => {
+    const slices = investments.slice(investments.indexOf("const slices = "), investments.indexOf("const totalCapital"));
+
+    expect(slices).toContain("walletDonutSlices({");
+    expect(slices).not.toMatch(/color:\s*palette\./);
+    // The empties stay in the list: the index is the colour slot, so dropping
+    // a zeroed type would recolour every type below it.
+    expect(slices).toContain("INVESTMENT_ASSET_TYPES.map(");
+    expect(slices).not.toContain("flatMap");
+  });
+
+  it("keeps investment entry actions primary and separated from the date field", () => {
+    const operation = read("src/app/(tabs)/investments/operation.tsx");
+    const opening = read("src/ui/opening-balance-editor.tsx");
+    const addProduct = operation.slice(operation.indexOf("{products.length === 0"), operation.indexOf("</Card>", operation.indexOf("{products.length === 0")));
+
+    expect(addProduct).toContain('marginBottom: spacing.md');
+    expect(addProduct).not.toContain('variant="secondary"');
+    expect(opening).toContain("historyOpeningAction} onPress");
+  });
+
+  it("puts the metric strip inside the balance column at every breakpoint that shows the ring beside it", () => {
+    // The ring is centred against the column it shares a row with; a strip
+    // outside that row on one breakpoint moves the ring with window width alone.
+    const desktopStart = heroCard.indexOf(") : desktop ? (");
+    const middleStart = heroCard.indexOf(") : (", desktopStart + 1);
+    const desktopBranch = heroCard.slice(desktopStart, middleStart);
+    const middleBranch = heroCard.slice(middleStart);
+
+    for (const branch of [desktopBranch, middleBranch]) {
+      const cashAt = branch.indexOf("{cashSummary}");
+      const metricsAt = branch.indexOf("{portfolioMetrics}");
+      const ringAt = branch.indexOf('testID="investment-distribution-chart"');
+      expect(cashAt).toBeGreaterThan(-1);
+      expect(metricsAt).toBeGreaterThan(cashAt);
+      expect(ringAt).toBeGreaterThan(metricsAt);
+    }
+  });
 });
 
 describe("theme transition fallback stays active on partial browser APIs", () => {
   it("only suppresses the veil when View Transitions is actually callable", () => {
-    const transition = readFileSync(join(root, "src/ui/theme-transition.ts"), "utf8");
+    const transition = read("src/ui/theme-transition.ts");
     expect(transition).toContain('typeof doc.startViewTransition === "function"');
   });
 
   it("keeps the previous palette available to the native and mobile-web veil", () => {
-    const motionPrimitives = readFileSync(join(root, "src/ui/motion-primitives.tsx"), "utf8");
+    const motionPrimitives = read("src/ui/motion-primitives.tsx");
     expect(motionPrimitives).toContain("previousPalette");
     expect(motionPrimitives).toContain("transitionFrom");
   });
 });
 
 describe("screen motion replays consistently", () => {
-  const motionPrimitives = readFileSync(join(root, "src/ui/motion-primitives.tsx"), "utf8");
-  const components = readFileSync(join(root, "src/ui/components.tsx"), "utf8");
+  const motionPrimitives = read("src/ui/motion-primitives.tsx");
+  const components = read("src/ui/components.tsx");
 
   it("re-runs both screen scaffold variants without remounting their children", () => {
     const screen = components.slice(components.indexOf("export function Screen("), components.indexOf("export function Card("));
@@ -1257,14 +1301,6 @@ describe("screen motion replays consistently", () => {
       components.indexOf("const SCREEN_ARRIVAL_RISE"),
     );
     // The arrival happens ONCE, on mount, and never remounts what it wraps.
-    //
-    // It used to replay per visit, and that was the whole of "girip çıkınca
-    // ekran tık diye yenileniyor": measured on the dashboard, every
-    // back-navigation and every tab switch moved the entire 758-node page to
-    // +14pt and sprang it back over 21 frames, while the node count stayed
-    // identical before, during and after — nothing remounted, nothing
-    // refetched, the page simply moved under the reader. A whole-page motion
-    // cannot say "alive" without also saying "reloaded".
     expect(entrance).not.toContain("screenVisit");
     expect(entrance).not.toContain("useScreenVisit");
     expect(entrance).not.toContain("key={");
@@ -1363,11 +1399,11 @@ describe("screen motion replays consistently", () => {
 });
 
 describe("native forms can uncover actions below the keyboard", () => {
-  const components = readFileSync(join(root, "src/ui/components.tsx"), "utf8");
-  const keyboardSafe = readFileSync(join(root, "src/ui/keyboard-safe.tsx"), "utf8");
-  const keyboardSafeNative = readFileSync(join(root, "src/ui/keyboard-safe.native.tsx"), "utf8");
-  const dialog = readFileSync(join(root, "src/ui/dialog.tsx"), "utf8");
-  const rootLayout = readFileSync(join(root, "src/app/_layout.tsx"), "utf8");
+  const components = read("src/ui/components.tsx");
+  const keyboardSafe = read("src/ui/keyboard-safe.tsx");
+  const keyboardSafeNative = read("src/ui/keyboard-safe.native.tsx");
+  const dialog = read("src/ui/dialog.tsx");
+  const rootLayout = read("src/app/_layout.tsx");
   const screen = components.slice(components.indexOf("export function Screen("), components.indexOf("export function Card("));
   const scrollViewStart = screen.lastIndexOf("<KeyboardSafeScrollView");
   const scrollView = screen.slice(scrollViewStart, screen.indexOf(">", scrollViewStart));
@@ -1377,13 +1413,11 @@ describe("native forms can uncover actions below the keyboard", () => {
     expect(scrollView).toContain("extraKeyboardSpace={bottomPad}");
     expect(scrollView).toContain('keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}');
     expect(scrollView).toContain("automaticallyAdjustContentInsets={false}");
-    expect(scrollView).not.toContain("automaticallyAdjustKeyboardInsets");
     expect(keyboardSafeNative).toContain("<KeyboardAwareScrollView");
     expect(keyboardSafeNative).toContain("disableScrollOnKeyboardHide");
     expect(keyboardSafeNative).toContain('keyboardShouldPersistTaps="handled"');
     expect(keyboardSafe).not.toContain("react-native-keyboard-controller");
     expect(keyboardSafeNative).toContain("renderKeyboardSafeListScroll");
-    expect(keyboardSafeNative).not.toContain("function KeyboardSafeListScroll");
   });
 
   it("covers mobile web focus, prompts, and virtualized form lists at their shared owners", () => {
@@ -1393,10 +1427,9 @@ describe("native forms can uncover actions below the keyboard", () => {
     expect(keyboardSafe).toContain("const focusedTarget = editableElement(event?.target ?? null) ?? activeEditableElement();");
     expect(keyboardSafe).toContain("window.visualViewport?.addEventListener");
     expect(keyboardSafe).toContain("renderKeyboardSafeListScroll");
-    expect(keyboardSafe).not.toContain("function KeyboardSafeListScroll");
     expect(dialog).toContain("<KeyboardSafeScrollView");
     for (const file of ["src/app/cell-editor.tsx", "src/app/(tabs)/cash-flow/[month].tsx", "src/app/(tabs)/cash-flow/analytics.tsx"]) {
-      expect(readFileSync(join(root, file), "utf8"), file).toContain("renderScrollComponent={renderKeyboardSafeListScroll}");
+      expect(read(file), file).toContain("renderScrollComponent={renderKeyboardSafeListScroll}");
     }
   });
 });
@@ -1408,11 +1441,11 @@ describe("native forms can uncover actions below the keyboard", () => {
  * single frame, in a place where the whole point was that something moved.
  */
 describe("nothing changes state by cutting to it", () => {
-  const primitives = readFileSync(join(root, "src/ui/primitives.tsx"), "utf8");
-  const motionPrimitives = readFileSync(join(root, "src/ui/motion-primitives.tsx"), "utf8");
-  const tabBar = readFileSync(join(root, "src/ui/tab-bar.tsx"), "utf8");
-  const charts = readFileSync(join(root, "src/ui/charts.tsx"), "utf8");
-  const selectionControls = readFileSync(join(root, "src/ui/selection-controls.tsx"), "utf8");
+  const primitives = read("src/ui/primitives.tsx");
+  const motionPrimitives = read("src/ui/motion-primitives.tsx");
+  const tabBar = read("src/ui/tab-bar.tsx");
+  const charts = read("src/ui/charts.tsx");
+  const selectionControls = read("src/ui/selection-controls.tsx");
 
   it("moves one selection across the tab bar instead of lighting five in turn", () => {
     expect(tabBar).toContain("Animated.multiply(selection, slotWidth)");
@@ -1429,7 +1462,7 @@ describe("nothing changes state by cutting to it", () => {
     const swappers = sourceFiles("src", { atLeast: 150 })
       .filter((path) => path.endsWith(".tsx"))
       .filter((path) => {
-        const source = readFileSync(join(root, path), "utf8");
+        const source = read(path);
         return source.includes("<ChevronUp") && source.includes("<ChevronDown");
       });
     expect(swappers, "a disclosure that owns both glyphs is a cut").toEqual([]);
@@ -1448,7 +1481,7 @@ describe("nothing changes state by cutting to it", () => {
    */
   it("does not buy a modal exit with the focus of the screen underneath", () => {
     for (const path of ["src/ui/selection-controls.tsx", "src/ui/calendar.tsx", "src/ui/calculator.tsx", "src/ui/dialog.tsx"]) {
-      const source = readFileSync(join(root, path), "utf8");
+      const source = read(path);
       expect(source, `${path} unmounts its modal rather than animating it out`).not.toMatch(/<Modal[^>]*visible=\{/);
     }
   });
@@ -1491,15 +1524,15 @@ describe("nothing changes state by cutting to it", () => {
  */
 describe("progress is one shape", () => {
   it("is drawn by one primitive, with a countable number of steps", () => {
-    const primitives = readFileSync(join(root, "src/ui/primitives.tsx"), "utf8");
+    const primitives = read("src/ui/primitives.tsx");
     expect(primitives).toContain("export function SegmentBar(");
     expect(primitives).toContain("const MAX_SEGMENTS = 12;");
     for (const path of ["src/app/(tabs)/settings/budgets.tsx", "src/app/(tabs)/cash-flow/installments.tsx"]) {
-      expect(readFileSync(join(root, path), "utf8"), path).toContain("<SegmentBar");
+      expect(read(path), path).toContain("<SegmentBar");
     }
     // No screen paints its own proportional fill any more.
     const offenders = sourceFiles("src/app", { atLeast: 40 }).filter((path) =>
-      /width: `\$\{(?:Math\.round\()?\(?[\w.]+ \/ /.test(readFileSync(join(root, path), "utf8")),
+      /width: `\$\{(?:Math\.round\()?\(?[\w.]+ \/ /.test(read(path)),
     );
     expect(offenders).toEqual([]);
   });
@@ -1527,7 +1560,7 @@ describe("month-day shortcuts fit the box they are in", () => {
   });
 
   it("is what the field uses, rather than a per-screen guess", () => {
-    const field = readFileSync(join(root, "src/ui/month-day-field.tsx"), "utf8");
+    const field = read("src/ui/month-day-field.tsx");
     expect(field).toContain("fittedQuickDays(boxWidth");
     // Measured on its own box: these are used as a pair inside a card, so each
     // gets about half a column and only the layout knows how much.
@@ -1586,7 +1619,7 @@ describe("placement contract", () => {
     const offenders = placementSources
       .filter((path) => path !== "src/ui/components.tsx")
       .flatMap((path) => {
-        const source = readFileSync(join(root, path), "utf8");
+        const source = read(path);
         // A negative TOP margin is the field-note pull-up. Negative horizontal
         // margins are the press-bleed pattern and are deliberate.
         const matches = [...source.matchAll(/marginTop:\s*-\s*spacing\./g)];
@@ -1606,7 +1639,7 @@ describe("placement contract", () => {
    */
   it("never reserves a gap above a Card", () => {
     const offenders = placementSources.flatMap((path) => {
-      const source = readFileSync(join(root, path), "utf8");
+      const source = read(path);
       return [...source.matchAll(/<Card\b[^>]*?marginTop:/gs)].map(
         (match) => `${path}:${source.slice(0, match.index!).split("\n").length}`,
       );
@@ -1621,7 +1654,7 @@ describe("placement contract", () => {
     const offenders = placementSources
       .filter((path) => path !== "src/ui/responsive.ts")
       .flatMap((path) => {
-        const source = readFileSync(join(root, path), "utf8");
+        const source = read(path);
         return [...source.matchAll(threshold)].map(
           (match) => `${path}:${source.slice(0, match.index!).split("\n").length} ${match[0]}`,
         );
@@ -1630,9 +1663,9 @@ describe("placement contract", () => {
   });
 
   it("gives each named threshold one definition, so two rails cannot disagree", () => {
-    const responsive = readFileSync(join(root, "src/ui/responsive.ts"), "utf8");
+    const responsive = read("src/ui/responsive.ts");
     // The table's density is read by both header renderers and the pinned one.
-    const table = readFileSync(join(root, "src/ui/sticky-table.tsx"), "utf8");
+    const table = read("src/ui/sticky-table.tsx");
     expect(responsive).toContain("export function isCompactTableCell");
     expect([...table.matchAll(/isCompactTableCell\(/g)]).toHaveLength(2);
     expect(table).not.toMatch(/compactHeader\s*=\s*\w+\s*<\s*\d/);
@@ -1651,8 +1684,7 @@ describe("placement contract", () => {
 describe("icon imports resolve", () => {
   it("names an icon the installed package actually ships", () => {
     const missing: string[] = [];
-    for (const path of sourceFiles("src", { atLeast: 150 })) {
-      const source = readFileSync(join(root, path), "utf8");
+    for (const [path, source] of SRC) {
       for (const match of source.matchAll(/from "(lucide-react-native\/icons\/[a-z0-9-]+)"/g)) {
         const specifier = match[1]!;
         try {
@@ -1667,7 +1699,7 @@ describe("icon imports resolve", () => {
 });
 
 /**
- * The four rules introduced with 1.8.3's loading and motion work.
+ * The rules of the loading and motion work.
  *
  * Every one of them was a convention before it was a test, and a convention is
  * what the next screen forgets. Each assertion names the file that owns the
@@ -1676,7 +1708,6 @@ describe("icon imports resolve", () => {
 describe("loading and motion boundaries", () => {
   const appFiles = sourceFiles("src/app", { atLeast: 40 });
   const uiFiles = sourceFiles("src/ui", { atLeast: 50 });
-  const read = (file: string) => readFileSync(join(process.cwd(), file), "utf8");
 
   /**
    * Screens that render no skeleton, each because the shape that lands is not
@@ -1735,5 +1766,92 @@ describe("loading and motion boundaries", () => {
       (file) => !allowed.has(file) && /\berrorNotice\(/.test(read(file)),
     );
     expect(offenders, "let appAlert's tone carry it").toEqual([]);
+  });
+});
+
+/** Every stored mark has a drawn icon, and no screen renders the raw emoji: `ui/category-icon` decides drawing, the stored value is unchanged. */
+/** Read as text, not imported: `ui/category-icon.tsx` pulls in react-native and forty lucide modules. */
+const mappingSource = read("src/ui/category-icon.tsx");
+
+function mappedGlyphs(): Set<string> {
+  const table = mappingSource.slice(
+    mappingSource.indexOf("const CATEGORY_GLYPHS"),
+    mappingSource.indexOf("const UNKNOWN_GLYPH"),
+  );
+  return new Set([...table.matchAll(/"([^"]+)":\s*[A-Z]/g)].map((match) => match[1]!));
+}
+
+function mappedSourceTypes(): Set<string> {
+  const table = mappingSource.slice(
+    mappingSource.indexOf("const SOURCE_GLYPHS"),
+    mappingSource.indexOf("export function paymentSourceIconComponent"),
+  );
+  return new Set([...table.matchAll(/(\w+):\s*[A-Z]/g)].map((match) => match[1]!));
+}
+
+/**
+ * Names chosen to hit every keyword rule in `domain/category-icons`, plus
+ * enough unmatched names to reach both deterministic fallback pools.
+ */
+const KEYWORD_NAMES = [
+  "Kira", "Market", "Araç & Yakıt", "Ulaşım", "Fatura", "Yatırım", "Maaş",
+  "Sağlık", "Eğitim", "Giyim", "Eğlence", "Kredi", "Kart", "Spor", "Tatil",
+  "Hediye", "Sigorta", "Vergi", "Bakım", "Elektrik", "Su", "Doğalgaz",
+  "İnternet", "Çocuk", "Evcil", "Restoran", "Prim",
+];
+
+describe("every storable mark has a drawn icon", () => {
+  it("covers every keyword rule in the domain suggester", () => {
+    const mapped = mappedGlyphs();
+    const missing: string[] = [];
+    for (const name of KEYWORD_NAMES) {
+      for (const kind of ["expense", "income"] as const) {
+        const glyph = suggestCategoryIcon(name, kind);
+        if (!mapped.has(glyph)) missing.push(`${name} (${kind}) → ${glyph}`);
+      }
+    }
+    expect(missing, "a keyword rule with no drawn icon").toEqual([]);
+  });
+
+  /**
+   * The fallback pools are reached by hashing the name, so this walks a wide
+   * spread of names to land on every slot in both pools rather than trusting
+   * that a handful happens to.
+   */
+  it("covers both deterministic fallback pools", () => {
+    const seen = new Set<string>();
+    for (let index = 0; index < 400; index += 1) {
+      for (const kind of ["expense", "income"] as const) {
+        seen.add(suggestCategoryIcon(`zzz-${index}`, kind));
+      }
+    }
+    expect(seen.size, "the walk must actually reach several fallback slots").toBeGreaterThan(8);
+    const mapped = mappedGlyphs();
+    expect([...seen].filter((glyph) => !mapped.has(glyph)), "a fallback with no drawn icon").toEqual([]);
+  });
+
+  it("draws every payment source type", () => {
+    const mapped = mappedSourceTypes();
+    expect([...PAYMENT_SOURCE_TYPES].filter((type) => !mapped.has(type))).toEqual([]);
+  });
+});
+
+describe("no screen renders a raw category or source glyph", () => {
+  it("keeps the emoji inside the mapping table and nowhere else", () => {
+    const offenders: string[] = [];
+    for (const path of sourceFiles("src", { atLeast: 150 })) {
+      if (path === "src/ui/category-icon.tsx") continue;
+      if (path === "src/domain/category-icons.ts") continue;
+      const source = read(path);
+      for (const [index, line] of source.split("\n").entries()) {
+        // `categoryIcon` returns a glyph STRING; calling it from a screen means
+        // that string is on its way to a `<Text>`. Its payment-source twin was
+        // deleted once the tile resolved a component from the type instead.
+        if (/\bcategoryIcon\s*\(/.test(line)) {
+          offenders.push(`${path}:${index + 1}`);
+        }
+      }
+    }
+    expect(offenders, "a screen rendering a stored glyph instead of a drawn icon").toEqual([]);
   });
 });

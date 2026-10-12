@@ -24,37 +24,21 @@
  * Native has no equivalent that does not mean a new dependency
  * (`react-native-view-shot` and a screenshot per toggle), so it keeps the veil
  * in `ThemeDissolve` — short and light, softening the edge without covering the
- * app. The old root background is armed before the preference is committed so
- * the veil is already present in the first native frame of the new palette.
+ * app.
  */
 
 type ViewTransitionStarter = { startViewTransition?: (callback: () => void) => unknown };
-
-let pendingThemeTransitionBackground: string | null = null;
 
 function viewTransitionDocument(): ViewTransitionStarter | null {
   return typeof document === "undefined" ? null : (document as unknown as ViewTransitionStarter);
 }
 
-export function peekThemeTransitionBackground(): string | null {
-  return pendingThemeTransitionBackground;
-}
-
-export function takeThemeTransitionBackground(): string | null {
-  const background = pendingThemeTransitionBackground;
-  pendingThemeTransitionBackground = null;
-  return background;
-}
-
-export function applyThemeChange(commit: () => void, fromBackground?: string): void {
+export function applyThemeChange(commit: () => void): void {
   const doc = viewTransitionDocument();
   if (!doc || typeof doc.startViewTransition !== "function") {
-    pendingThemeTransitionBackground = fromBackground ?? null;
     commit();
     return;
   }
-
-  pendingThemeTransitionBackground = null;
 
   let committed = false;
   const commitOnce = () => {
@@ -77,25 +61,4 @@ export function applyThemeChange(commit: () => void, fromBackground?: string): v
 export function crossFadesNatively(): boolean {
   const doc = viewTransitionDocument();
   return Boolean(doc && typeof doc.startViewTransition === "function");
-}
-
-/**
- * Point every `theme-color` in the document at the palette actually in use.
- *
- * The static shell declares a pair of them — one per `prefers-color-scheme` —
- * so the browser chrome is right on the very first paint, before any of this
- * has mounted. That pair cannot know about an explicit in-app theme choice,
- * and it cannot simply be overridden by rendering another tag either: the HTML
- * spec takes the FIRST `theme-color` whose media matches, so a tag appended
- * later is dead. Hence writing over the existing ones, and dropping their
- * `media` so both then agree whatever the system says.
- *
- * A no-op off web, and on a web build before the head exists.
- */
-export function syncThemeColorMeta(color: string): void {
-  if (typeof document === "undefined") return;
-  document.querySelectorAll('meta[name="theme-color"]').forEach((meta) => {
-    meta.setAttribute("content", color);
-    meta.removeAttribute("media");
-  });
 }

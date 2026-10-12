@@ -72,11 +72,9 @@ export function statementForPurchase(purchaseDate: ISODate, cycle: CardCycle): C
  * A plan's instalments fall on the card's due day of consecutive months, so the
  * first one belongs to the statement the purchase joins — due next month when
  * the card is paid after it closes, or later still once this period has already
- * closed. The plan form used to start every new plan in the current month, so
- * on a card due on the 5th a plan entered on the 13th wrote an instalment dated
- * the 5th, counted it as already paid and took it off today's balance, while an
- * identical purchase entered through the transaction form waited for its
- * statement.
+ * closed. Starting a plan in the current month would date an instalment on a
+ * day already past, count it as paid and take it off today's balance, unlike
+ * the same purchase entered as a transaction.
  */
 export function firstInstallmentMonth(purchaseDate: ISODate, cycle: CardCycle): MonthKey {
   return monthKeyOf(statementForPurchase(purchaseDate, cycle).dueDate);
@@ -94,18 +92,10 @@ export function statementForDueDate(dueDate: ISODate, cycle: CardCycle): CardSta
 }
 
 /**
- * The nominal days a card gives you between closing a statement and paying it.
- *
- * `statementPeriod` already resolves the due date into the NEXT month whenever
- * the due day is not past the closing day, so a cycle is never "backwards" —
- * every pair produces some gap. What a pair can be is implausible, and the two
- * ends of that are the same defect seen from either side: `31 / 31` is no gap
- * at all, and `31 / 30` is a whole cycle's worth.
- *
- * Counted against a nominal 30-day month rather than a real one, because the
- * days are nominal too: "ayın sonu" is stored as 31 and lands on the 28th in
- * February. The answer only has to be right to within a day for the question
- * being asked, which is whether a human would recognise this as a card cycle.
+ * The nominal days between closing a statement and paying it. A pair is never
+ * "backwards" (the due date resolves into the next month), only implausible:
+ * `31 / 31` is no gap and `31 / 30` a whole cycle. Counted against a nominal
+ * 30-day month because the stored days are nominal ("ayın sonu" is 31).
  */
 export function cardCycleGraceDays(statementDay: number, dueDay: number): number {
   const NOMINAL_MONTH = 30;
@@ -113,13 +103,9 @@ export function cardCycleGraceDays(statementDay: number, dueDay: number): number
 }
 
 /**
- * How far apart a real card's two days can sit.
- *
- * Turkish law sets a floor of ten days between the statement date and the due
- * date, and the banks that issue these cards give ten to fifteen. The ceiling
- * here is deliberately looser than that: it is not trying to model the market,
- * it is refusing the pairs that are plainly a mistake — the two days set to the
- * same value, or a "due date" that lands just before the NEXT statement closes.
+ * How far apart a real card's two days can sit. Deliberately loose: it refuses
+ * only pairs that are plainly a mistake, the same value for both or a due date
+ * just before the NEXT statement closes.
  */
 export const CARD_CYCLE_GRACE = { min: 1, max: 20 } as const;
 
@@ -157,39 +143,9 @@ export function refusedCardCycleDays(
 }
 
 /**
- * How far today is through the statement window that is currently filling.
- *
- * `0` on the day one statement closed, `1` on the day the next one does. The
- * window is close-to-close because that is the span a purchase chooses
- * between: the same shop on either side of it lands on a different statement
- * and leaves the account a month apart.
- *
- * The due date is deliberately not on this scale. It falls after the close, so
- * mapping it onto the same 0..1 would either run past the end or compress the
- * part a person is actually reading.
- *
- * Throws on a cycle it cannot read rather than returning a position: an
- * invented fraction would be drawn as confidently as a real one.
- *
- * The span is not checked for zero. Two consecutive closes are a month apart
- * by construction, and a probe over every statement day from 1 to 31 across
- * sixteen years — 5,952 combinations — found the shortest span to be 28 days
- * and none at or below zero. The guard that used to be here was therefore
- * unreachable, which is why its mutants survived while every other line's
- * died; the probe was written to prove that before it was removed, and then
- * removed itself.
- */
-/**
- * Days until this card's open statement closes.
- *
- * The fact the ring exists to carry. A statement day and a due day are two
- * numbers on a calendar; what a person actually wants to know standing at a
- * till is whether what they are about to buy lands on the statement about to
- * close or the next one, and that is a countdown, not a pair of dates.
- *
- * Zero means it closes today — the last day a purchase still joins this
- * period, since `statementForPurchase` puts a purchase ON the statement date
- * into that date's own statement.
+ * Days until this card's open statement closes: whether a purchase lands on the
+ * statement about to close or the next one. Zero means it closes today, the
+ * last day a purchase still joins this period.
  */
 export function daysUntilStatementClose(today: ISODate, cycle: CardCycle): number {
   return Math.max(0, daysBetweenISO(today, statementForPurchase(today, cycle).statementDate));
@@ -215,8 +171,7 @@ export interface CardSettlement {
 }
 
 /**
- * What recorded statement payments do to the ledger (owner decision,
- * 2026-09-13: "ödediğin ay").
+ * What recorded statement payments do to the ledger.
  *
  * A statement with no payment recorded is paid in full on its due date, which
  * is how every card charge already reaches the balance. Recording one replaces
@@ -228,7 +183,7 @@ export interface CardSettlement {
  *   and is given back on the day the charges land.
  * - Paid in part: the charges keep their due date; the balance loses only what
  *   was paid, on the day it was paid, and the rest is owed. No interest and no
- *   carrying into the next statement — that is the bank's arithmetic.
+ *   carrying into the next statement.
  *
  * Only the owner's own charges count, as everywhere else in the balance, and a
  * payment dated after today is not a payment yet.
@@ -269,8 +224,7 @@ function settleStatement(
   today: ISODate,
 ): { settlement: StatementSettlement; flows: SettlementFlow[]; moved: TxLike[] } {
   const paid = [...payments].sort((a, b) => a.paidOn.localeCompare(b.paidOn) || a.id.localeCompare(b.id));
-  const chargesMinor = charges.reduce((sum, tx) => sum + financialFlow(tx).amountTryMinor, 0);
-  const paidMinor = paid.reduce((sum, payment) => sum + payment.amountMinor, 0);
+  const { chargesMinor, paidMinor } = statementTotals(charges, paid);
   let covered = 0;
   const completion = paid.find((payment) => (covered += payment.amountMinor) >= chargesMinor);
   const flows: SettlementFlow[] = [];
@@ -285,10 +239,8 @@ function settleStatement(
       moved: charges.map((tx) => ({ ...tx, effectiveDate: completion.paidOn, status: "realized" as const })),
     };
   }
-  // Paid in part. Every charge on a statement shares its due date, so the
-  // latest of them is that date; the flows given back there are exactly as
-  // settled as the charges they sit beside. A statement with no charge is
-  // covered by any payment, so a partial one always has at least one.
+  // Paid in part. Every charge on a statement shares its due date. A statement
+  // with no charge is covered by any payment, so a partial one has at least one.
   const dueDate = charges.reduce((latest, tx) => (tx.effectiveDate > latest ? tx.effectiveDate : latest), charges[0]!.effectiveDate);
   const planned = charges.some((tx) => tx.status !== "realized" || tx.effectiveDate > today);
   flows.push({ statementId, date: dueDate, amountMinor: chargesMinor - paidMinor, kind: "owed", planned });
@@ -310,6 +262,33 @@ function settleStatement(
   };
 }
 
+/**
+ * A statement's charges (refunds netted), what was paid on it, and what is
+ * still owed. The owed figure stops at zero: an overpayment is not credit the
+ * statement carries.
+ */
+export function statementTotals(
+  charges: readonly TxLike[],
+  payments: readonly { amountMinor: number }[],
+): { chargesMinor: number; paidMinor: number; remainingMinor: number } {
+  const chargesMinor = charges.reduce((sum, tx) => sum + financialFlow(tx).amountTryMinor, 0);
+  const paidMinor = payments.reduce((sum, payment) => sum + payment.amountMinor, 0);
+  return { chargesMinor, paidMinor, remainingMinor: Math.max(0, chargesMinor - paidMinor) };
+}
+
+/** Each of `statementIds` with the signed TRY total of every row billed on it; a statement with no row is absent. */
+export function statementAmounts(
+  transactions: readonly { cardStatementId?: string | null; amountTryMinor: number }[],
+  statementIds: ReadonlySet<string>,
+): Map<string, number> {
+  const amountById = new Map<string, number>();
+  for (const transaction of transactions) {
+    const statementId = transaction.cardStatementId;
+    if (statementId && statementIds.has(statementId)) amountById.set(statementId, (amountById.get(statementId) ?? 0) + transaction.amountTryMinor);
+  }
+  return amountById;
+}
+
 /** `items` grouped by `key`, leaving out the ones it gives no key. */
 export function groupBy<T>(items: readonly T[], key: (item: T) => string | null): Map<string, T[]> {
   const groups = new Map<string, T[]>();
@@ -323,6 +302,16 @@ export function groupBy<T>(items: readonly T[], key: (item: T) => string | null)
   return groups;
 }
 
+/**
+ * How far today is through the statement window that is currently filling:
+ * `0` on the day one statement closes, `1` on the day the next one does. The
+ * window is close-to-close because that is the span a purchase chooses between.
+ * The due date is deliberately not on this scale: it falls after the close.
+ *
+ * Throws on a cycle it cannot read rather than returning a position: an
+ * invented fraction would be drawn as confidently as a real one. The span is
+ * not checked for zero: two consecutive closes are at least 28 days apart.
+ */
 export function cardCycleProgress(today: ISODate, cycle: CardCycle): number {
   const period = statementForPurchase(today, cycle);
   const previousClose = statementPeriod(addMonthsToKey(period.periodMonth, -1), cycle).statementDate;

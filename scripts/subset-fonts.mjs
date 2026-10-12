@@ -1,16 +1,10 @@
-#!/usr/bin/env node
 /**
  * Regenerate `assets/fonts/` from the upstream Google Fonts packages.
  *
- *   pip install fonttools brotli    # once
+ *   pip install fonttools    # once
  *   node scripts/subset-fonts.mjs
  *
- * Why the fonts are vendored at all: the upstream faces carry 2_849 codepoints
- * each — Cyrillic, Greek, Vietnamese, IPA, Latin Extended Additional — and this
- * is a Turkish product. Shipping them whole cost 1_534_728 bytes, 19% of the
- * web export, for coverage nothing renders. Subset to the Latin scripts plus
- * the punctuation, currency, arrow, math and symbol blocks the UI actually
- * draws from, that is 791_272.
+ * Vendored because the upstream faces carry scripts a Turkish product never renders, a large share of the web export.
  *
  * Why TTF for every platform rather than WOFF2 on the web: react-native cannot
  * load WOFF2, so a web-only format means two files per weight and two things

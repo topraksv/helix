@@ -67,18 +67,9 @@ export function isUuidShaped(id: unknown): id is string {
 }
 
 /**
- * Whether a pulled row REPLACED something the user could already see.
- *
- * Corrupt local timestamps must not make a valid server row lose forever.
- *
- * Deliberately stricter than `remoteWinsLww`, which accepts an equal
- * `updated_at` so a re-pulled row converges. That equality is exactly the shape
- * of this device's OWN push coming back: the acknowledgement already stored the
- * server's timestamp locally, so the row arrives identical. Telling the user
- * "another device changed this" for their own save would be noise, so a
- * notification needs a row that existed locally AND a strictly newer remote
- * version (or a newer delete generation). A first pull into an empty workspace
- * has no local row and therefore never announces anything.
+ * Whether a pulled row replaced something the user could already see. Stricter than `remoteWinsLww`, which
+ * accepts an equal `updated_at`: that is this device's own push coming back, and announcing it would be
+ * noise. It needs a local row and a strictly newer remote version or delete generation.
  */
 export function remoteSupersededLocal(
   localUpdatedAt: string | null,
@@ -115,13 +106,9 @@ export function remoteWinsLww(
 }
 
 /**
- * A pull cursor: everything at or before this `(updated_at, id)` is consumed.
- *
- * Stored in `sync_state.last_pulled_at` as `"<iso>|<uuid>"`. A bare ISO string
- * is the legacy single-column form and carries no tie-breaker, which is why
- * `id` is `""` rather than null — the empty string can never equal a real row
- * id, so a legacy cursor always compares as "behind" and re-pulls its own
- * timestamp once. The LWW merge makes that replay idempotent.
+ * A pull cursor: everything at or before this `(updated_at, id)` is consumed, stored as `"<iso>|<uuid>"`.
+ * A bare ISO string is the legacy form: its `id` is `""`, which never equals a real id, so it re-pulls its
+ * own timestamp once and the LWW merge makes the replay idempotent.
  */
 export interface PullCursor {
   ts: string;
@@ -143,37 +130,17 @@ export function formatPullCursor(cursor: PullCursor): string {
   return `${cursor.ts}|${cursor.id}`;
 }
 
-/**
- * A pull cursor's instant, `…00.123456Z`: the server's own precision in the
- * device's form. Cut to the millisecond, `updated_at.gt` matched every row of
- * that millisecond again, and a statement that stamped a page's worth with one
- * `now()` sent the pull round the same page for ever.
- */
+/** A pull cursor's instant at the server's microsecond precision; cut to the millisecond, `updated_at.gt` would match a page stamped by one `now()` again for ever. */
 export function cursorInstant(value: string): string {
   const sub = /T[\d:]+\.\d{3}(\d{1,3})/.exec(value)?.[1] ?? "";
   return new Date(value).toISOString().replace("Z", `${sub}Z`);
 }
 
 /**
- * Whether a cursor already stands on the newest row the server holds, so the
- * table can be skipped without asking PostgREST for a page that would be empty.
- *
- * `head` is one row of `public.sync_cursors()` (migration 32): the greatest
- * `(updated_at, id)` in that table for this user, or null when the table holds
- * nothing for them. A table the probe did not report at all is NOT null here —
- * the caller must treat an unreported table as "pull it", because the probe's
- * table list is a second copy of `SYNCED_TABLES` and a copy can fall behind.
- *
- * The comparison is deliberately narrower than the keyset filter the pull
- * itself uses. It skips only on an exact match of both halves, rather than on
- * "head is not greater than cursor", because the two values do not carry the
- * same precision: Postgres keeps `updated_at` to microseconds and the stored
- * cursor is `Date#toISOString`, which truncates to milliseconds. Under a
- * "not greater" test a row written 400µs after the cursor's row would compare
- * equal and be skipped forever, while the PostgREST filter — which compares at
- * full precision inside the database — would have returned it. An exact match
- * on the id proves the cursor is standing on that very row, and no precision
- * can hide behind it. Anything else pulls, and the pull decides.
+ * Whether a cursor already stands on the newest row the server holds (`head`, a row of `sync_cursors()`, or
+ * null when the table is empty for the user), so the table is skipped. An unreported table is not null: the
+ * caller pulls it. Skips only on an exact match of both halves: Postgres keeps microseconds and the cursor
+ * milliseconds, so "head not greater than cursor" would skip a row written 400µs later for ever.
  */
 export function cursorIsAtServerHead(cursor: PullCursor, head: PullCursor | null): boolean {
   if (head == null) return true;

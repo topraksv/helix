@@ -8,6 +8,7 @@ import {
   generateExpected,
   obsoleteExpectedIds,
   plannedExpectations,
+  selfCellEffect,
 } from "../../src/domain/expected";
 import type { ExpectedPaymentLike, RecurringIncomeLike, SubscriptionLike } from "../../src/domain/types";
 import { tx } from "../helpers";
@@ -104,6 +105,19 @@ describe("generateExpected", () => {
       2,
     );
     expect(drafts.map((draft) => draft.dueDate)).toEqual(["2026-09-10"]);
+  });
+
+  it("keeps a yearly rule's phase when a trial pushes its first charge", () => {
+    const drafts = generateExpected(
+      [sub({ nextDueDate: "2026-01-10", intervalMonths: 12, cycle: "yearly", trialEndDate: "2026-03-01" })],
+      [],
+      [],
+      "2026-02-15",
+      12,
+    );
+    const dates = drafts.map((draft) => draft.dueDate);
+    expect(dates).toEqual(["2027-01-10"]);
+    expect(dates).not.toContain("2026-03-10");
   });
 
   it("generates salary as incoming expected with the pay day per month", () => {
@@ -208,8 +222,7 @@ describe("confirmEffectiveDate", () => {
   });
 
   it("honours a manual early paidOn (due the 15th, paid the 12th)", () => {
-    // The core B1 case: a bill due in the future, paid early — it must realize
-    // on the day it was actually paid, not the due date and not today.
+    // Paid early: realize on the paid day, not the due date and not today.
     expect(confirmEffectiveDate("2026-07-15", "2026-07-13", "2026-07-12")).toBe("2026-07-12");
   });
 
@@ -308,5 +321,163 @@ describe("autoConfirmedTransactionIds", () => {
       // A mark with no row behind it has nothing to label.
       { autoConfirmed: true, transactionId: null },
     ])).toEqual(new Set(["tx-auto"]));
+  });
+});
+
+describe("weekly recurring income", () => {
+  it("generates weekly expecteds and requires an anchor", () => {
+    const income = {
+      id: "weekly", name: "Vardiya", defaultAmountMinor: 100_00, currency: "TRY", payDay: 18,
+      recurrence: "weekly" as const, anchorDate: "2026-07-18", isActive: true, personIsSelf: true,
+    };
+    const first = generateExpected([], [income], [], "2026-07-18", 1);
+    expect(first.map((draft) => draft.dueDate)).toEqual([
+      "2026-07-18", "2026-07-25", "2026-08-01", "2026-08-08", "2026-08-15", "2026-08-22", "2026-08-29",
+    ]);
+    expect(generateExpected([], [{ ...income, anchorDate: null }], [], "2026-07-18", 1)).toEqual([]);
+  });
+});
+
+describe("schedule generation fails closed on a corrupt day", () => {
+  const ISO_DATE = /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/;
+
+  it("generates nothing for a subscription whose billing day is corrupt", () => {
+    const healthy = generateExpected([sub({})], [], [], "2026-07-01", 3);
+    expect(healthy.length).toBeGreaterThan(0);
+    for (const d of healthy) expect(d.dueDate).toMatch(ISO_DATE);
+
+    expect(generateExpected([sub({ billingDay: 0 })], [], [], "2026-07-01", 3)).toEqual([]);
+    expect(generateExpected([sub({ billingDay: NaN })], [], [], "2026-07-01", 3)).toEqual([]);
+  });
+
+  it("generates nothing for a monthly income whose pay day is corrupt", () => {
+    expect(generateExpected([], [income({})], [], "2026-07-01", 3).length).toBeGreaterThan(0);
+    expect(generateExpected([], [income({ payDay: 0 })], [], "2026-07-01", 3)).toEqual([]);
+  });
+});
+
+describe("expected-item draft and boundary contract", () => {
+  const dueRow = (overrides: Partial<ExpectedPaymentLike> = {}): ExpectedPaymentLike => ({
+    id: "e", direction: "out", kind: "subscription", refId: "s", dueDate: "2026-07-18",
+    amountMinor: 100, currency: "TRY", status: "pending", ...overrides,
+  });
+
+  const dueSub = (overrides: Partial<SubscriptionLike> = {}): SubscriptionLike => ({
+    id: "s", name: "Abonelik", amountMinor: 100, currency: "TRY", cycle: "monthly", intervalMonths: 1,
+    billingDay: 18, nextDueDate: "2026-07-18", isActive: true, autoPay: false, personIsSelf: true,
+    trialEndDate: null, amountMode: "fixed", ...overrides,
+  });
+
+  const dueIncome = (overrides: Partial<RecurringIncomeLike> = {}): RecurringIncomeLike => ({
+    id: "i", name: "Gelir", defaultAmountMinor: 200, currency: "TRY", payDay: 18,
+    isActive: true, personIsSelf: true, ...overrides,
+  });
+
+  it("pins obsolete-row status, activity, date, identity, and output id", () => {
+    const rows = [
+      dueRow({ id: "past-pending", dueDate: "2026-07-17" }),
+      dueRow({ id: "today-pending", dueDate: "2026-07-18" }),
+      dueRow({ id: "future-late", dueDate: "2026-07-19", status: "late" }),
+      dueRow({ id: "future-paid", dueDate: "2026-07-19", status: "paid" }),
+    ];
+    const draft = [{ direction: "out" as const, kind: "subscription" as const, refId: "s", dueDate: "2026-07-19", amountMinor: 100, amountIsEstimated: false, currency: "TRY" }];
+    expect(obsoleteExpectedIds(rows, draft, "2026-07-18", true)).toEqual(["today-pending"]);
+    expect(obsoleteExpectedIds(rows, [], "2026-07-18", false)).toEqual(["past-pending", "today-pending", "future-late"]);
+  });
+
+  it("generates exact fixed, variable, weekly, and biweekly draft fields in sorted order", () => {
+    const drafts = generateExpected(
+      [
+        dueSub({ id: "fixed" }),
+        dueSub({ id: "variable", amountMode: "variable", nextDueDate: "2026-07-19", billingDay: 19 }),
+      ],
+      [
+        dueIncome({ id: "weekly", recurrence: "weekly", anchorDate: "2026-07-18" }),
+        dueIncome({ id: "biweekly", recurrence: "biweekly", anchorDate: "2026-07-19" }),
+      ],
+      [], "2026-07-18", 0,
+    );
+    expect(drafts).toEqual([
+      { direction: "out", kind: "subscription", refId: "fixed", dueDate: "2026-07-18", amountMinor: 100, amountIsEstimated: false, currency: "TRY" },
+      { direction: "in", kind: "recurring_income", refId: "weekly", dueDate: "2026-07-18", amountMinor: 200, amountIsEstimated: false, currency: "TRY" },
+      { direction: "out", kind: "subscription", refId: "variable", dueDate: "2026-07-19", amountMinor: 100, amountIsEstimated: true, currency: "TRY" },
+      { direction: "in", kind: "recurring_income", refId: "biweekly", dueDate: "2026-07-19", amountMinor: 200, amountIsEstimated: false, currency: "TRY" },
+      { direction: "in", kind: "recurring_income", refId: "weekly", dueDate: "2026-07-25", amountMinor: 200, amountIsEstimated: false, currency: "TRY" },
+    ]);
+  });
+
+  it("keeps an earlier trial anchor and emits a monthly income due today exactly once", () => {
+    const existing = [{ kind: "recurring_income" as const, refId: "duplicate", dueDate: "2026-07-18" }];
+    expect(generateExpected(
+      [dueSub({ id: "trial-ended", nextDueDate: "2026-07-20", billingDay: 20, trialEndDate: "2026-07-01" })],
+      [dueIncome({ id: "monthly", recurrence: "monthly", payDay: 18 }), dueIncome({ id: "duplicate", recurrence: "monthly", payDay: 18 })],
+      existing, "2026-07-18", 0,
+    )).toEqual([
+      { direction: "in", kind: "recurring_income", refId: "monthly", dueDate: "2026-07-18", amountMinor: 200, amountIsEstimated: false, currency: "TRY" },
+      { direction: "out", kind: "subscription", refId: "trial-ended", dueDate: "2026-07-20", amountMinor: 100, amountIsEstimated: false, currency: "TRY" },
+    ]);
+  });
+
+  it("does not move the stored next due date backward after a trial already ended", () => {
+    expect(generateExpected([
+      dueSub({ id: "ended", nextDueDate: "2026-08-20", billingDay: 20, trialEndDate: "2026-07-01" }),
+    ], [], [], "2026-07-18", 1).map((draft) => draft.dueDate)).toEqual(["2026-08-20"]);
+  });
+
+  it("anchors trials on or after their exact end boundary", () => {
+    expect(generateExpected([dueSub({ nextDueDate: "2026-07-10", billingDay: 18, trialEndDate: "2026-07-18" })], [], [], "2026-07-01", 0)
+      .map((draft) => draft.dueDate)).toEqual(["2026-07-18"]);
+    expect(generateExpected([dueSub({ nextDueDate: "2026-07-10", billingDay: 18, trialEndDate: "2026-07-19" })], [], [], "2026-07-01", 1)
+      .map((draft) => draft.dueDate)).toEqual(["2026-08-18"]);
+  });
+
+  it("leaves a stored next due date off the billing day alone once the trial is over", () => {
+    // Re-anchoring would snap 07-10 forward to the billing day, 07-18.
+    for (const trialEndDate of ["2026-07-01", "2026-07-10"]) {
+      expect(generateExpected([dueSub({ nextDueDate: "2026-07-10", billingDay: 18, trialEndDate })], [], [], "2026-07-01", 0)
+        .map((draft) => draft.dueDate), trialEndDate).toEqual(["2026-07-10"]);
+    }
+  });
+
+  it("pins confirmation, lateness and autopay equality boundaries", () => {
+    expect(confirmEffectiveDate("2026-07-18", "2026-07-18", "2026-07-18")).toBe("2026-07-18");
+    expect(confirmEffectiveDate("2026-07-17", "2026-07-18", "2026-07-19")).toBe("2026-07-17");
+    expect(confirmEffectiveDate("2026-07-17", "2026-07-18", "2026-07-18")).toBe("2026-07-18");
+    expect(findLate([dueRow({ id: "yesterday", dueDate: "2026-07-17" }), dueRow({ id: "today", dueDate: "2026-07-18" })], "2026-07-18").map((row) => row.id)).toEqual(["yesterday"]);
+    expect(findAutoConfirmable([
+      dueRow({ id: "today", dueDate: "2026-07-18" }),
+      dueRow({ id: "income", dueDate: "2026-07-18", kind: "recurring_income" }),
+      dueRow({ id: "estimated", dueDate: "2026-07-18", amountIsEstimated: true }),
+    ], new Map([["s", "2026-07-01"]]), "2026-07-18").map((row) => row.id)).toEqual(["today"]);
+    expect(findAutoConfirmable([
+      dueRow({ id: "late", dueDate: "2026-07-17", status: "late" }),
+    ], new Map([["s", "2026-07-01"]]), "2026-07-18")).toEqual([]);
+  });
+});
+
+describe("what a category's cell does to the owner's balance", () => {
+  const self = new Set(["me"]);
+
+  it("signs the owner's rows by the category's kind and adds planned effects", () => {
+    const rows = [
+      { personId: "me", type: "expense" as const, amountTryMinor: 1_000 },
+      { personId: "me", type: "expense" as const, amountTryMinor: -250 },
+      { personId: "other", type: "expense" as const, amountTryMinor: 9_999 },
+    ];
+    expect(selfCellEffect(rows, self, "expense", [])).toBe(-750);
+    expect(selfCellEffect(rows, self, "expense", [
+      { direction: "out", amountTryMinor: 100 },
+      { direction: "in", amountTryMinor: 30 },
+    ])).toBe(-820);
+  });
+
+  it("reads income rows as money in, and a transfer as money out", () => {
+    expect(selfCellEffect([{ personId: "me", type: "income", amountTryMinor: 500 }], self, "income", [])).toBe(500);
+    expect(selfCellEffect([{ personId: "me", type: "transfer", amountTryMinor: 500 }], self, "expense", [])).toBe(-500);
+  });
+
+  it("is zero with nothing of the owner's and nothing planned", () => {
+    expect(selfCellEffect([{ personId: "other", type: "income", amountTryMinor: 500 }], self, null, [])).toBe(0);
+    expect(selfCellEffect([], new Set(), null, [{ direction: "in", amountTryMinor: 1 }])).toBe(1);
   });
 });

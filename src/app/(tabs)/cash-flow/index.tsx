@@ -1,14 +1,8 @@
-/**
- * Mali Tablo. A spreadsheet matrix with a pinned first column (sticky on web
- * and iOS), a pivot toggle (months as rows / columns) available on every
- * width, full Jan–Dec rows with the current month highlighted, and an
- * optional user-pinned extra column. Cells open the editor; notes show a dot.
- * Phones can also switch to a no-horizontal-scroll, month-focused table.
- */
+/** Mali Tablo: the ledger matrix, pivotable, with a phone month-focused mode. */
 
 import React, { useMemo, useRef, useState } from "react";
-import { Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions, type LayoutChangeEvent } from "react-native";
-import { useRouter, type Href } from "expo-router";
+import { Pressable, ScrollView, StyleSheet, Text, View, type LayoutChangeEvent } from "react-native";
+import { useRouter, useScrollToTop } from "expo-router";
 import ArrowDownRight from "lucide-react-native/icons/arrow-down-right";
 import ArrowLeftRight from "lucide-react-native/icons/arrow-left-right";
 import ArrowUpRight from "lucide-react-native/icons/arrow-up-right";
@@ -26,7 +20,7 @@ import TriangleAlert from "lucide-react-native/icons/triangle-alert";
 import { monthFlowTotals, type LedgerBundle } from "../../../domain/balance";
 import { buildCashFlowMatrixModel, type CashFlowMatrixColumn } from "../../../domain/cash-flow-matrix";
 import { orderLedgerCategories, resolveYearColumns } from "../../../domain/year-columns";
-import { monthKeyOf, todayISO, yearOf, type MonthKey } from "../../../domain/dates";
+import { monthKeyOf, monthOf, makeMonthKey, todayISO, yearOf, type MonthKey } from "../../../domain/dates";
 import { resolveMatrixMode, type MatrixMode } from "../../../domain/matrix-preferences";
 import { formatMinorCompact } from "../../../domain/money";
 import { dateLabel, monthLabel, monthName, shortMonthLabel, tr } from "../../../i18n/tr";
@@ -54,17 +48,23 @@ import { scheduleSync } from "../../../sync/engine";
 import { devError } from "../../../services/logger";
 import { kv } from "../../../services/kv";
 import { Amount, Button, Card, DataStateNotice, FadeIn, IconButton, Row, Screen, Segmented, Spread } from "../../../ui/components";
-import { useScrollToTop } from "expo-router";
 import { CURRENT_TINT, StickyTable, STICKY_HEADER_HEIGHT, STICKY_ROW_HEIGHT } from "../../../ui/sticky-table";
 import { MatrixColorSheet } from "../../../ui/matrix-color-sheet";
 import { buildColorIndex, matrixColorLabel, MATRIX_COLOR_TOKENS, parseMatrixColorLabels, resolveCellToken, type MatrixColorLabels, type MatrixColorScope, type MatrixColorToken } from "../../../domain/matrix-colors";
 import { interactionSurface } from "../../../ui/interaction";
-import { circle, controlSize, iconSize, matrixColorStyle, radius, spacing, type, useTheme, type Palette } from "../../../ui/theme";
+import { circle, controlSize, iconSize, matrixColorStyle, radius, spacing, type, useTheme } from "../../../ui/theme";
 import { ledgerCellWidth, shouldStartTableDetailsOpen, shouldUseWideWorkspace } from "../../../ui/responsive";
 import { useContentWidth } from "../../../ui/viewport";
 import { CategoryIcon } from "../../../ui/category-icon";
 
 type MatrixModel = ReturnType<typeof buildCashFlowMatrixModel>;
+
+function openUncategorized(router: ReturnType<typeof useRouter>, year: number) {
+  router.push({
+    pathname: "/cash-flow/item",
+    params: { col: "__uncategorized", label: tr.cashflow.uncategorizedLegacy, year: String(year), kind: "uncategorized" },
+  });
+}
 
 /** Phone toolbar item: icon + always-visible mini caption. Five equal tools
  *  share one 44px band so the matrix, not its chrome, owns the screen. */
@@ -85,10 +85,7 @@ function MatrixTool({
       accessibilityRole="button"
       accessibilityLabel={label}
       onPress={onPress}
-      // The press surface is the control's own box. It used to be a 30x28
-      // rectangle behind the icon while the pressable was the whole column,
-      // so holding the tool lit a small patch sitting above its own caption
-      // instead of the thing being pressed.
+      // The press surface is the control's own box, so the lit area is what was pressed.
       style={(state) => ({
         flex: 1,
         flexBasis: 0,
@@ -137,8 +134,6 @@ function FlowStat({
   );
 }
 
-/** The pivot's three orientations, named so the control and the wrapper that
- *  bounds it cannot disagree about how many segments there are. */
 /** Device-local preferences for the matrix's independent orientations. */
 const GUIDE_KEY = "helix.matrix.guide";
 const LEGACY_PIN_KEY = "helix.matrix.pinned";
@@ -190,20 +185,18 @@ export default function CashflowScreen() {
   const defaultMode: MatrixMode = wide ? "rows" : "columns";
   const [mode, setMode] = useState<MatrixMode>(defaultMode);
   const [hasSavedMode, setHasSavedMode] = useState<boolean | null>(null);
-  const [focusMonthNumber, setFocusMonthNumber] = useState(Number(monthKeyOf(todayISO()).slice(5, 7)));
+  const [focusMonthNumber, setFocusMonthNumber] = useState(monthOf(todayISO()));
   const [pinnedByMode, setPinnedByMode] = useState<Record<PinMode, string | null>>({ rows: null, columns: null });
   const [tableAreaH, setTableAreaH] = useState(0);
+  const [tableAreaW, setTableAreaW] = useState(0);
   // Rounded, so a sub-pixel layout report cannot rebuild the grid.
   const onTableAreaLayout = React.useCallback((event: LayoutChangeEvent) => {
     const height = Math.round(event.nativeEvent.layout.height);
+    const width = Math.round(event.nativeEvent.layout.width);
     setTableAreaH((current) => (current === height ? current : height));
+    setTableAreaW((current) => (current === width ? current : width));
   }, []);
-  // Desktop starts with the reading guide open so the table explains itself;
-  // every viewport can collapse it once the user knows the grammar. Closing it
-  // is remembered — it is a statement about what the user already knows, and
-  // re-teaching them the grammar on every visit is exactly what they asked to
-  // stop. Device-local, beside the pivot and pin: a phone and a desktop are
-  // allowed to disagree about it.
+  // Starts open on desktop; a close is remembered per device so the guide is not re-taught.
   const [showTableDetails, setShowTableDetails] = useState(() => shouldStartTableDetailsOpen(contentWidth));
   // The tab's repeat-press behavior needs the active month-focused scroller.
   const monthFocusScrollRef = React.useRef<ScrollView>(null);
@@ -214,10 +207,8 @@ export default function CashflowScreen() {
       setMode(v ? resolveMatrixMode(v) : defaultMode);
     });
     void Promise.all([kv.get(PIN_KEYS.rows), kv.get(PIN_KEYS.columns), kv.get(LEGACY_PIN_KEY)]).then(async ([rowsPin, columnsPin, legacyPin]) => {
-      // The old single key was valid for whichever orientation happened to be
-      // open. Seed both slots only when neither new slot exists. Falling back
-      // to the legacy key one slot at a time would resurrect a pin the user
-      // had deliberately cleared after the migration.
+      // The legacy key held one pin for whichever orientation was open. Seed both slots only when
+      // neither new slot exists, or a deliberately cleared pin would come back.
       const hasNewPreferences = rowsPin !== null || columnsPin !== null;
       const migratedPin = !hasNewPreferences ? legacyPin || null : null;
       setPinnedByMode({
@@ -245,9 +236,7 @@ export default function CashflowScreen() {
     setHasSavedMode(true);
     void kv.set("helix.matrix.mode", v);
   };
-  // MatrixTable is memoized below; an inline arrow here would recreate
-  // `onTogglePin` — and defeat that memo — on every unrelated render (resize,
-  // layout measurement, live query).
+  // Stable callback: MatrixTable is memoized and an inline arrow would defeat it.
   const togglePin = React.useCallback((key: string) => {
     if (mode === "cards") return;
     const pinMode: PinMode = mode === "columns" ? "columns" : "rows";
@@ -256,32 +245,16 @@ export default function CashflowScreen() {
     if (pinMode === "rows") void kv.set(ROW_PIN_KEY, next ?? "");
     else void kv.set(COLUMN_PIN_KEY, next ?? "");
   }, [mode, pinnedByMode]);
-  const focusMonth = `${year}-${String(focusMonthNumber).padStart(2, "0")}` as MonthKey;
+  const focusMonth = makeMonthKey(year, focusMonthNumber);
 
-  // Everything from here to `tableMatrix` is derived from the whole ledger, and
-  // all of it used to be recomputed on EVERY render of this screen — including
-  // the ones caused by a pin, a layout measurement, a resize, or the router
-  // re-rendering the scaffold on navigation. On a real workbook that is the
-  // entire transaction list mapped, grouped and totalled before React can paint
-  // anything, which is the stutter felt when arriving at Mali Tablo and when
-  // opening the reading guide. It is derived from the data now, not from the
-  // render.
+  // Derived from the data, not the render: this maps the whole ledger.
   const creditCardIds = useMemo(
     () => new Set(sources.filter((src) => src.type === "credit_card").map((src) => src.id)),
     [sources],
   );
   const txLike = useTxLike();
 
-  // Year switcher bounds: back to the earliest data, forward only while there
-  // is actual data (e.g. installments spilling into next year).
-  //
-  // The floor is the first month that HOLDS something, not the anchor the
-  // chain starts from. An import writes an anchor, and an owner who brought
-  // one year of a ten-year workbook got the other nine as reachable years of
-  // blank rows with the balance columns filled in — the table said data was
-  // there and every cell said it was not. The chain still starts at the
-  // anchor, so the figures are unchanged; only the years nothing happened in
-  // stop being offered.
+  // The floor is the first month holding data, not the anchor: an import's anchor would otherwise offer empty years.
   const firstMonth = bundle
     ? (bundle.firstRecordedMonth != null && bundle.firstRecordedMonth > bundle.startMonth
         ? bundle.firstRecordedMonth
@@ -339,9 +312,7 @@ export default function CashflowScreen() {
 
   const orientation = mode === "columns" ? "monthsAsColumns" : "monthsAsRows";
   const showTable = mode !== "cards";
-  // This tab hosts its own scroller instead of `Screen`'s, and swaps between
-  // two, so the tab-press-returns-to-top hook is pointed at whichever view is
-  // mounted. The hook re-subscribes when the ref identity changes.
+  // This tab hosts its own scroller and swaps between two, so tab-press-to-top follows the mounted one.
   useScrollToTop(showTable ? tableRef : monthFocusScrollRef);
   // In column-focused view the categories are rows, so the editor label flips.
   const editLabel = orientation === "monthsAsColumns" ? tr.cashflow.editRows : tr.cashflow.editColumns;
@@ -350,10 +321,7 @@ export default function CashflowScreen() {
   const editColumns = () => router.push("/columns-editor");
 
   return (
-    // `wide`, not `workspace`: this is the one surface that is a dense grid all
-    // the way down. At 1920 the workspace cap left the ledger scrolling
-    // sideways with 350px of empty page beside it — the screen was asking to be
-    // used and the width refused.
+    // `wide`: the one dense grid, which the workspace cap would force into sideways scrolling.
     <Screen title={tr.cashflow.title} right={yearSwitcher} width="wide" scroll={false} padded>
       <View
         style={{
@@ -361,14 +329,7 @@ export default function CashflowScreen() {
           marginBottom: spacing.sm,
         }}
       >
-        {/* ONE toolbar, at every width.
-            It used to be two: six labelled buttons in a row above a tablet, and
-            below it a small button over five icon tiles whose captions were 9px
-            — three sizes under the smallest role the type scale declares. Same
-            five destinations, two control languages and two label sets, so the
-            same screen had to be relearned when the window changed. The band
-            spans the page, the entry action leads it, and the five tools share
-            the row underneath at any size. */}
+        {/* One toolbar at every width, so the screen is not relearned when the window changes. */}
         <View
           testID="cash-flow-action-toolbar"
           style={{
@@ -426,21 +387,10 @@ export default function CashflowScreen() {
         </Pressable>
       ) : null}
 
-      {/* No empty state any more, because there is no longer an "empty" the
-          table cannot draw. It stood here for a null bundle, which used to
-          mean "no opening balance is configured" as well as "still loading" —
-          so a workspace whose ledger had just been cleared was told the month
-          held no records and offered a link to the anchor, while the rows it
-          did hold sat behind that message unread. An unanchored ledger now
-          draws itself at zero, and `DataStateNotice` above owns loading and
-          failure. The anchor keeps its way in: the toolbar's own tool. */}
+      {/* No empty state: an unanchored ledger draws at zero, and DataStateNotice owns loading and failure. */}
       {bundle == null ? null : (
         <View style={{ flex: 1 }}>
-          {/* The pivot spans the page and centres its segments, so it sits in
-              the same place on a phone, a tablet and a zoomed desktop. The
-              guide toggle lives inside its strip, sharing the height, baseline
-              and selected treatment rather than standing beside it as a taller
-              bordered square. */}
+          {/* The pivot spans and centres so it sits in one place at every width; the guide toggle shares its strip. */}
           <View style={{ marginBottom: spacing.md, width: "100%" }}>
             <Segmented
               fill
@@ -461,22 +411,14 @@ export default function CashflowScreen() {
                 : undefined}
             />
           </View>
-          {/* It fades in, and its height changes in one step.
-              Animating the height meant the table underneath was re-laid out on
-              every frame of it — a twelve-column grid rebuilt a dozen times
-              inside one 220ms transition, which is the stutter the owner felt
-              on this button. Opacity is composited, so the panel still arrives
-              rather than blinking, and the grid moves exactly once. */}
+          {/* Fade only, height in one step: animating height re-lays out the grid every frame. */}
           {showTable && tableMatrix && showTableDetails ? (
             <FadeIn>
               <TableDetailsPanel
                 hasUncategorized={tableMatrix.hasUncategorized}
                 uncategorizedTotal={tableMatrix.uncategorizedTotal}
                 colorLabels={colorLabels}
-                onOpenUncategorized={() => router.push({
-                  pathname: "/cash-flow/item",
-                  params: { col: "__uncategorized", label: tr.cashflow.uncategorizedLegacy, year: String(year), kind: "uncategorized" },
-                })}
+                onOpenUncategorized={() => openUncategorized(router, year)}
               />
             </FadeIn>
           ) : null}
@@ -492,9 +434,10 @@ export default function CashflowScreen() {
                   orientation={orientation}
                   compact={!wide}
                   measuredHeight={tableAreaH}
+                  measuredWidth={tableAreaW}
                   colors={matrixColorsState.data}
                   colorLabels={colorLabels}
-          pinnedKey={pinnedByMode[mode === "columns" ? "columns" : "rows"]}
+                  pinnedKey={pinnedByMode[mode === "columns" ? "columns" : "rows"]}
                   onTogglePin={togglePin}
                 />
               ) : null}
@@ -518,10 +461,7 @@ export default function CashflowScreen() {
   );
 }
 
-/** The card view of the same matrix the table renders — one model, one owner.
- *  It used to rebuild `buildCashFlowMatrixModel` from the same arguments the
- *  screen had already memoized, so switching to cards paid for the whole
- *  ledger twice and then again on every re-render of this subtree. */
+/** Card view of the same memoized matrix model the table renders. */
 function MonthFocusTable({
   year,
   month,
@@ -543,7 +483,7 @@ function MonthFocusTable({
   const router = useRouter();
   const today = todayISO();
   const balanceColumns = useBalanceColumns();
-  const monthNumber = Number(month.slice(5, 7));
+  const monthNumber = monthOf(month);
   const monthData = bundle.yearMonths.find((item) => item.month === month);
   const flows = monthData ? monthFlowTotals(monthData) : null;
   const noteByCategory = new Map(
@@ -557,7 +497,7 @@ function MonthFocusTable({
     if (column.categoryId) {
       return () => router.push({ pathname: "/cell-editor", params: { month, categoryId: column.categoryId! } });
     }
-    if (column.key === "closing" && adjustmentNote) return () => router.push("/opening-balance" as Href);
+    if (column.key === "closing" && adjustmentNote) return () => router.push("/opening-balance");
     if (column.system) return undefined;
     return () => router.push({
       pathname: "/cash-flow/item",
@@ -587,7 +527,7 @@ function MonthFocusTable({
       >
         <IconButton
           icon={ChevronLeft}
-          label={monthLabel(`${year}-${String(Math.max(1, monthNumber - 1)).padStart(2, "0")}`)}
+          label={monthLabel(makeMonthKey(year, Math.max(1, monthNumber - 1)))}
           disabled={monthNumber <= 1}
           onPress={() => onMonthChange(monthNumber - 1)}
         />
@@ -596,7 +536,7 @@ function MonthFocusTable({
         </Text>
         <IconButton
           icon={ChevronRight}
-          label={monthLabel(`${year}-${String(Math.min(12, monthNumber + 1)).padStart(2, "0")}`)}
+          label={monthLabel(makeMonthKey(year, Math.min(12, monthNumber + 1)))}
           disabled={monthNumber >= 12}
           onPress={() => onMonthChange(monthNumber + 1)}
         />
@@ -676,11 +616,7 @@ function MonthFocusTable({
                   marginRight: spacing.sm,
                 }}
               >
-                {/* One drawing language in one box. This used to be a 15pt
-                    lucide Sigma, a 14pt colour emoji, or a 15pt lucide Flag
-                    depending on the column — three marks that agreed about
-                    nothing, stacked down a single column of the app's main
-                    financial surface. */}
+                {/* One drawing language for every column mark. */}
                 {column.computed ? (
                   <Sigma accessible={false} size={iconSize.compact} color={palette.tertiaryText} />
                 ) : category ? (
@@ -712,10 +648,7 @@ function MonthFocusTable({
         {matrix.hasUncategorized ? (
           <Pressable
             accessibilityRole="button"
-            onPress={() => router.push({
-              pathname: "/cash-flow/item",
-              params: { col: "__uncategorized", label: tr.cashflow.uncategorizedLegacy, year: String(year), kind: "uncategorized" },
-            })}
+            onPress={() => openUncategorized(router, year)}
             style={(state) => ({ padding: spacing.md, backgroundColor: palette.warning + "12", ...interactionSurface(palette, state) })}
           >
             <Spread>
@@ -765,10 +698,7 @@ function TableDetailsPanel({
         <Text style={[type.heading, { color: palette.textStrong, flex: 1, minWidth: 0 }]}>{tr.cashflow.tableGuide}</Text>
       </View>
       <Text style={[type.small, { color: palette.textSecondary }]}>{tr.cashflow.tableHint}</Text>
-      {/* The marks, said once and shown once. A guide that explains holding a
-          cell without showing what the four colours are called leaves the
-          reader to open the sheet to find out — and these are the OWNER's
-          names, so a fixed sentence could not have listed them. */}
+      {/* The marks use the owner's own colour names, so the guide lists them rather than a fixed sentence. */}
       <View>
         <Text style={[type.small, { color: palette.textSecondary }]}>{tr.cashflow.tableColorHint}</Text>
         <View
@@ -838,11 +768,7 @@ function TableDetailsPanel({
   );
 }
 
-// Memoized: this builds ~300 cell elements (25 columns × 12 months) plus their
-// row/column wrappers. Unmemoized, every parent render — a resize event, the
-// table-area layout measurement, a pin/pivot toggle, any of the ~8 live
-// queries the screen subscribes to — rebuilt the whole tree from scratch even
-// though the arithmetic behind it (`tableMatrix`) was already memoized.
+// Memoized: ~300 cells, and most parent renders change none of them.
 const MatrixTable = React.memo(function MatrixTable({
   year,
   bundle,
@@ -851,6 +777,7 @@ const MatrixTable = React.memo(function MatrixTable({
   orientation,
   compact,
   measuredHeight,
+  measuredWidth,
   pinnedKey,
   onTogglePin,
   colors,
@@ -864,6 +791,7 @@ const MatrixTable = React.memo(function MatrixTable({
   orientation: "monthsAsRows" | "monthsAsColumns";
   compact: boolean;
   measuredHeight: number;
+  measuredWidth: number;
   pinnedKey: string | null;
   onTogglePin: (key: string) => void;
   colors: ReturnType<typeof useMatrixColorsState>["data"];
@@ -871,7 +799,6 @@ const MatrixTable = React.memo(function MatrixTable({
   colorLabels: MatrixColorLabels | null;
   scrollRef: React.RefObject<ScrollView | null>;
 }) {
-  const { width: viewportWidth } = useWindowDimensions();
   const router = useRouter();
   const { palette } = useTheme();
   const userId = useUserId();
@@ -897,16 +824,12 @@ const MatrixTable = React.memo(function MatrixTable({
   >(null);
   const currentMonth = monthKeyOf(today);
 
-  // Rebuilt from scratch every render before, same cost class as the grid
-  // itself. Keyed off the same `cellNotes`/`bundle` references the live
-  // queries already hand down, so an unrelated render is a no-op here too.
+  // Keyed on the live-query references, so an unrelated render is a no-op.
   const noteByCell = useMemo(
     () => new Map(cellNotes.map((note) => [`${note.month}:${note.categoryId}`, note.body])),
     [cellNotes],
   );
-  // A reconciled month looks exactly like an ordinary one in this table, so the
-  // closing figure silently stopped matching the flows above it. It carries the
-  // same marker a cell note does — the cell has something extra behind it.
+  // A reconciled month carries a marker, or its closing figure silently stops matching the flows above.
   const adjustmentByMonth = useMemo(
     () => new Map(
       bundle.yearMonths
@@ -917,20 +840,9 @@ const MatrixTable = React.memo(function MatrixTable({
   );
   const { months, columns } = matrix;
 
-  /**
-   * The two pivots do not share a useful first-column shape.
-   *
-   * - Row-focused: the fixed column contains month names, so keeping it narrow
-   *   buys another complete financial column on a phone.
-   * - Column-focused: the fixed column contains user-authored category names,
-   *   so it gets prose width and may grow vertically instead of crushing text
-   *   into the same month-sized box.
-   */
-  // The compact month rail follows the longest translated month instead of a
-  // category-derived fixed width. Web's measured 13px semibold glyph ceiling
-  // is 7.7px, while iOS shapes the same word a few points wider; the 96pt
-  // platform floor keeps "Temmuz" whole instead of letting its final letter
-  // wrap. The other pivot keeps its wider prose rail.
+  // Row-focused: the fixed column holds month names, so it stays narrow. Column-focused: it holds
+  // user-authored names, so it gets prose width.
+  // The month rail fits the longest month name; the platform floor keeps "Temmuz" from wrapping on iOS.
   const compactMonthHeadWidth = Math.max(
     96,
     Math.ceil(
@@ -943,10 +855,6 @@ const MatrixTable = React.memo(function MatrixTable({
     : (compact ? 112 : 168);
   const HEAD_HORIZONTAL_PADDING = orientation === "monthsAsRows" && compact ? spacing.md : spacing.sm;
   const visibleColumnCount = orientation === "monthsAsRows" ? columns.length : months.length;
-  // `Screen`'s max width includes its horizontal padding. Size against the
-  // actual inner surface so the last fitted column ends on the card edge
-  // instead of leaving a gap or creating a hidden 32px overflow.
-  const availableTableWidth = Math.min(viewportWidth, 1200) - spacing.lg * 2;
   const longestValueChars = columns.reduce(
     (longest, column) => Math.max(
       longest,
@@ -962,7 +870,7 @@ const MatrixTable = React.memo(function MatrixTable({
   const longestHeaderChars = orientation === "monthsAsRows"
     ? columns.reduce((longest, column) => Math.max(longest, Math.min(column.label.length, 24)), 0)
     : months.reduce((longest, month) => Math.max(longest, (compact ? shortMonthLabel(month.month) : monthName(month.month)).length), 0);
-  const bodyTableWidth = Math.max(1, availableTableWidth - HEAD_W);
+  const bodyTableWidth = Math.max(1, measuredWidth - HEAD_W);
   const CELL_W = ledgerCellWidth({
     gridWidth: bodyTableWidth,
     valueChars: longestValueChars,
@@ -971,17 +879,9 @@ const MatrixTable = React.memo(function MatrixTable({
     compact,
   });
   const fontSize = compact ? type.caption.fontSize : type.label.fontSize;
-  // The optional details panel now lives above this flex area, so the table
-  // receives all remaining height while the panel is hidden or open.
-  // Size the table to its natural content (StickyTable's fixed header/row
-  // heights) but never taller than the space measured above the tab bar. When
-  // there are few items (e.g. a short column-focused view) the table shrinks
-  // instead of stretching to a fixed height with dead space; with many rows it
-  // caps at the available height and scrolls inside.
+  // Natural content height capped at the measured space: few rows shrink, many rows scroll inside.
   const rowCount = orientation === "monthsAsRows" ? months.length : columns.length;
-  // StickyTable measures the actual header copy and adds only its shared small
-  // inset. This is the minimum used for initial content sizing; category
-  // headers grow from their text while short month headers stay at this floor.
+  // Initial sizing floor; StickyTable grows headers from their text.
   const naturalTableH = STICKY_HEADER_HEIGHT + rowCount * STICKY_ROW_HEIGHT + spacing.sm;
   const availTableH = Math.max(160, measuredHeight);
   const tableHeight = Math.min(naturalTableH, availTableH);
@@ -1002,12 +902,7 @@ const MatrixTable = React.memo(function MatrixTable({
     });
   }, [columns, year, router]);
 
-  // One dispatcher shared by every cell, keyed by (columnKey, month) at press
-  // time, instead of a fresh `() => router.push(...)` closure built per cell
-  // per render (the old `pressFor`). MatrixCell is memoized below; a
-  // per-render closure prop would defeat that memo regardless of `useCallback`
-  // on the function that *returns* it, since each call still allocates a new
-  // function.
+  // One stable dispatcher for every cell; a per-cell closure would defeat MatrixCell's memo.
   const onCellPress = React.useCallback((columnKey: string, month: MonthKey) => {
     const c = columns.find((col) => col.key === columnKey);
     if (!c) return;
@@ -1015,24 +910,16 @@ const MatrixTable = React.memo(function MatrixTable({
       router.push({ pathname: "/cell-editor", params: { month, categoryId: c.categoryId } });
       return;
     }
-    // A reconciled closing figure is the one system cell with somewhere to go:
-    // the adjustment that moved it. Root-level route, so what sits underneath
-    // is this screen and both the back button and the edge swipe return here.
+    // A reconciled closing figure opens the adjustment that moved it. Root route, so back and the edge swipe return here.
     if (c.key === "closing" && adjustmentByMonth.has(month)) {
-      router.push("/opening-balance" as Href);
+      router.push("/opening-balance");
       return;
     }
     if (c.system) return;
     openBreakdown(c.key); // computed column cell → its breakdown
   }, [columns, adjustmentByMonth, router, openBreakdown]);
 
-  /**
-   * Hold anything on the grid to mark it.
-   *
-   * The gesture carries the target, so the sheet never asks "which cell did
-   * you mean" and the app needs no permanently visible colour control on a
-   * screen whose whole job is showing money.
-   */
+  /** Hold anything on the grid to mark it. The gesture carries the target, so the sheet never asks which cell and no colour control sits on the grid. */
   const openColorSheet = React.useCallback(
     (scope: MatrixColorScope, itemKey: string | null, month: string | null, label: string) =>
       setColorTarget({ scope, itemKey, month, label }),
@@ -1075,12 +962,7 @@ const MatrixTable = React.memo(function MatrixTable({
     }
   }, [colorTarget, userId]);
 
-  // Builds the ~300 cell elements plus their row/column wrappers. Honest
-  // deps: only what can actually change a cell's value, note, press target or
-  // label. A resize, the table-area layout measurement, or a pin toggle
-  // touches none of these, so the memo skips rebuilding the tree entirely —
-  // StickyTable then receives the exact same row/column arrays it had before,
-  // not just shallow-equal ones.
+  // Deps are only what changes a cell's value, note, target or label, so StickyTable gets identical arrays.
   const { cornerLabel, stickyColumns, stickyRows, currentColumnKey } = useMemo(() => {
     const noteFor = (column: { key: string; categoryId?: string | null }, month: MonthKey): string | undefined =>
       column.key === "closing"
@@ -1104,15 +986,8 @@ const MatrixTable = React.memo(function MatrixTable({
     const cellNode = (column: CashFlowMatrixColumn, month: MonthKey, highlighted: boolean): React.ReactNode => {
       const value = column.values.get(month) ?? null;
       const note = noteFor(column, month);
-      // Zero means two different things in this grid, and it used to be drawn
-      // and spoken as if it meant one. In a CATEGORY cell, zero is "nothing
-      // happened": the cell stays blank and announces itself as empty. In a
-      // BALANCE column, zero is a real balance the chain arrived at, so a
-      // blank cell there reads as "not calculated" — the month that closed at
-      // exactly ₺0,00 simply vanished from the running balance, while a screen
-      // reader was told "₺0,00" for all 91 genuinely-empty cells beside it.
       const balanceColumn = column.key === "opening" || column.key === "closing";
-      const shown = balanceColumn ? value : value === 0 ? null : value;
+      const colorToken = resolveCellToken(colorIndex, column.categoryId ?? column.key, month);
       return (
         <MatrixCell
           columnKey={column.key}
@@ -1120,8 +995,8 @@ const MatrixTable = React.memo(function MatrixTable({
           zeroIsMeaningful={balanceColumn}
           canPress={canPressCell(column, month)}
           onCellPress={onCellPress}
-          colorToken={resolveCellToken(colorIndex, column.categoryId ?? column.key, month)}
-          colorName={nameForToken(resolveCellToken(colorIndex, column.categoryId ?? column.key, month))}
+          colorToken={colorToken}
+          colorName={nameForToken(colorToken)}
           onCellLongPress={onCellLongPress}
           value={value}
           note={note}
@@ -1131,7 +1006,7 @@ const MatrixTable = React.memo(function MatrixTable({
           accessibilityLabel={tr.a11y.matrixCell(
             monthLabel(month),
             column.label,
-            shown == null ? tr.a11y.emptyValue : formatMinorCompact(shown),
+            hasPrintableValue(value, balanceColumn) ? formatMinorCompact(value) : tr.a11y.emptyValue,
             Boolean(note),
           )}
         />
@@ -1156,13 +1031,8 @@ const MatrixTable = React.memo(function MatrixTable({
           labelHighlight: slot.month === currentMonth,
           rowHighlight: slot.month === currentMonth,
           markEdge: columnMarkEdge(slot.month),
-          // The month is highlighted per CELL in both orientations, not by the
-              // row underneath it. The row wash sits below a marked cell's own
-              // fill, so a marked cell in the current month lost the wash
-              // entirely — while the same cell in the other orientation kept
-              // it, because there the cell painted it itself. One painter, one
-              // answer, whichever way the pivot is turned.
-              cells: columns.map((c) => cellNode(c, slot.month, slot.month === currentMonth)),
+          // Highlighted per cell, not by the row wash, which sits under a marked cell's own fill and is lost.
+          cells: columns.map((c) => cellNode(c, slot.month, slot.month === currentMonth)),
         })),
       };
     }
@@ -1232,27 +1102,12 @@ const MatrixTable = React.memo(function MatrixTable({
   );
 });
 
-/**
- * Whether a cell prints anything at all.
- *
- * Zero means two different things in this grid: in a category cell it is "no
- * activity" and stays blank, in a balance column it is a real balance the
- * chain arrived at. One predicate, so the drawn cell and its spoken label can
- * never disagree again — they did, and 91 of 240 cells were announced as
- * "₺0,00" while showing nothing.
- */
+/** Whether a cell prints anything. Zero is blank in a category cell and a real value in a balance column; one predicate keeps the drawn and spoken cell in agreement. */
 function hasPrintableValue(value: number | null, zeroIsMeaningful: boolean): value is number {
   return value != null && (value !== 0 || zeroIsMeaningful);
 }
 
-// Memoized: each cell is a leaf in a ~300-node grid, re-rendered only when
-// its own props change. `onCellPress` is the one non-primitive prop — it must
-// stay referentially stable (see MatrixTable's `useCallback`) or this memo is
-// a no-op.
-/** A figure's colour in the grid: only a debt is coloured, and only one way. */
-const matrixValueColor = (value: number | null, palette: Palette): string =>
-  value != null && value < 0 ? palette.negativeText : palette.text;
-
+// Memoized leaf; `onCellPress` must stay referentially stable or this memo is a no-op.
 const MatrixCell = React.memo(function MatrixCell({
   columnKey,
   month,
@@ -1294,23 +1149,15 @@ const MatrixCell = React.memo(function MatrixCell({
   return (
     <Pressable
       disabled={!onPress && !onLongPress}
-      // The grid is ONE tab stop, not 240. Reaching the navigation bar behind a
-      // two-year ledger used to take 240 Tab presses; the arrows now move
-      // between cells (see `useGridKeyboard`) and Tab moves past the table.
-      // Still focusable programmatically, so Enter opens the focused cell.
+      // The grid is one tab stop; arrows move between cells (useGridKeyboard) and Enter opens the focused one.
       tabIndex={-1}
       onPress={onPress}
       onLongPress={onLongPress}
-      // A cell that cannot be opened (a system column, or one with nothing to
-      // edit) still has to announce its month/column/value. A labelled group
-      // keeps that context without implying an action.
+      // A cell that cannot be opened still announces month/column/value, as a labelled group.
       role={onPress ? "button" : "group"}
-      // The mark is SPOKEN as well as painted. A cell whose only difference is
-      // a wash of colour is a cell that says nothing to a screen reader and
-      // nothing to someone who cannot separate the hues.
+      // The mark is spoken as well as painted.
       accessibilityLabel={colorToken ? `${accessibilityLabel}. ${tr.matrixColor.marked(colorName ?? "")}` : accessibilityLabel}
-      // Holding a cell marks it. Sighted users find that by trying it; this is
-      // how everyone else does, without a permanent control on the grid.
+      // Hold to mark; sighted users find it by trying, everyone else hears it here.
       accessibilityHint={[note, onLongPress ? tr.matrixColor.action : null].filter(Boolean).join(". ") || undefined}
       style={(state) => [
         {
@@ -1323,14 +1170,7 @@ const MatrixCell = React.memo(function MatrixCell({
         interactionSurface(palette, state, { enabled: Boolean(onPress) }),
       ]}
     >
-      {/* The current-month wash is a LAYER, not a background.
-          A second `backgroundColor` in the style array above does not composite
-          with the first — it replaces it — so a colour-marked cell in the
-          current month lost its mark entirely and read as an ordinary current
-          cell. Drawn as an overlay it does what the old comment always claimed:
-          the mark shows through underneath, and the month still reads as the
-          month. It is behind the value because a wash over the digits would
-          tint the one thing the grid exists to show. */}
+      {/* The current-month wash is an overlay: a second backgroundColor replaces the colour mark instead of compositing. */}
       {highlighted ? (
         <View
           pointerEvents="none"
@@ -1345,7 +1185,7 @@ const MatrixCell = React.memo(function MatrixCell({
             testID="matrix-value"
             minor={value}
             colorized={false}
-            color={matrixValueColor(value, palette)}
+            color={value < 0 ? palette.negativeText : palette.text}
             style={[type.amountSm, { maxWidth: "100%", fontSize, textAlign: "right" }]}
           />
         </View>
@@ -1359,8 +1199,7 @@ const MatrixCell = React.memo(function MatrixCell({
             width: 6,
             height: 6,
             borderRadius: circle(6),
-            // A reconciled month is not a note, and wearing the note's amber
-            // dot said it was — same mark, nothing behind it when tapped.
+            // A reconciled month is not a note, so it does not wear the note's dot.
             backgroundColor: markerTone === "adjustment" ? palette.primary : palette.warning,
           }}
         />

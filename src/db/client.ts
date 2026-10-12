@@ -80,10 +80,16 @@ export function acknowledgeDatabaseRecoveryNotice(): void {
 
 async function open(): Promise<SQLiteDatabase> {
   const db = await openDatabaseAsync(DB_NAME, { enableChangeListener: true });
-  // WAL needs shared-memory VFS hooks that wa-sqlite's OPFS backend lacks.
-  if (Platform.OS !== "web") await db.execAsync("PRAGMA journal_mode = WAL;");
-  await db.execAsync("PRAGMA foreign_keys = ON;");
-  return db;
+  try {
+    // WAL needs shared-memory VFS hooks that wa-sqlite's OPFS backend lacks.
+    if (Platform.OS !== "web") await db.execAsync("PRAGMA journal_mode = WAL;");
+    await db.execAsync("PRAGMA foreign_keys = ON;");
+    return db;
+  } catch (error) {
+    // Left open, the connection keeps the file (on web OPFS's exclusive handle) and every retry meets the lock.
+    await db.closeAsync().catch(() => {});
+    throw error;
+  }
 }
 
 /**
@@ -107,10 +113,7 @@ async function setAsideCorruptDb(): Promise<void> {
     const main = new File(dir, DB_NAME);
     if (main.exists) {
       preservedFileName = `helix.corrupt-${recoveredAt}.db`;
-      // Awaited, and not only because SDK 56 made `move` asynchronous. An
-      // un-awaited rejection here escaped this `try` entirely, so a failed
-      // rename skipped the fallback below and still reported the file as
-      // preserved — the one outcome this function exists to prevent.
+      // Awaited: an un-awaited rejection would skip the fallback below and still report the file as preserved.
       await main.move(new File(dir, preservedFileName));
     }
     for (const suffix of ["-wal", "-shm"]) {
@@ -135,13 +138,8 @@ function isCorruptDatabaseError(error: unknown): boolean {
 }
 
 /**
- * Open the database, tolerating two transient failure modes seen at launch:
- *   • "not a database" — a corrupt header; move it aside once and recreate.
- *   • an OPFS access-handle still held by the *previous* page's sqlite worker
- *     on web (the exclusive SyncAccessHandle hasn't been released yet). This
- *     surfaced as the intermittent "Tekrar dene" screen that a plain refresh
- *     often couldn't clear ("only got in by luck"). Back off briefly and retry
- *     a few times before giving up so the lock has time to release.
+ * A corrupt header is moved aside once and the file recreated. On web the previous page's worker can still hold
+ * OPFS's exclusive handle after a refresh, so other failures back off and retry before giving up.
  */
 async function openWithRetry(): Promise<SQLiteDatabase> {
   const maxAttempts = 6;
@@ -157,7 +155,7 @@ async function openWithRetry(): Promise<SQLiteDatabase> {
         await setAsideCorruptDb();
         continue; // retry immediately after moving the corrupt file aside
       }
-      await delay(150 * (attempt + 1)); // ~150ms → ~750ms backoff for a held lock
+      if (attempt < maxAttempts - 1) await delay(150 * (attempt + 1));
     }
   }
   throw lastErr;
@@ -173,9 +171,7 @@ export function getSqliteAsync(): Promise<SQLiteDatabase> {
   return handle;
 }
 
-// Web: release the OPFS access handle when the page goes away so the next load
-// (or a refresh) can immediately re-acquire it instead of racing a still-open
-// worker. Best-effort — the page is unloading, so we don't await.
+// Web: release the OPFS handle on unload so the next load can re-acquire it; not awaited, the page is going away.
 if (Platform.OS === "web" && typeof window !== "undefined") {
   const closeDb = () => {
     const current = handle;
@@ -187,14 +183,8 @@ if (Platform.OS === "web" && typeof window !== "undefined") {
 }
 
 /**
- * Serialize every DB transaction through one queue. expo-sqlite's async driver
- * shares a single connection, and two overlapping `withTransactionAsync` calls
- * issue nested BEGINs → "cannot start a transaction within a transaction",
- * which wedged the worker (this surfaced as an infinite re-render / white
- * screen right after sign-in, when maintenance + the initial sync pull ran at
- * once). Callers MUST route transactions through here rather than calling
- * `db.withTransactionAsync` directly. Tasks never nest (no task opens another
- * transaction), so this can't deadlock.
+ * Every transaction goes through one queue: the driver shares a single connection, and overlapping
+ * `withTransactionAsync` calls issue nested BEGINs that wedge the worker. Tasks never nest, so it cannot deadlock.
  */
 let txChain: Promise<void> = Promise.resolve();
 export async function withTransaction(task: () => Promise<void>): Promise<void> {

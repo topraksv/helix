@@ -1,13 +1,5 @@
 /**
- * What one page of sync COSTS the local database.
- *
- * Every other sync suite asks whether the right rows arrive. This one asks how
- * many statements it took, because the answer was "one per row" in both
- * directions and nothing said so: a page is 1000 rows on the way in and a
- * batch 200 on the way out, and each row was preceded by its own point read.
- * On web that read is a postMessage round trip to the SQLite worker, so a first
- * sync of a real ledger spent most of its time waiting on the bridge rather
- * than on Postgres.
+ * Counts the statements a push batch costs, through an intercepting client. A per-row point read is a postMessage round trip to the SQLite worker on web.
  *
  * The assertions are written as a per-page BOUND rather than an exact count, so
  * they survive an extra statement that does not scale with the page — and fail

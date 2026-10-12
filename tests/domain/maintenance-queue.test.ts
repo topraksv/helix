@@ -1,14 +1,4 @@
-/**
- * Maintenance concurrency contract.
- *
- * A module-level boolean used to guard this: `if (running) return;`. That made a
- * SKIPPED pass look exactly like a completed one, because the early return
- * resolved `Promise<void>` just like success. `reassignAndDeletePerson` awaits a
- * pass specifically to reconcile derived expected rows under the replacement
- * person's classification, so whenever the throttled lifecycle kick was
- * in flight that reconciliation silently never happened. The flag was also not
- * user-scoped, so one account's pass could swallow another account's request.
- */
+/** A skipped pass must not resolve like a completed one, and the queue is per user. */
 
 import { beforeEach, describe, expect, it } from "vitest";
 
@@ -110,12 +100,10 @@ describe("runMaintenanceQueued", () => {
   });
 
   it("a rejection while a successor is queued still runs the successor", async () => {
-    let releaseFirst: (() => void) | undefined;
     let rejectFirst: ((error: Error) => void) | undefined;
     const ran: string[] = [];
     const first = runMaintenanceQueued("u1", () =>
-      new Promise<void>((resolve, reject) => {
-        releaseFirst = resolve;
+      new Promise<void>((_resolve, reject) => {
         rejectFirst = reject;
       }));
     const second = runMaintenanceQueued("u1", async (userId: string) => { ran.push(userId); });
@@ -125,7 +113,6 @@ describe("runMaintenanceQueued", () => {
     await expect(first).rejects.toThrow();
     await second;
     expect(ran).toEqual(["u1"]);
-    expect(releaseFirst).toBeDefined();
   });
 
   it("clears its tail so a later request starts a fresh chain", async () => {
@@ -137,5 +124,46 @@ describe("runMaintenanceQueued", () => {
     expect(starts).toEqual(["u1"]);
     releases[0]?.();
     await later;
+  });
+});
+
+describe("createSerialQueue", () => {
+  it("keeps a third same-key request behind the still-running second request", async () => {
+    const queue = createSerialQueue<void>();
+    const starts: string[] = [];
+    let releaseFirst: (() => void) | undefined;
+    let releaseSecond: (() => void) | undefined;
+    const first = queue("user", async () => {
+      starts.push("first");
+      await new Promise<void>((resolve) => { releaseFirst = resolve; });
+    });
+    const second = queue("user", async () => {
+      starts.push("second");
+      await new Promise<void>((resolve) => { releaseSecond = resolve; });
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(starts).toEqual(["first"]);
+    releaseFirst?.();
+    await first;
+    await Promise.resolve();
+    const third = queue("user", async () => { starts.push("third"); });
+    await Promise.resolve();
+    expect(starts).toEqual(["first", "second"]);
+    releaseSecond?.();
+    await Promise.all([second, third]);
+    expect(starts).toEqual(["first", "second", "third"]);
+  });
+
+  it("lets a settled key go, so the next request starts as a first one", async () => {
+    // A tail kept past its run would hold one entry per key for the process's
+    // life; the visible trace is the extra turn a chained start takes.
+    const queue = createSerialQueue<void>();
+    await queue("user", async () => {});
+    let started = false;
+    const next = queue("user", async () => { started = true; });
+    await Promise.resolve();
+    expect(started).toBe(true);
+    await next;
   });
 });

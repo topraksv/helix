@@ -78,18 +78,7 @@ describe("sync merge policy", () => {
   });
 });
 
-/**
- * A failed token refresh has two completely different meanings and the engine
- * used to give them one answer.
- *
- * `tryRefreshSession` returned a bare boolean, so "the refresh token was
- * revoked" and "we could not reach the auth service at all" both became
- * `false`. Both then produced "Eşitleme için tekrar giriş yapman gerekiyor" AND
- * stopped the retry backoff — telling a user whose session is perfectly valid,
- * and who is simply in a tunnel, to go and sign in again at a login screen they
- * cannot reach either. Only an answer FROM the auth service can retire a
- * session; silence from the network is a network problem.
- */
+/** Only an answer FROM the auth service retires a session; an unreachable service is a network problem. */
 describe("token refresh failure classification", () => {
   it("treats an unreachable auth service as a network problem, not a dead session", () => {
     // supabase-js's own class for a transport failure.
@@ -99,6 +88,8 @@ describe("token refresh failure classification", () => {
     expect(classifyRefreshFailure(new Error("network request failed"))).toBe("unavailable");
     expect(classifyRefreshFailure(new Error("timeout of 10000ms exceeded"))).toBe("unavailable");
     expect(classifyRefreshFailure(new Error("Gateway Timeout (504)"))).toBe("unavailable");
+    // A refresh aborted by a session-epoch stop or a timeout never reached the service.
+    expect(classifyRefreshFailure(new DOMException("This operation was aborted", "AbortError"))).toBe("unavailable");
   });
 
   it("retires the session only when the service actually answered", () => {

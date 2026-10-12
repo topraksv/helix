@@ -154,9 +154,8 @@ async function planNotifications(userId: string): Promise<PlannedNotification[]>
 
   for (const e of expected) {
     const name = subNames.get(e.ref_id) ?? incomeNames.get(e.ref_id) ?? tr.common.paymentFallback;
-    const amount = e.amount_is_estimated
-      ? `${tr.subs.estimatedAmount} · ${formatMinorCompact(e.amount_minor, e.currency)}`
-      : formatMinorCompact(e.amount_minor, e.currency);
+    const compact = formatMinorCompact(e.amount_minor, e.currency);
+    const amount = e.amount_is_estimated ? `${tr.subs.estimatedAmount} · ${compact}` : compact;
     if (e.direction === "in") {
       if (e.due_date >= today) {
         planned.push({ date: e.due_date, title: tr.notif.salaryTitle, body: tr.notif.salaryBody(name, amount), target: { kind: "expected" } });

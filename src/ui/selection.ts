@@ -3,11 +3,7 @@ import type { LucideIcon } from "lucide-react-native";
 export interface SelectionOption<T extends string = string> {
   value: T;
   label: string;
-  /**
-   * The tile's mark. A component, like every other mark in the app — it used
-   * to be the raw stored emoji string, which is why a template tile and the
-   * lucide icon in the row beside it were drawn by two different engines.
-   */
+  /** The tile's mark, as a component. */
   icon?: LucideIcon | null;
 }
 

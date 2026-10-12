@@ -1,6 +1,15 @@
-import { describe, expect, it } from "vitest";
-import { findSubscriptionCategory, subscriptionCostSummary, variableAmountBand } from "../../src/domain/subscriptions";
-import { normalizedMonthlyLoadMinor } from "../../src/domain/analytics";
+import { describe, expect, it, vi } from "vitest";
+import {
+  AMOUNT_LABELS,
+  findSubscriptionCategory,
+  hasUnknownAmount,
+  isVariableSubscriptionOccurrence,
+  lastRealizedCharges,
+  needsVariableAmountEntry,
+  occurrenceAmountText,
+  subscriptionCostSummary,
+  variableAmountBand,
+} from "../../src/domain/subscriptions";
 
 describe("subscription category reuse", () => {
   it("reuses the same live expense category with Turkish-aware normalization", () => {
@@ -10,6 +19,7 @@ describe("subscription category reuse", () => {
     ];
     expect(findSubscriptionCategory(categories, "Abonelikler")?.id).toBe("existing");
     expect(findSubscriptionCategory(categories, "abonelikler")?.id).toBe("existing");
+    expect(findSubscriptionCategory([categories[1]!], "Abonelikler")).toBeNull();
   });
 
   it("does not revive a deleted category through the read path", () => {
@@ -20,13 +30,25 @@ describe("subscription category reuse", () => {
       ),
     ).toBeNull();
   });
+
+  it("normalizes category names without changing category eligibility", () => {
+    const categories = [
+      { id: "match", name: "  ABONELİKLER   VE SERVİSLER ", kind: "expense" as const, deletedAt: null },
+      { id: "income", name: "Abonelikler ve Servisler", kind: "income" as const, deletedAt: null },
+    ];
+    expect(findSubscriptionCategory(categories, "abonelikler ve servisler")?.id).toBe("match");
+    expect(findSubscriptionCategory([
+      { id: "wrong", name: "Market", kind: "expense", deletedAt: null },
+      { id: "right", name: "Abonelikler", kind: "expense", deletedAt: null },
+    ], "abonelikler")?.id).toBe("right");
+    expect(findSubscriptionCategory([
+      { id: "spacing", name: "ab c", kind: "expense", deletedAt: null },
+    ], "a bc")).toBeNull();
+    expect(AMOUNT_LABELS).toEqual({ unknown: "Tutar belirtilmedi", estimated: "Tahmini tutar" });
+  });
 });
 
-/**
- * `price_history` has been written on every price edit since the table
- * existed and read by nothing. These fix what reading it means, so a stored
- * row can never be presented as a change it is not.
- */
+/** What reading `price_history` means, so a stored row is never presented as a change it is not. */
 describe("subscription cost summary", () => {
   const TODAY = "2026-08-18";
   const rule = (over: Partial<Parameters<typeof subscriptionCostSummary>[0][number]> = {}) => ({
@@ -43,7 +65,7 @@ describe("subscription cost summary", () => {
     subs: Parameters<typeof subscriptionCostSummary>[0],
     history: Parameters<typeof subscriptionCostSummary>[1] = [],
     limit?: number,
-  ) => subscriptionCostSummary(subs, history, TODAY, normalizedMonthlyLoadMinor, limit);
+  ) => subscriptionCostSummary(subs, history, TODAY, limit);
 
   it("states the yearly cost as what the rules charge in a year, not twelve rounded months", () => {
     const result = summary([
@@ -187,11 +209,7 @@ describe("subscription cost summary", () => {
   });
 });
 
-/**
- * A variable bill stores 0 for "the invoice has not arrived". Three surfaces
- * were formatting that zero as ₺0,00 — which asserts a free bill — and the
- * monthly total was absorbing it without saying so.
- */
+/** A variable bill stores 0 for "invoice not arrived"; it must never render as ₺0,00 or join the total silently. */
 describe("variable subscription amounts", () => {
   const TODAY = "2026-08-23";
   const variable = (over = {}) => ({
@@ -211,7 +229,6 @@ describe("variable subscription amounts", () => {
       [variable(), { ...variable({ id: "netflix", name: "Netflix", amountMinor: 200_00, amountMode: "fixed" as const }) }],
       [],
       TODAY,
-      normalizedMonthlyLoadMinor,
     );
     expect(result.unknownAmountCount).toBe(1);
     // The total is still stated; what changes is that the omission is declared.
@@ -223,7 +240,6 @@ describe("variable subscription amounts", () => {
       [variable({ amountMinor: 1_450_00 })],
       [],
       TODAY,
-      normalizedMonthlyLoadMinor,
     );
     expect(result.unknownAmountCount).toBe(0);
     expect(result.monthlyTryMinor).toBe(1_450_00);
@@ -231,7 +247,7 @@ describe("variable subscription amounts", () => {
 
   it("does not count a cancelled variable rule", () => {
     expect(
-      subscriptionCostSummary([variable({ isActive: false })], [], TODAY, normalizedMonthlyLoadMinor).unknownAmountCount,
+      subscriptionCostSummary([variable({ isActive: false })], [], TODAY).unknownAmountCount,
     ).toBe(0);
   });
 
@@ -258,5 +274,49 @@ describe("variable subscription amounts", () => {
     expect(variableAmountBand([
       { subscriptionId: "elektrik", amountMinor: 0, currency: "TRY", effectiveFrom: "2026-05-01" },
     ], "TRY")).toBeNull();
+  });
+
+  it("distinguishes fixed, estimated, and unknown subscription amounts", () => {
+    const subscriptions = new Map([
+      ["variable", { amountMode: "variable" as const }],
+      ["fixed", { amountMode: "fixed" as const }],
+    ]);
+    const variable = { kind: "subscription", refId: "variable", amountIsEstimated: true };
+
+    expect(isVariableSubscriptionOccurrence(variable, subscriptions)).toBe(true);
+    expect(isVariableSubscriptionOccurrence({ kind: "recurring_income", refId: "variable" }, subscriptions)).toBe(false);
+    expect(isVariableSubscriptionOccurrence({ kind: "subscription", refId: "missing" }, subscriptions)).toBe(false);
+    expect(needsVariableAmountEntry(variable, subscriptions)).toBe(true);
+    expect(needsVariableAmountEntry({ ...variable, amountIsEstimated: false }, subscriptions)).toBe(false);
+    expect(hasUnknownAmount({ amountMinor: 0, currency: "TRY", amountIsEstimated: true })).toBe(true);
+    expect(hasUnknownAmount({ amountMinor: 0, currency: "TRY", amountIsEstimated: false })).toBe(false);
+
+    const format = vi.fn((amountMinor: number, currency: string) => `${currency}:${amountMinor}`);
+    const labels = { unknown: "bilinmiyor", estimated: "tahmini" };
+    expect(occurrenceAmountText({ amountMinor: 500, currency: "TRY" }, format, labels)).toBe("TRY:500");
+    expect(occurrenceAmountText({ amountMinor: 0, currency: "TRY", amountIsEstimated: true }, format, labels)).toBe("bilinmiyor");
+    expect(occurrenceAmountText({ amountMinor: 500, currency: "TRY", amountIsEstimated: true }, format, labels)).toBe("TRY:500 · tahmini");
+  });
+});
+
+describe("each subscription's last realized charge", () => {
+  it("keeps the latest realized date per subscription and ignores the rest", () => {
+    const latest = lastRealizedCharges([
+      { subscriptionId: "s1", status: "realized", effectiveDate: "2026-05-01" },
+      { subscriptionId: "s1", status: "realized", effectiveDate: "2026-06-01" },
+      { subscriptionId: "s1", status: "realized", effectiveDate: "2026-04-01" },
+      { subscriptionId: "s1", status: "pending", effectiveDate: "2026-07-01" },
+      { subscriptionId: "s2", status: "realized", effectiveDate: "2026-06-15" },
+      { subscriptionId: "s2", status: "realized", effectiveDate: "2026-06-15" },
+      { subscriptionId: null, status: "realized", effectiveDate: "2026-08-01" },
+      { subscriptionId: "", status: "realized", effectiveDate: "2026-08-01" },
+      { status: "realized", effectiveDate: "2026-08-01" },
+      { subscriptionId: "s3", status: "pending", effectiveDate: "2026-08-01" },
+    ]);
+    expect(latest).toEqual(new Map([["s1", "2026-06-01"], ["s2", "2026-06-15"]]));
+  });
+
+  it("is empty with no rows", () => {
+    expect(lastRealizedCharges([]).size).toBe(0);
   });
 });

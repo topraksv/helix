@@ -1,12 +1,4 @@
-/**
- * The guard between a half-filled transaction form and the ledger.
- *
- * It used to be a boolean inside a 500-line component, so none of these cases
- * could be stated without a renderer — and the two that matter most (a person
- * deleted on another device, a foreign amount that crosses the ceiling only
- * after conversion) are exactly the ones a screen test would be least likely
- * to reach.
- */
+/** The guard between a half-filled transaction form and the ledger. */
 
 import { describe, expect, it } from "vitest";
 import { previewTryMinor, resolveTransactionSave, type TransactionDraft } from "../../src/domain/transaction-draft";
@@ -44,9 +36,7 @@ describe("resolveTransactionSave", () => {
   });
 
   it("refuses a person that is no longer live", () => {
-    // Deleted on another device while this form was open. The id used to be
-    // carried on its own and the row looked up again inside the save, where an
-    // assertion threw instead of the form simply refusing.
+    // Deleted on another device while the form was open.
     expect(resolveTransactionSave(draft({ person: null }))).toBeNull();
   });
 
@@ -83,6 +73,18 @@ describe("resolveTransactionSave", () => {
     expect(resolveTransactionSave(draft({ amountMinor: null }))).toBeNull();
   });
 
+  it("refuses a rate that rounds the figure to zero, and a TRY entry with no rate", () => {
+    expect(resolveTransactionSave(draft({ amountMinor: 1, rateTry: 0.1 }))).toBeNull();
+    expect(resolveTransactionSave(draft({ rateTry: null }))).toBeNull();
+  });
+
+  it("returns the whole write for a reversal in the entry's own currency", () => {
+    expect(resolveTransactionSave(draft({ amountMinor: 100, isReversal: true }))).toEqual({
+      amountMinor: 100, signedAmountMinor: -100, tryMinor: -100, rateTry: 1,
+      person: { id: "person-1", isSelf: true }, categoryId: "category-1",
+    });
+  });
+
   it("refuses an entry with no category", () => {
     expect(resolveTransactionSave(draft({ categoryId: null }))).toBeNull();
   });
@@ -112,6 +114,11 @@ describe("previewTryMinor", () => {
   it("shows nothing rather than a figure taken on faith", () => {
     expect(previewTryMinor(250_00, false, null)).toBeNull();
     expect(previewTryMinor(null, false, 40)).toBeNull();
+  });
+
+  it("negates only a reversal", () => {
+    expect(previewTryMinor(100, false, 1)).toBe(100);
+    expect(previewTryMinor(100, true, 1)).toBe(-100);
   });
 
   it("previews an amount the save would still refuse", () => {

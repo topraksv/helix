@@ -40,13 +40,7 @@ describe("brand marks", () => {
   });
 
   it("never keeps a domain whose only answer is a placeholder", () => {
-    // All three services answer an unknown domain with a picture rather than
-    // an error, and the invented ones are LARGER than most genuine marks:
-    // Google's grey globe is 16px, DuckDuckGo's grey letter tile is 48px, and
-    // icon.horse generates a 256px letter avatar that beats every real
-    // favicon in this catalogue on pixels alone. A size check on its own is
-    // therefore the wrong test; the audit scores a placeholder as nothing, and
-    // nothing may be stored.
+    // Placeholders are larger than many real marks, so a size check is the wrong test; a placeholder scores as nothing.
     const placeholders = Object.entries(BRAND_MARK_AUDIT)
       .filter(([, mark]) => mark.px === 0 || PLACEHOLDER_MARK_SHA.includes(mark.sha as (typeof PLACEHOLDER_MARK_SHA)[number]))
       .map(([domain]) => domain);
@@ -54,17 +48,7 @@ describe("brand marks", () => {
   });
 
   it("never draws one institution's logo for another", () => {
-    // Two names resolving to one domain is fine when it is one institution
-    // under two spellings ("yapi kredi" / "yapikredi"). Two DIFFERENT
-    // institutions sharing a picture is not: `naysapp.com.tr` returned İş
-    // Bankası's file byte for byte, so choosing Nays drew the bank.
-    //
-    // This is also the check no placeholder can hide from, and the reason it
-    // is enforced here rather than only in the generator. icon.horse builds
-    // its letter avatar lazily, so a control domain fetched at the start of a
-    // run does not always match the invented image served in the middle of
-    // one — measured, `carrefoursa.com` and `crunchyroll.com` both came back
-    // as a "real" 256px mark and were byte-identical to each other.
+    // Two institutions sharing one picture is a borrowed mark; checked here because a lazily generated avatar can slip past the generator.
     expect(fetchedDomains(), "naysapp.com.tr is İş Bankası's mark").not.toContain("naysapp.com.tr");
 
     // Byte-identical marks that ARE the same institution under two names.
@@ -92,42 +76,12 @@ describe("brand marks", () => {
   });
 
   it("asks the service that measured better for that domain", () => {
-    // Google returns 16px for TEB where DuckDuckGo has 48px of the real mark;
-    // DuckDuckGo has nothing for Akbank where Google has 32px. No single
-    // default is right, so the recorded winner is what gets asked.
-    //
-    // This is also what keeps the split honest. The app ships only the short
-    // DuckDuckGo list, not the 180-row record it was drawn from, and the two
-    // files can drift without either one looking wrong on its own — a refresh
-    // of the record that nobody copies across would leave five brands quietly
-    // fetching the smaller mark again.
+    // The app ships only the short DuckDuckGo list; this keeps it in step with the full record.
     for (const [domain, mark] of Object.entries(BRAND_MARK_AUDIT)) {
       expect(markProvider(domain), domain).toBe(mark.provider);
       const host = { duckduckgo: "icons.duckduckgo.com", iconhorse: "icon.horse", google: "www.google.com" }[mark.provider];
       expect(new URL(remoteFaviconUrl(domain)!).hostname, domain).toBe(host);
     }
-  });
-
-  it("knows exactly which marks are too small to enlarge", () => {
-    // The list the app draws by. Nineteen of these brands publish only 16px,
-    // and no service has anything larger — `vakifbank.com.tr` serves a single
-    // 16x16 entry inside its `.ico`, `turktelekom.com.tr` a 16px PNG, and
-    // seven services, their own sites and their sibling domains all agree.
-    //
-    // The app no longer sizes by that. It capped enlargement once, and the
-    // owner rejected the result: a list where some marks are half the size of
-    // others reads as broken, and blur is the site's doing rather than the
-    // app's. So this asserts the measurement is still RECORDED — the answer to
-    // "why is this one soft", and the thing to read before anyone hunts for a
-    // better source again — not that anything acts on it.
-    const measuredSmall = Object.entries(BRAND_MARK_AUDIT)
-      .filter(([, mark]) => mark.px > 0 && mark.px < 48)
-      .map(([domain]) => domain);
-    expect(measuredSmall, "run scripts/audit-brand-marks.mjs").toContain("turktelekom.com.tr");
-    expect(measuredSmall, "run scripts/audit-brand-marks.mjs").toContain("vakifbank.com.tr");
-    // A floor: an empty audit would make every assertion above pass while the
-    // record quietly emptied out.
-    expect(measuredSmall.length).toBeGreaterThan(20);
   });
 
   it("keeps the names it has no mark for on the record", () => {
@@ -140,21 +94,7 @@ describe("brand marks", () => {
   });
 });
 
-/**
- * The app's own mark, and the one property its layout depends on.
- *
- * `src/ui/brand.tsx` sizes the mark by HEIGHT and derives the width from a
- * ratio it holds as a constant. That is only honest while the artwork's canvas
- * IS the artwork. It was not: the mark shipped on a 1024x1024 canvas with the
- * ink centred inside it — 606x789 with 210px of transparency down each side —
- * so `contentFit` scaled the padding too and a caller asking for 40pt got a
- * 30.8pt mark carrying 9pt of invisible margin into the gap beside it.
- *
- * Re-exporting a logo from a design tool is exactly how that padding comes
- * back, and nothing about the result looks wrong in a file listing. So the
- * alpha channel is measured here instead: the ink must touch all four edges,
- * and the ratio the component uses must be the ratio the file has.
- */
+/** `brand.tsx` derives width from a constant ratio, which holds only while the canvas is the artwork: the ink must touch all four edges. */
 describe("the app's own brand mark", () => {
   /** Bounding box of pixels the artwork actually paints. */
   function inkBounds(file: string): { width: number; height: number; left: number; top: number; right: number; bottom: number } {

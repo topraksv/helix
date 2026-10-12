@@ -30,9 +30,7 @@ export function categoryRangeMatrix(
 ): Map<string, CategoryYearRow> {
   const rows = new Map<string, CategoryYearRow>();
   for (const tx of transactions) {
-    // Transfers move money rather than earn/spend it, so the default category
-    // matrix excludes them. The dedicated all-flow analysis view opts in only
-    // to keep those categories visible; expense totals remain separate.
+    // Transfers move money rather than spend it: excluded unless the all-flow view opts in.
     const flow = financialFlow(tx);
     if (
       !countsTowardBalance(tx, today) ||
@@ -54,13 +52,9 @@ export function categoryRangeMatrix(
 }
 
 /**
- * What the category cost in each month of the window.
- *
- * This used to accumulate. A running total only ever climbs, so every category
- * drew the same rising line and the one question the chart is opened for —
- * which months were heavy — was the one it could not answer. A month is now
- * its own point, and a month with nothing in it is a zero rather than a
- * repeat of the previous value.
+ * What the category cost in each month of the window. Not cumulative: a running
+ * total only climbs and cannot show which months were heavy. An empty month is
+ * a zero, not a repeat.
  */
 export function monthlySeries(
   row: CategoryYearRow,
@@ -131,15 +125,11 @@ export function distributionForRange(
 
 /**
  * Fixed obligations = installment/loan/subscription-linked expenses;
- * variable = everything else. Answers "bu ay bankalara/kurumlara toplam ne
- * kadar ödüyorum" (spec §3.1).
+ * variable = everything else (spec §3.1).
  *
- * NO SCREEN CALLS THIS, and that is deliberate. It is a differential oracle:
+ * NO SCREEN CALLS THIS, deliberately: it is a differential oracle.
  * `fixedMinor + variableMinor` must equal the expense total the dashboard
- * reaches by a different route, so a test can catch either path drifting
- * without a third implementation to compare against. A dead-code sweep will
- * find it exactly once per person who runs one — this note is so the answer
- * costs a read rather than a re-derivation.
+ * reaches by another route, so a test catches either path drifting.
  */
 export function fixedVsVariable(
   transactions: TxLike[],
@@ -196,12 +186,9 @@ export function creditCardSplitsByMonth(
 }
 
 /**
- * Yearly subscription cost normalized to a true monthly load (spec §4.1).
- *
- * A corrupt `interval_months` of 0 produced `Infinity` here, which reached
- * `formatMinor` and threw `assertMinor` DURING RENDER on the subscriptions
- * screen. `recurrence.ts` already fails closed on the same field; treat an
- * unusable interval as "charged once per month" rather than crashing.
+ * Yearly subscription cost normalized to a true monthly load (spec §4.1). An
+ * unusable `interval_months` counts as monthly: 0 would give `Infinity` and
+ * throw in `formatMinor` during render.
  */
 export function normalizedMonthlyLoadMinor(amountMinor: Minor, intervalMonths: number): Minor {
   if (!Number.isInteger(intervalMonths) || intervalMonths < 1) return amountMinor;

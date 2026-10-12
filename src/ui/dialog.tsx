@@ -11,7 +11,7 @@
  * Modal overlays every screen, including router modals.
  */
 
-import React, { useState } from "react";
+import React, { useState, type ReactNode } from "react";
 import { Modal, Platform, Pressable, StyleSheet, Text, TextInput, View, useWindowDimensions } from "react-native";
 import { create } from "zustand";
 import { Button, FadeIn } from "./components";
@@ -26,8 +26,31 @@ import { advanceRequestQueue, emptyRequestQueue, enqueueRequest, type RequestQue
 import { useReducedMotion } from "./motion";
 import { modalAnimationType } from "./modal-motion";
 import { examplePlaceholder } from "./input-placeholder";
-import { OperationDialogHeader, type OperationFlowKind } from "./operation-flow";
+import { OperationDialogHeader, type DialogOperation } from "./operation-flow";
 import { KeyboardSafeScrollView } from "./keyboard-safe";
+
+/** A centred modal card with a focusable heading, shared by the sheets that edit one record. */
+export function ModalCard({ title, testID, cardWidth, onClose, children }: { title: string; testID: string; cardWidth: number; onClose: () => void; children: ReactNode }) {
+  const { palette } = useTheme();
+  const reducedMotion = useReducedMotion();
+  const titleRef = useModalAccessibility(true);
+  return (
+    <Modal transparent animationType={modalAnimationType(reducedMotion)} visible onRequestClose={onClose}>
+      <Pressable accessible={false} tabIndex={-1} style={{ flex: 1, backgroundColor: palette.scrim, alignItems: "center", justifyContent: "center", padding: spacing.lg }} onPress={onClose}>
+        <Pressable accessible={false} tabIndex={-1} accessibilityViewIsModal aria-label={title} onPress={() => {}} style={{ width: "100%", maxWidth: cardWidth, maxHeight: "90%" }}>
+          <KeyboardSafeScrollView bottomOffset={spacing.lg} extraKeyboardSpace={spacing.xl} keyboardShouldPersistTaps="handled" contentContainerStyle={{ padding: spacing.lg }}>
+            <FadeIn testID={testID} style={{ backgroundColor: palette.surface, borderRadius: radius.lg, padding: spacing.lg, ...themeShadow.card(palette) }}>
+              <View ref={titleRef} accessible accessibilityRole="header" tabIndex={-1}>
+                <Text style={[type.heading, { color: palette.text }]}>{title}</Text>
+              </View>
+              {children}
+            </FadeIn>
+          </KeyboardSafeScrollView>
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+}
 
 interface DialogRequest {
   title: string;
@@ -38,23 +61,22 @@ interface DialogRequest {
   danger: boolean;
   /** Whether this dialog REPORTS a failure, as opposed to asking about one. */
   tone?: "error" | "neutral";
-  operation?: OperationFlowKind;
+  operation?: DialogOperation;
+  id: number;
   resolve: (ok: boolean) => void;
 }
 
-// A single-slot store dropped the second of two overlapping dialogs (its
-// promise never resolved, hanging the awaiting flow). Queue instead: show one
-// at a time, advancing to the next when the current one closes.
+// Queued, one at a time: a single slot dropped the second of two overlapping dialogs and its promise never resolved.
 const useDialogStore = create<RequestQueue<DialogRequest>>(() => emptyRequestQueue<DialogRequest>());
 
-function enqueueDialog(request: DialogRequest) {
-  // The error half of the rule `haptics.ts` states: notification feedback is
-  // for a completed outcome. It was firing at five scattered call sites while a
-  // hundred other failures were silent, so it lives here now — once, at the one
-  // place every dialog passes through. A destructive CONFIRM stays silent on
-  // purpose: it is a question, and the outcome has not happened yet.
+// An id per request: two queued dialogs may share a title, and the title is no
+// identity for the focus key or the remount.
+let requestId = 0;
+
+function enqueueDialog(request: Omit<DialogRequest, "id">) {
+  // Failure feedback lives here, once, where every dialog passes. A destructive CONFIRM stays silent: it is a question, and the outcome has not happened yet.
   if (request.tone === "error") errorNotice();
-  useDialogStore.setState(enqueueRequest(useDialogStore.getState(), request));
+  useDialogStore.setState(enqueueRequest(useDialogStore.getState(), { ...request, id: ++requestId }));
 }
 
 /**
@@ -80,7 +102,7 @@ export function appAlert(
 export function appConfirm(
   title: string,
   message: string,
-  opts?: { confirmLabel?: string; cancelLabel?: string; danger?: boolean; operation?: OperationFlowKind },
+  opts?: { confirmLabel?: string; cancelLabel?: string; danger?: boolean; operation?: DialogOperation },
 ): Promise<boolean> {
   return new Promise((resolve) => {
     enqueueDialog({
@@ -106,26 +128,23 @@ interface PromptRequest {
   confirmLabel: string;
   secure: boolean;
   danger: boolean;
-  operation?: OperationFlowKind;
+  operation?: DialogOperation;
+  id: number;
   resolve: (value: string | null) => void;
 }
 
-// Same hazard the dialog queue above fixes, and the same answer: a single-slot
-// store overwrote `current` when a second prompt opened, so the first request's
-// `resolve` was dropped and its `await` never settled — a re-auth flow could
-// hang forever. Both call sites are password re-auth (account-security.tsx,
-// settings/index.tsx), which sit on different screens, so overlap is reachable.
+// Queued for the same reason as the dialogs: a single slot dropped the first prompt's `resolve`, and a re-auth flow could hang forever.
 const usePromptStore = create<RequestQueue<PromptRequest>>(() => emptyRequestQueue<PromptRequest>());
 
-function enqueuePrompt(request: PromptRequest) {
-  usePromptStore.setState(enqueueRequest(usePromptStore.getState(), request));
+function enqueuePrompt(request: Omit<PromptRequest, "id">) {
+  usePromptStore.setState(enqueueRequest(usePromptStore.getState(), { ...request, id: ++requestId }));
 }
 
 /** Themed input dialog. Resolves the entered value, or null on cancel/backdrop. */
-export function appPrompt(
+function appPrompt(
   title: string,
   message: string,
-  opts?: { placeholder?: string; confirmLabel?: string; secure?: boolean; danger?: boolean; operation?: OperationFlowKind },
+  opts?: { placeholder?: string; confirmLabel?: string; secure?: boolean; danger?: boolean; operation?: DialogOperation },
 ): Promise<string | null> {
   return new Promise((resolve) => {
     enqueuePrompt({
@@ -142,13 +161,32 @@ export function appPrompt(
 }
 
 /**
- * The overlay both hosts render. It exists because the two were byte-identical
- * for 22 lines, so an accessibility fix applied to one silently skipped the
- * other. It owns the contract that must not drift: the scrim dismiss target,
- * container Pressables marked `accessible={false}` (otherwise they swallow
- * their children), the modal boundary, and the header that receives focus.
- * `messageGap` is the one genuine difference — a prompt's message sits above
- * an input, a dialog's above its buttons.
+ * Ask for the account password and check it, for an irreversible step that follows.
+ * Resolves true only when the password was entered and `verify` returned no error; a refusal is alerted here.
+ */
+export async function confirmWithPassword(
+  verify: (password: string) => Promise<string | null>,
+  opts: { body: string; confirmLabel: string; operation: DialogOperation },
+): Promise<boolean> {
+  const password = await appPrompt(tr.account.confirmPasswordTitle, opts.body, {
+    secure: true,
+    placeholder: tr.auth.password,
+    confirmLabel: opts.confirmLabel,
+    danger: true,
+    operation: opts.operation,
+  });
+  if (password == null) return false;
+  const verifyError = await verify(password);
+  if (verifyError) {
+    void appAlert(verifyError, tr.errors.title);
+    return false;
+  }
+  return true;
+}
+
+/**
+ * The overlay both hosts render, so an accessibility fix cannot skip one. It owns what must not drift: the scrim dismiss target,
+ * container Pressables marked `accessible={false}` (otherwise they swallow their children), the modal boundary, and the focused header.
  */
 function DialogShell({
   title,
@@ -164,28 +202,17 @@ function DialogShell({
   messageGap: number;
   titleRef: React.RefObject<View | null>;
   onDismiss: () => void;
-  operation?: OperationFlowKind;
+  operation?: DialogOperation;
   children: React.ReactNode;
 }) {
   const { palette } = useTheme();
   const reducedMotion = useReducedMotion();
   const { height, width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
-  /**
-   * A phone gets a sheet, a desktop keeps the centred box.
-   *
-   * Centred is right when there is a pointer: the dialog sits in the middle of
-   * attention and the mouse is already anywhere. On a phone it put "Sil" and
-   * "Vazgeç" in the vertical middle of the screen — the part of a tall phone a
-   * thumb reaches least — while the bottom third sat empty behind a scrim.
-   *
-   * The app already knows where that line is: `shouldPresentOptionsAsSheet` is
-   * the same question the option picker asks, so the two agree by construction
-   * instead of by coincidence.
-   */
+  // A phone gets a sheet (a centred "Sil" sits where a thumb reaches least); the option picker asks the same question, so they agree.
   const asSheet = shouldPresentOptionsAsSheet(width);
   return (
-    <Modal transparent animationType={modalAnimationType(reducedMotion)} visible onRequestClose={onDismiss}>
+    <Modal transparent animationType={modalAnimationType(reducedMotion)} visible onRequestClose={onDismiss} aria-label={title}>
       <Pressable
         accessible={false}
         tabIndex={-1}
@@ -206,11 +233,7 @@ function DialogShell({
           showsVerticalScrollIndicator={false}
           bounces={false}
         >
-          {/* The modal surface carries the dialog's NAME. Without it a screen
-              reader announced "iletişim kutusu" and stopped — every dialog in
-              the app, including the seven-step tour and the date picker, was
-              anonymous at the moment it took focus. The title is right here in
-              scope; there was never a reason to withhold it. */}
+          {/* Native names the dialog here; on the web the Modal's own aria-label does. */}
           <Pressable
             testID={operation ? "operation-dialog-surface" : undefined}
             accessible={false}
@@ -271,18 +294,56 @@ function DialogShell({
   );
 }
 
-export function PromptHost() {
+function Actions({
+  operation,
+  operationTop,
+  plainTop,
+  cancel,
+  confirm,
+}: {
+  operation: boolean;
+  operationTop: number;
+  plainTop?: number;
+  cancel: React.ReactNode;
+  confirm: React.ReactNode;
+}) {
   const { palette } = useTheme();
+  const wrapper = operation ? { width: "100%" as const } : undefined;
+  return (
+    <View
+      style={operation
+        ? {
+            // A stacked pair. No `flexWrap` — in a column Yoga wraps into a
+            // second column, which is why iOS drew the two buttons side by
+            // side and offset while the web build stacked them.
+            gap: spacing.sm,
+            marginTop: operationTop,
+            paddingTop: spacing.md,
+            borderTopWidth: StyleSheet.hairlineWidth,
+            borderTopColor: palette.border,
+          }
+        : { flexDirection: "row", justifyContent: "flex-end", gap: spacing.sm, flexWrap: "wrap", marginTop: plainTop }}
+    >
+      {cancel ? <View style={wrapper}>{cancel}</View> : null}
+      <View style={wrapper}>{confirm}</View>
+    </View>
+  );
+}
+
+export function PromptHost() {
   const current = usePromptStore((s) => s.current);
+  // Keyed by request: a second prompt remounts, so it starts with an empty field.
+  return current ? <PromptBody key={current.id} current={current} /> : null;
+}
+
+function PromptBody({ current }: { current: PromptRequest }) {
+  const { palette } = useTheme();
   const [value, setValue] = useState("");
-  const titleRef = useModalAccessibility(current != null, undefined, current?.title, false);
-  // Reset the field each time a new prompt opens.
-  React.useEffect(() => {
-    if (current) setValue("");
-  }, [current]);
-  if (!current) return null;
+  const titleRef = useModalAccessibility(true, undefined, current.id, false);
 
   const close = (val: string | null) => {
+    // A stale closure (the host has not re-rendered yet) must not advance twice.
+    if (usePromptStore.getState().current !== current) return;
     // Advance to the next queued prompt, exactly as DialogHost.close does, so
     // no request is dropped and every promise settles.
     usePromptStore.setState(advanceRequestQueue(usePromptStore.getState()));
@@ -319,32 +380,18 @@ export function PromptHost() {
           paddingVertical: spacing.sm + 2,
           color: palette.text,
           backgroundColor: palette.surfaceAlt,
-          // The field is the answer to the sentence above it, so it needs air
-          // between them: with an operation header the two were flush, and the
-          // gap underneath was doubled by the action block's own top margin.
+          // Air between the sentence and its field; flush with an operation header otherwise.
           marginTop: spacing.lg,
           fontFamily: font.regular,
           fontSize: type.field.fontSize,
         }}
       />
-      <View
-        style={current.operation
-          ? {
-              // A stacked pair. No `flexWrap` — in a column Yoga wraps into a
-              // second column, which is why iOS drew the two buttons side by
-              // side and offset while the web build stacked them.
-              gap: spacing.sm,
-              marginTop: spacing.lg,
-              paddingTop: spacing.md,
-              borderTopWidth: StyleSheet.hairlineWidth,
-              borderTopColor: palette.border,
-            }
-          : { flexDirection: "row", justifyContent: "flex-end", gap: spacing.sm, flexWrap: "wrap", marginTop: spacing.lg }}
-      >
-        <View style={current.operation ? { width: "100%" } : undefined}>
-          <Button label={tr.common.cancel} variant="ghost" size="sm" onPress={() => close(null)} />
-        </View>
-        <View style={current.operation ? { width: "100%" } : undefined}>
+      <Actions
+        operation={!!current.operation}
+        operationTop={spacing.lg}
+        plainTop={spacing.lg}
+        cancel={<Button label={tr.common.cancel} variant="ghost" size="sm" onPress={() => close(null)} />}
+        confirm={
           <Button
             label={current.confirmLabel}
             variant={current.danger ? "danger" : "primary"}
@@ -352,19 +399,22 @@ export function PromptHost() {
             disabled={value.trim() === ""}
             onPress={() => close(value)}
           />
-        </View>
-      </View>
+        }
+      />
     </DialogShell>
   );
 }
 
 export function DialogHost() {
-  const { palette } = useTheme();
   const current = useDialogStore((s) => s.current);
-  const titleRef = useModalAccessibility(current != null, undefined, current?.title);
-  if (!current) return null;
+  return current ? <DialogBody key={current.id} current={current} /> : null;
+}
+
+function DialogBody({ current }: { current: DialogRequest }) {
+  const titleRef = useModalAccessibility(true, undefined, current.id);
 
   const close = (ok: boolean) => {
+    if (useDialogStore.getState().current !== current) return;
     useDialogStore.setState(advanceRequestQueue(useDialogStore.getState()));
     current.resolve(ok);
   };
@@ -378,29 +428,12 @@ export function DialogHost() {
       onDismiss={() => close(current.cancelLabel == null)}
       operation={current.operation}
     >
-      <View
-        style={current.operation
-          ? {
-              // A stacked pair. No `flexWrap` — in a column Yoga wraps into a
-              // second column, which is why iOS drew the two buttons side by
-              // side and offset while the web build stacked them.
-              gap: spacing.sm,
-              marginTop: spacing.xl,
-              paddingTop: spacing.md,
-              borderTopWidth: StyleSheet.hairlineWidth,
-              borderTopColor: palette.border,
-            }
-          : { flexDirection: "row", justifyContent: "flex-end", gap: spacing.sm, flexWrap: "wrap" }}
-      >
-        {current.cancelLabel != null ? (
-          <View style={current.operation ? { width: "100%" } : undefined}>
-            <Button label={current.cancelLabel} variant="ghost" size="sm" onPress={() => close(false)} />
-          </View>
-        ) : null}
-        <View style={current.operation ? { width: "100%" } : undefined}>
-          <Button label={current.confirmLabel} variant={current.danger ? "danger" : "primary"} size="sm" onPress={() => close(true)} />
-        </View>
-      </View>
+      <Actions
+        operation={!!current.operation}
+        operationTop={spacing.xl}
+        cancel={current.cancelLabel != null ? <Button label={current.cancelLabel} variant="ghost" size="sm" onPress={() => close(false)} /> : null}
+        confirm={<Button label={current.confirmLabel} variant={current.danger ? "danger" : "primary"} size="sm" onPress={() => close(true)} />}
+      />
     </DialogShell>
   );
 }

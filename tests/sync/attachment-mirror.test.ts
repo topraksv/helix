@@ -75,6 +75,10 @@ describe("what the mirror sends", () => {
     expect(storage.upload).toHaveBeenCalledTimes(1);
     expect(storage.upload.mock.calls[0]![0]).toBe(`${USER}/${NAME}`);
     expect(storage.upload.mock.calls[0]![0]).not.toContain(OTHER);
+    // The bucket the storage policy guards; upsert, because a retry after a lost
+    // answer finds its own object already there.
+    expect(client.storage.from).toHaveBeenCalledWith("attachments");
+    expect(storage.upload.mock.calls[0]![2]).toEqual({ contentType: "application/pdf", upsert: true });
   });
 
   it("sends nothing for a row whose bytes this device never held", async () => {

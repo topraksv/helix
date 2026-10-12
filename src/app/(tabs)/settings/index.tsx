@@ -4,9 +4,10 @@ import React, { useRef, useState, type ReactNode } from "react";
 import { Platform, View } from "react-native";
 import { useContentWidth } from "../../../ui/viewport";
 import { shouldPairFilterCards } from "../../../ui/responsive";
-import { useRouter, type Href } from "expo-router";
+import { useRouter } from "expo-router";
 import * as DocumentPicker from "expo-document-picker";
 import * as Sharing from "expo-sharing";
+import * as LocalAuthentication from "expo-local-authentication";
 import MessageSquare from "lucide-react-native/icons/message-square";
 import Banknote from "lucide-react-native/icons/banknote";
 import Bell from "lucide-react-native/icons/bell";
@@ -41,17 +42,18 @@ import { useSettingsMapState, settingValue, useSyncDeadLettersState, useUserId }
 import { combineLiveStates } from "../../../data/live-state";
 import { asyncFieldState } from "../../../domain/form-state";
 import { pendingSyncChangeCount, setPendingTableVisibility, setReminderDays } from "../../../data/repo";
-import { buildExportText, buildWorkbookBytes, importBundle, MAX_BACKUP_BYTES, parseExportBundleText, saveFile } from "../../../services/export-import";
+import { buildExportText, buildWorkbookBytes, importBundle, saveFile } from "../../../services/export-import";
+import { MAX_BACKUP_BYTES, parseExportBundleText } from "../../../services/backup-validation";
 import { WORKBOOK_MIME } from "../../../services/workbook-export";
 import { disableNotifications, enableNotifications, rescheduleAll, updateNotificationDetails } from "../../../services/notifications";
-import { syncNow, unsentAttachments } from "../../../sync/engine";
+import { scheduleSync, syncNow, unsentAttachments } from "../../../sync/engine";
 import { useSyncStatus } from "../../../sync/status";
 import { isSupabaseConfigured } from "../../../sync/supabase";
 import { setGlobalPalettePreference, setGlobalThemePreference } from "../../_layout";
 import { userMessage } from "../../../domain/user-error";
 import { devError } from "../../../services/logger";
 import { TourModal } from "../../../ui/tour";
-import { useBiometricLabel } from "../../../ui/biometric-label";
+import { BIOMETRIC_KEY, biometricName } from "../../../ui/biometric-name";
 import { kv } from "../../../services/kv";
 import { useDevicePreferences } from "../../../services/device-preferences";
 import { dateLabel, dateTimeLabel, tr } from "../../../i18n/tr";
@@ -66,6 +68,38 @@ import { readPickedText } from "../../../services/picked-file";
 import { DelayedLoadingIndicator } from "../../../ui/loading-indicator";
 import { OperationFlow } from "../../../ui/operation-flow";
 import { clearLifecycleIntent, setLifecycleIntent } from "../../../ui/lifecycle-intent";
+
+/**
+ * The device's own name for its biometric lock, asked of the hardware. The
+ * neutral name covers the frame before the query returns, so the row never
+ * renders empty and never claims a sensor before the device has answered.
+ */
+function useBiometricLabel(): string {
+  const [label, setLabel] = useState<string>(tr.settings.biometric);
+  React.useEffect(() => {
+    if (Platform.OS === "web") return;
+    let alive = true;
+    void LocalAuthentication.supportedAuthenticationTypesAsync()
+      .then((types) => {
+        if (!alive) return;
+        setLabel(
+          biometricName({
+            ios: Platform.OS === "ios",
+            facial: types.includes(LocalAuthentication.AuthenticationType.FACIAL_RECOGNITION),
+            fingerprint: types.includes(LocalAuthentication.AuthenticationType.FINGERPRINT),
+          }),
+        );
+      })
+      .catch(() => {
+        // An unreadable sensor list is not worth surfacing; the neutral name is
+        // already correct.
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
+  return label;
+}
 
 function ThemeChoice({
   value,
@@ -228,8 +262,7 @@ function SettingsDestinationGrid({
           key={title}
           testID={testID}
           style={{
-            // Exactly half, and no gutter: the tiles tile the card. A gap here
-            // would be space no row could light, which is what made this grid
+            // Exactly half, no gutter: tiles tile the card.
             // the odd one out.
             flexBasis: twoColumns ? "50%" : "100%",
             minWidth: 0,
@@ -290,6 +323,7 @@ export default function SettingsScreen() {
   const sync = useSyncStatus();
   const router = useRouter();
   const contentWidth = useContentWidth();
+  const pairFilterCards = shouldPairFilterCards(contentWidth);
   const { palette, paletteId, scheme } = useTheme();
   const [themePref, setThemePref] = useState<ThemePreference>("system");
   const [biometric, setBiometric] = useState(false);
@@ -302,11 +336,7 @@ export default function SettingsScreen() {
   const [notificationBusy, setNotificationBusy] = useState(false);
   const reminderDays = settingValue<number>(settings, "reminder_days", 3);
   const showPending = settingValue<boolean>(settings, "show_pending_in_table", true);
-  // Explicit dirty state, decided in `asyncFieldState` (domain/form-state.ts).
-  // `updatedAt` is the ONLY proof the settings query ran for this account, so it
-  // is what separates "not loaded yet / read failed" from "loaded". While it is
-  // null nothing may be saved — writing over a value that was never loaded is
-  // exactly the overwrite this guards against.
+  // `updatedAt` is the only proof settings loaded; nothing saves while it is null, or an unloaded value is overwritten.
   const [reminderDraft, setReminderDraft] = useState<string | null>(null);
   const reminderResolved = settingsState.updatedAt != null ? String(reminderDays) : null;
   const reminderField = asyncFieldState(reminderDraft, reminderResolved, (value) =>
@@ -314,7 +344,7 @@ export default function SettingsScreen() {
   const reminderStr = reminderField.value;
 
   React.useEffect(() => {
-    void Promise.all([kv.get("helix.theme"), kv.get("helix.biometric")]).then(([theme, biometricValue]) => {
+    void Promise.all([kv.get("helix.theme"), kv.get(BIOMETRIC_KEY)]).then(([theme, biometricValue]) => {
       setThemePref(resolveThemePreference(theme));
       setBiometric(biometricValue === "true");
     }).finally(() => setLocalPreferencesLoaded(true));
@@ -389,24 +419,14 @@ export default function SettingsScreen() {
       clearLifecycleIntent();
       void appAlert(tr.errors.requestFailed, tr.errors.title);
     } finally {
-      // The intent deliberately survives this block. It is what the waiting
-      // screen reads while the session tears down, and clearing it here — the
-      // instant the operation resolved, which is the instant the app
-      // transitions — is why signing out, freezing and deleting all showed the
-      // first-pull sentence instead of their own. The failure paths above clear
-      // it, because those leave the user on this screen; a new sign-in clears
+      // The intent survives success because the waiting screen reads it during teardown; failure paths clear it.
       // it too.
       setSigningOut(false);
       signOutLocked.current = false;
     }
   };
 
-  // Backup/restore reads or rewrites the whole account, so it is slow enough to
-  // look like nothing happened. Before, these rows were bare `void export()`
-  // calls: a second tap started a concurrent full export, and a failure
-  // (storage quota, permission, unreadable file) rejected into nowhere — an
-  // error looked exactly like an operation still running. The shared guard
-  // serialises them, the busy row reports progress, and every failure surfaces.
+  // Whole-account operations: serialised, shown as busy, and every failure surfaces.
   const dataOps = useTrackedOperation();
   const [dataBusy, setDataBusy] = useState<"export" | "workbook" | "import" | null>(null);
 
@@ -516,7 +536,7 @@ export default function SettingsScreen() {
     { icon: Wallet, title: tr.settings.sources, subtitle: tr.settings.sourcesDesc, onPress: () => router.push("/settings/payment-sources") },
     { icon: Users, title: tr.settings.persons, subtitle: tr.settings.personsDesc, onPress: () => router.push("/settings/persons") },
     { icon: Banknote, title: tr.settings.incomeRules, subtitle: tr.settings.incomeRulesDesc, onPress: () => router.push("/settings/incomes") },
-    { icon: Target, title: tr.budgets.title, subtitle: tr.budgets.settingsDesc, onPress: () => router.push("/settings/budgets" as Href) },
+    { icon: Target, title: tr.budgets.title, subtitle: tr.budgets.settingsDesc, onPress: () => router.push("/settings/budgets") },
   ];
 
   return (
@@ -528,17 +548,11 @@ export default function SettingsScreen() {
       </Card>
 
       <SectionHeader>{tr.settings.workspaceSection}</SectionHeader>
-      {/* `padded={false}` because the TILES carry the padding here, not the
-          card. A row bleeds its fill by the padding of the box it sits in, so
-          with the padding on the card the fill spilled into the column gutter
-          on one side and stopped short of the card on the other — the one
-          place in Settings where a hover did not light the box it belonged to.
-          With the padding on the tile the fill covers the tile exactly, and
-          the outer tiles still reach the card's border. */}
+      {/* Tiles carry the padding so a row's fill covers its tile exactly. */}
       <Card rows padded={false}>
         <SettingsDestinationGrid
           items={workspaceDestinations}
-          twoColumns={shouldPairFilterCards(contentWidth)}
+          twoColumns={pairFilterCards}
           testID="settings-workspace-link"
         />
       </Card>
@@ -550,7 +564,7 @@ export default function SettingsScreen() {
           title={tr.settings.toolsDestination}
           subtitle={tr.settings.toolsDesc}
           chevron
-          onPress={() => router.push("/settings/tools" as Href)}
+          onPress={() => router.push("/settings/tools")}
         />
       </Card>
 
@@ -579,7 +593,7 @@ export default function SettingsScreen() {
               onPress={() => {
                 selectionTapIfChanged(themePref, value);
                 setThemePref(value);
-                setGlobalThemePreference(value, palette.background);
+                setGlobalThemePreference(value);
               }}
             />
           ))}
@@ -602,22 +616,16 @@ export default function SettingsScreen() {
               swatch={PALETTES[id][scheme]}
               selected={paletteId === id}
               disabled={!localPreferencesLoaded}
-              stacked={!shouldPairFilterCards(contentWidth)}
+              stacked={!pairFilterCards}
               onPress={() => {
                 selectionTapIfChanged(paletteId, id);
-                setGlobalPalettePreference(id, palette.background);
+                setGlobalPalettePreference(id);
               }}
             />
           ))}
         </View>
-        {/* The field holds a one- or two-digit number, so a full-width save
-            button under it left a wide empty band and read as a second, larger
-            action. Beside the input it stays the smaller of the two and the row
-            keeps its own bottom margin, which the field no longer carries. */}
+        {/* The save button sits beside the short field, not under it. */}
         <Row gap={spacing.sm} style={{ alignItems: "flex-end", marginBottom: spacing.md }}>
-          {/* The row spans its screen: field and button together fill the
-              width, so the pair sits in the same place whatever the window is
-              doing. */}
           <View style={{ flex: 1 }}>
             <Field
               label={tr.settings.reminderDays}
@@ -631,9 +639,7 @@ export default function SettingsScreen() {
           <Button
             label={tr.common.save}
             variant="secondary"
-            // Full size on purpose: `sm` is 36 px against the field's 48, so
-            // bottom-aligning them left a visible step. Same height, same
-            // baseline, no adjustment needed.
+            // Full size: `sm` is shorter than the field and leaves a step.
             disabled={!reminderField.canSave}
             onPress={() => {
               const next = Number(reminderStr);
@@ -643,6 +649,7 @@ export default function SettingsScreen() {
                 // changes.
                 .then(() => {
                   setReminderDraft(null);
+                  scheduleSync(userId);
                   return rescheduleAll(userId);
                 })
                 .catch(() => void appAlert(tr.errors.saveFailed, tr.errors.title));
@@ -661,7 +668,7 @@ export default function SettingsScreen() {
                   disabled={!localPreferencesLoaded}
                   onValueChange={(v) => {
                     setBiometric(v);
-                    void kv.set("helix.biometric", String(v));
+                    void kv.set(BIOMETRIC_KEY, String(v));
                   }}
                 />
               }
@@ -719,9 +726,7 @@ export default function SettingsScreen() {
                 }
               />
             ) : null}
-            {/* The switch only changes what a reminder says when it fires, so
-                flipping it appeared to do nothing at all. Showing the two
-                versions is what makes it a choice rather than a mystery. */}
+            {/* Showing both versions is what makes this switch a visible choice. */}
             {notifications ? (
               <View style={{ paddingBottom: spacing.md, gap: spacing.xs }}>
                 <Body muted style={{ fontSize: type.small.fontSize }}>{tr.settings.notificationPreview}</Body>
@@ -750,6 +755,7 @@ export default function SettingsScreen() {
               disabled={settingsState.updatedAt == null}
               onValueChange={(value) => {
                 void setPendingTableVisibility(userId, value)
+                  .then(() => scheduleSync(userId))
                   .catch(() => void appAlert(tr.errors.saveFailed, tr.errors.title));
               }}
             />
@@ -788,9 +794,7 @@ export default function SettingsScreen() {
         <Body muted style={{ fontSize: type.small.fontSize, marginTop: spacing.xs, marginBottom: density.list.cardPadding }}>
           {tr.settings.syncExplain}
         </Body>
-        {/* A row, not a panel. Nothing here is lost and nothing is urgent, so
-            it says what it is in one line and keeps the detail — and every
-            action — on its own screen. */}
+        {/* A row, not a panel: nothing here is urgent. */}
         {deadLettersState.status !== "loading" && deadLettersState.data.length > 0 ? (
           <ListRow
             icon={CloudOff}
@@ -846,23 +850,20 @@ export default function SettingsScreen() {
 
       <Card rows>
         <ListRow icon={BookOpen} title={tr.tour.replay} subtitle={tr.tour.replayDesc} chevron onPress={() => setTourOpen(true)} />
-        {/* Reachable from the app itself, not only from the sign-up screen a
-            person passes through once. Someone who wants to know what is held
-            about them looks in Settings, and finding nothing there is what
-            makes a notice feel like a formality. */}
+        {/* Privacy is reachable from Settings, not only from sign-up. */}
         <ListRow
           icon={ShieldCheck}
           title={tr.legal.title}
           subtitle={tr.legal.subtitle}
           chevron
-          onPress={() => router.push("/privacy" as Href)}
+          onPress={() => router.push("/privacy")}
         />
       </Card>
 
       <SectionHeader>{tr.account.section}</SectionHeader>
       {isSupabaseConfigured ? (
         <Card rows>
-          <ListRow icon={KeyRound} title={tr.account.security} subtitle={tr.account.securityDesc} chevron onPress={() => router.push("/account-security" as Href)} />
+          <ListRow icon={KeyRound} title={tr.account.security} subtitle={tr.account.securityDesc} chevron onPress={() => router.push("/account-security")} />
         </Card>
       ) : null}
 
@@ -887,10 +888,7 @@ export default function SettingsScreen() {
         ) : null}
       </Card>
 
-      {/* Cloud accounts end on Account Security, beside the reversible version
-          of the same decision. A local-only workspace has no such screen — no
-          password, no e-mail, nothing to freeze — so its one ending stays
-          here, which is also the only place it was ever reachable from. */}
+      {/* Cloud accounts end on Account Security; a local workspace has no such screen, so its ending stays here. */}
       {!isSupabaseConfigured ? (
         <Card testID="account-delete-card" padded={false}>
           <View style={{ paddingHorizontal: spacing.md }}>
@@ -922,7 +920,7 @@ export default function SettingsScreen() {
           title={tr.feedback.title}
           subtitle={tr.feedback.settingsDesc}
           chevron
-          onPress={() => router.push("/feedback" as Href)}
+          onPress={() => router.push("/feedback")}
         />
       </Card>
 

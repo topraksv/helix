@@ -20,7 +20,9 @@ import {
   TextInput,
   View,
   type PressableStateCallbackType,
+  type StyleProp,
   type TextInputProps,
+  type ViewStyle,
   } from "react-native";
 import AlertCircle from "lucide-react-native/icons/circle-alert";
 import CalculatorIcon from "lucide-react-native/icons/calculator";
@@ -40,10 +42,12 @@ import { interactionSurface } from "./interaction";
 import { useReducedMotion } from "./motion";
 import { useShake } from "./motion-primitives";
 import { examplePlaceholder, numericPlaceholderColor } from "./input-placeholder";
-import { placeholderPools, useRotatingPlaceholder } from "./placeholders";
+import { useRotatingPlaceholder } from "./placeholders";
 import { useContentWidth } from "./viewport";
-import { Heading, IconButton, Label, Spread, controlStateStyle } from "./primitives";
+import { Body, Button, Heading, IconButton, Label, Row, Spread, controlStateStyle } from "./primitives";
 import { borderWidth, controlSize, iconSize, motion, radius, spacing, stateOpacity, themeShadow, toggleSize, type, useTheme, type Palette } from "./theme";
+
+export const webOnlyLabel = Platform.OS === "web" ? {} : { accessible: false, accessibilityElementsHidden: true, importantForAccessibility: "no-hide-descendants" as const };
 
 const fieldAccessoryStyle = {
   position: "absolute",
@@ -169,9 +173,7 @@ export function Field({
     >
       <Label
         nativeID={labelId}
-        accessible={Platform.OS === "web" ? undefined : false}
-        accessibilityElementsHidden={Platform.OS === "web" ? undefined : true}
-        importantForAccessibility={Platform.OS === "web" ? undefined : "no-hide-descendants"}
+        {...webOnlyLabel}
       >
         {label}
       </Label>
@@ -221,10 +223,6 @@ export function Field({
             accessibilityLabel={hidden ? tr.a11y.showPassword : tr.a11y.hidePassword}
             accessibilityHint={label}
             onPress={() => setHidden(!hidden)}
-            // The icon is 18px and `hitSlop` does not enlarge the DOM box on
-            // web, which left an 18px-wide target (WCAG 2.2 SC 2.5.8 asks for
-            // 24). The box now fills the input's reserved 44px right padding
-            // with the icon centred, so the mark does not visibly move.
             style={fieldAccessoryPressStyle(palette)}
           >
             {hidden ? <Eye accessible={false} size={iconSize.accessory} color={palette.textSecondary} /> : <EyeOff accessible={false} size={iconSize.accessory} color={palette.textSecondary} />}
@@ -296,7 +294,7 @@ export function MoneyField({
   const labelId = `${fieldId}-label`;
   // Only while the field is empty and only when the caller has not supplied
   // its own sample — a hook that is showing nothing does not subscribe.
-  const rotatingExample = useRotatingPlaceholder(placeholderPools.amount, {
+  const rotatingExample = useRotatingPlaceholder(tr.placeholders.amount, {
     prefix: false,
     active: placeholder == null && value.trim() === "",
   });
@@ -326,9 +324,7 @@ export function MoneyField({
           <View style={inline ? { flex: 1, minWidth: 0 } : undefined}>
             <Label
               nativeID={labelId}
-              accessible={Platform.OS === "web" ? undefined : false}
-              accessibilityElementsHidden={Platform.OS === "web" ? undefined : true}
-              importantForAccessibility={Platform.OS === "web" ? undefined : "no-hide-descendants"}
+              {...webOnlyLabel}
               style={inline ? { marginBottom: 0 } : undefined}
             >
               {label}
@@ -364,12 +360,7 @@ export function MoneyField({
             }}
             keyboardType={expression ? "numbers-and-punctuation" : "decimal-pad"}
             inputMode={expression ? "text" : "decimal"}
-            /* "Ör. 0,00" was the default for every money field that did not
-               name its own example, including the FIRST field a new account
-               ever shows. Zero is not an example: it teaches nothing and reads
-               as a value already filled in. The shared pool teaches something
-               real instead — including "400+500", which is how a person finds
-               out this field adds up. */
+            /* Zero is not an example; the shared pool also teaches that "400+500" adds up. */
             placeholder={examplePlaceholder(placeholder ?? rotatingExample)}
             placeholderTextColor={numericPlaceholderColor(palette.textSecondary)}
             onFocus={() => setFocused(true)}
@@ -392,10 +383,6 @@ export function MoneyField({
               accessibilityLabel={tr.a11y.openCalculator}
               accessibilityHint={accessibilityLabel ?? label}
               onPress={() => setCalcOpen(true)}
-              // The icon is 18px and `hitSlop` does not enlarge the DOM box on
-              // web, which left an 18px-wide target (WCAG 2.2 SC 2.5.8 asks for
-              // 24). The box now fills the input's reserved 44px right padding
-              // with the icon centred, so the mark does not visibly move.
               style={fieldAccessoryPressStyle(palette)}
             >
               <CalculatorIcon accessible={false} size={iconSize.accessory} color={palette.textSecondary} />
@@ -419,17 +406,6 @@ export function MoneyField({
     </View>
   );
 }
-
-/**
- * The calculator modal, imported like anything else.
- *
- * This used to be a deferred `require()` because `calculator.tsx` reached back
- * into this module for `Button` and `FadeIn`, and the comment here said the
- * cycle would only go away if those two moved into a leaf module. They have:
- * both now live in `./primitives`, the calculator imports them from there, and
- * `madge --circular` has nothing left to report.
- */
-/** Width of a select row's icon column, so every label starts at one x. */
 
 export function MonthStepper({
   value,
@@ -470,7 +446,7 @@ export function Toggle({
 }) {
   const { palette } = useTheme();
   const reducedMotion = useReducedMotion();
-  const progress = useRef(new Animated.Value(value ? 1 : 0)).current;
+  const [progress] = useState(() => new Animated.Value(value ? 1 : 0));
   useEffect(() => {
     if (reducedMotion) {
       progress.setValue(value ? 1 : 0);
@@ -507,7 +483,6 @@ export function Toggle({
       style={({ pressed }) => ({
         minHeight: controlSize.minimumTarget,
         justifyContent: "center",
-        paddingHorizontal: (controlSize.minimumTarget - TOGGLE_W) / 2 > 0 ? (controlSize.minimumTarget - TOGGLE_W) / 2 : 0,
         opacity: pressed && !disabled ? stateOpacity.pressed : 1,
       })}
     >
@@ -556,7 +531,7 @@ export function Toggle({
             width: TOGGLE_THUMB,
             height: TOGGLE_THUMB,
             borderRadius: TOGGLE_THUMB / 2,
-            backgroundColor: disabled ? palette.textSecondary : value ? palette.onPrimary : palette.textSecondary,
+            backgroundColor: value && !disabled ? palette.onPrimary : palette.textSecondary,
             borderWidth: StyleSheet.hairlineWidth,
             borderColor: palette.surfaceTranslucent,
             transform: [{ translateX: thumbX }],
@@ -568,4 +543,31 @@ export function Toggle({
   );
 }
 
-/** Initials avatar with a deterministic hue from the name (logo fallback). */
+/** A field with its Cancel / Save pair beneath, right-aligned, so the name keeps the row's full width while edited. */
+export function InlineEditRow({ field, onCancel, onSave, saveDisabled, style }: {
+  field: ReactNode;
+  onCancel: () => void;
+  onSave: () => void;
+  saveDisabled?: boolean;
+  style?: StyleProp<ViewStyle>;
+}) {
+  return (
+    <View style={[{ gap: spacing.sm }, style]}>
+      {field}
+      <Row gap={spacing.sm} style={{ justifyContent: "flex-end" }}>
+        <Button label={tr.common.cancel} size="sm" variant="ghost" onPress={onCancel} />
+        <Button label={tr.common.save} size="sm" variant="secondary" disabled={saveDisabled} onPress={onSave} />
+      </Row>
+    </View>
+  );
+}
+
+/** A small muted caption with its switch; the switch's accessible name carries which column it acts on. */
+export function ToggleRow({ name, text, value, onValueChange }: { name: string; text: string; value: boolean; onValueChange: (v: boolean) => void }) {
+  return (
+    <Spread style={{ marginTop: spacing.xs }}>
+      <Body muted style={{ fontSize: type.small.fontSize, flex: 1, paddingRight: spacing.sm }}>{text}</Body>
+      <Toggle label={`${name} · ${text}`} value={value} onValueChange={onValueChange} />
+    </Spread>
+  );
+}

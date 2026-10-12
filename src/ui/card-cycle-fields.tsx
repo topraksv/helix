@@ -1,13 +1,4 @@
-/**
- * A credit card's two dates, as one control (spec §3.7).
- *
- * They are a PAIR: neither day means anything without the other, and every
- * rule about them is a rule about the gap between them. Three screens build a
- * card — the settings editor, onboarding, and the workbook importer's card
- * step — and two of them used to ship no rule at all, so "ayın sonu" could be
- * chosen for both and produce a statement with no period. One definition, so a
- * card entered during onboarding is the same card entered in settings.
- */
+/** A credit card's statement and due days as one control (spec §3.7), shared by settings, onboarding and the importer so every entry path applies the same pairing rule. */
 
 import { Text, View } from "react-native";
 import Svg, { Circle } from "react-native-svg";
@@ -121,14 +112,6 @@ export function CardCycleFields({
  * question they leave open: whether a purchase made now lands on the statement
  * about to close or the next one.
  *
- * It used to be the ring ALONE, 22px of bare arc in a row of worded badges. It
- * was reported as confusing and distracting, and it was: a fraction with no
- * number, no unit and no name, in the one place on the row where everything
- * else says what it is. The idea was right and the drawing carried none of it.
- * Now the arc is the mark on a chip that states the fact — "Ekstreye 6 gün" —
- * so it reads at a glance, survives a screen reader, and is the same anatomy
- * as the two badges beside it.
- *
  * Drawn, never animated. It moves once a day, and motion at that rate is a
  * flicker on mount rather than something anyone perceives as movement.
  */
@@ -147,9 +130,7 @@ export function CardCycleRing({
   const today = todayISO();
   const progress = cardCycleProgress(today, cycle);
   const daysLeft = daysUntilStatementClose(today, cycle);
-  // Amber in the last three days, and only then. A colour that is always on
-  // says nothing; this one is off on twenty-odd days of a cycle and on for the
-  // three when a purchase's statement is genuinely about to change.
+  // Amber only in the last CYCLE_CLOSING_SOON days.
   const closing = daysLeft <= CYCLE_CLOSING_SOON;
   const colors = closing
     ? { bg: palette.warning + "1F", fg: palette.warningText }

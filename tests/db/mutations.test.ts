@@ -1,20 +1,4 @@
-/**
- * `created_at` is insert-only.
- *
- * It used to sit in the upsert's `DO UPDATE SET` list, and `writeRows` stamps
- * `createdAt: row.createdAt ?? nowIso()`. Together that meant any builder which
- * constructs a row LITERAL — rather than spreading `fromDbShape(previous)` —
- * reset the row's creation time on every edit: category budgets
- * (`budgets.ts:23-32`), subscription and recurring-income upserts
- * (`rules.ts:201-228`, `283-301`), expected-payment confirms
- * (`expected.ts:133-149`) and the maintenance re-upserts of already-existing
- * pending drafts (`rules.ts:94-110`, `maintenance.ts:314-330`).
- *
- * `transactions.ts:56-72` compensated by reading and re-supplying `created_at`,
- * which is a per-caller workaround for a property of the write layer — so the
- * fix belongs in `upsertSql`, where it covers every caller including ones added
- * later. These tests run the REAL generated SQL against a real SQLite table.
- */
+/** created_at is insert-only: upsertSql leaves it out of DO UPDATE SET, so a builder that writes a row literal cannot reset it. Runs the real SQL. */
 
 import { DatabaseSync } from "node:sqlite";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -30,7 +14,7 @@ vi.mock("../../src/db/ids", () => ({
   newId: () => "new-id",
 }));
 
-import { assertLiveRow, upsertSql } from "../../src/db/mutations";
+import { assertLiveRow, fromDbShape, upsertSql } from "../../src/db/mutations";
 
 const CREATE = `CREATE TABLE categories (
   id text PRIMARY KEY NOT NULL,
@@ -76,14 +60,6 @@ describe("created_at integrity", () => {
   it("sets created_at once, on insert", () => {
     apply(db, row());
     expect(read(db).created_at).toBe(INSERTED);
-  });
-
-  it("requires an actually live row for explicit edits", async () => {
-    const sqlite = { getFirstAsync: vi.fn().mockResolvedValue(null) };
-    await expect(assertLiveRow(sqlite as never, "categories", "user-1", "cat-1"))
-      .rejects.toThrow("Cannot edit missing categories row");
-    sqlite.getFirstAsync.mockResolvedValue({ id: "cat-1" });
-    await expect(assertLiveRow(sqlite as never, "categories", "user-1", "cat-1")).resolves.toBeUndefined();
   });
 
   it("does NOT rewrite created_at on a plain update", () => {
@@ -165,5 +141,72 @@ describe("created_at integrity", () => {
     expect(after.user_id).toBe("user-1");
     expect(after.name).toBe("Market");
     expect(after.updated_at).toBe(INSERTED);
+  });
+});
+
+describe("assertLiveRow", () => {
+  it("requires an actually live row for explicit edits", async () => {
+    const sqlite = { getFirstAsync: vi.fn().mockResolvedValue(null) };
+    await expect(assertLiveRow(sqlite as never, "categories", "user-1", "cat-1"))
+      .rejects.toThrow("Cannot edit missing categories row");
+    sqlite.getFirstAsync.mockResolvedValue({ id: "cat-1" });
+    await expect(assertLiveRow(sqlite as never, "categories", "user-1", "cat-1")).resolves.toBeUndefined();
+  });
+});
+
+const storedTransaction = {
+  id: "tx-1",
+  user_id: "user-1",
+  type: "expense",
+  amount_minor: 12_34,
+  amount_try_minor: 12_34,
+  currency: "TRY",
+  effective_date: "2026-08-06",
+  is_aggregate: 0,
+  created_at: "2026-01-01T00:00:00.000Z",
+  updated_at: "2026-08-06T00:00:00.000Z",
+  deleted_at: null,
+};
+
+describe("row shape: fromDbShape", () => {
+  it("renames every stored column to the key the write layer writes", () => {
+    const row = fromDbShape("transactions", storedTransaction);
+    expect(row).toMatchObject({
+      id: "tx-1",
+      userId: "user-1",
+      amountMinor: 12_34,
+      amountTryMinor: 12_34,
+      effectiveDate: "2026-08-06",
+      isAggregate: 0,
+      createdAt: "2026-01-01T00:00:00.000Z",
+      deletedAt: null,
+    });
+    // The snake_case originals must not survive beside their renamed twins:
+    // `writeRows` would carry them into the upsert as unknown columns.
+    expect(Object.keys(row).some((key) => key.includes("_"))).toBe(false);
+  });
+
+  it("keeps a column that is present and null, and omits one that is absent", () => {
+    const row = fromDbShape("transactions", storedTransaction);
+    // Present-and-null is a real value — dropping it would leave a tombstone in
+    // place on restore, because the spread would never clear `deleted_at`.
+    expect("deletedAt" in row).toBe(true);
+    expect(row.deletedAt).toBeNull();
+    // Absent is not `undefined`: a partial row must not blank the columns it
+    // never carried.
+    expect("note" in row).toBe(false);
+  });
+
+  it("drops a column the table does not have", () => {
+    const row = fromDbShape("transactions", { ...storedTransaction, legacy_column: "x", note: "kept" });
+    expect(row.note).toBe("kept");
+    expect(Object.values(row)).not.toContain("x");
+  });
+
+  it("returns nothing at all for a row that is already in application shape", () => {
+    // An application-shaped row passed where a stored row was meant would write one column over a row with no id.
+    expect(fromDbShape("transactions", { id: "tx-1", amountMinor: 1, effectiveDate: "2026-08-06" })).toEqual({
+      id: "tx-1",
+    });
   });
 });

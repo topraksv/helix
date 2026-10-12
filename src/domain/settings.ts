@@ -18,17 +18,9 @@ function columnYears(value: unknown): value is Record<string, string[]> {
 }
 
 /**
- * Every settings key this app writes, beside the shape it may hold.
- *
- * One object rather than a `switch` plus the same key spelled as a bare string
- * in each screen that reads it. `balance_declared` is why: it was written by
- * `setBalanceDeclaration` and read at three surfaces, but never added to the
- * decoder — so it fell to the unknown-key branch, every read returned the
- * caller's fallback, and the declared balance was stored and then permanently
- * invisible. That silently disabled the drift warning it exists for.
- *
- * Deriving `SettingKey` from these entries turns the same omission into a
- * compile error: a key with no validator is not a key you can read or write.
+ * Every settings key this app writes, beside the shape it may hold. `SettingKey`
+ * derives from these entries, so a key with no validator is a compile error: an
+ * undecoded key falls to the caller's fallback and is stored but invisible.
  */
 const SETTING_VALIDATORS = {
   start_month: (value: unknown) => isMonthKey(value),
@@ -40,20 +32,13 @@ const SETTING_VALIDATORS = {
   last_entry_at: (value: unknown) =>
     typeof value === "string" && isISODate(value.slice(0, 10)) && Number.isFinite(Date.parse(value)),
   balance_declared: (value: unknown) => parseBalanceDeclaration(value) !== null,
-  // Read through their own live queries rather than this decoder. Listed
-  // anyway so that "which settings does Helix have" has exactly one answer.
+  // Read through their own live queries, listed so "which settings exist" has one answer.
   account_frozen: (value: unknown) => typeof value === "boolean",
   onboarded: (value: unknown) => typeof value === "boolean",
   cc_column_removed: (value: unknown) => typeof value === "boolean",
   /** What the owner did to attention items: read, dismissed, snoozed. */
   attention_state: (value: unknown) => isAttentionState(value),
-  /**
-   * What the owner calls each Mali Tablo mark colour.
-   *
-   * One account-wide map, not a property of any marked cell: renaming a colour
-   * has to rename it everywhere it has already been used, which is the whole
-   * point of the rename.
-   */
+  /** What the owner calls each mark colour: one account-wide map, so a rename applies wherever the colour is used. */
   matrix_color_labels: (value: unknown) => parseMatrixColorLabels(value) !== null,
   /** What the owner calls the two balance columns, and whether both are shown. */
   balance_columns: (value: unknown) => parseBalanceColumns(value) !== null,

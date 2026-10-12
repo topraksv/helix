@@ -1,10 +1,4 @@
-/**
- * Stable public repository surface.
- *
- * Implementations are grouped by data-domain boundary under `data/repo/`.
- * Existing callers keep importing this file so the split does not alter the
- * application API or create route-level migration churn.
- */
+// The repository's public surface; screens import from here, never from `db/`.
 
 export {
   AttachmentRejectedError,
@@ -28,7 +22,7 @@ export {
   seedWorkspace,
   setOpeningBalance,
 } from "./repo/onboarding";
-export type { SeedInput, TemplateCategory } from "./repo/onboarding";
+export type { TemplateCategory } from "./repo/categories";
 
 export {
   deleteUnreferencedPaymentSource,
@@ -43,12 +37,7 @@ export {
   restorePerson,
   upsertPaymentSource,
 } from "./repo/accounts";
-export type {
-  PaymentSourceInput,
-  PaymentSourceReferenceUsage,
-  PaymentSourceDeleteSnapshot,
-  PersonReferenceUsage,
-} from "./repo/accounts";
+export type { PaymentSourceReferenceUsage, PersonReferenceUsage } from "./repo/accounts";
 
 export {
   addTransaction,
@@ -64,7 +53,6 @@ export {
   declareMonthOpeningBalance,
   updateTransaction,
 } from "./repo/transactions";
-export type { NewTransaction, TransactionPatch } from "./repo/transactions";
 
 export {
   addInvestmentOperation,
@@ -74,11 +62,6 @@ export {
   saveInvestmentProduct,
   setupInvestments,
   updateInvestmentOperation,
-} from "./repo/investments";
-export type {
-  InvestmentOperationInput,
-  InvestmentProductInput,
-  InvestmentSetupInput,
 } from "./repo/investments";
 
 export {
@@ -91,7 +74,6 @@ export {
   restorePlan,
   updateInstallmentPlan,
 } from "./repo/installments";
-export type { InstallmentRefund, NewPlan } from "./repo/installments";
 
 export {
   deleteRecurringIncomeWithExpected,
@@ -100,11 +82,6 @@ export {
   restoreDeletedRule,
   upsertRecurringIncome,
   upsertSubscription,
-} from "./repo/rules";
-export type {
-  RecurringIncomeInput,
-  RuleDeleteSnapshot,
-  SubscriptionInput,
 } from "./repo/rules";
 
 export {
@@ -123,7 +100,7 @@ export {
   openingBalanceFromSheets,
   planWorkbookRecords,
 } from "./repo/imports";
-export type { ImportRequest, RecordImportPlan } from "./repo/imports";
+export type { RecordImportPlan } from "./repo/imports";
 
 export { runMaintenance } from "./repo/maintenance";
 
@@ -133,7 +110,7 @@ export {
   RESET_SCOPES,
   UNDATED_SCOPES,
 } from "./repo/reset";
-export type { ResetPreview, ResetRange, ResetScope, ResetSelection } from "./repo/reset";
+export type { ResetPreview, ResetRange, ResetScope } from "./repo/reset";
 
 export { saveCellNote } from "./repo/cell-notes";
 
@@ -144,7 +121,6 @@ export {
   deleteCategoryWithBudgets,
   restoreCategoryWithBudgets,
   upsertCategoryBudget,
-  type CategoryDeleteSnapshot,
   type CategoryReferenceUsage,
 } from "./repo/budgets";
 
@@ -183,14 +159,11 @@ export {
   liveAttachmentNames,
   restoreAttachment,
   type AttachmentRow,
-  type AttachmentSnapshot,
-  type NewAttachment,
 } from "./repo/attachments";
 
-export { setMatrixColor, type ColorTarget } from "./repo/matrix-colors";
+export { setMatrixColor } from "./repo/matrix-colors";
 
 export {
   commitStatementRows,
   type AcceptedStatementRow,
-  type StatementCommitResult,
 } from "./repo/statement-import";

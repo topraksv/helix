@@ -1,14 +1,15 @@
 import { getSqliteAsync } from "../../db/client";
 import { tr } from "../../i18n/tr";
 import { deterministicId, naturalKeys, newId } from "../../db/ids";
-import { fromDbShape, nowIso, readSetting, writeRowsValidated, type RowWrite } from "../../db/mutations";
+import { fromDbShape, nowIso, readSetting, settingRow, writeRowsValidated, type RowWrite } from "../../db/mutations";
 import type { ImportBatchKey } from "../../domain/settings";
 import { addMonthsToKey, lastDayOf, monthKeyOf, todayISO, yearOf, type ISODate, type MonthKey } from "../../domain/dates";
 import type { PaymentSourceType } from "../../domain/types";
 import type { Minor } from "../../domain/money";
 import { isValidCardCycle, type CardCycle } from "../../domain/card-statements";
 import { planForSighting } from "../../domain/installments";
-import { collectInstallmentPlans, type ParsedSheet, type WorkbookRecords } from "../../services/spreadsheet-import";
+import { declaredMonthOf } from "../../domain/balance-declaration";
+import { collectInstallmentPlans, isColumnExcluded, type ParsedSheet, type WorkbookRecords } from "../../services/spreadsheet-import";
 import {
   folded,
   quantityKey,
@@ -21,16 +22,13 @@ import {
 } from "../../domain/workbook-format";
 import { suggestCategoryIcon } from "../../domain/category-icons";
 import { nameMentions } from "../../domain/logo-domain";
+import { categoryRow } from "./categories";
 import { ImportBatchUnreadableError } from "./errors";
 import { buildPlanRows, linkDueRowsToCardStatements } from "./installments";
-import { buildSpreadsheetImportPlan, importCategoryKey } from "./import-plan";
+import { buildSpreadsheetImportPlan, importCategoryKey, normalizedName } from "./import-plan";
 import { assertInvestmentWrites } from "./investment-validation";
 import { addInvestmentOperation, saveInvestmentProduct, updateInvestmentOperation } from "./investments";
 import { ensureSubscriptionCategory, upsertSubscription, type SubscriptionInput } from "./rules";
-
-// ---------------------------------------------------------------------------
-// Spreadsheet import (faithful, multi-year, per-year columns)
-// ---------------------------------------------------------------------------
 
 interface ImportBatch {
   version?: 2;
@@ -44,8 +42,10 @@ interface ImportBatch {
 export interface ImportRequest {
   /** Sheets the user chose to import (already picked from the workbook). */
   sheets: ParsedSheet[];
-  /** Column labels to skip (by label, case-sensitive to the parsed label). */
+  /** Column labels to skip in every sheet (by label, case-sensitive to the parsed label). */
   excludedLabels: string[];
+  /** Labels the owner turned back on in every sheet, though a sheet reads them as balance-like. */
+  includedLabels?: string[];
   /** Only import months in these years; omit to import every year found. */
   selectedYears?: number[];
   /** Which balance column holds the month-opening figure, when the owner said. */
@@ -79,16 +79,13 @@ function parseImportBatch(value: string): ImportBatch | null {
   try {
     const parsed = JSON.parse(value) as Partial<ImportBatch>;
     if (!Array.isArray(parsed.transactions) || !Array.isArray(parsed.cellNotes)) return null;
+    const strings = (value: unknown) => (Array.isArray(value) ? value.filter((id): id is string => typeof id === "string") : []);
     return {
       version: parsed.version === 2 ? 2 : undefined,
-      transactions: parsed.transactions.filter((id): id is string => typeof id === "string"),
-      cellNotes: parsed.cellNotes.filter((id): id is string => typeof id === "string"),
-      installmentPlans: Array.isArray(parsed.installmentPlans)
-        ? parsed.installmentPlans.filter((id): id is string => typeof id === "string")
-        : [],
-      adjustments: Array.isArray(parsed.adjustments)
-        ? parsed.adjustments.filter((id): id is string => typeof id === "string")
-        : [],
+      transactions: strings(parsed.transactions),
+      cellNotes: strings(parsed.cellNotes),
+      installmentPlans: strings(parsed.installmentPlans),
+      adjustments: strings(parsed.adjustments),
     };
   } catch {
     return null;
@@ -136,8 +133,6 @@ async function importBatchMap(userId: string): Promise<ImportBatchIndex> {
       [userId],
     );
     const importedPlanIds = new Set<string>();
-    // The SHA-256 digests are independent — compute them in parallel instead
-    // of awaiting one per plan.
     const expectedIds = await Promise.all(
       plans.map((plan) =>
         plan.monthly_amount_minor == null
@@ -180,18 +175,6 @@ async function importBatchMap(userId: string): Promise<ImportBatchIndex> {
     }
   }
   return { batches: result, unreadableYears };
-}
-
-async function settingWrite(userId: string, key: string, value: unknown): Promise<RowWrite> {
-  return {
-    table: "settings",
-    row: {
-      id: await deterministicId(naturalKeys.setting(userId, key)),
-      key,
-      value: JSON.stringify(value),
-      deletedAt: null,
-    },
-  };
 }
 
 async function tombstoneImportRows(
@@ -258,21 +241,11 @@ export async function hasImportedData(userId: string): Promise<boolean> {
   return (row?.n ?? 0) > 0;
 }
 
-/**
- * Import parsed sheets 1:1 into the ledger (spec §8.3). Categories are matched
- * by name (or created as columns), each year records its own ordered column set
- * (`column_years`), formula/comment breakdowns become itemized rows or a cell
- * note (see `planImportCell`), and the earliest month's opening balance seeds
- * the ledger anchor. Re-importing a year either replaces its prior batch or
- * adds on top. Everything is additive elsewhere — existing manual rows are
- * never touched.
- */
 type CategoryRow = { id: string; name: string; kind: "expense" | "income"; sort_order: number; is_transfer: number; [key: string]: unknown };
 type SourceRow = { id: string; name: string; type: PaymentSourceType; statement_day: number | null; due_day: number | null; [key: string]: unknown };
 type PlanSpec = ReturnType<typeof collectInstallmentPlans>[number];
 type BatchFor = (year: number) => ImportBatch;
 
-const normalizedName = (name: string) => name.trim().toLocaleLowerCase("tr-TR");
 const emptyBatch = (): ImportBatch => ({ version: 2, transactions: [], cellNotes: [], installmentPlans: [], adjustments: [] });
 const cycleOf = (source: SourceRow | undefined): CardCycle | null => {
   const cycle = { statementDay: source?.statement_day, dueDay: source?.due_day };
@@ -297,7 +270,7 @@ async function importWorkspace(userId: string, selfId: string) {
     sqlite.getAllAsync<{ id: string; name: string }>(`SELECT id, name FROM persons WHERE user_id = ? AND is_self = 0 AND deleted_at IS NULL`, [userId]),
     sqlite.getAllAsync<CategoryRow>(`SELECT * FROM categories WHERE user_id = ? AND deleted_at IS NULL`, [userId]),
     sqlite.getAllAsync<SourceRow>(`SELECT * FROM payment_sources WHERE user_id = ? AND deleted_at IS NULL`, [userId]),
-    // A loan closed in the app stays closed through a re-import (owner decision, 2026-09-14).
+    // A loan closed in the app stays closed through a re-import.
     sqlite.getAllAsync<ImportedPlanClosure & { id: string }>(
       `SELECT id, closed_on, installment_count, kind FROM installment_plans WHERE user_id = ? AND closed_on IS NOT NULL`,
       [userId],
@@ -340,7 +313,7 @@ function columnCategories(existing: CategoryRow[]) {
       idByNameAndKind.set(key, created);
       writes.push({
         table: "categories",
-        row: { id: created, name, kind, icon: suggestCategoryIcon(name, kind), color: null, sortOrder: sortOrder++, isColumn: true, isTransfer: kind === "expense" && isTransfer, deletedAt: null },
+        row: categoryRow(created, { name, kind, icon: suggestCategoryIcon(name, kind), sortOrder: sortOrder++, isColumn: true, isTransfer }),
       });
     } else if (known && kind === "expense" && isTransfer && known.is_transfer !== 1) {
       known.is_transfer = 1;
@@ -355,12 +328,12 @@ function columnCategories(existing: CategoryRow[]) {
  * figure, null for a column left empty, and absent where the sheet lacks the
  * column. The plan rules below turn on which of the three it is.
  */
-function statedCellsOf(req: ImportRequest, yearAllowed: (year: number) => boolean) {
+function statedCellsOf(req: ImportRequest, yearAllowed: (year: number) => boolean, excluded: ReadonlySet<string>, included: ReadonlySet<string>) {
   const cells = new Map<string, Minor | null>();
   const months = new Set<MonthKey>();
   for (const sheet of req.sheets) {
     sheet.columns.forEach((column, index) => {
-      if (req.excludedLabels.includes(column.label)) return;
+      if (isColumnExcluded(column, excluded, included)) return;
       sheet.months.forEach((month, row) => {
         if (!yearAllowed(yearOf(month))) return;
         const value = sheet.cells[row]?.[index]?.valueMinor ?? null;
@@ -505,12 +478,12 @@ async function importMetadata(userId: string, req: ImportRequest, affectedYears:
   for (const [year, ids] of columnYearsUpdates) {
     columnYears[String(year)] = req.mode === "add" ? [...new Set([...(columnYears[String(year)] ?? []), ...ids])] : ids;
   }
-  const writes = [await settingWrite(userId, COLUMN_YEARS_KEY, columnYears)];
+  const writes = [await settingRow(userId, COLUMN_YEARS_KEY, columnYears)];
   for (const year of affectedYears) {
     const batch = batches.get(year) ?? emptyBatch();
     const prior = req.mode === "add" ? priorBatches.get(year) : undefined;
     const merged = { version: 2, ...Object.fromEntries(BATCH_KINDS.map((kind) => [kind, [...new Set([...(prior?.[kind] ?? []), ...(batch[kind] ?? [])])]])) };
-    writes.push(await settingWrite(userId, importBatchKey(year), merged));
+    writes.push(await settingRow(userId, importBatchKey(year), merged));
   }
   return writes;
 }
@@ -544,6 +517,11 @@ function recordPlanRows(planned: Awaited<ReturnType<typeof planRows>>, affectedY
   }
 }
 
+/**
+ * Import parsed sheets 1:1 into the ledger (spec §8.3). Columns are matched by name or created;
+ * each year records its own column set; re-importing a year replaces its prior batch or adds on
+ * top. Existing manual rows are never touched.
+ */
 export async function importSheets(userId: string, req: ImportRequest): Promise<{ imported: number; plans: number }> {
   const workspace = await importWorkspace(userId, req.selfId);
   const today = todayISO();
@@ -556,15 +534,16 @@ export async function importSheets(userId: string, req: ImportRequest): Promise<
   if (blocked.length > 0) throw new ImportBatchUnreadableError(blocked.sort((a, b) => a - b));
   const cleanup = req.mode === "replace" ? await replacedBatchRows(userId, affectedYears, priorBatches) : { writes: [], replaced: new Set<string>() };
 
+  const [excluded, included] = [new Set(req.excludedLabels), new Set(req.includedLabels)];
   const categories = columnCategories(workspace.categories);
   for (const sheet of req.sheets.filter((candidate) => candidate.months.some((month) => yearAllowed(yearOf(month))))) {
-    for (const column of sheet.columns.filter((candidate) => !req.excludedLabels.includes(candidate.label))) {
+    for (const column of sheet.columns.filter((candidate) => !isColumnExcluded(candidate, excluded, included))) {
       categories.ensure(column.label, column.kindGuess, column.isInvestment);
     }
   }
   const batches = new Map<number, ImportBatch>();
   const batchFor: BatchFor = (year) => batches.get(year) ?? batches.set(year, emptyBatch()).get(year)!;
-  const stated = statedCellsOf(req, yearAllowed);
+  const stated = statedCellsOf(req, yearAllowed, excluded, included);
 
   /**
    * Whose card a reconstructed section is: the person it names (whole word, three
@@ -576,11 +555,12 @@ export async function importSheets(userId: string, req: ImportRequest): Promise<
     return person ? { id: person.id, isSelf: false } : { id: req.selfId, isSelf: true };
   };
   // Collected before the cells: a cell its instalments add up to is written AS them.
-  const plans = collectInstallmentPlans(req.sheets, { excludedLabels: req.excludedLabels, informationalCards: req.informationalCards, yearAllowed });
+  const plans = collectInstallmentPlans(req.sheets, { excludedLabels: req.excludedLabels, includedLabels: req.includedLabels, informationalCards: req.informationalCards, yearAllowed });
   const planTotals = planTotalsByCell(plans.filter((spec) => cardOwner(spec.card).isSelf));
   const sheetPlan = buildSpreadsheetImportPlan({
     sheets: req.sheets,
-    excludedLabels: new Set(req.excludedLabels),
+    excludedLabels: excluded,
+    includedLabels: included,
     selectedYears,
     categoryIds: categories.idByNameAndKind,
     today,
@@ -691,7 +671,7 @@ async function ownerDeclarations(userId: string, batches: ReadonlyMap<number, Im
     `SELECT id, date, declared_minor FROM balance_adjustments WHERE user_id = ? AND declared_minor IS NOT NULL AND deleted_at IS NULL`,
     [userId],
   );
-  return new Map(declared.filter((row) => !owned.has(row.id)).map((row) => [addMonthsToKey(monthKeyOf(row.date), 1), row.declared_minor]));
+  return new Map(declared.filter((row) => !owned.has(row.id)).map((row) => [declaredMonthOf(row.date), row.declared_minor]));
 }
 
 /**
@@ -739,15 +719,10 @@ async function plansAlreadyHeld(
 }
 
 /**
- * The month-opening figure each imported sheet states for its own first month,
- * earliest first. `minor` is null when no column states one there.
- *
- * A workbook kept by hand does not chain across its sheets: the file this was
- * measured against restarts the running balance in Ağustos 2022 and again in
- * Ocak 2024, because the owner reconciled against the bank and typed what was
- * really there. Those figures are the most reliable data in the file and the
- * only place it admits the arithmetic drifted, so the importer reproduces them
- * rather than carrying its own sum across them.
+ * The month-opening figure each imported sheet states for its own first month, earliest first;
+ * `minor` is null when no column states one. A hand-kept workbook restarts its running balance
+ * where the owner reconciled with the bank, so the importer reproduces those figures rather than
+ * carrying its own sum across them.
  */
 function statedOpenings(
   sheets: ParsedSheet[],
@@ -774,15 +749,10 @@ function openingColumnIndex(sheet: ParsedSheet, columnLabel: string | null | und
 }
 
 /**
- * Every month-opening figure the imported sheets state, through `throughMonth`.
- *
- * A sheet's opening column is its own running balance, and the formula behind
- * it can change between months: the file this was measured against leaves rent
- * and a conscription payment out of "Kalan" until mid-2023 and counts them
- * after, which left sixteen months up to 5.324,11 out while every cell matched.
- * Holding each stated month to its figure reproduces the file without guessing
- * which columns a month's formula counted. A later month has not happened yet,
- * so its figure is the sheet's forecast rather than a statement.
+ * Every month-opening figure the imported sheets state, through `throughMonth`. The formula behind
+ * a sheet's opening column can change between months, so holding each stated month to its figure
+ * reproduces the file without guessing which columns counted. A later month's figure is a
+ * forecast, not a statement.
  */
 function statedMonthOpenings(
   sheets: ParsedSheet[],
@@ -801,20 +771,9 @@ function statedMonthOpenings(
 }
 
 /**
- * The ledger anchor an import establishes: the earliest month being imported,
- * and the balance to open it with.
- *
- * The month is the earliest one IMPORTED, never the earliest one that happens
- * to carry a balance column. A workbook whose first year has no opening column
- * — the owner's 2021 sheet is exactly that — used to anchor at a later year
- * instead, and the chain then back-computed the earlier months from it and
- * opened them thousands in the red. Anchoring where the data starts is also
- * what the owner describes: the first month opens at the figure given for it,
- * or at zero, and every month after it opens at the one before's close.
- *
- * Exported so the importer can SHOW what it is about to adopt. The whole
- * chained ledger hangs off this one number, and it was being written with
- * nothing on screen naming it.
+ * The ledger anchor an import establishes: the earliest month IMPORTED (never the earliest one
+ * carrying a balance column, or the chain would back-compute earlier months from a later year and
+ * open them in the red), and the balance to open it with. Exported so the importer can show it.
  */
 export function openingBalanceFromSheets(
   sheets: ParsedSheet[],
@@ -825,21 +784,9 @@ export function openingBalanceFromSheets(
 }
 
 /**
- * Seed the ledger anchor from the earliest imported month.
- *
- * An import that reaches back before the configured anchor MOVES it, whether or
- * not the workbook states a figure of its own. That is the owner's rule — the
- * workbook's first month opens at the figure given for it, or at zero — and not
- * an arithmetic necessity: left alone, the ledger chain back-computes the
- * earlier months to keep the balance typed for the configured month, and the
- * imported history then disagrees with the workbook it came from. The cost is
- * that a current balance typed at setup gives way to the one the workbook's
- * history produces; measured 2026-09-13 on the owner's file, same rows, 30.657,28
- * kept against −18.053,53 adopted.
- *
- * The figure is the workbook's where it states one and zero where it does not,
- * which is what the owner describes: the first month opens at the figure given
- * for it, or at zero, and every month after it opens at the one before's close.
+ * Seed the ledger anchor from the earliest imported month. An import reaching back before the
+ * configured anchor MOVES it (the owner's rule: the first month opens at the workbook's figure, or
+ * zero), else the chain would back-compute the imported history to disagree with its workbook.
  */
 async function anchorFromImport(
   userId: string,
@@ -863,38 +810,29 @@ async function anchorFromImport(
   // restating it where the workbook starts at the same month, is the owner's
   // call and arrives as `adopt`.
   if (adopt || !currentStart || opening.month < currentStart) {
-    // Reaching back before an anchor the owner set by hand used to throw the
-    // balance they typed away (measured 2026-09-13: 30.657,28 became
-    // −18.053,53). It is kept as that month's declared opening instead, so the
-    // history reads as the file says and the present as the owner said. Only
-    // a figure someone actually typed: an anchor an earlier import wrote is the
-    // file's own, and a zero is the setup screen's empty optional field.
+    // A balance the owner typed is kept as that month's declared opening, not thrown away. Only a
+    // typed figure: an earlier import's anchor is the file's own, and zero is the empty setup field.
     const currentOpening = currentStart ? await readSetting<Minor>(userId, "opening_balance_minor") : null;
     const preservedOpening = !adopt && currentStart && opening.month < currentStart && !importedBefore && currentOpening
       ? { month: currentStart, minor: currentOpening }
       : null;
     return {
       writes: [
-        await settingWrite(userId, "start_month", opening.month),
-        await settingWrite(userId, "opening_balance_minor", opening.minor ?? 0),
+        await settingRow(userId, "start_month", opening.month),
+        await settingRow(userId, "opening_balance_minor", opening.minor ?? 0),
       ],
       anchorMonth: opening.month,
       anchorMinor: opening.minor ?? 0,
       preservedOpening,
     };
   }
-  // The anchor is already this workbook's — a second import of the same file.
-  // Nothing moves, and the chain still starts here, from the figure the ledger
-  // actually holds rather than the one this run would have written.
+  // A second import of the same file: nothing moves; the chain starts from the figure the ledger holds.
   if (currentStart === opening.month) {
     return { writes: [], anchorMonth: opening.month, anchorMinor: (await readSetting<Minor>(userId, "opening_balance_minor")) ?? 0, preservedOpening: null };
   }
   return none;
 }
 
-// ---------------------------------------------------------------------------
-// Record sheets read back from a Helix workbook (Abonelikler, Yatırımlar)
-// ---------------------------------------------------------------------------
 
 interface RecordCounts {
   added: number;
@@ -1023,26 +961,18 @@ export function planWorkbookRecords(userId: string, records: WorkbookRecords): P
 }
 
 /**
- * Bring the record sheets in (owner decision, 2026-09-14): a subscription
- * matching by name and cycle, or an operation by product, day, kind and
- * quantity, is updated; anything else is added; nothing is deleted.
- *
- * Each row goes through the validated write its own screen uses, one at a
- * time, so a row the app refuses — a sale beyond what is held, a card without a
- * cycle — is reported by its row and the rest still land. Matching is what
- * makes a second run of the same file converge instead of duplicating.
+ * Bring the record sheets in: a subscription matching by name and cycle, or an operation by
+ * product, day, kind and quantity, is updated; anything else is added; nothing is deleted. Each row
+ * uses its own screen's validated write, so a refused row is reported and the rest still land.
  */
 export function importWorkbookRecords(userId: string, records: WorkbookRecords): Promise<RecordImportPlan> {
   return walkWorkbookRecords(userId, records, true);
 }
 
 /**
- * The preview is the import's matching with its writes left out, not a second
- * copy of it: a row the sheet repeats has to meet what the row before it
- * wrote, or would have, or the preview promises two additions where the import
- * makes one. The checks those writes make are left out with them, so a row the
- * app would refuse — a sale beyond what is held — is counted here and reported
- * only by the import.
+ * The preview is the import's matching with its writes left out, so a repeated row meets what the
+ * row before it wrote, or would have. The writes' checks are left out too: a row the app would
+ * refuse is counted here and reported only by the import.
  */
 async function walkWorkbookRecords(userId: string, records: WorkbookRecords, write: boolean): Promise<RecordImportPlan> {
   const context = await recordContext(userId);

@@ -5,7 +5,7 @@
  * earlier rate and flags staleness (TCMB publishes business days only).
  */
 
-import type { ISODate } from "./dates";
+import { todayISO, type ISODate } from "./dates";
 import { roundHalfAwayFromZero, type Minor } from "./money";
 
 export interface FxRate {
@@ -37,4 +37,38 @@ export function pickRate(rates: FxRate[], currency: string, date: ISODate): Rate
   }
   if (!best) return null;
   return { rate: best, isStale: best.rateDate < date };
+}
+
+/** Why a converter rate is not the live one, for the receipt shown under the result. */
+export type ConverterBadge =
+  | { kind: "market"; receivedAt: number }
+  | { kind: "fx"; rateDate: string }
+  | null;
+
+/**
+ * The rate the read-only converter uses, mirroring the Summary card: a live
+ * quote converts silently; the card's last-known quote converts with its
+ * receipt time shown; the dated FX cache is only used when it is strictly
+ * newer than that quote. Ledger-writing conversions elsewhere keep the strict
+ * 60 s live contract.
+ */
+export function converterRate(
+  market: { rateTry: number; receivedAt: number; live: boolean } | null,
+  cached: RateLookup | null,
+): { rateTry: number; badge: ConverterBadge } | null {
+  if (market?.live) return { rateTry: market.rateTry, badge: null };
+  if (market && (cached == null || todayISO(new Date(market.receivedAt)) >= cached.rate.rateDate)) {
+    return { rateTry: market.rateTry, badge: { kind: "market", receivedAt: market.receivedAt } };
+  }
+  if (cached == null) return null;
+  return {
+    rateTry: cached.rate.rateTry,
+    badge: cached.isStale ? { kind: "fx", rateDate: cached.rate.rateDate } : null,
+  };
+}
+
+/** `amountMinor` of one currency in another, cross-rated through TRY; null when the result leaves the safe minor-unit range. */
+export function crossConvertMinor(amountMinor: Minor, fromRateTry: number, toRateTry: number): Minor | null {
+  const converted = roundHalfAwayFromZero((amountMinor * fromRateTry) / toRateTry);
+  return Number.isSafeInteger(converted) ? converted : null;
 }

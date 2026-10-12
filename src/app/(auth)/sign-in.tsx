@@ -1,15 +1,15 @@
 import { useEffect, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
-import AlertCircle from "lucide-react-native/icons/circle-alert";
 import BellRing from "lucide-react-native/icons/bell-ring";
-import CheckCircle2 from "lucide-react-native/icons/circle-check";
 import CloudOff from "lucide-react-native/icons/cloud-off";
 import Table2 from "lucide-react-native/icons/table-2";
 import WalletCards from "lucide-react-native/icons/wallet-cards";
+import type { LucideIcon } from "lucide-react-native";
 import { useRouter } from "expo-router";
 import { useSession } from "../../auth/session";
 import { LegalConsentControl, LegalNoticeSheet } from "../../ui/legal-notice";
 import { isSupabaseConfigured, takeEmailLinkLanding } from "../../sync/supabase";
+import { AuthNotice } from "../../ui/auth-notice";
 import { Body, Button, Card, Field, Screen } from "../../ui/components";
 import { useSubmitOnEnter } from "../../ui/keyboard";
 import { clearLifecycleIntent } from "../../ui/lifecycle-intent";
@@ -28,7 +28,7 @@ function JourneyNode({
   label,
   active,
 }: {
-  icon: typeof WalletCards;
+  icon: LucideIcon;
   label: string;
   active?: boolean;
 }) {
@@ -50,12 +50,7 @@ function JourneyNode({
         <Icon accessible={false} size={21} strokeWidth={1.8} color={active ? palette.onPrimary : palette.textSecondary} />
       </View>
       <Text
-        // A third of the card, beside a 46pt disc that does not scale: at the
-        // largest iOS accessibility size (~3.1x) "Kaydet" no longer fitted its
-        // column and iOS broke it MID-WORD — "Kay / det", "Anl / a", "Taki / p
-        // et" — which is the truncation this app refuses, wearing a different
-        // costume. Found on a simulator at
-        // `content_size accessibility-extra-extra-extra-large`.
+        // Beside a disc that does not scale, the label's column is a third of the card; at the largest accessibility sizes iOS broke words mid-word.
         maxFontSizeMultiplier={maxFontScale.measuredBox}
         style={[type.small, {
           color: active ? palette.accentText : palette.textSecondary,
@@ -72,6 +67,8 @@ function JourneyNode({
 
 function AuthJourneyArtwork({ compact }: { compact: boolean }) {
   const { palette } = useTheme();
+  const tones = [palette.primary, palette.secondary, palette.tertiary];
+  const connector = <View style={{ flex: 0.52, height: 1, backgroundColor: palette.border, marginTop: 23 }} />;
   return (
     <View
       accessible
@@ -89,7 +86,6 @@ function AuthJourneyArtwork({ compact }: { compact: boolean }) {
       }}
     >
       <View
-        accessible={false}
         style={{
           position: "absolute",
           width: compact ? 180 : 320,
@@ -102,7 +98,6 @@ function AuthJourneyArtwork({ compact }: { compact: boolean }) {
         }}
       />
       <View
-        accessible={false}
         style={{
           position: "absolute",
           width: compact ? 95 : 170,
@@ -116,18 +111,18 @@ function AuthJourneyArtwork({ compact }: { compact: boolean }) {
       />
       <View style={{ flexDirection: "row", alignItems: "flex-start", width: "100%" }}>
         <JourneyNode icon={WalletCards} label={tr.auth.journeyEntry} active />
-        <View style={{ flex: 0.52, height: 1, backgroundColor: palette.border, marginTop: 23 }} />
+        {connector}
         <JourneyNode icon={Table2} label={tr.auth.journeyLedger} />
-        <View style={{ flex: 0.52, height: 1, backgroundColor: palette.border, marginTop: 23 }} />
+        {connector}
         <JourneyNode icon={BellRing} label={tr.auth.journeyTrack} />
       </View>
       {!compact ? (
-        <View style={{ marginTop: spacing.xl }}>
+        <View style={{ marginTop: spacing.xl, gap: spacing.sm }}>
           {[0.72, 0.48, 0.86].map((value, index) => (
-            <View key={value} style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm, marginTop: index ? spacing.sm : 0 }}>
-              <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: [palette.primary, palette.secondary, palette.tertiary][index] }} />
+            <View key={value} style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
+              <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: tones[index] }} />
               <View style={{ flex: 1, height: 6, borderRadius: 3, backgroundColor: palette.surfaceStrong + "80" }}>
-                <View style={{ width: `${value * 100}%`, height: 6, borderRadius: 3, backgroundColor: [palette.primary, palette.secondary, palette.tertiary][index] }} />
+                <View style={{ width: `${value * 100}%`, height: 6, borderRadius: 3, backgroundColor: tones[index] }} />
               </View>
             </View>
           ))}
@@ -137,23 +132,13 @@ function AuthJourneyArtwork({ compact }: { compact: boolean }) {
   );
 }
 
-/**
- * A quiet action on this screen: the notice, "forgot password", "back to
- * sign-in".
- *
- * They were three full-width ghost buttons stacked down the card, each with its
- * own 44pt row and margin. That is a lot of vertical weight for actions nobody
- * comes here to take, and it is what pushed the form past the fold on a phone.
- * As inline links they read as secondary, sit on one line, and still carry the
- * full touch target through `minHeight` rather than through padding that would
- * make the row wider than the words.
- */
-function AuthLink({ label, onPress, disabled }: { label: string; onPress: () => void; disabled?: boolean }) {
+/** Inline links, not stacked ghost buttons, so the form stays above the fold on a phone; `minHeight` keeps the 44pt target. */
+function AuthLink({ label, onPress, disabled = false }: { label: string; onPress: () => void; disabled?: boolean }) {
   const { palette } = useTheme();
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityState={{ disabled: Boolean(disabled) }}
+      accessibilityState={{ disabled }}
       disabled={disabled}
       onPress={onPress}
       style={(state) => ({
@@ -175,18 +160,18 @@ type AuthMode = "signIn" | "signUp" | "forgot";
 /** What each mode says, and how its operation is shown. */
 const MODE = {
   signIn: {
-    heading: () => tr.auth.signInHeading, subtitle: () => tr.auth.signInSubtitle, running: () => tr.operation.signingIn, flow: "sign-in",
+    heading: tr.auth.signInHeading, subtitle: tr.auth.signInSubtitle, running: tr.operation.signingIn, flow: "sign-in",
     // Three modes, three sentences: the reset screen gets its own way back
     // rather than one that describes a different reader.
-    other: () => tr.auth.createAccountAction,
+    other: tr.auth.createAccountAction,
   },
   signUp: {
-    heading: () => tr.auth.signUpTitle, subtitle: () => tr.auth.signUpSubtitle, running: () => tr.operation.creatingAccount, flow: "sign-up",
-    other: () => tr.auth.backToSignInAction,
+    heading: tr.auth.signUpTitle, subtitle: tr.auth.signUpSubtitle, running: tr.operation.creatingAccount, flow: "sign-up",
+    other: tr.auth.backToSignInAction,
   },
   forgot: {
-    heading: () => tr.auth.forgotTitle, subtitle: () => tr.auth.forgotSubtitle, running: () => tr.operation.requestingReset, flow: "reset",
-    other: () => tr.auth.backToSignIn,
+    heading: tr.auth.forgotTitle, subtitle: tr.auth.forgotSubtitle, running: tr.operation.requestingReset, flow: "reset",
+    other: tr.auth.backToSignIn,
   },
 } as const;
 
@@ -201,7 +186,7 @@ function useAuthForm() {
   // Held in state so Strict Mode's second effect run reads the same answer
   // rather than the empty one a second take would give.
   const [landingAnswer] = useState(takeEmailLinkLanding);
-  const [landing, setLanding] = useState<"confirmed" | "changeConfirmed" | "unusable" | null>(null);
+  const [landing, setLanding] = useState<"confirmed" | "changeConfirmed" | "unusable" | "offline" | null>(null);
   const [resending, setResending] = useState(false);
   const [confirmationResent, setConfirmationResent] = useState(false);
   const [consented, setConsented] = useState(false);
@@ -270,9 +255,7 @@ function useAuthForm() {
       setLanding(null);
       setConfirmationResent(false);
       try {
-        // On success, let the root route guard navigate (it keys off userId +
-        // onboarded). Replacing to "/" here landed on a length-0 route that made the
-        // guard's "(tabs)" redirect loop (React error #185 → white screen).
+        // The root route guard navigates on success; replacing to "/" here made the guard's redirect loop.
         const err = await request();
         if (err) setError(err);
         else if (mode === "forgot") setResetSent(true);
@@ -336,23 +319,6 @@ function useAuthForm() {
 
 type AuthForm = ReturnType<typeof useAuthForm>;
 
-function AuthNotice({ tone, text }: { tone: "success" | "error"; text: string }) {
-  const { palette } = useTheme();
-  const Icon = tone === "success" ? CheckCircle2 : AlertCircle;
-  return (
-    <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm, backgroundColor: palette[tone] + "16", borderRadius: radius.sm, padding: spacing.md, marginBottom: spacing.md }}>
-      <Icon accessible={false} size={17} color={palette[tone]} />
-      <Text
-        accessibilityRole={tone === "error" ? "alert" : undefined}
-        accessibilityLiveRegion={tone === "error" ? "assertive" : "polite"}
-        style={[type.label, { color: tone === "error" ? palette.errorText : palette.successText, flex: 1 }]}
-      >
-        {text}
-      </Text>
-    </View>
-  );
-}
-
 function AuthFormCard({ form, wide, onOpenNotice }: { form: AuthForm; wide: boolean; onOpenNotice: () => void }) {
   const { palette } = useTheme();
   const router = useRouter();
@@ -363,8 +329,8 @@ function AuthFormCard({ form, wide, onOpenNotice }: { form: AuthForm; wide: bool
     // One skeleton for all three modes — heading, subtitle, fields, actions —
     // with the same gaps, so switching modes does not redraw three card sizes.
     <Card style={{ flex: wide ? 0.92 : undefined, alignSelf: wide ? "flex-start" : "stretch", marginBottom: 0, padding: wide ? spacing.xl : spacing.lg }}>
-      <Text accessibilityRole="header" style={[type.heading, { color: palette.text, marginBottom: spacing.xs }]}>{text.heading()}</Text>
-      <Body muted style={{ marginBottom: spacing.lg }}>{text.subtitle()}</Body>
+      <Text accessibilityRole="header" style={[type.heading, { color: palette.text, marginBottom: spacing.xs }]}>{text.heading}</Text>
+      <Body muted style={{ marginBottom: spacing.lg }}>{text.subtitle}</Body>
       <Field
         label={tr.auth.email}
         value={form.email}
@@ -393,14 +359,14 @@ function AuthFormCard({ form, wide, onOpenNotice }: { form: AuthForm; wide: bool
         />
       ) : null}
       {form.resetSent || form.signUpConfirmationSent ? <AuthNotice tone="success" text={form.signUpConfirmationSent ? tr.auth.signUpConfirmationSent : tr.auth.resetSent} /> : null}
-      {form.landing ? <AuthNotice tone={form.landing === "unusable" ? "error" : "success"} text={form.landing === "unusable" ? tr.auth.emailLinkUnusable : form.landing === "changeConfirmed" ? tr.auth.emailChangeLinkConfirmed : tr.auth.emailLinkConfirmed} /> : null}
+      {form.landing ? <AuthNotice tone={form.landing === "unusable" || form.landing === "offline" ? "error" : "success"} text={form.landing === "unusable" ? tr.auth.emailLinkUnusable : form.landing === "offline" ? tr.auth.emailLinkOffline : form.landing === "changeConfirmed" ? tr.auth.emailChangeLinkConfirmed : tr.auth.emailLinkConfirmed} /> : null}
       {form.confirmationResent ? <AuthNotice tone="success" text={tr.auth.confirmationResent} /> : null}
       {form.error ? <AuthNotice tone="error" text={form.error} /> : null}
       {form.busy ? (
         // Between the password field and the submit button, where nothing had
         // reserved space: its own surface and margins keep the card's rhythm.
         <View style={{ marginBottom: spacing.md, padding: spacing.md, borderRadius: radius.md, backgroundColor: palette.surfaceAlt, borderWidth: StyleSheet.hairlineWidth, borderColor: palette.border }}>
-          <OperationFlow kind={text.flow} label={text.running()} />
+          <OperationFlow kind={text.flow} label={text.running} />
         </View>
       ) : null}
       {/* Before the account exists, not after: creating one is when an e-mail
@@ -418,11 +384,11 @@ function AuthFormCard({ form, wide, onOpenNotice }: { form: AuthForm; wide: bool
           the spacing. The notice is not offered here: signing in or repairing a
           password starts no processing an account creation would. */}
       <View style={{ alignItems: "center", marginTop: spacing.sm }}>
-        {/* Under a failure, which may be ours: the report needs no account (migration 45). */}
+        {/* Under a failure, which may be ours: the report needs no account. */}
         {form.error ? <AuthLink label={tr.auth.reportProblem} onPress={() => router.push({ pathname: "/feedback", params: { email: form.email.trim() } })} /> : null}
         {form.canResend ? <AuthLink label={tr.auth.resendConfirmation} onPress={() => void form.resend()} /> : null}
         {mode === "signIn" ? <AuthLink label={tr.auth.forgotPassword} onPress={form.showForgot} /> : null}
-        <AuthLink label={text.other()} onPress={form.switchMode} disabled={form.busy} />
+        <AuthLink label={text.other} onPress={form.switchMode} disabled={form.busy} />
       </View>
       <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm, justifyContent: "center", marginTop: spacing.sm }}>
         <CloudOff accessible={false} size={14} color={palette.textSecondary} />
@@ -460,7 +426,7 @@ export default function SignInScreen() {
             full HEIGHT in the row one, so it follows the direction. */}
         <View style={{ flex: wide ? 1.08 : undefined, alignSelf: wide ? "flex-start" : "stretch", minWidth: 0 }}>
           <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.md, marginBottom: spacing.sm }}>
-            <BrandMark size={wide ? 48 : 40} />
+            <BrandMark height={wide ? 48 : 40} />
             <Text
               accessibilityRole="header"
               style={[type.display, {

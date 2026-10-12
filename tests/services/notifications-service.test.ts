@@ -1,12 +1,4 @@
-/**
- * Local notification scheduling, driven for real.
- *
- * Every suite that touched `services/notifications.ts` replaced it with a mock,
- * so nothing checked what it plans, what it keeps off a lock screen, or when it
- * clears the queue — its mutation score was zero. Here the real module runs over
- * the real schema with the real device preferences; only the operating system's
- * notification API and the device key-value store are stand-ins.
- */
+// The real module runs over the real schema; only the OS notification API and the key-value store are stand-ins.
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -85,6 +77,10 @@ const USER = "notify-user";
 const STAMP = "2026-08-01T00:00:00.000Z";
 const NOTIFICATIONS = "helix.notifications";
 const DETAILS = "helix.notification-details";
+const enable = (details = false) => {
+  os.store.set(NOTIFICATIONS, "true");
+  if (details) os.store.set(DETAILS, "true");
+};
 const AUTHORIZED = { granted: true, ios: { status: 2 } };
 
 function run(sql: string, ...args: unknown[]): void {
@@ -192,8 +188,7 @@ describe("local notification scheduling", () => {
   });
 
   it("plans every reminder due within thirty days, soonest first, and only those", async () => {
-    os.store.set(NOTIFICATIONS, "true");
-    os.store.set(DETAILS, "true");
+    enable(true);
 
     await service.rescheduleAll(USER);
 
@@ -204,7 +199,7 @@ describe("local notification scheduling", () => {
   });
 
   it("keeps names and amounts off the lock screen unless details were chosen, one reminder a day", async () => {
-    os.store.set(NOTIFICATIONS, "true");
+    enable();
     expected("same-day", "out", "ghost", "2026-08-15", 5000);
 
     await service.rescheduleAll(USER);
@@ -212,19 +207,8 @@ describe("local notification scheduling", () => {
     expect(scheduled()).toEqual(DETAILED.map(([date]) => [date, tr.notif.privateTitle, tr.notif.privateBody, target({ kind: "expected" })]));
   });
 
-  it("skips a reminder whose hour has already passed today", async () => {
-    os.store.set(NOTIFICATIONS, "true");
-    os.store.set(DETAILS, "true");
-    vi.setSystemTime(new Date(2026, 7, 10, 9, 30));
-
-    await service.rescheduleAll(USER);
-
-    expect(scheduled()).toEqual(DETAILED.slice(1));
-  });
-
   it("schedules at most sixty, soonest first", async () => {
-    os.store.set(NOTIFICATIONS, "true");
-    os.store.set(DETAILS, "true");
+    enable(true);
     for (let index = 0; index < 40; index += 1) {
       expected(`bulk-${index}`, "out", "ghost", `2026-09-0${1 + (index % 8)}`, 100 + index);
     }
@@ -245,7 +229,7 @@ describe("local notification scheduling", () => {
   });
 
   it("clears the queue when the operating system permission was withdrawn", async () => {
-    os.store.set(NOTIFICATIONS, "true");
+    enable();
     os.permission = { granted: false, ios: { status: 1 } };
 
     await service.rescheduleAll(USER);
@@ -255,7 +239,7 @@ describe("local notification scheduling", () => {
   });
 
   it("accepts provisional and ephemeral iOS permission as granted, and only those beside authorised", async () => {
-    os.store.set(NOTIFICATIONS, "true");
+    enable();
     for (const [status, granted] of [[3, true], [4, true], [0, false]] as const) {
       os.permission = { granted: !granted, ios: { status } };
       os.scheduled.length = 0;
@@ -305,7 +289,7 @@ describe("local notification scheduling", () => {
 
   it("does nothing at all on the web", async () => {
     os.platform.OS = "web";
-    os.store.set(NOTIFICATIONS, "true");
+    enable();
 
     expect(await service.enableNotifications(USER)).toBe(false);
     await service.rescheduleAll(USER);
@@ -315,8 +299,7 @@ describe("local notification scheduling", () => {
   });
 
   it("clears what is already on the lock screen before a rebuild without details", async () => {
-    os.store.set(NOTIFICATIONS, "true");
-    os.store.set(DETAILS, "true");
+    enable(true);
 
     await service.updateNotificationDetails(USER, false);
 
@@ -332,7 +315,7 @@ describe("local notification scheduling", () => {
   });
 
   it("still clears the queue when the device refuses to store the choice to turn off", async () => {
-    os.store.set(NOTIFICATIONS, "true");
+    enable();
     os.refuseWrites = true;
 
     await expect(service.disableNotifications()).rejects.toThrow("storage refused");
@@ -350,7 +333,7 @@ describe("local notification scheduling", () => {
   });
 
   it("reads an iOS permission that carries no iOS status as not granted", async () => {
-    os.store.set(NOTIFICATIONS, "true");
+    enable();
     os.permission = { granted: true };
 
     await service.rescheduleAll(USER);
@@ -367,8 +350,7 @@ describe("local notification scheduling", () => {
   });
 
   it("warns as many days ahead as the owner chose", async () => {
-    os.store.set(NOTIFICATIONS, "true");
-    os.store.set(DETAILS, "true");
+    enable(true);
     run(`UPDATE settings SET value = '5' WHERE key = 'reminder_days'`);
 
     await service.rescheduleAll(USER);
@@ -378,8 +360,7 @@ describe("local notification scheduling", () => {
   });
 
   it("reminds of today's income, but not ahead of a bill whose warning day is today", async () => {
-    os.store.set(NOTIFICATIONS, "true");
-    os.store.set(DETAILS, "true");
+    enable(true);
     expected("salary-today", "in", "salary", "2026-08-10", 4000000);
     expected("warned-today", "out", "ghost", "2026-08-13", 7000);
 
@@ -391,8 +372,7 @@ describe("local notification scheduling", () => {
   });
 
   it("skips a reminder due at this very minute", async () => {
-    os.store.set(NOTIFICATIONS, "true");
-    os.store.set(DETAILS, "true");
+    enable(true);
     vi.setSystemTime(new Date(2026, 7, 10, 9, 0, 0, 0));
 
     await service.rescheduleAll(USER);

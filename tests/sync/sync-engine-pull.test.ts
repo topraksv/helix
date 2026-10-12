@@ -1,20 +1,4 @@
-/**
- * The pull ORCHESTRATION, driven through the real engine.
- *
- * `tests/multi-client-sync.test.ts` proves the sync POLICIES — the merge, the
- * acknowledgement, the tombstone generation — against real SQLite and a
- * PostgREST stand-in. It does not load `src/sync/engine.ts`, and neither did
- * anything else: every suite that touches the engine replaces it with
- * `vi.mock`, which is why its mutation baseline is 0.00 with 470 mutants
- * uncovered. `.claude/rules/mutation-gate.md` names the missing harness as the
- * fix and this is it, one layer up from the policies.
- *
- * What it is here to catch is one decision. The change probe lets a sync skip a
- * table whose server head the device already holds, and the failure mode of a
- * skip is silence: no error, no retry, just rows that never arrive. So every
- * case below is written from the same question — when may a table be skipped,
- * and does anything other than "the device is provably current" ever skip one.
- */
+/** The pull orchestration through the real engine. A skipped table fails silently — rows that never arrive — so every case asks: may this table be skipped, and does anything but "provably current" ever skip it? */
 
 import { DatabaseSync } from "node:sqlite";
 import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
@@ -116,10 +100,11 @@ const client = {
 vi.mock("../../src/sync/supabase", () => ({ getSupabase: () => client }));
 
 
-/** A fresh engine per test: it holds the epoch and the probe flag in module state. */
+/** A fresh engine per test, with its session started: it holds the epoch and the probe flag in module state. */
 async function engine() {
   vi.resetModules();
   const module = await import("../../src/sync/engine");
+  module.startSyncSession(USER);
   // The status store the fresh engine reports to, not a copy from before the reset.
   const { useSyncStatus } = await import("../../src/sync/status");
   return { ...module, useSyncStatus };
@@ -158,8 +143,7 @@ afterEach(() => {
 
 describe("when the change probe is consulted at all", () => {
   it("does not ask on a workspace that has never pulled, and reads every table", async () => {
-    const { startSyncSession, syncNow } = await engine();
-    startSyncSession(USER);
+    const { syncNow } = await engine();
 
     expect(await syncNow(USER, false)).toBe(true);
 
@@ -170,8 +154,7 @@ describe("when the change probe is consulted at all", () => {
 
   it("asks once, not once per table, as soon as any cursor has moved", async () => {
     setCursor("transactions", TS, ID);
-    const { startSyncSession, syncNow } = await engine();
-    startSyncSession(USER);
+    const { syncNow } = await engine();
 
     await syncNow(USER, false);
 
@@ -188,8 +171,7 @@ describe("which tables a probe answer may skip", () => {
       // Categories moved on the server since this device last looked.
       { table_name: "categories", max_updated_at: TS, max_id: OTHER_ID },
     ];
-    const { startSyncSession, syncNow } = await engine();
-    startSyncSession(USER);
+    const { syncNow } = await engine();
 
     await syncNow(USER, false);
 
@@ -200,8 +182,7 @@ describe("which tables a probe answer may skip", () => {
   it("skips a table the server reports as empty", async () => {
     setCursor("transactions", TS, ID);
     heads = [{ table_name: "transactions", max_updated_at: null, max_id: null }];
-    const { startSyncSession, syncNow } = await engine();
-    startSyncSession(USER);
+    const { syncNow } = await engine();
 
     await syncNow(USER, false);
 
@@ -213,8 +194,7 @@ describe("which tables a probe answer may skip", () => {
     // A server function whose table list predates a new table must not cause
     // that table to be silently skipped forever.
     heads = [{ table_name: "transactions", max_updated_at: TS, max_id: ID }];
-    const { startSyncSession, syncNow } = await engine();
-    startSyncSession(USER);
+    const { syncNow } = await engine();
 
     await syncNow(USER, false);
 
@@ -230,8 +210,7 @@ describe("which tables a probe answer may skip", () => {
       { table_name: "transactions", max_updated_at: TS, max_id: "not-a-uuid" },
       { table_name: "settings", max_updated_at: null, max_id: ID },
     ];
-    const { startSyncSession, syncNow } = await engine();
-    startSyncSession(USER);
+    const { syncNow } = await engine();
 
     await syncNow(USER, false);
 
@@ -241,8 +220,7 @@ describe("which tables a probe answer may skip", () => {
 
   it("keeps the declaration order, which is the order foreign keys allow", async () => {
     setCursor("transactions", TS, ID);
-    const { startSyncSession, syncNow } = await engine();
-    startSyncSession(USER);
+    const { syncNow } = await engine();
 
     await syncNow(USER, false);
 
@@ -256,8 +234,7 @@ describe("when the probe cannot be trusted", () => {
   it("pulls every table when the function is not applied, and stops asking", async () => {
     setCursor("transactions", TS, ID);
     headsError = { code: "PGRST202", message: "Could not find the function" };
-    const { startSyncSession, syncNow } = await engine();
-    startSyncSession(USER);
+    const { syncNow } = await engine();
 
     await syncNow(USER, false);
     expect(pulled).toHaveLength(22);
@@ -276,8 +253,7 @@ describe("when the probe cannot be trusted", () => {
     // An expired JWT must reach the retry and refresh path. Degrading quietly
     // here would turn an auth failure into a workspace that stops updating.
     headsError = { code: "PGRST301", message: "JWT expired" };
-    const { startSyncSession, syncNow } = await engine();
-    startSyncSession(USER);
+    const { syncNow } = await engine();
 
     expect(await syncNow(USER, false)).toBe(false);
     expect(pulled).toHaveLength(0);
@@ -342,8 +318,7 @@ describe("what a pulled page writes", () => {
       { id: uuid(2), user_id: USER, created_at: TS, updated_at: TS, deleted_at: null, tombstone_version: 0,
         name: "Net 2", definition: "{\"op\":\"income_minus_expense\"}", sort_order: 1 },
     ];
-    const { startSyncSession, syncNow } = await engine();
-    startSyncSession(USER);
+    const { syncNow } = await engine();
 
     expect(await syncNow(USER, false)).toBe(true);
 
@@ -376,8 +351,7 @@ describe("what a pulled page writes", () => {
     setCursor("categories", TS, ID);
     db!.prepare("INSERT INTO sync_state (table_name, last_pulled_at) VALUES (?, ?)").run("persons", TS);
     server.categories = [serverCategory(ID, TS), serverCategory(OTHER_ID, TS)];
-    const { startSyncSession, syncNow } = await engine();
-    startSyncSession(USER);
+    const { syncNow } = await engine();
 
     await syncNow(USER, false);
 
@@ -394,8 +368,7 @@ describe("what a pulled page writes", () => {
     const sent = serverCategory(ID, TS, { name: "Sunucu" });
     delete sent.is_transfer;
     server.categories = [sent];
-    const { startSyncSession, syncNow } = await engine();
-    startSyncSession(USER);
+    const { syncNow } = await engine();
 
     await syncNow(USER, false);
 
@@ -408,8 +381,7 @@ describe("what a pulled page writes", () => {
     localCategory(uuid(999), "2026-09-05T00:00:00.000Z");
     server.categories = Array.from({ length: 1001 }, (_, n) =>
       serverCategory(uuid(n), `2026-09-03T10:00:${String(Math.floor(n / 100)).padStart(2, "0")}+00:00`, { sort_order: n }));
-    const { startSyncSession, syncNow } = await engine();
-    startSyncSession(USER);
+    const { syncNow } = await engine();
 
     expect(await syncNow(USER, false)).toBe(true);
 
@@ -424,8 +396,7 @@ describe("what a pulled page writes", () => {
   // them sent the pull round the same page for ever.
   it("keeps the server's microseconds in the cursor", async () => {
     server.categories = [serverCategory(ID, "2026-09-03T10:00:00.123456+00:00")];
-    const { startSyncSession, syncNow } = await engine();
-    startSyncSession(USER);
+    const { syncNow } = await engine();
 
     expect(await syncNow(USER, false)).toBe(true);
 
@@ -435,8 +406,7 @@ describe("what a pulled page writes", () => {
 
   it("ends a column's unpulled state with the pull", async () => {
     db!.prepare("INSERT INTO sync_state (table_name, last_pulled_at) VALUES (?, ?)").run("unpulled:categories", JSON.stringify(["color"]));
-    const { startSyncSession, syncNow } = await engine();
-    startSyncSession(USER);
+    const { syncNow } = await engine();
 
     await syncNow(USER, false);
 
@@ -446,8 +416,7 @@ describe("what a pulled page writes", () => {
   it("keeps it while a refused edit of the table waits to be retried", async () => {
     db!.prepare("INSERT INTO sync_state (table_name, last_pulled_at) VALUES (?, ?)").run("unpulled:categories", JSON.stringify(["color"]));
     db!.prepare("INSERT INTO sync_dead_letters (outbox_id, table_name, row_id, payload, reason, quarantined_at) VALUES (1, 'categories', ?, '{}', 'invalid_row', ?)").run(ID, TS);
-    const { startSyncSession, syncNow } = await engine();
-    startSyncSession(USER);
+    const { syncNow } = await engine();
 
     await syncNow(USER, false);
 
@@ -456,8 +425,7 @@ describe("what a pulled page writes", () => {
 
   it("stops after a short page", async () => {
     server.categories = Array.from({ length: 999 }, (_, n) => serverCategory(uuid(n), TS));
-    const { startSyncSession, syncNow } = await engine();
-    startSyncSession(USER);
+    const { syncNow } = await engine();
 
     await syncNow(USER, false);
 
@@ -475,8 +443,7 @@ describe("which pulled rows win", () => {
       serverCategory(OTHER_ID, TS, { name: "Eski" }),
       serverCategory(uuid(3), TS, { name: "Diriltilmiş", deleted_at: "2026-09-01T00:00:00+00:00", tombstone_version: 1 }),
     ];
-    const { startSyncSession, syncNow, useSyncStatus } = await engine();
-    startSyncSession(USER);
+    const { syncNow, useSyncStatus } = await engine();
 
     await syncNow(USER, false);
 
@@ -488,8 +455,7 @@ describe("which pulled rows win", () => {
 
   it("announces nothing when a pull only adds rows this device never had", async () => {
     server.categories = [serverCategory(ID, TS)];
-    const { startSyncSession, syncNow, useSyncStatus } = await engine();
-    startSyncSession(USER);
+    const { syncNow, useSyncStatus } = await engine();
 
     await syncNow(USER, false);
 
@@ -513,8 +479,7 @@ describe("a page the device refuses", () => {
   for (const [label, fields, reason] of refusals) {
     it(`fails the sync on ${label}, merging nothing and keeping the cursor`, async () => {
       server.categories = [serverCategory(OTHER_ID, TS), serverCategory(ID, TS, fields)];
-      const { startSyncSession, syncNow } = await engine();
-      startSyncSession(USER);
+      const { syncNow } = await engine();
 
       expect(await syncNow(USER, false)).toBe(false);
 
@@ -527,8 +492,7 @@ describe("a page the device refuses", () => {
   it("refuses to overwrite a local row another account owns", async () => {
     localCategory(ID, "2026-09-01T10:00:00.000Z", { user_id: "22222222-2222-4222-8222-222222222222" });
     server.categories = [serverCategory(ID, TS)];
-    const { startSyncSession, syncNow } = await engine();
-    startSyncSession(USER);
+    const { syncNow } = await engine();
 
     expect(await syncNow(USER, false)).toBe(false);
     expect(logger.devError).toHaveBeenCalledWith("sync", "pull categories: local ownership conflict");
@@ -536,8 +500,7 @@ describe("a page the device refuses", () => {
 
   it("fails the sync when the server refuses a read", async () => {
     pullError = { message: "permission denied for table categories" };
-    const { startSyncSession, syncNow } = await engine();
-    startSyncSession(USER);
+    const { syncNow } = await engine();
 
     expect(await syncNow(USER, false)).toBe(false);
     // `settings` is merged first: its `onboarded` flag ends the first-pull wait.

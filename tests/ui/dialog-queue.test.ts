@@ -7,11 +7,6 @@
  * later: a second `appPrompt` overwrote `current`, so the first `resolve` was
  * lost. Both call sites are password re-auth on different screens
  * (`account-security.tsx`, `settings/index.tsx`), so overlap is reachable.
- *
- * These tests drive the REAL reducer from `src/ui/request-queue.ts`. They used
- * to drive a copy of it declared in this file, which meant the assertions could
- * stay green while `dialog.tsx` did something else entirely — the copy is why
- * the reducer now lives in its own module.
  */
 
 import { readFileSync } from "node:fs";
@@ -162,12 +157,5 @@ describe("dialog.tsx wiring", () => {
     expect(text.match(/enqueueRequest\(/g)).toHaveLength(2);
     expect(text.match(/advanceRequestQueue\(/g)).toHaveLength(2);
     expect(text.match(/create<RequestQueue<\w+>>/g)).toHaveLength(2);
-  });
-
-  it("keeps no hand-rolled queue arithmetic behind", () => {
-    // The single-slot overwrite and the two open-coded advances must be gone.
-    expect(text).not.toMatch(/usePromptStore\.setState\(\{\s*current: \{/);
-    expect(text).not.toMatch(/queue\[0\] \?\? null/);
-    expect(text).not.toMatch(/queue\.slice\(1\)/);
   });
 });

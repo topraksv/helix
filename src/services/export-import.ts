@@ -1,8 +1,4 @@
-/**
- * JSON export/import (backup) + the Excel workbook. Not an
- * integration: manual backup/restore only (user decision — history is
- * entered in-app, these are safety valves).
- */
+// JSON backup and the Excel workbook: manual backup and restore only, not an integration.
 
 import { Platform } from "react-native";
 import { File, Paths } from "expo-file-system";
@@ -21,10 +17,16 @@ import {
   type ExistingImportIds,
 } from "./backup-validation";
 import { composeWorkbook } from "./workbook-export";
-import { buildLedgerGrids, toInvestmentRow, toLedgerInstalment, toLedgerTotal, toSubscriptionRow } from "../domain/workbook-format";
-import type { InvestmentRow, SubscriptionRow } from "../domain/workbook-format";
+import {
+  buildLedgerGrids,
+  toInvestmentRow,
+  toLedgerInstalment,
+  toLedgerTotal,
+  toSubscriptionRow,
+  type InvestmentRow,
+  type SubscriptionRow,
+} from "../domain/workbook-format";
 import { normalizeMatrixColorToken } from "../domain/matrix-colors";
-export { MAX_BACKUP_BYTES, parseExportBundleText } from "./backup-validation";
 
 interface RestoreOperationOptions {
   signal?: AbortSignal;
@@ -120,14 +122,7 @@ export async function importBundle(
   const { syncNow } = await import("../sync/engine");
   await untilAborted(syncNow(userId), options?.signal);
   throwIfAborted(options?.signal);
-  // Restore keeps every row's original id, and a large share of those ids are
-  // derived from the account that made them. Pointed at a second account they
-  // would collide with that account's own rows on a shared device, or simply
-  // stop matching what the new account's own future writes derive. Re-derive
-  // every provably-deterministic id under the importing account before this
-  // account ever sees the original ones — see `backup-remap.ts` for how a
-  // row's id is proven to come from a specific natural-key template instead
-  // of guessed at.
+  // Ids derived from the source account would collide with the importing account's own rows; re-derive the provable ones.
   const sourceUserId = bundleSourceUserId(parsedBundle);
   // Loaded by a restore, which most sessions never run.
   const { applyIdRemap, buildIdRemap } = await import("./backup-remap");
@@ -146,10 +141,8 @@ export async function importBundle(
       `SELECT id, updated_at FROM ${table} WHERE user_id = ?`,
       [userId],
     );
-    localState[table] = {
-      updatedAt: new Map(localRows.map((row) => [row.id, Date.parse(row.updated_at)])),
-      ids: new Set(localRows.map((row) => row.id)),
-    };
+    const updatedAt = new Map(localRows.map((row) => [row.id, Date.parse(row.updated_at)]));
+    localState[table] = { updatedAt, ids: new Set(updatedAt.keys()) };
   }
   options?.onProgress?.(1, RESTORE_PHASE_COUNT);
   validateBundleRelationships(
@@ -225,35 +218,7 @@ export async function importBundle(
 }
 
 
-/**
- * The ledger as month grids — one sheet per year, the shape the app both SHOWS
- * and READS.
- *
- * The first version of this export was a flat list of transactions, and the
- * result was a file the app could not take back: the import wizard parses a
- * month grid, so it answered the export with "Ay adlarını bulamadık". A backup
- * you cannot restore is not a backup, and the owner asked for one they could
- * edit in Excel and re-import.
- *
- * A grid is not a compromise for that. Mali Tablo IS a month-by-item matrix on
- * screen, so this is the same table the owner already reads, written down: a
- * cell is the owner's own signed rows, so a refund takes off and a watched
- * person's spending is not in it. A cell's lira card plans ride in its note, in
- * the card-grouped shape the importer rebuilds plans from.
- *
- * Deliberate losses, none of them silent:
- *   - A month's cell is the category's TOTAL, so individual transactions, their
- *     notes and their dates do not survive. The JSON backup is what carries
- *     those, and `settings` says so.
- *   - The importer decides income from the column HEADING, not the sign, and it
- *     shows that guess for review — so a category the hints do not recognise is
- *     corrected by a person rather than by a rule nobody can see.
- *   - Loans, foreign-currency plans and plans not whole in the ledger stay in
- *     their cells' totals: the importer rebuilds only lira card plans.
- *   - Opening and closing balances are omitted. The importer excludes
- *     balance-like columns by default precisely because importing a sum of the
- *     columns beside it counts the month twice.
- */
+// One sheet per year, in the month-grid shape the import wizard reads back; individual transactions survive only in the JSON backup.
 async function ledgerGridsByYear(userId: string, signal?: AbortSignal) {
   const sqlite = await getSqliteAsync();
   throwIfAborted(signal);

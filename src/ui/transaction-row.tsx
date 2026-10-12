@@ -12,6 +12,8 @@ import Pencil from "lucide-react-native/icons/pencil";
 import Repeat from "lucide-react-native/icons/repeat";
 import Trash from "lucide-react-native/icons/trash";
 import { expectationEffect, type PlannedExpectation } from "../domain/expected";
+import { isWorkbookRemainderRow } from "../domain/transactions";
+import type { TransactionType } from "../domain/types";
 import { dateLabel, tr } from "../i18n/tr";
 import { Amount, Badge, Body, Divider, IconButton, Row, Spread } from "./components";
 import { font, spacing, type, useTheme } from "./theme";
@@ -22,6 +24,14 @@ import { font, spacing, type, useTheme } from "./theme";
  * on different days would both be "Sil · MIGROS" without the date.
  */
 const actionLabel = (verb: string, title: string | null, dateText: string) => [verb, title, dateText].filter(Boolean).join(" · ");
+
+export type TransactionBadge = { text: string; tone: "negative" | "positive" | "muted" };
+
+/** The marker a row wears when it is a workbook remainder or a reversal, so the three lists name them alike. */
+export function transactionBadge(t: Parameters<typeof isWorkbookRemainderRow>[0] & { type: TransactionType; amountTryMinor: number }): TransactionBadge | null {
+  if (isWorkbookRemainderRow(t)) return { text: tr.analysis.remainderBadge, tone: "muted" };
+  return t.amountTryMinor < 0 ? { text: tr.tx.reversalLabel(t.type), tone: t.type === "income" ? "negative" : "positive" } : null;
+}
 
 export function TransactionRow({
   installmentTitle,
@@ -40,14 +50,8 @@ export function TransactionRow({
   dateText: string;
   note: string | null;
   pending: boolean;
-  reversalBadge: { text: string; tone: "negative" | "positive" | "muted" } | null;
-  /**
-   * A receipt, invoice or warranty is filed against this row.
-   *
-   * Worth saying HERE and not only inside the editor: the reason to open a
-   * three-month-old grocery row is usually the receipt attached to it, and
-   * nothing in the list said which rows had one.
-   */
+  reversalBadge: TransactionBadge | null;
+  /** A document is filed against this row (spec §2.6). */
   hasDocuments?: boolean;
   /** Auto-pay recorded it paid; the owner never confirmed it. */
   automatic?: boolean;
@@ -62,13 +66,7 @@ export function TransactionRow({
     <View>
       <Spread style={{ paddingVertical: spacing.sm }}>
         <View style={{ flex: 1 }}>
-          {/* What it WAS leads; when and what kind it was follows.
-              "Harcama · 3 Ağustos" sat on the first line in the row's ink and
-              "IYZICO*PARIBU" underneath it in the muted small size, so a list
-              of a month's spending read as a column of the word Harcama with
-              the merchants — the only thing that tells two rows apart —
-              demoted beneath them. An instalment already led with its plan
-              title; every other row now leads the same way. */}
+          {/* What it was leads; when and what kind follows. */}
           {title ? <Body style={{ fontFamily: font.medium }}>{title}</Body> : null}
           <Body muted={title != null}>{dateText}</Body>
           {note && note !== title ? (

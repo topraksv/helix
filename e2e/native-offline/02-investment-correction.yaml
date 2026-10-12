@@ -1,6 +1,5 @@
-# Native regression: completing an investment correction returns to the tab
-# stack's index. This used to leave UIKit on an empty scene when the removed
-# product's Redirect raced the correction screen's POP_TO action.
+# Completing an investment correction returns to the tab stack's index; the removed product's Redirect
+# once raced the correction screen's POP_TO and left UIKit on an empty scene.
 appId: com.toprak.helix
 ---
 - launchApp:
@@ -89,11 +88,8 @@ appId: com.toprak.helix
     direction: DOWN
     timeout: 30000
 
-# The compact product-level affordance exists inside a deliberately chosen
-# movement editor, so it cannot be confused with this movement's own trash.
-# Centred: the tab bar floats over the page, and a row scrolled only until it
-# is on screen can sit under it — the tap then presses Yatırımlar, which
-# scrolls the list to its top instead of opening the editor.
+# Centred, because the floating tab bar can cover a row that is merely on screen, and the tap then
+# presses Yatırımlar instead of opening the editor.
 - scrollUntilVisible:
     element:
       text: "Düzenle"
@@ -116,8 +112,7 @@ appId: com.toprak.helix
     timeout: 10000
 - tapOn: "Ürünü Tamamen Kaldır"
 
-# This is the regression boundary: a usable tab index, not a blank native
-# scene and not the now-invalid correction route.
+# The regression boundary: a usable tab index, not a blank scene or the now-invalid correction route.
 - extendedWaitUntil:
     visible: "Henüz yatırım ürünü yok"
     timeout: 30000

@@ -53,11 +53,8 @@ interface ItemParams {
 /**
  * `/cash-flow/item?col=&year=&kind=` — the year-breakdown screen.
  *
- * `Number(yearParam)` used to run unchecked. `NaN` flowed into
- * `makeMonthKey(NaN, n)`, which returns `"0NaN-01"` — a key that is not a month
- * but still a string, so twelve rows rendered against `"0NaN-01"…`, the header
- * read "NaN yıl toplamı", and every row linked to `/cash-flow/0NaN-01`. `kind`
- * was equally unchecked even though the screen branches on it.
+ * `year` and `kind` are checked because the screen branches on them: `NaN`
+ * would flow into `makeMonthKey` and produce a key that is not a month.
  *
  * `label` is deliberately NOT part of this contract: it is a user-authored
  * category name that the pushing screen put in the URL, and the screen can read
@@ -69,7 +66,7 @@ export function isValidItemParams(col: unknown, year: unknown, kind: unknown): I
   const yearText = singleParam(year);
   if (yearText === null || !/^\d{4}$/.test(yearText)) return null;
   const parsed = Number(yearText);
-  if (!Number.isInteger(parsed) || parsed < MIN_YEAR || parsed > MAX_YEAR) return null;
+  if (parsed < MIN_YEAR || parsed > MAX_YEAR) return null;
   const kindText = singleParam(kind);
   if (kindText === null || !(ITEM_KINDS as readonly string[]).includes(kindText)) return null;
   return { col: id, year: parsed, kind: kindText as ItemKind };

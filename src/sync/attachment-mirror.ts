@@ -1,27 +1,14 @@
 /**
- * The bytes of an attachment, mirrored to the owner's Storage bucket (spec §2.5).
+ * The bytes of an attachment, mirrored to the owner's Storage bucket (spec §2.5): the file itself, so a
+ * receipt added on the phone opens on the laptop.
  *
- * The row that describes a document has always synced. This is the other half:
- * the file itself, so a receipt added on the phone opens on the laptop.
+ * Eager upload, lazy download: a device sends what it has and fetches what it is asked for, so a laptop
+ * does not silently acquire every receipt. Not end-to-end: the bucket is private but the upload is
+ * plaintext (`ARCHITECTURE.md`, `PRIVACY.md`).
  *
- * EAGER UPLOAD, LAZY DOWNLOAD. A device sends what it has and fetches what it
- * is asked for, rather than pulling every document onto every device. That
- * keeps the objection the original design was built around — a laptop should
- * not silently acquire a copy of every receipt — while removing the part that
- * made it a defect, which is that the file was unreachable rather than merely
- * not-yet-here.
- *
- * NOT END-TO-END. Supabase encrypts at rest and the bucket is private, but the
- * app uploads plaintext, so project credentials can read a document. That was
- * a decision, not an oversight; `ARCHITECTURE.md` records what the alternatives
- * cost and `PRIVACY.md` says it in the words a user needs.
- *
- * The path `<user_id>/<stored_name>` is the authorization boundary, not a
- * naming convention: migration 35's policies compare its first segment with
- * `auth.uid()`. It is therefore built from the SESSION's id, never from a row's
- * `user_id`, so a row that arrived from anywhere cannot address another
- * account's folder. The name is re-validated here for the same reason the
- * device stores re-validate it: it is about to become a path.
+ * The path `<user_id>/<stored_name>` is the authorization boundary (migration 35's policies compare its
+ * first segment with `auth.uid()`), so it is built from the session's id, never a row's `user_id`, and the
+ * name is re-validated because it is about to become a path.
  */
 
 import { getSqliteAsync } from "../db/client";
@@ -137,50 +124,26 @@ export async function fetchAttachment(userId: string, storedName: string): Promi
 /**
  * Make the bucket agree with this device about what exists.
  *
- * Two directions, deliberately asymmetric:
- *
- *   - a live row whose bytes are here and whose object is not gets uploaded;
- *   - a TOMBSTONED row whose object is still there gets the object removed.
- *
- * The second is not "delete anything the live rows do not name". That version
- * is the one that loses data: a device that has not pulled yet does not know
- * about a document another device added minutes ago, and would delete it as an
- * orphan. Only a delete this device has actually seen may remove an object.
+ * Asymmetric: a live row whose bytes are here and whose object is not gets uploaded; a tombstoned row whose
+ * object is still there gets the object removed. Never "delete what live rows do not name": a device that
+ * has not pulled yet would delete another device's new document as an orphan.
  */
 let reconciling = false;
 
 /**
- * Object names this session has seen in the bucket.
- *
- * Reconcile runs after every completed sync, and its first act is a listing —
- * which would hand back one network request per sync to a feature whose whole
- * steady state is "nothing to do". This is what makes that steady state free:
- * when every live row is already known to be up there and no tombstone names
- * one that is, there is nothing a listing could tell us and it is skipped.
- *
- * In memory only, and only ever grown by an answer from the server. A restart
- * re-learns it with one listing; a stale entry cannot cause a deletion,
- * because deletion is driven by tombstones rather than by absence from here.
- *
- * It holds POSITIVE knowledge only. A name that is not in it has not been
- * shown to be absent — it has not been asked about. `listed` is therefore not
- * decoration: before the first successful listing the set is empty, and an
- * empty set says nothing about a bucket rather than saying it is empty.
+ * Object names this session has seen in the bucket, so the steady state ("nothing to do") skips the listing
+ * that every completed sync would otherwise make. In memory, grown only by a server answer; deletion is
+ * driven by tombstones, so a stale entry deletes nothing. Positive knowledge only: before the first
+ * successful listing (`listed`) an empty set says nothing about the bucket.
  */
 const knownRemote = new Set<string>();
 let listed = false;
-/** Which account the two above describe. They are module state and the app can
- *  change hands — sign out, sign in as somebody else — so without this they
- *  would answer the next account's questions with the last account's listing.
- *  Object names are row ids and cannot collide across accounts, so the stale
- *  answers happen to be harmless today; keying it is how they stay harmless. */
+/** Which account the two above describe, so the next account never reads the last one's listing. */
 let listedFor: string | null = null;
 
 export async function reconcileAttachments(userId: string, signal?: AbortSignal): Promise<void> {
   const supabase = getSupabase();
-  // Reconcile is fired from every completed sync and can spend a while sending
-  // a 25 MB file. Without this, a second sync starting mid-upload would begin
-  // the same upload again against a listing it had already invalidated.
+  // A second sync starting mid-upload would repeat the upload against a listing it invalidated.
   if (!supabase || !isUuidShaped(userId) || reconciling) return;
   reconciling = true;
   try {

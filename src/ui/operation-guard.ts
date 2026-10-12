@@ -36,9 +36,8 @@ export function createOperationGuard(): OperationGuard {
 
 /** One gate for the lifetime of a mounted form. */
 export function useOperationGuard(): OperationGuard {
-  const ref = useRef<OperationGuard | null>(null);
-  if (ref.current == null) ref.current = createOperationGuard();
-  return ref.current;
+  const [guard] = useState(createOperationGuard);
+  return guard;
 }
 
 export class OperationCancelledError extends Error {
@@ -74,7 +73,6 @@ export function useTrackedOperation() {
   const controllerRef = useRef<AbortController | null>(null);
 
   const run = async (task: TrackedTask): Promise<OperationResult<void>> => {
-    if (guard.active) return { started: false };
     return guard.run(async () => {
       const controller = new AbortController();
       controllerRef.current = controller;

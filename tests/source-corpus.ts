@@ -23,8 +23,7 @@ interface CorpusOptions {
  * empty. All of them also pass when the walk returns NOTHING — so a renamed
  * directory, a changed extension or a different working directory quietly
  * turns an architectural guard into a green test that checks nothing, and the
- * suite reports it as coverage. Four copies of the walk had drifted apart
- * before this, and none of them said how many files they expected.
+ * suite reports it as coverage.
  *
  * `atLeast` has no default because the floor is part of the assertion.
  */

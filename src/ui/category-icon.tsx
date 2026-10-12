@@ -1,37 +1,15 @@
 /**
- * The drawn mark for a category or a payment source.
- *
- * Categories and payment sources used to be marked with an emoji, and every
- * other mark in this app is a single-colour lucide glyph. Four things followed
- * from that, all of them visible:
- *
- *   - an emoji does not take the palette, so it stayed at full saturation in a
- *     deliberately desaturated app and was the loudest thing on the screen;
- *   - it does not follow the theme, so dark mode got the light-mode mark;
- *   - it is drawn by the platform, so the same table was Apple Color Emoji on
- *     iOS, Segoe on Windows and Noto on Android — three different pictures of
- *     one workbook;
- *   - several of them carry a variation selector (🏋️ 🛡️ 🍽️ ✈️ 🏛️), which some
- *     platforms render as a MONOCHROME text glyph — so one column mixed
- *     colour marks and black-and-white ones.
- *
- * The mapping lives here, in the UI layer, and not in `domain/category-icons`
- * on purpose. The stored value stays exactly what it was: nothing migrates, no
- * sync payload changes shape, and the domain rule that picks a suggestion from
- * a Turkish name is untouched and still tested on its own terms. This module
- * only decides how the value that rule produced is DRAWN.
- *
- * The set is closed, which is what makes a total mapping honest: `icon` is
- * written in exactly two places (`repo/categories.ts` and `repo/imports.ts`),
- * both from `suggestCategoryIcon`, and there is no icon picker in the app. A
- * value from outside the set can still arrive from a restored backup, so there
- * is a fallback rather than an assertion.
+ * Draws stored category glyphs and payment-source types as lucide icons. The
+ * stored value never changes; only its drawing lives here. The set is closed
+ * (written only from `suggestCategoryIcon`), with a fallback for old backups.
  */
 
 import type { LucideIcon } from "lucide-react-native";
 import Baby from "lucide-react-native/icons/baby";
 import Banknote from "lucide-react-native/icons/banknote";
+import Bitcoin from "lucide-react-native/icons/bitcoin";
 import Bus from "lucide-react-native/icons/bus";
+import ChartNoAxesCombined from "lucide-react-native/icons/chart-no-axes-combined";
 import Clapperboard from "lucide-react-native/icons/clapperboard";
 import Coins from "lucide-react-native/icons/coins";
 import CreditCard from "lucide-react-native/icons/credit-card";
@@ -67,6 +45,7 @@ import Stethoscope from "lucide-react-native/icons/stethoscope";
 import Tag from "lucide-react-native/icons/tag";
 import Target from "lucide-react-native/icons/target";
 import TrendingUp from "lucide-react-native/icons/trending-up";
+import Umbrella from "lucide-react-native/icons/umbrella";
 import UtensilsCrossed from "lucide-react-native/icons/utensils-crossed";
 import Wallet from "lucide-react-native/icons/wallet";
 import WalletCards from "lucide-react-native/icons/wallet-cards";
@@ -74,6 +53,7 @@ import Wifi from "lucide-react-native/icons/wifi";
 import Wrench from "lucide-react-native/icons/wrench";
 import Zap from "lucide-react-native/icons/zap";
 import { categoryIcon } from "../domain/category-icons";
+import type { InvestmentAssetType } from "../domain/investments";
 import type { PaymentSourceType } from "../domain/types";
 import { iconSize, useTheme } from "./theme";
 
@@ -91,10 +71,7 @@ const CATEGORY_GLYPHS: Record<string, LucideIcon> = {
   "🚌": Bus,
   "🧾": Receipt,
   "📈": TrendingUp,
-  // Salary and the generic income fallback. It was a piggy bank, which is a
-  // SAVINGS mark: the owner opened "Maaş" and found a pig looking back. A
-  // wallet is what a salary lands in, and at 18pt it is still distinct from
-  // the banknote (💵) and the coins (🪙) that share the income pool with it.
+  // A wallet, not a piggy bank: salary is not savings.
   "💰": Wallet,
   "🩺": Stethoscope,
   "🎓": GraduationCap,
@@ -106,8 +83,7 @@ const CATEGORY_GLYPHS: Record<string, LucideIcon> = {
   "✈️": Plane,
   "🎁": Gift,
   "🛡️": Shield,
-  // Tax and duties: the scales, not the bank's colonnade — `🏦` already has
-  // that and two identical marks in one column is the problem, not the fix.
+  // Scales, not the colonnade: 🏦 already has that.
   "🏛️": Scale,
   "🔧": Wrench,
   "⚡": Zap,
@@ -169,6 +145,16 @@ const SOURCE_GLYPHS: Record<PaymentSourceType, LucideIcon> = {
 export function paymentSourceIconComponent(type: PaymentSourceType): LucideIcon {
   return SOURCE_GLYPHS[type] ?? UNKNOWN_GLYPH;
 }
+
+/** One glyph per investment asset type, shared by the wallet and the product form. */
+export const ASSET_TYPE_ICONS: Record<InvestmentAssetType, LucideIcon> = {
+  metal: Coins,
+  currency: WalletCards,
+  equity: ChartNoAxesCombined,
+  fund: Landmark,
+  crypto: Bitcoin,
+  pension: Umbrella,
+};
 
 /**
  * The category mark, drawn.

@@ -11,9 +11,6 @@ import { convertToTryMinor } from "../../domain/fx";
 import { CreditCardCycleRequiredError, FxRateUnavailableError, InstallmentHistoryConflictError, InstallmentRefundNothingLeftError, InstallmentRefundTooLargeError, InstallmentTotalTooSmallError } from "./errors";
 import { assertLiveTransactionPerson, assertTransactionCategory, cardStatementWrite, livePaymentSource } from "./transactions";
 
-// Installment plans
-// ---------------------------------------------------------------------------
-
 export interface NewPlan {
   title: string;
   kind: "card_installment" | "loan";
@@ -34,15 +31,57 @@ export interface NewPlan {
 }
 
 /**
- * Write the plan row plus one deterministic transaction per scheduled month.
- * Installment transactions are a pure function of (plan params, start month):
- * their id is deterministic and their realized/pending status is derived from
- * the date, so regenerating on edit reproduces the same paid/unpaid split.
+ * Build (but don't write) the plan row plus one deterministic transaction per scheduled month, so
+ * a bulk import can batch many plans into ONE write. The rows are a pure function of (plan params,
+ * start month): ids are deterministic and status derives from the date, so regenerating on edit
+ * reproduces the same paid/unpaid split.
  */
-/** Build (but don't write) the plan row + one deterministic transaction per
- *  scheduled month. Extracted so a bulk import can batch many plans into ONE
- *  write instead of a DB transaction per plan (that was minutes for ~100 plans).
- *  The per-installment ids are hashed in parallel. */
+/** One expense row of a plan: an instalment (numbered), or a refund or payoff beside them (not). `origin` is omitted for scheduled rows. */
+function planTransactionWrite(row: {
+  id: string;
+  planId: string;
+  installmentNo: number | null;
+  amountMinor: Minor;
+  amountTryMinor: Minor;
+  currency: string;
+  fxRate: string | null;
+  entryDate: ISODate;
+  effectiveDate: string;
+  status: string;
+  categoryId: unknown;
+  paymentSourceId: unknown;
+  personId: unknown;
+  note: string | null;
+  origin?: "manual";
+}): RowWrite {
+  return {
+    table: "transactions",
+    row: {
+      id: row.id,
+      type: "expense",
+      amountMinor: row.amountMinor,
+      currency: row.currency,
+      fxRate: row.fxRate,
+      amountTryMinor: row.amountTryMinor,
+      entryDate: row.entryDate,
+      purchaseDate: null,
+      effectiveDate: row.effectiveDate,
+      status: row.status,
+      categoryId: row.categoryId,
+      paymentSourceId: row.paymentSourceId,
+      personId: row.personId,
+      installmentPlanId: row.planId,
+      installmentNo: row.installmentNo,
+      cardStatementId: null,
+      subscriptionId: null,
+      isAggregate: false,
+      note: row.note,
+      ...(row.origin ? { origin: row.origin } : {}),
+      deletedAt: null,
+    },
+  };
+}
+
 export async function buildPlanRows(planId: string, input: NewPlan, today: ISODate): Promise<{ rows: RowWrite[]; keepNos: Set<number> }> {
   assertInputWithinLimit(input.title, "text");
   assertInputWithinLimit(input.note, "note");
@@ -94,30 +133,21 @@ export async function buildPlanRows(planId: string, input: NewPlan, today: ISODa
     },
   };
   const txRows: RowWrite[] = await Promise.all(
-    schedule.map(async (item) => ({
-      table: "transactions" as const,
-      row: {
-        id: await deterministicId(naturalKeys.installmentTx(planId, item.installmentNo)),
-        type: "expense",
-        amountMinor: item.amountMinor,
-        currency: input.currency,
-        fxRate: input.fxRate,
-        amountTryMinor: assertSupportedMinorAmount(Math.round(item.amountMinor * input.tryFactor), false),
-        entryDate: today,
-        purchaseDate: null,
-        effectiveDate: item.effectiveDate,
-        status: item.status,
-        categoryId: input.categoryId,
-        paymentSourceId: input.paymentSourceId,
-        personId: input.personId,
-        installmentPlanId: planId,
-        installmentNo: item.installmentNo,
-        cardStatementId: null,
-        subscriptionId: null,
-        isAggregate: false,
-        note: null,
-        deletedAt: null,
-      },
+    schedule.map(async (item) => planTransactionWrite({
+      id: await deterministicId(naturalKeys.installmentTx(planId, item.installmentNo)),
+      planId,
+      installmentNo: item.installmentNo,
+      amountMinor: item.amountMinor,
+      amountTryMinor: assertSupportedMinorAmount(Math.round(item.amountMinor * input.tryFactor), false),
+      currency: input.currency,
+      fxRate: input.fxRate,
+      entryDate: today,
+      effectiveDate: item.effectiveDate,
+      status: item.status,
+      categoryId: input.categoryId,
+      paymentSourceId: input.paymentSourceId,
+      personId: input.personId,
+      note: null,
     })),
   );
   return { rows: [planRow, ...txRows], keepNos: new Set(schedule.map((s) => s.installmentNo)) };
@@ -129,12 +159,10 @@ export async function linkDueRowsToCardStatements(
   cycle: CardCycle,
   rows: RowWrite[],
 ): Promise<RowWrite[]> {
+  const periodOf = rows.map((write) =>
+    write.table === "transactions" ? statementForDueDate(String(write.row.effectiveDate), cycle) : null);
   const periods = new Map<string, CardStatementPeriod>();
-  for (const write of rows) {
-    if (write.table !== "transactions") continue;
-    const period = statementForDueDate(String(write.row.effectiveDate), cycle);
-    periods.set(period.periodMonth, period);
-  }
+  for (const period of periodOf) if (period) periods.set(period.periodMonth, period);
   const statementWrites = await Promise.all(
     [...periods.values()].map((period) => cardStatementWrite(userId, paymentSourceId, period)),
   );
@@ -143,20 +171,16 @@ export async function linkDueRowsToCardStatements(
   );
   return [
     ...statementWrites,
-    ...rows.map((write) => {
-      if (write.table !== "transactions") return write;
-      const period = statementForDueDate(String(write.row.effectiveDate), cycle);
-      return { ...write, row: { ...write.row, cardStatementId: idByPeriod.get(period.periodMonth) ?? null } };
+    ...rows.map((write, index) => {
+      const period = periodOf[index];
+      return period ? { ...write, row: { ...write.row, cardStatementId: idByPeriod.get(period.periodMonth) ?? null } } : write;
     }),
   ];
 }
 
 /**
- * Carry what a person or an import wrote on a stored instalment into the row
- * that replaces it. Every edit regenerates the unpaid months, and a moved
- * schedule regenerates all of them: date, status and amount are the schedule's
- * to restate; the note, and where the row came from, are not. Before this, a
- * note typed on a coming instalment vanished on any edit of its plan.
+ * Carry what a person or an import wrote on a stored instalment into the row that replaces it:
+ * date, status and amount are the schedule's to restate; the note and where the row came from are not.
  */
 function carryStoredDetails(writes: RowWrite[], stored: Record<string, unknown>[]): RowWrite[] {
   const byId = new Map(stored.map((row) => [String(row.id), row]));
@@ -168,31 +192,22 @@ function carryStoredDetails(writes: RowWrite[], stored: Record<string, unknown>[
 }
 
 /**
- * The unpaid instalments of a whole-purchase plan whose paid ones are kept.
- *
- * Paid rows are history and keep the figures they were written with — under an
- * older split rule, or before the total was corrected — so a fresh split of the
- * total beside them leaves the schedule a few kuruş off the purchase. What is
- * left of the total is divided over what is left to pay instead.
- *
- * A total that leaves some unpaid month less than a kuruş — a little, nothing,
- * or less than nothing — is refused: the count is what is wrong, and no split
- * of it totals the purchase.
+ * The unpaid instalments of a whole-purchase plan whose paid ones are kept. Paid rows keep the
+ * figures they were written with, so a fresh split beside them would leave the schedule a few
+ * kuruş off the purchase: what is left of the total is divided over what is left to pay. A total
+ * leaving some unpaid month under a kuruş is refused, since the count is what is wrong.
  */
 function divideWhatIsLeft(writes: RowWrite[], input: NewPlan, kept: Map<string, Record<string, unknown>>, leftOut: number): RowWrite[] {
   if (input.totalAmountMinor == null) return writes;
-  // Already in schedule order: `buildPlanRows` writes the months in turn, and
-  // the first of them carries the split's rounding.
+  // In schedule order: the first month carries the split's rounding.
   const unpaid = writes.filter((write) => write.table === "transactions" && !kept.has(String(write.row.id)));
-  // Instalments only: a refund or a payoff is billed beside the purchase and
-  // is no part of it, as `addInstallmentRefund` already counts.
+  // Instalments only: a refund or payoff is billed beside the purchase, not part of it.
   const paidMinor = [...kept.values()]
     .filter((row) => row.installment_no != null)
     .reduce((sum, row) => sum + Number(row.amount_minor), 0);
   const leftMinor = input.totalAmountMinor - paidMinor;
   if (unpaid.length === 0) return writes;
-  // The months an import left out were paid before this app saw the plan and
-  // are first in the schedule: they keep their shares, unwritten.
+  // Months an import left out were paid before this app saw the plan: they keep their shares, unwritten.
   if (leftMinor < unpaid.length + leftOut) throw new InstallmentTotalTooSmallError();
   const shares = splitIntoInstallments(leftMinor, unpaid.length + leftOut).slice(leftOut);
   const shareById = new Map(unpaid.map((write, index) => [String(write.row.id), shares[index]!]));
@@ -211,11 +226,10 @@ function divideWhatIsLeft(writes: RowWrite[], input: NewPlan, kept: Map<string, 
 }
 
 /**
- * Each foreign-currency instalment is billed at the rate stored on or before
- * its own day (spec §3.1) — for one still to come, the last known one — but a
- * plan is built with the single rate the screen had. Maintenance fixes a row at
- * its own day only as it TURNS realized, so a row born realized — by "paid N
- * of M" or a reschedule — is billed here or never. Kept history is not restated.
+ * Each foreign-currency instalment is billed at the rate stored on or before its own day (spec
+ * §3.1; the last known one for a coming row), but a plan is built with the screen's single rate.
+ * Maintenance fixes a row only as it TURNS realized, so a row born realized is billed here or
+ * never. Kept history is not restated.
  */
 async function billAtEachDaysRate(
   userId: string,
@@ -250,10 +264,8 @@ async function writePlanWithSchedule(
         [userId, planId],
       )
     : [];
-  // A moved schedule restates history on purpose: the owner is correcting how
-  // many instalments were paid, which is a statement about which months those
-  // were. Kept rows would hold their old dates beside regenerated ones, and a
-  // "paid" instalment the owner says was not would stay paid.
+  // A moved schedule restates history on purpose: kept rows would hold old dates beside regenerated
+  // ones, and an instalment the owner says was not paid would stay paid.
   const realized = reschedule ? [] : existingPlanTransactions.filter((transaction) => transaction.status === "realized");
   if (realized.some((transaction) => Number(transaction.installment_no) > input.installmentCount)) {
     throw new InstallmentHistoryConflictError();
@@ -272,10 +284,8 @@ async function writePlanWithSchedule(
     throw new Error("Installment payment source does not exist");
   }
   const { rows: scheduled, keepNos } = await buildPlanRows(planId, resolvedInput, todayISO());
-  // SPEC §3.1: an edit that keeps the schedule rewrites only the unpaid months.
-  // A past instalment with no stored row is one an import deliberately left
-  // out — billed on a statement before this app saw the plan — so the edit
-  // must not invent it as realized spend.
+  // SPEC §3.1: an edit that keeps the schedule rewrites only the unpaid months. A past instalment
+  // with no stored row was deliberately left out by an import, so it must not be invented as realized spend.
   const storedNos = new Set(
     existingPlanTransactions.filter((transaction) => transaction.installment_no != null).map((transaction) => Number(transaction.installment_no)),
   );
@@ -335,10 +345,8 @@ async function writePlanWithSchedule(
 }
 
 /**
- * The TRY rate stored for `currency` on `date` or the last day before it that
- * has one (spec §2.4) — never a later day's. Null when nothing usable is
- * stored, so a caller keeps the figure it already holds instead of inventing
- * one. The bounds are the rate cache's own.
+ * The TRY rate stored for `currency` on `date` or the last earlier day that has one (spec §2.4),
+ * never a later day's. Null when nothing usable is stored, so a caller keeps the figure it holds.
  */
 async function storedRateOnOrBefore(userId: string, currency: string, date: ISODate): Promise<number | null> {
   if (currency === "TRY") return 1;
@@ -354,11 +362,8 @@ async function storedRateOnOrBefore(userId: string, currency: string, date: ISOD
 }
 
 /**
- * What a foreign-currency amount bills in lira at the rate stored for
- * `rateDate` or before it, or nothing to change: a lira amount, no usable rate,
- * or a figure too small to survive conversion. One rule for an instalment
- * however it is billed — built, fixed as its day comes, or restated while it is
- * still to come.
+ * What a foreign-currency amount bills in lira at the rate stored for `rateDate` or before, or null
+ * for nothing to change: a lira amount, no usable rate, or a figure too small to survive conversion.
  */
 export async function billedInTry(
   userId: string,
@@ -373,8 +378,7 @@ export async function billedInTry(
   return amountTryMinor === 0 ? null : { amountTryMinor, fxRate: String(rate) };
 }
 
-/** Live installment transactions belonging to a plan — for a warn-before-delete
- *  count (deleting a plan tombstones all of them; the action has no undo). */
+/** Live installment transactions of a plan, for the warn-before-delete count. */
 export async function countInstallmentsForPlan(userId: string, planId: string): Promise<number> {
   const sqlite = await getSqliteAsync();
   const row = await sqlite.getFirstAsync<{ n: number }>(
@@ -392,15 +396,10 @@ export async function createInstallmentPlan(userId: string, input: NewPlan): Pro
 }
 
 /**
- * Edit an existing plan in place: rewrite the plan row, regenerate the
- * schedule (deterministic ids un-delete/update matching months), and tombstone
- * any previously-generated installments that fall outside the new schedule
- * (e.g. when the installment count is reduced).
- *
- * Paid instalments are history and survive an ordinary edit untouched.
- * `reschedule` is the one exception, for an edit that MOVES the schedule — the
- * owner correcting how many were paid, or which month it started: then every
- * instalment is placed again, paid or not, keeping only its note and origin.
+ * Edit a plan in place: rewrite the plan row, regenerate the schedule (deterministic ids update
+ * matching months) and tombstone instalments outside the new schedule. Paid instalments survive an
+ * ordinary edit; `reschedule` (an edit that MOVES the schedule) places every instalment again,
+ * keeping only its note and origin.
  */
 export async function updateInstallmentPlan(
   userId: string,
@@ -425,22 +424,11 @@ export interface InstallmentRefund {
 }
 
 /**
- * Record a refund against an instalment purchase.
- *
- * A refund is a negative expense linked to the plan, never a change to the
- * plan: the bank still bills every instalment and credits the refund beside
- * them, and the statement shows both. Its rows carry no instalment number, so
- * the schedule, its progress and a later edit of the plan leave them alone,
- * while everything that adds up the plan's rows nets them out.
- *
- * It may not exceed what is left of the purchase — the instalments minus the
- * refunds already recorded — because a credit larger than the purchase is a
- * typo, and it would read as income.
- *
- * A foreign-currency purchase is refunded in its own currency and each credit
- * takes the rate of its own day, exactly like the instalments beside it: the
- * stored rate on or before that day, or today's last known one for a coming
- * statement, which maintenance restates as rates arrive.
+ * Record a refund against an instalment purchase: a negative expense linked to the plan, never a
+ * change to it. Its rows carry no instalment number, so the schedule and later plan edits leave
+ * them alone. It may not exceed what is left of the purchase (a larger credit is a typo that would
+ * read as income). A foreign-currency refund is in the plan's currency, each credit at the rate of
+ * its own day like the instalments beside it.
  */
 export async function addInstallmentRefund(userId: string, planId: string, input: InstallmentRefund): Promise<void> {
   assertSupportedMinorAmount(input.amountMinor);
@@ -457,43 +445,33 @@ export async function addInstallmentRefund(userId: string, planId: string, input
     `SELECT * FROM transactions WHERE user_id = ? AND installment_plan_id = ? AND deleted_at IS NULL`,
     [userId, planId],
   );
-  // A closed loan's payoff is billed beside its instalments but is no part of
-  // the purchase, so it cannot make room for a larger refund.
+  // A closed loan's payoff is no part of the purchase, so it cannot make room for a larger refund.
   const leftMinor = rows
     .filter((row) => row.installment_no != null || Number(row.amount_minor) < 0)
     .reduce((sum, row) => sum + Number(row.amount_minor), 0);
   if (input.amountMinor > leftMinor) throw new InstallmentRefundTooLargeError(Math.max(leftMinor, 0));
   const today = todayISO();
-  const currency = typeof plan.currency === "string" ? plan.currency : "TRY";
+  const currency = String(plan.currency);
   const dates = refundDates(plan, rows, input);
   if (dates.length === 0) throw new InstallmentRefundNothingLeftError();
   const shares = splitIntoInstallments(input.amountMinor, dates.length);
   const rates = await refundRates(userId, currency, dates, today);
-  let writes: RowWrite[] = dates.map((effectiveDate, index) => ({
-    table: "transactions" as const,
-    row: {
-      id: newId(),
-      type: "expense",
-      amountMinor: -shares[index]!,
-      currency,
-      fxRate: currency === "TRY" ? null : String(rates[index]),
-      amountTryMinor: assertSupportedMinorAmount(convertToTryMinor(-shares[index]!, rates[index]!), false),
-      entryDate: today,
-      purchaseDate: null,
-      effectiveDate,
-      status: effectiveDate <= today ? "realized" : "pending",
-      categoryId: plan.category_id ?? null,
-      paymentSourceId: plan.payment_source_id ?? null,
-      personId: plan.person_id,
-      installmentPlanId: planId,
-      installmentNo: null,
-      cardStatementId: null,
-      subscriptionId: null,
-      isAggregate: false,
-      note: input.note,
-      origin: "manual",
-      deletedAt: null,
-    },
+  let writes: RowWrite[] = dates.map((effectiveDate, index) => planTransactionWrite({
+    id: newId(),
+    planId,
+    installmentNo: null,
+    amountMinor: -shares[index]!,
+    amountTryMinor: assertSupportedMinorAmount(convertToTryMinor(-shares[index]!, rates[index]!), false),
+    currency,
+    fxRate: currency === "TRY" ? null : String(rates[index]),
+    entryDate: today,
+    effectiveDate,
+    status: effectiveDate <= today ? "realized" : "pending",
+    categoryId: plan.category_id ?? null,
+    paymentSourceId: plan.payment_source_id ?? null,
+    personId: plan.person_id,
+    note: input.note,
+    origin: "manual",
   }));
   const source = plan.kind === "card_installment"
     ? await livePaymentSource(userId, (plan.payment_source_id as string | null) ?? null)
@@ -503,10 +481,7 @@ export async function addInstallmentRefund(userId: string, planId: string, input
   await writeRowsValidated(userId, writes, (db) => assertLiveRow(db, "installment_plans", userId, planId));
 }
 
-/**
- * The days a refund of a plan is credited on: each instalment still to pay
- * when the bank spreads it, or the plan's due day in the chosen month.
- */
+/** The days a refund is credited on: each instalment still to pay when spread, or the plan's due day in the chosen month. */
 function refundDates(plan: Record<string, unknown>, rows: Record<string, unknown>[], input: InstallmentRefund): string[] {
   if (input.spread === "remaining") {
     return rows
@@ -529,7 +504,7 @@ async function refundRates(userId: string, currency: string, dates: readonly str
   return rates;
 }
 
-export interface PlanClosure {
+interface PlanClosure {
   /** The day the loan was paid off. */
   closedOn: ISODate;
   /** What paying it off cost, in the plan's currency. */
@@ -538,16 +513,9 @@ export interface PlanClosure {
 }
 
 /**
- * Pay a loan off early (owner decision, 2026-09-13).
- *
- * The plan keeps the instalments due on or before the payoff day, loses the
- * ones after it, and — when closing it cost anything more — gains one payoff
- * row on that day. The count it had is kept on the plan so the closure can be undone —
- * a closure is one tap away from a loan, and a mistaken one must not be the
- * end of its schedule.
- *
- * A loan with no instalment due yet has nothing to shorten to and is deleted
- * instead, which is why it is refused here.
+ * Pay a loan off early: the plan keeps the instalments due on or before the payoff day, loses the
+ * later ones and, when closing cost anything more, gains one payoff row. Its original count is kept
+ * so the closure can be undone. A loan with no instalment due yet is deleted instead, so it is refused.
  */
 export async function closeInstallmentPlan(userId: string, planId: string, input: PlanClosure): Promise<void> {
   if (!isISODate(input.closedOn) || input.closedOn > todayISO()) throw new Error("Invalid plan closure date");
@@ -566,13 +534,10 @@ export async function closeInstallmentPlan(userId: string, planId: string, input
      WHERE user_id = ? AND installment_plan_id = ? AND installment_no IS NOT NULL AND deleted_at IS NULL`,
     [userId, planId],
   );
-  // Kept by day, not by count. An imported loan's numbers can skip the months
-  // its workbook kept in another column, so "the first N" of them dropped
-  // instalments already paid; the plan's count becomes the last number kept.
+  // Kept by day, not by count: an imported loan's numbers can skip months, so "the first N" would drop paid instalments.
   const kept = instalments.filter((row) => String(row.effective_date) <= input.closedOn);
   if (kept.length === 0) throw new Error("A loan closed before its first instalment is deleted, not closed");
-  // One moment for every row this closure removes, which is how undoing it
-  // finds exactly those.
+  // One moment for every row this closure removes, which is how undoing it finds them.
   const deletedAt = nowIso();
   const writes: RowWrite[] = [
     {
@@ -590,48 +555,35 @@ export async function closeInstallmentPlan(userId: string, planId: string, input
   ];
   // A loan its last regular instalment closed costs nothing more and writes no payoff.
   if (input.payoffMinor > 0) {
-    const currency = typeof plan.currency === "string" ? plan.currency : "TRY";
+    const currency = String(plan.currency);
     const rate = await storedRateOnOrBefore(userId, currency, input.closedOn);
     if (rate == null) throw new FxRateUnavailableError(currency);
-    writes.push({
-      table: "transactions",
-      row: {
-        id: await deterministicId(naturalKeys.planPayoff(planId)),
-        type: "expense",
-        amountMinor: input.payoffMinor,
-        currency,
-        fxRate: currency === "TRY" ? null : String(rate),
-        amountTryMinor: assertSupportedMinorAmount(convertToTryMinor(input.payoffMinor, rate), false),
-        entryDate: todayISO(),
-        purchaseDate: null,
-        effectiveDate: input.closedOn,
-        status: "realized",
-        categoryId: plan.category_id ?? null,
-        paymentSourceId: plan.payment_source_id ?? null,
-        personId: plan.person_id,
-        installmentPlanId: planId,
-        installmentNo: null,
-        cardStatementId: null,
-        subscriptionId: null,
-        isAggregate: false,
-        note: input.note,
-        origin: "manual",
-        deletedAt: null,
-      },
-    });
+    writes.push(planTransactionWrite({
+      id: await deterministicId(naturalKeys.planPayoff(planId)),
+      planId,
+      installmentNo: null,
+      amountMinor: input.payoffMinor,
+      amountTryMinor: assertSupportedMinorAmount(convertToTryMinor(input.payoffMinor, rate), false),
+      currency,
+      fxRate: currency === "TRY" ? null : String(rate),
+      entryDate: todayISO(),
+      effectiveDate: input.closedOn,
+      status: "realized",
+      categoryId: plan.category_id ?? null,
+      paymentSourceId: plan.payment_source_id ?? null,
+      personId: plan.person_id,
+      note: input.note,
+      origin: "manual",
+    }));
   }
   await writeRowsValidated(userId, writes, (db) => assertLiveRow(db, "installment_plans", userId, planId));
 }
 
 /**
- * Undo an early closure: the count it had comes back, the payoff goes, and the
- * instalments the closure removed return exactly as they were.
- *
- * Restored, not regenerated. A schedule rebuilt from the plan brought back the
- * months an import deliberately left out — money already inside another
- * column — and replaced each row's own figure with the plan's. The closure
- * tombstoned its rows in one write, so they share its moment; an instalment
- * deleted by hand before it carries an earlier one and stays deleted.
+ * Undo an early closure: the count comes back, the payoff goes, and the removed instalments return
+ * as they were. Restored, not regenerated: a rebuilt schedule would bring back months an import left
+ * out and replace each row's own figure. The closure's rows share its timestamp; one deleted by
+ * hand earlier carries an earlier one and stays deleted.
  */
 export async function reopenInstallmentPlan(userId: string, planId: string): Promise<void> {
   const sqlite = await getSqliteAsync();

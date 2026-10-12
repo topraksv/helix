@@ -8,9 +8,10 @@ import KeyRound from "lucide-react-native/icons/key-round";
 import { useSession } from "../../auth/session";
 import { tr } from "../../i18n/tr";
 import { DelayedLoadingIndicator } from "../../ui/loading-indicator";
+import { AuthNotice } from "../../ui/auth-notice";
 import { Body, Button, Field, Screen } from "../../ui/components";
 import { useSubmitOnEnter } from "../../ui/keyboard";
-import { circle, radius, spacing, type, useTheme } from "../../ui/theme";
+import { circle, spacing, type, useTheme } from "../../ui/theme";
 import { useOperationGuard } from "../../ui/operation-guard";
 import { isValidNewPassword } from "../../domain/input";
 
@@ -84,11 +85,7 @@ export default function ResetPasswordScreen({ standalone = false }: { standalone
     );
   }
 
-  // One way out, and it is the one the screen is about. There used to be a
-  // second button offering to open Expo Go: a deep link into a DIFFERENT
-  // client, offered to somebody who had just finished a task in this one, with
-  // its own failure message to explain when it did not work. Whoever gets here
-  // came from a reset e-mail to sign in, so signing in is the whole button.
+  // Whoever gets here came from a reset e-mail to sign in, so signing in is the only way out.
   const returnToSignIn = () => router.replace("/(auth)/sign-in");
   if (state === "expired" || state === "invalid" || state === "success") {
     const success = state === "success";
@@ -151,12 +148,7 @@ export default function ResetPasswordScreen({ standalone = false }: { standalone
           onSubmitEditing={() => void save()}
           error={confirmation.length > 0 && confirmation !== password ? tr.auth.passwordsMismatch : null}
         />
-        {error ? (
-          <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm, backgroundColor: palette.error + "16", borderRadius: radius.sm, padding: spacing.md, marginBottom: spacing.md }}>
-            <AlertCircle accessible={false} size={17} color={palette.error} />
-            <Text accessibilityRole="alert" accessibilityLiveRegion="assertive" style={[type.label, { color: palette.errorText, flex: 1 }]}>{error}</Text>
-          </View>
-        ) : null}
+        {error ? <AuthNotice tone="error" text={error} /> : null}
         <Button label={tr.auth.resetSave} onPress={() => void save()} loading={busy} disabled={!valid} />
       </View>
     </Screen>

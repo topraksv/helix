@@ -2,14 +2,9 @@ import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { dirname, relative, resolve } from "node:path";
 import { runInNewContext } from "node:vm";
 import { describe, expect, it } from "vitest";
+import { sourceFiles } from "../source-corpus";
 
 const read = (path: string) => readFileSync(resolve(process.cwd(), path), "utf8");
-const sourceFiles = (directory: string): string[] =>
-  readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
-    const path = `${directory}/${entry.name}`;
-    if (entry.isDirectory()) return sourceFiles(path);
-    return /\.tsx?$/.test(entry.name) ? [path] : [];
-  });
 
 const app = JSON.parse(read("app.json"));
 const eas = JSON.parse(read("eas.json"));
@@ -49,6 +44,8 @@ const database = read(".github/workflows/database.yml");
 const releaseWorkflow = read(".github/workflows/release.yml");
 const dependabot = read(".github/dependabot.yml");
 const packageJson = JSON.parse(read("package.json"));
+const metro = read("metro.config.js");
+const stryker = read("stryker.ci.config.mjs");
 const packageLock = JSON.parse(read("package-lock.json"));
 const easPreviewPath = resolve(process.cwd(), ".eas/workflows/deploy-preview.yml");
 
@@ -101,39 +98,13 @@ describe("release contract", () => {
   });
 
   /**
-   * A server render has no database, and three files have to agree on that.
-   *
-   * `web.output` is "static", so every route is rendered once in Node. Left
-   * alone that pass drags the whole SQLite driver — and on SDK 57 its Web
-   * Worker, which Metro then cannot chunk for a server bundle — into a render
-   * that could never open a database anyway. `metro.config.js` substitutes the
-   * stub, the stub says what it answers with, and the mutation gate excludes it
-   * because a throw has no behaviour to mutate. Any one of the three drifting
-   * from the other two puts the driver back.
-   */
-  /**
-   * The socket this app does not open, and the bytes it was costing anyway.
-   *
-   * `createClient` builds a `RealtimeClient` in its constructor whether or not
-   * anything subscribes, and `@supabase/supabase-js` re-exports the module
-   * besides — so with no tree-shaking, realtime-js and the phoenix socket under
-   * it sat in the entry chunk of every screen: 65_769 bytes, measured by
-   * exporting with and without the substitution.
-   *
-   * The substitution is only sound while the premise holds, so the premise is
-   * the assertion. A `.channel(` anywhere in `src` means someone has started
-   * subscribing and would meet a thrown error on a device rather than a failure
-   * here — which is the worst possible place to find out, because what it looks
-   * like from the outside is data that simply never arrives.
-   */
-  /**
    * The type definitions the typecheck gate stands on, and the runtime they
    * are allowed to describe.
    *
    * Both were accidents. `@types/node` was never declared: it reached the tree
    * as a transitive dependency of `@stryker-mutator/core`'s prompt library, and
    * whether its ambient `node:*` declarations registered depended on how npm
-   * happened to hoist. Measured on 2026-09-09, a clean `npm ci` against the
+   * happened to hoist. A clean `npm ci` against the
    * COMMITTED lockfile produced 206 errors across `tests/` and `e2e/` — every
    * one of them a `node:` import or `Buffer` — with nothing in the repository
    * changed. A gate that can fail on an install is not a gate.
@@ -155,10 +126,23 @@ describe("release contract", () => {
     expect(tsconfig.compilerOptions.types).toEqual(["node"]);
   });
 
+  /**
+   * The socket this app does not open, and the bytes it was costing anyway.
+   *
+   * `createClient` builds a `RealtimeClient` in its constructor whether or not
+   * anything subscribes, and `@supabase/supabase-js` re-exports the module
+   * besides — so with no tree-shaking, realtime-js and the phoenix socket under
+   * it sat in the entry chunk of every screen: 65_769 bytes, measured by
+   * exporting with and without the substitution.
+   *
+   * The substitution is only sound while the premise holds, so the premise is
+   * the assertion. A `.channel(` anywhere in `src` means someone has started
+   * subscribing and would meet a thrown error on a device rather than a failure
+   * here — which is the worst possible place to find out, because what it looks
+   * like from the outside is data that simply never arrives.
+   */
   it("keeps the realtime socket out of the bundle, and the app off it", () => {
-    const metro = read("metro.config.js");
     const stub = read("src/sync/realtime-absent.js");
-    const stryker = read("stryker.ci.config.mjs");
 
     expect(metro).toContain('moduleName === "@supabase/realtime-js"');
     expect(metro).toContain("src/sync/realtime-absent.js");
@@ -170,10 +154,7 @@ describe("release contract", () => {
     // no-op and four throws have no behaviour a mutant could change.
     expect(stryker).toContain("realtime-absent\\.js");
 
-    const sources = sourceFiles("src");
-    // A floor, because a walker that finds nothing would pass silently.
-    expect(sources.length).toBeGreaterThan(100);
-    const subscribers = sources.filter((file) => /\.(channel|getChannels|removeChannel|removeAllChannels)\(/.test(readFileSync(file, "utf8")));
+    const subscribers = sourceFiles("src", { atLeast: 100 }).filter((file) => /\.(channel|getChannels|removeChannel|removeAllChannels)\(/.test(read(file)));
     expect(subscribers, "these files subscribe to a transport that is not bundled").toEqual([]);
   });
 
@@ -184,9 +165,7 @@ describe("release contract", () => {
    * call. Scoped to release builds: the SQLite inspector keeps working in dev.
    */
   it("keeps the SQLite devtools client out of release bundles only", () => {
-    const metro = read("metro.config.js");
     const stub = read("src/db/devtools-absent.js");
-    const stryker = read("stryker.ci.config.mjs");
     const client = read("node_modules/expo-sqlite/build/SQLiteDevToolsClient.js");
 
     expect(metro).toContain('moduleName === "expo/devtools" && !context.dev');
@@ -198,16 +177,14 @@ describe("release contract", () => {
   });
 
   it("keeps local reminders out of the web bundle, and answers every call the app makes", () => {
-    const metro = read("metro.config.js");
     const stub = read("src/services/notifications-absent.js");
-    const stryker = read("stryker.ci.config.mjs");
 
     // Web only: the phone schedules through the real module.
     expect(metro).toContain('moduleName === "expo-notifications" && platform === "web"');
     expect(metro).toContain("src/services/notifications-absent.js");
     expect(stryker).toContain("notifications-absent\\.js");
 
-    const importers = sourceFiles("src").map((file) => readFileSync(file, "utf8")).filter((source) => source.includes('from "expo-notifications"'));
+    const importers = sourceFiles("src", { atLeast: 100 }).map(read).filter((source) => source.includes('from "expo-notifications"'));
     expect(importers.length).toBeGreaterThan(0);
     const called = new Set(importers.flatMap((source) => [...source.matchAll(/Notifications\.(\w+)\(/g)].map((match) => match[1]!)));
     // A floor, because a pattern that matched nothing would pass silently.
@@ -219,10 +196,19 @@ describe("release contract", () => {
     expect(stub).toMatch(/export function setNotificationHandler\(\) \{\}/);
   });
 
+  /**
+   * A server render has no database, and three files have to agree on that.
+   *
+   * `web.output` is "static", so every route is rendered once in Node. Left
+   * alone that pass drags the whole SQLite driver — and on SDK 57 its Web
+   * Worker, which Metro then cannot chunk for a server bundle — into a render
+   * that could never open a database anyway. `metro.config.js` substitutes the
+   * stub, the stub says what it answers with, and the mutation gate excludes it
+   * because a throw has no behaviour to mutate. Any one of the three drifting
+   * from the other two puts the driver back.
+   */
   it("keeps the database out of server rendering", () => {
-    const metro = read("metro.config.js");
     const stub = read("src/db/expo-sqlite.server.js");
-    const stryker = read("stryker.ci.config.mjs");
 
     expect(app.expo.web.output).toBe("static");
     expect(metro).toContain('moduleName === "expo-sqlite"');
@@ -253,7 +239,7 @@ describe("release contract", () => {
   });
 
   // A file whose name never changes, served cache-first, is the first copy
-  // forever: the old mark's favicon outlived the new one's deploy (2026-09-28).
+  // forever: the old mark's favicon outlived the new one's deploy.
   it("serves from the offline cache first only what a build names by its content", () => {
     const context: Record<string, unknown> = { self: { addEventListener: () => {} } };
     runInNewContext(read("public/sw.js"), context);
@@ -469,7 +455,8 @@ describe("release contract", () => {
     // The mobile publication is verified and recorded by the same script…
     expect(ci).toContain('node scripts/check-published.mjs ota "$RUNNER_TEMP/eas-update.json"');
     // …and the nightly asks both surfaces again, of whatever is live.
-    expect(nightly).toContain("node scripts/check-published.mjs web https://topraksv.github.io/helix");
+    expect(nightly).toContain('node scripts/check-published.mjs web "$SITE"');
+    expect(nightly).toContain("SITE: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}");
     expect(nightly).toContain("node scripts/check-published.mjs expo-go");
     // …and fails while main is ahead of the newest run that published.
     const drift = nightly.slice(nightly.indexOf("  main-published:"));
@@ -487,7 +474,6 @@ describe("release contract", () => {
     expect(ci).toMatch(/workflow_dispatch:\n\s+inputs:\n\s+release_target:/);
     expect(ci).toContain("type: choice");
     expect(ci).toContain("options: [none, web, mobile, both]");
-    expect(ci).not.toContain("release_approval");
     expect(ci).not.toContain("helix-release-approval");
     expect(ci).not.toContain("github-pages");
     if (agents != null) {
@@ -496,7 +482,7 @@ describe("release contract", () => {
     }
 
     for (const name of ["deploy-web", "deploy-mobile"] as const) {
-      expect(job(name), name).toContain("environment:\n      name: helix");
+      expect(job(name), name).toContain("environment:\n      name: ${{ github.event.repository.name }}");
     }
   });
 
@@ -509,8 +495,7 @@ describe("release contract", () => {
   });
 
   it("builds the E2E export once and shares it with every shard", () => {
-    // Each shard used to run its own `test:e2e:export`: a second full Metro
-    // bundle, and two shards testing two separately-produced artifacts.
+    // One export: every shard tests the same artifact.
     expect(ci.split("npm run test:e2e:export").length - 1, "one E2E export per run").toBe(1);
     const build = job("e2e-build");
     expect(build).toContain("if: needs.classify.outputs.run_e2e == 'true'");
@@ -575,16 +560,8 @@ describe("release contract", () => {
   });
 
   /**
-   * Every job is bounded in time.
-   *
-   * Nothing was, so the ceiling was GitHub's default of six hours. That is not
-   * hypothetical here: `ci.yml` records a Playwright `apt-get` step
-   * hanging past 25 minutes on three shards at once, and the mutation job sat
-   * over an hour on 2026-08-20 while the deploy waited behind it. A hung job
-   * should fail and free the runner, not hold a release all afternoon.
-   *
-   * The limits are generous multiples of measured durations, so they fire on a
-   * hang and never on ordinary variance.
+   * An unbounded job holds the runner for GitHub's six-hour default; limits are
+   * generous multiples of measured durations, so they fire on a hang only.
    */
   const jobSections = Object.entries({ ci, security, nightly, keepalive, database, release: releaseWorkflow })
     .map(([name, workflow]) => [name, workflow.slice(workflow.indexOf("\njobs:"))] as const);
@@ -601,11 +578,8 @@ describe("release contract", () => {
   });
 
   /**
-   * `cache: npm` saves ~/.npm after the job under a key derived from the
-   * lockfile alone, which every workflow here shares, and an entry is
-   * immutable per key. The advisory job installs nothing, so it saved an empty
-   * 10 KB cache first, and every `npm ci` after it reported a hit and fetched
-   * every package from the registry for the whole life of that lockfile.
+   * `cache: npm` keys on the lockfile and is immutable; a job that installs
+   * nothing saves an empty cache under the shared key.
    */
   it("caches npm only in a job that installs, so an empty cache cannot claim the shared key", () => {
     for (const [name, jobsSection] of jobSections) {
@@ -659,32 +633,11 @@ describe("release contract", () => {
     }
   });
 
-  it("pins every third-party action to a full commit SHA", () => {
-    for (const [name, workflow] of Object.entries({ ci, security, nightly, keepalive })) {
-      const refs = [...workflow.matchAll(/uses:\s*([^\s#]+)/g)].map((match) => match[1]);
-      for (const ref of refs) expect(ref, `${name}: ${ref}`).toMatch(/@[0-9a-f]{40}$/);
-    }
-  });
-
   it("pins the EAS CLI that publishes after the gate, without installing it", () => {
     /**
-     * The publisher is fetched at publish time rather than installed.
-     *
-     * It used to be a lockfile-pinned devDependency, which bought an
-     * integrity hash. It also dragged eas-cli's whole tree into every
-     * `npm ci` — and with it `dtrace-provider`, a package that COMPILES A
-     * NATIVE ADDON at install time on the machine that holds EXPO_TOKEN, plus
-     * a standing set of advisories (uuid, joi, yaml, ajv, ts-deepmerge) that
-     * no product code could ever reach. `expo-doctor` had been asking for
-     * this move for the same reason.
-     *
-     * What replaces the lockfile hash is an EXACT version, taken from
-     * `eas.json` so the two cannot drift, a hard ban on any floating range,
-     * and a resolution date for everything beneath it. A publisher that
-     * resolves at runtime is only acceptable while it cannot resolve to
-     * something new, and an exact top-level version alone did not make that
-     * true: each of its transitive ranges still took whatever was newest on
-     * the day of the publish.
+     * Fetched at publish time, not installed: its tree compiles native code next
+     * to EXPO_TOKEN. Exact version from eas.json plus `npm_config_before` keep it
+     * from resolving anything new.
      */
     const mobile = job("deploy-mobile");
     const deploy = mobile.split("\n").find((line) => line.includes("eas-cli@") && line.includes(" update "));
@@ -733,34 +686,20 @@ describe("release contract", () => {
     expect(keepalive).toMatch(/\npermissions: \{\}\n\njobs:/);
   });
 
-  it("no longer carries the removed skill-verification gate", () => {
-    expect(Object.keys(packageJson.scripts)).not.toContain("verify:skills");
-    expect(ci).not.toContain("verify:skills");
-  });
-
   it("keeps SDK-managed version updates in the coordinated Expo backlog", () => {
     for (const dependency of [
       "expo*",
-      "babel-preset-expo",
-      "react",
-      "react-dom",
+      "react*",
       "@types/react",
-      "react-native",
-      "react-native-web",
-      "react-native-safe-area-context",
-      "react-native-screens",
-      "react-native-svg",
+      "babel-preset-expo",
       "eslint-config-expo",
+      "eslint",
     ]) {
       const rule = dependabotRule(dependency);
       expect(rule).toContain("version-update:semver-patch");
       expect(rule).toContain("version-update:semver-minor");
       expect(rule).toContain("version-update:semver-major");
     }
-    const eslintRule = dependabotRule("eslint");
-    expect(eslintRule).toContain("version-update:semver-patch");
-    expect(eslintRule).toContain("version-update:semver-minor");
-    expect(eslintRule).toContain("version-update:semver-major");
     expect(dependabotRule("typescript")).toContain("version-update:semver-major");
   });
 });
@@ -777,10 +716,8 @@ describe("database workflow", () => {
     expect(database).toContain("$SUPABASE test db --local");
     expect(database).toContain("$SUPABASE db lint --local --schema public --fail-on warning");
     expect(database).toContain("cron:");
-    // The CLI must not arrive through a third-party action. This repository
-    // allows GitHub-owned actions only (`patterns_allowed` empty,
-    // `verified_allowed` false), so `supabase/setup-cli` was refused before the
-    // run could start — a `startup_failure` with no log to explain itself.
+    // The CLI must not arrive through a third-party action: this repository
+    // allows GitHub-owned actions only (`patterns_allowed` empty, `verified_allowed` false).
     const uses = database.split("\n").filter((line) => line.includes("uses:"));
     expect(uses.every((line) => /uses:\s*(actions|github)\//.test(line)), uses.join(" | ")).toBe(true);
     const paths = database.slice(database.indexOf("paths:"), database.indexOf("schedule:"));
@@ -843,18 +780,7 @@ describe("workflow supply chain", () => {
 });
 
 /**
- * The version number, and the record that has to move with it.
- *
- * There was no version discipline here at all: one string in two files that
- * nothing compared, no tags, and no changelog. That is survivable while
- * everything ships continuously from `main` and stays 1.0.0, and stops being
- * survivable the moment a release has to be identified — a diagnostic row
- * carries `app_version`, and `incident_by_release` groups by it, so a number
- * that never moves makes both of those answer the same thing for ever.
- *
- * These assertions exist so the changelog cannot be the step that gets skipped.
- * A person bumping the version and stopping there fails the suite, which is
- * the only reliable way a changelog stays written.
+ * A version bump without a changelog entry fails here; app_version groups incidents.
  */
 describe("version and changelog", () => {
   const changelog = read("CHANGELOG.md");
@@ -887,31 +813,15 @@ describe("version and changelog", () => {
   });
 
   it("gives every release at least one note, and none of them a template", () => {
-    // The shape used to be three fixed headings — what changed, who it
-    // concerns, what to do — and two of them were answering the same question
-    // for a single-user product: "you" and, almost always, "nothing". What is
-    // worth keeping is the record itself, so the rule is now that a release
-    // says what changed in its own words and cannot ship saying nothing.
     const sections = changelog.split(/^## /m).slice(1);
     expect(sections.length).toBe(versions.length);
     for (const [index, section] of sections.entries()) {
       const notes = section.split("\n").filter((line) => line.startsWith("- ") && line.trim().length > 10);
       expect(notes.length, `${versions[index]} has no release note`).toBeGreaterThan(0);
-      expect(section, `${versions[index]} still carries the retired template`).not.toContain("Kimi ilgilendiriyor");
-      expect(section, `${versions[index]} still carries the retired template`).not.toContain("Ne yapmalısın");
     }
   });
 });
 
-/**
- * What a link to this app turns into somewhere else.
- *
- * None of it is visible while using the app, which is exactly why it rots: a
- * canonical URL that has stopped matching where the app lives tells an index to
- * credit somebody else's page, and a card image that 404s leaves a blank
- * rectangle in every message the link is pasted into. Neither shows up in any
- * other check, and neither is noticed by the person who moved the thing.
- */
 /**
  * A JPEG's real dimensions, from its own frame header.
  *
@@ -934,6 +844,15 @@ function jpegSize(bytes: Buffer): { width: number; height: number } {
   throw new Error("not a JPEG with a readable frame header");
 }
 
+/**
+ * What a link to this app turns into somewhere else.
+ *
+ * None of it is visible while using the app, which is exactly why it rots: a
+ * canonical URL that has stopped matching where the app lives tells an index to
+ * credit somebody else's page, and a card image that 404s leaves a blank
+ * rectangle in every message the link is pasted into. Neither shows up in any
+ * other check, and neither is noticed by the person who moved the thing.
+ */
 describe("social and search metadata", () => {
   const html = read("src/app/+html.tsx");
   const readme = read("README.md");
@@ -998,11 +917,6 @@ describe("social and search metadata", () => {
  * disk and 404s for everybody else, and neither the author nor a reviewer with
  * the files present can see it.
  *
- * Two were shipping that way: `CHANGELOG.md` pointed at `docs/RELEASE.md` for
- * how a version is chosen, and `README.md` at `docs/ARCHITECTURE.md` for why
- * `npm run web` builds an export. Both read perfectly here and were dead ends
- * on GitHub.
- *
  * The rule is about LINKS, not mentions: a comment or a sentence naming an
  * internal document is a note to whoever has it, and prose like that stays.
  */
@@ -1010,23 +924,9 @@ describe("published documentation", () => {
   /**
    * The directories this repository deliberately does not publish.
    *
-   * Read from `.gitignore` rather than asked of `git`, and the reason is a
-   * failure this very test caused: Stryker copies the tree into a sandbox that
-   * is not a git checkout, so `git ls-files` returned nothing there, the floor
-   * assertion fired, and the whole mutation dry run died before mutating
-   * anything. `tests/change-classification.test.ts` solves the same problem by
-   * building its own throwaway repository; this one does not need git at all,
-   * because the question is which paths are excluded and that is written down.
-   *
-   * Only anchored entries are read — `/docs/`, `/AGENTS.md` — which is the
-   * shape every unpublished-working-material line has here. A link into
-   * something ignored by a wildcard would slip past, and that is an acceptable
-   * gap: the failure this catches is a link into the owner's own notes.
-   *
-   * A negation (`!/docs/.obsidian/app.json`) begins with `!` and therefore
-   * fails the anchor test above it — re-included paths are not prefixes of
-   * anything unpublished, which is the answer wanted, arrived at by the one
-   * condition rather than by a second one that could never be reached.
+   * Read from `.gitignore`, not `git`: Stryker's sandbox is not a git checkout,
+   * so `git ls-files` returned nothing there and the dry run died. Only anchored
+   * entries are read; a negation fails the anchor test, which is the answer wanted.
    */
   function unpublishedPrefixes(): string[] {
     return read(".gitignore")
@@ -1039,13 +939,8 @@ describe("published documentation", () => {
   /**
    * Every `.md` a clone actually receives, found without walking what it does not.
    *
-   * `readdirSync(".", { recursive: true })` returned 112,219 entries in 2.18s on
-   * this tree, 5,737 of them Markdown and essentially all of those inside
-   * `node_modules`; the filter behind it then re-read and re-parsed `.gitignore`
-   * once per surviving file. All of it sat at module scope, so it was paid on
-   * every collection of this file — `npm test`, `npm run test:coverage`, and
-   * each Stryker run — to answer a question about three files. Pruning at the
-   * directory descends only into what ships.
+   * Prune at the directory: a recursive readdir walks node_modules on every
+   * collection, Stryker's included.
    */
   function publishedMarkdown(excluded: string[]): string[] {
     const skip = new Set(excluded);

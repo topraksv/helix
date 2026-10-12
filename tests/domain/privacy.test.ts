@@ -1,13 +1,4 @@
-/**
- * What the sensitive-UI cover actually decides, called rather than read.
- *
- * The source-text half of this file moved to `privacy-wiring.test.ts` on
- * 2026-09-09. It had to: those assertions cannot run against an instrumented
- * copy, so `vitest.mutation.config.mts` excluded the whole file — and took
- * these three with it. `src/domain/privacy.ts` scored 0 in the mutation gate
- * as a result, which reads as "unguarded" when the truth was "its guards were
- * excluded by association".
- */
+/** What the sensitive-UI cover decides, called rather than read; the source-text half is in tests/repo/privacy-wiring.test.ts, outside the mutation exclusion. */
 import { describe, expect, it } from "vitest";
 import { shouldCoverSensitiveUi } from "../../src/domain/privacy";
 

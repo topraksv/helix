@@ -1,57 +1,6 @@
-/**
- * Reading the text out of a PDF, locally (spec §3.9).
- *
- * ## Why this exists at all
- *
- * A bank statement is the one document whose numbers the owner already has and
- * still has to retype. Extracting them needs the document's text — and a PDF
- * text layer is compressed, so something has to inflate it.
- *
- * ## Why it has a dependency now, having refused one for a year
- *
- * It used SheetJS's inflate, on the reasoning that it was already in the tree
- * for `.xlsx` and a `FlateDecode` stream is the same DEFLATE data. The
- * reasoning was sound and the outcome was not: that inflate needs a size to
- * allocate, a PDF does not reliably declare one, and the estimate that filled
- * the gap silently truncated well-compressed statements and leaked unzeroed
- * memory into the extracted text. `inflate` below records both measurements.
- *
- * `fflate` is 8 KB of dependency-free JavaScript whose inflate reports what it
- * wrote. That is the entire capability that was missing, and both defects are
- * gone by construction rather than by tuning.
- *
- * A full PDF library was considered and refused, on a narrower argument than
- * the original one. It is not only that shipping a large parser to run over the
- * owner's most sensitive file is a cost — it is that this app runs on React
- * Native as well as the web, and `pdfjs-dist` wants DOM APIs that Hermes does
- * not have. The limits below stay limits.
- *
- * ## What this deliberately does NOT do
- *
- * It is a text extractor, not a PDF renderer. It reads uncompressed and
- * FlateDecoded content streams, the text-showing operators inside them and the
- * fonts those operators select — including fonts packed into object streams,
- * each decoded through its own `ToUnicode` CMap. It does not do encryption or
- * images, which is why a scanned statement produces NO text and is reported as
- * unsupported rather than guessed at. Every one of those limits is a deliberate refusal to
- * pretend: a statement this cannot read must be said to be unreadable, because
- * a half-read financial document is worse than an unread one.
- *
- * Nothing here leaves the device, and nothing here is uploaded.
- */
+// Spec §3.9. Hermes has no TextDecoder; PDF text is decoded by hand from Latin-1 and hex strings.
 
-/**
- * Loaded ON DEMAND, for the same reason the SheetJS it replaced was.
- *
- * Smaller is not small: measured, a static `import { Unzlib } from "fflate"`
- * put 33_884 bytes into the entry chunk of every session and pushed the export
- * 2_142 bytes past its ceiling — for a feature most sessions never open. The
- * win over SheetJS is still real and is a different one: the chunk that arrives
- * when somebody does open a statement is a few KB rather than 493.
- *
- * Type-only here, real module inside the one async function that needs it, and
- * threaded down to `inflate` exactly as the SheetJS handle used to be.
- */
+// fflate is loaded on demand: a static import added 34 KB to every session's entry chunk.
 import type { Unzlib as UnzlibClass } from "fflate";
 
 type UnzlibCtor = typeof UnzlibClass;
@@ -59,16 +8,9 @@ type UnzlibCtor = typeof UnzlibClass;
 /** Bytes a statement may be. Larger is not a statement; it is a mistake. */
 export const MAX_PDF_BYTES = 12 * 1024 * 1024;
 
-/** Guard against a decompression bomb: a stream that expands beyond this is
- *  refused rather than allocated. */
+/** Decompression-bomb guard: a larger stream is refused, not allocated. */
 const MAX_STREAM_BYTES = 24 * 1024 * 1024;
-/**
- * Inflated bytes a whole document may produce. The per-stream ceiling bounds
- * one bomb and not a file of them: a refused stream counted towards nothing, so
- * every one was inflated to the ceiling — measured, twenty took 450 ms, and a
- * file at `MAX_PDF_BYTES` holds hundreds. Eight times the largest file accepted
- * is far past what a statement's text, fonts and images inflate to.
- */
+/** The per-stream ceiling bounds one bomb, not a file of them, so the document gets a budget too. */
 const MAX_INFLATED_BYTES = 8 * MAX_PDF_BYTES;
 /** Total text kept. A statement's text layer is far smaller than this. */
 const MAX_TEXT_LENGTH = 4_000_000;
@@ -81,7 +23,7 @@ export type PdfFailure =
   | "unmapped_font"
   | "unreadable";
 
-export type PdfTextResult =
+type PdfTextResult =
   | { ok: true; text: string; pageCount: number }
   | { ok: false; reason: PdfFailure };
 
@@ -96,78 +38,19 @@ function bytesToLatin1(bytes: Uint8Array, start = 0, end = bytes.length): string
   return out;
 }
 
-/**
- * Whether these bytes begin with a real zlib header.
- *
- * This is a HARD gate, not an optimisation. `_inflateRaw` does not return on
- * input that is not deflate data — measured against a real bank statement, it
- * spun indefinitely on a byte range that merely looked like a stream — and
- * there is no way to interrupt a synchronous call once it has begun. So the
- * only safe policy is to refuse anything that does not prove itself first.
- *
- * Every PDF producer emits zlib-wrapped `FlateDecode`, so requiring the header
- * costs nothing real and removes the entire class of hang.
- */
+/** A hard gate: `_inflateRaw`-style inflaters can spin on non-deflate input and a synchronous call cannot be interrupted. */
 function hasZlibHeader(bytes: Uint8Array): boolean {
   if (bytes.length < 2) return false;
   const first = bytes[0]!;
   const second = bytes[1]!;
-  // CMF: deflate compression method, window size within spec; FCHK: the
-  // two-byte value must be a multiple of 31.
+  // CMF method 8 with a valid window; the two-byte value must be a multiple of 31.
   return (first & 0x0f) === 8 && (first >> 4) <= 7 && ((first << 8) | second) % 31 === 0;
 }
 
-/**
- * How much compressed input is handed to the inflater at a time.
- *
- * It is the bomb guard, and it has to be small. The limit below can only be
- * enforced between callbacks, so one push's worth of expansion is the overshoot
- * the process has to absorb: at DEFLATE's documented 1032:1 ceiling, 4 KB of
- * input is at most ~4 MB of output. Measured against 64 MB of zeros compressed
- * to 65_508 bytes — a 1023:1 bomb — the peak settles at 25_180_543 bytes with
- * this step and at the full 67_108_864 with 64 KB, because the whole payload
- * then arrives in two pushes and the callback never gets to say stop.
- */
+/** Small on purpose: the bomb limit is only checked between pushes, so one push is the overshoot (4 KB in is at most ~4 MB out). */
 const INFLATE_STEP = 4096;
 
-/**
- * Inflate a zlib stream, exactly.
- *
- * ## What this replaced, and why it had to be a dependency
- *
- * This used SheetJS's `CFB.utils._inflateRaw`, chosen because it was already in
- * the tree. It needs a size to allocate and a PDF does not reliably declare
- * one, so the size was estimated at 12x the compressed length — and the
- * estimate carried two measured defects that could not both be fixed by tuning
- * it:
- *
- * 1. A stream compressing better than 12:1 was TRUNCATED, silently. A text
- *    layer repeats merchant names, dates and headers: measured, a 900 KB layer
- *    that deflated to 2.7 KB (331:1) came back 3.6% complete with the closing
- *    balance simply gone, reported as `ok`.
- * 2. The surplus was NOT zeroed, and the extractor scanned all of it: measured
- *    on a two-line statement, the text came back with JavaScript source
- *    fragments after it. Raising the estimate to fix (1) made (2) worse in
- *    proportion — 14_287 leaked characters instead of 189.
- *
- * `fflate` is the smallest thing that ends both: zero dependencies, pure
- * JavaScript, so it runs in Hermes as well as a browser. A full PDF library was
- * considered and refused — `pdfjs-dist` wants DOM APIs this app does not have
- * on native, and the missing capability was never parsing, it was an inflate
- * that reports how much it wrote.
- *
- * It also takes SheetJS off this path entirely. Opening a statement used to
- * download the 493 KB `xlsx` chunk for one utility function.
- *
- * ## Why streaming rather than the one-line call
- *
- * `unzlibSync` returns the exact length, which is the whole point — but its
- * bounded form does not: given a preallocated buffer that is too small it fills
- * it and returns, with no error, which is defect (1) again wearing a different
- * name. Measured. The streaming form is the one that can refuse: it reports
- * each chunk as it is produced, so the limit is a decision rather than an
- * allocation.
- */
+/** Inflate a zlib stream exactly. Streaming, because `unzlibSync` into a too-small buffer truncates silently instead of refusing. */
 function inflate(bytes: Uint8Array, Unzlib: UnzlibCtor, budget: { left: number }): Uint8Array | null {
   if (!hasZlibHeader(bytes)) return null;
   const limit = Math.min(MAX_STREAM_BYTES, budget.left);
@@ -190,15 +73,11 @@ function inflate(bytes: Uint8Array, Unzlib: UnzlibCtor, budget: { left: number }
       stream.push(bytes.subarray(at, end), end === bytes.length);
     }
   } catch {
-    // Corrupt or not actually deflate. It THROWS rather than spinning, which
-    // the previous inflate did not — `hasZlibHeader` below is kept anyway,
-    // because refusing early is still cheaper than unwinding.
+    // Corrupt or not deflate.
     corrupt = true;
   }
   budget.left -= written;
-  // Thrown rather than skipped: past the document's budget the file is not one
-  // stream too many but a file of them, and `extractPdfText` names it
-  // unreadable instead of reading whatever the streams before it held.
+  // Thrown, not skipped: past the budget the file is a file of bombs and is reported unreadable.
   if (budget.left < 0) throw new Error("PDF inflate budget exceeded");
   if (corrupt || overflowed) return null;
   const out = new Uint8Array(written);
@@ -218,15 +97,6 @@ function declaredLength(dictionary: string): number | null {
   return Number.isSafeInteger(value) && value >= 0 ? value : null;
 }
 
-/**
- * Every content stream in the file, inflated where it says it is compressed.
- *
- * Streams are found by `>>` followed by the `stream` keyword — the shape a
- * stream object actually has — and NOT by scanning for the bare word. A 195 KB
- * statement contains that word inside its embedded font and image data a dozen
- * times over, and treating those byte ranges as streams is what fed garbage to
- * the inflater in the first place.
- */
 interface PdfStreams {
   /** Page content, in file order. */
   content: string[];
@@ -257,8 +127,11 @@ function notText(dictionary: string, isFlate: boolean): boolean {
 /** A Type3 glyph's drawing opens with `d0` or `d1`, and is no more page text than an image is. */
 const GLYPH_DRAWING = /^\s*(?:-?[\d.]+\s+){2}d0\b|^\s*(?:-?[\d.]+\s+){6}d1\b/;
 
-function contentStreams(bytes: Uint8Array, Unzlib: UnzlibCtor): PdfStreams {
-  const haystack = bytesToLatin1(bytes);
+/**
+ * Every content stream in the file, inflated where it says it is compressed.
+ * Found by `>>` followed by `stream`, not the bare word: embedded font and image data contain it, and inflating those fed garbage to the inflater.
+ */
+function contentStreams(bytes: Uint8Array, haystack: string, Unzlib: UnzlibCtor): PdfStreams {
   const found: PdfStreams = { content: [], cmaps: [], cmapByObject: new Map(), glyphs: new Map(), packed: [] };
   let total = 0;
   const budget = { left: MAX_INFLATED_BYTES };
@@ -270,10 +143,7 @@ function contentStreams(bytes: Uint8Array, Unzlib: UnzlibCtor): PdfStreams {
     if (close === -1) break;
     opener.lastIndex = close + "endstream".length;
 
-    // The dictionary is the text back to its own opening `<<`, looked for only
-    // in the 2000 characters before the keyword. Searching the whole file
-    // walked back to its start from every stream of a file with no `<<`:
-    // measured, a megabyte of text before 4_000 streams took 2 s.
+    // Looked for only in the 2000 characters before the keyword: a whole-file search was quadratic.
     const before = haystack.slice(Math.max(0, match.index - 2000), match.index);
     const opensAt = before.lastIndexOf("<<");
     const dictionary = opensAt === -1 ? before : before.slice(opensAt);
@@ -296,8 +166,7 @@ function contentStreams(bytes: Uint8Array, Unzlib: UnzlibCtor): PdfStreams {
     } else if (GLYPH_DRAWING.test(text)) {
       found.glyphs.set(owner, text);
     } else if (text.includes("begincmap")) {
-      // A CMap is not page content and must never be scanned for text: its own
-      // body is full of hex that would otherwise be read as words.
+      // A CMap is not page content: its hex body would be read as words.
       found.cmaps.push(text);
       found.cmapByObject.set(owner, text);
     } else {
@@ -307,23 +176,10 @@ function contentStreams(bytes: Uint8Array, Unzlib: UnzlibCtor): PdfStreams {
   return found;
 }
 
-/**
- * Every object's own text by object number: the top-level ones up to their
- * stream, their `endobj` or the next object, whichever comes first, then those
- * packed into object streams.
- *
- * Each boundary is searched for once per stretch of the file and no two bodies
- * overlap, so this and the font search that reads every body are linear in
- * the file. Measured on what this replaced: a file of unclosed headers
- * rescanned the rest of itself from each one (20_000 took 264 ms, four times
- * that at twice as many), and 10_000 headers closed by a single `endobj` were
- * 10_000 copies of the file's tail (108 ms, likewise quadratic).
- */
+/** Every object's text by number, linear in the file: each boundary is searched once and no two bodies overlap. */
 function objectBodies(document: string, packed: PdfStreams["packed"]): Map<number, string> {
   const bodies = new Map<number, string>();
-  // `(?<!\d)` starts a number at its first digit only. Without it every digit
-  // of a long run began a match that backtracked over the rest of the run —
-  // measured, 60_000 digits took 1.3 s.
+  // `(?<!\d)`: without it every digit of a long run began a backtracking match.
   const header = /(?<!\d)(\d+)\s+\d+\s+obj\b/g;
   const terminator = /\b(?:stream|endobj)\b/g;
   let terminatorAt = 0;
@@ -345,13 +201,7 @@ function objectBodies(document: string, packed: PdfStreams["packed"]): Map<numbe
 /** How many objects one object stream may claim to hold. */
 const MAX_PACKED_OBJECTS = 100_000;
 
-/**
- * The objects one object stream packs, from the `number offset` pairs before
- * `/First`. Reading stops at an offset that goes back: past one, a body could
- * be the rest of the stream once for every other object — measured, 2_000
- * alternating offsets over a megabyte took 160 ms, and a stream may claim a
- * hundred thousand.
- */
+/** The objects one object stream packs. Stops at an offset that goes back: past one, bodies could each be the rest of the stream. */
 function unpackObjects({ dictionary, text }: PdfStreams["packed"][number], bodies: Map<number, string>): void {
   const count = Number(/\/N\s+(\d+)/.exec(dictionary)?.[1]);
   const first = Number(/\/First\s+(\d+)/.exec(dictionary)?.[1]);
@@ -372,11 +222,7 @@ interface FontDecoder {
   cid: boolean;
   toUnicode: ToUnicodeMap | null;
   /**
-   * A Type3 font with no map. Its glyphs are drawings its producer numbers at
-   * will: a statement printed through a mainframe's page format sets each
-   * letter at that system's own code, a different code for the same Turkish
-   * letter in two fonts of one page, and read as bytes came back "ok" as
-   * three thousand lines of accented noise.
+   * A Type3 font with no map: its glyph codes are the producer's own, so reading them as bytes returns accented noise reported as ok.
    */
   unnamed?: boolean;
   /** Advance per code at size 1, for a font whose text is placed by position. */
@@ -463,10 +309,6 @@ interface AfpFont {
   widths: Map<number, number>;
 }
 
-/**
- * A Type3 font converted from a mainframe page format: every glyph is named
- * `C` and its own code in hex, and no map says which letter it draws.
- */
 /** An encoding's glyph drawings by code, when every glyph is named `C` and its own code in hex. */
 function glyphsNamedForCodes(differences: string, drawings: Map<string, number>): Map<number, number> | null {
   const glyphs = new Map<number, number>();
@@ -484,6 +326,10 @@ function glyphsNamedForCodes(differences: string, drawings: Map<string, number>)
   return glyphs.size > 0 ? glyphs : null;
 }
 
+/**
+ * A Type3 font converted from a mainframe page format: every glyph is named
+ * `C` and its own code in hex, and no map says which letter it draws.
+ */
 function afpFont(body: string, bodies: Map<number, string>): AfpFont | null {
   if (!/\/Subtype\s*\/Type3\b/.test(body) || /\/ToUnicode\b/.test(body)) return null;
   const drawings = new Map([...entryValue(body, "CharProcs", bodies).matchAll(/\/(\S+?)\s+(\d+)\s+\d+\s+R/g)].map((m) => [m[1]!, Number(m[2])]));
@@ -495,13 +341,7 @@ function afpFont(body: string, bodies: Map<number, string>): AfpFont | null {
   return { glyphs, widths: new Map(advances.map((advance, index) => [first + index, Number(advance) * scale])) };
 }
 
-/**
- * Letters for page-format fonts. Latin text is EBCDIC 037; the letters that
- * code page lacks are drawn from a supplement font, recognised by shape: a
- * glyph whose body is exactly a base letter's body elsewhere in the document,
- * with the marks that make it Turkish. Measured on the owner's Akbank
- * statement, one such font held every `ı ş İ Ş` at several sizes.
- */
+/** Latin text is EBCDIC 037; letters that code page lacks are drawn from a supplement font and recognised by glyph shape. */
 function afpDecoders(fonts: AfpFont[], drawings: Map<number, string>): FontDecoder[] {
   const shapes = fonts.map((font) => new Map([...font.glyphs].map(([code, object]) => [code, glyphShape(drawings.get(object))])));
   const bases = new Map<string, string>();
@@ -524,15 +364,7 @@ function afpDecoders(fonts: AfpFont[], drawings: Map<number, string>): FontDecod
   });
 }
 
-/**
- * The font object each resource name selects, or null when one name means two
- * different fonts — attributing a stream to its page is the part of the
- * resource graph this extractor does not walk, so a name it cannot pin down is
- * a name it cannot decode.
- *
- * A referenced dictionary is read once however many pages name it: reading it
- * per reference made 2_000 references to a megabyte take 536 ms.
- */
+/** The font object each resource name selects, or null when one name means two fonts (page attribution is not walked). Each referenced dictionary is read once. */
 function fontObjectsByName(bodies: Map<number, string>): Map<string, number> | null {
   const dictionaries: string[] = [];
   const referenced = new Set<number>();
@@ -552,11 +384,7 @@ function fontObjectsByName(bodies: Map<number, string>): Map<string, number> | n
   return fontByName;
 }
 
-/**
- * The decoder each resource name selects, or null where `fontObjectsByName`
- * refuses. A font is read once however many names select it, and a CMap once
- * however many fonts share it: 4_000 names for one megabyte took 463 ms.
- */
+/** The decoder each resource name selects, or null where `fontObjectsByName` refuses. Fonts and CMaps are read once however many names share them. */
 function resolveFonts(bodies: Map<number, string>, streams: PdfStreams): Map<string, FontDecoder> | null {
   const fontByName = fontObjectsByName(bodies);
   if (!fontByName) return null;
@@ -600,18 +428,7 @@ function documentFont(usesGlyphIds: boolean, cmaps: string[]): FontDecoder | nul
   return cmaps.length === 1 ? { cid: true, toUnicode: parseToUnicode(cmaps[0]!) } : null;
 }
 
-/**
- * A `ToUnicode` CMap: which character each glyph id actually is.
- *
- * A statement produced with `/Encoding /Identity-H` does not store letters. It
- * stores GLYPH INDEXES into an embedded subset font, and the only thing that
- * says which letter a glyph is, is the `ToUnicode` CMap the producer ships
- * beside it. Without applying it, extraction returns something that looks like
- * text, is the right length, and is meaningless — measured against a real
- * statement, 96 KB of it. That is the single most dangerous output this module
- * could produce, because every later stage would treat it as a readable
- * document.
- */
+/** A `ToUnicode` CMap: which character each glyph id is. Identity-H text is glyph indexes; without it extraction returns meaningless text that looks readable. */
 type ToUnicodeMap = Map<number, string>;
 
 /** `<0041>` → 0x41. Bounded so a malformed CMap cannot allocate. */
@@ -632,26 +449,10 @@ function hexToString(token: string): string {
   return out;
 }
 
-/**
- * How many entries one CMap may declare.
- *
- * It caps MEMORY, and on its own it did not cap WORK. `add` refuses past this
- * size but the loops kept walking: a CMap of `<0000> <FFFF> <41>` repeated
- * 50_000 times is 930 KB — far inside the stream ceiling, and a few KB once
- * deflated — and it drove 3.3 BILLION refused inserts, 16 seconds of a frozen
- * JavaScript thread that nothing can interrupt. Scaled to the stream ceiling
- * that is minutes. So every loop below stops at this size too, and a statement
- * whose CMap is already full costs nothing more to keep reading.
- */
+/** Caps memory and work: loops stop at this size too, since refused inserts alone once froze the thread for seconds. */
 const MAX_CMAP_ENTRIES = 65_536;
 
-/**
- * Read `beginbfchar` and `beginbfrange` sections out of a CMap stream.
- *
- * Both `bfrange` forms are handled: a contiguous destination
- * (`<lo> <hi> <dst>`) and the array form (`<lo> <hi> [ <d1> <d2> … ]`) that
- * the statement in front of me actually uses.
- */
+/** Read `beginbfchar` and `beginbfrange` sections, including the array form of a range. */
 function parseToUnicode(text: string): ToUnicodeMap {
   const map: ToUnicodeMap = new Map();
   const add = (code: number, value: string) => {
@@ -810,10 +611,7 @@ function showText(stream: string, fonts: Map<string, FontDecoder> | null, docume
   return out;
 }
 
-/**
- * Runs this close in height share a row; a wider gap between runs is a space.
- * Points. On the owner's Akbank statement gaps between runs were ~0 or ≥ 6.
- */
+// Runs this close in height (points) share a row; a wider gap between runs is a space.
 const ROW_TOLERANCE = 3;
 const WORD_GAP = 3;
 
@@ -861,17 +659,8 @@ function rowsOf(runs: TextRun[]): string {
 }
 
 /**
- * Undo per-glyph positioning.
- *
- * Some producers place every single glyph with its own `Td`, so the gap this
- * module emits between runs lands between every CHARACTER: `S o n Ö d e m e`
- * instead of `Son Ödeme`. A real word boundary is still visible, because it is
- * the run gap PLUS the space glyph's own advance — it arrives as two spaces
- * where an intra-word gap arrives as one.
- *
- * Applied per line and only when the line actually looks like that (most of
- * its tokens are one character long), so a normally-spaced statement — the
- * common case — is returned untouched rather than being reflowed on a guess.
+ * Undo per-glyph positioning (`S o n Ö d e m e`). A real word boundary arrives as two spaces,
+ * an intra-word gap as one. Only for lines mostly of one-character tokens, so normal text is untouched.
  */
 function collapseGlyphSpacing(line: string): string {
   const tokens = line.split(" ");
@@ -899,35 +688,26 @@ export async function extractPdfText(bytes: Uint8Array): Promise<PdfTextResult> 
   if (!header.startsWith("%PDF-")) return { ok: false, reason: "not_a_pdf" };
 
   let streams: PdfStreams;
+  let raw: string;
   try {
     const { Unzlib } = await import("fflate");
-    streams = contentStreams(bytes, Unzlib);
+    raw = bytesToLatin1(bytes);
+    streams = contentStreams(bytes, raw, Unzlib);
   } catch {
     return { ok: false, reason: "unreadable" };
   }
 
-  // Encryption is checked on the trailer, not the header, and is checked before
-  // "no text" so a locked file is not reported as a scan.
+  // Before "no text", so a locked file is not reported as a scan.
   const tail = bytesToLatin1(bytes, Math.max(0, bytes.byteLength - 4096), bytes.byteLength);
   if (/\/Encrypt\b/.test(tail)) return { ok: false, reason: "encrypted" };
 
-  const raw = bytesToLatin1(bytes);
   const document = [raw, ...streams.packed.map((object) => object.text)].join("\n");
   const pageCount = (document.match(/\/Type\s*\/Page[^s]/g) ?? []).length;
 
-  /**
-   * Which map decodes each string — or the refusal to guess.
-   *
-   * A glyph id means different characters in different fonts, so each `Tf`
-   * picks its font's own `ToUnicode` CMap. Where a string's font cannot be
-   * named that way the document's single CMap still serves; with several, or
-   * with none for a glyph font, choosing one would silently mistranslate the
-   * text, and that is reported as its own reason.
-   */
+  // Each `Tf` picks its font's own CMap; otherwise the single document CMap serves; several or none is refused, not guessed.
   const usesGlyphIds = /\/Encoding\s*\/Identity-[HV]/.test(document) || /\/Subtype\s*\/Type0/.test(document);
   const fonts = resolveFonts(objectBodies(raw, streams.packed), streams);
-  // Once rather than per stream: four hundred streams sharing one full CMap
-  // took 962 ms when each parsed it again.
+  // Once, not per stream: re-parsing a full CMap per stream was seconds.
   const fallback = documentFont(usesGlyphIds, streams.cmaps);
   const positioned = (stream: string) => [...stream.matchAll(/\/([^\s/[\]()<>{}%]+)\s+[-\d.]+\s+Tf/g)].some((m) => fonts?.get(m[1]!)?.widths);
   const shown = streams.content.map((stream) => positioned(stream) ? positionedText(stream, fonts!) : showText(stream, fonts, fallback));
@@ -936,8 +716,7 @@ export async function extractPdfText(bytes: Uint8Array): Promise<PdfTextResult> 
   const text = shown
     .join("\n")
     .split("\n")
-    // Per line, and BEFORE any whitespace collapse: the collapse is what
-    // destroys the doubled space that marks a real word boundary.
+    // Before the whitespace collapse, which destroys the doubled space that marks a word boundary.
     .map((line) => collapseGlyphSpacing(line.replace(/\t/g, " ")))
     .map((line) => line.replace(/ {2,}/g, " ").trim())
     .join("\n")

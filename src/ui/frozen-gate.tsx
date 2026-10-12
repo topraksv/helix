@@ -16,6 +16,7 @@ import { useSession } from "../auth/session";
 import { useUserId } from "../data/hooks";
 import { kv } from "../services/kv";
 import { tr } from "../i18n/tr";
+import { BIOMETRIC_KEY } from "./biometric-name";
 import { Body, Button, Screen, Title } from "./components";
 import { appAlert } from "./dialog";
 import { spacing, useTheme } from "./theme";
@@ -32,36 +33,19 @@ export function FrozenGate() {
   const useBiometric = Platform.OS !== "web" && biometricEnabled;
 
   useEffect(() => {
-    void kv.get("helix.biometric").then((v) => setBiometricEnabled(v === "true"));
+    void kv.get(BIOMETRIC_KEY).then((v) => setBiometricEnabled(v === "true"));
   }, []);
 
-  const unlock = async () => {
-    await setAccountFrozen(userId, false);
-    scheduleSync(userId);
-  };
-
-  const unlockBiometric = async () => {
+  const reactivate = async (biometric: boolean) => {
     try {
       await operationGuard.run(async () => {
         setOperation("reactivating");
         try {
-          const result = await LocalAuthentication.authenticateAsync({ promptMessage: tr.account.reactivate });
-          if (result.success) await unlock();
-        } finally {
-          setOperation("idle");
-        }
-      });
-    } catch {
-      void appAlert(tr.errors.saveFailed, tr.errors.title);
-    }
-  };
-
-  const unlockDirectly = async () => {
-    try {
-      await operationGuard.run(async () => {
-        setOperation("reactivating");
-        try {
-          await unlock();
+          const passed = !biometric || (await LocalAuthentication.authenticateAsync({ promptMessage: tr.account.reactivate })).success;
+          if (passed) {
+            await setAccountFrozen(userId, false);
+            scheduleSync(userId);
+          }
         } finally {
           setOperation("idle");
         }
@@ -73,7 +57,7 @@ export function FrozenGate() {
 
   // Auto-prompt Face ID when the gate opens with biometrics enabled.
   useEffect(() => {
-    if (useBiometric) void unlockBiometric();
+    if (useBiometric) void reactivate(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [useBiometric]);
 
@@ -95,7 +79,7 @@ export function FrozenGate() {
           <Button
             label={operation === "reactivating" ? tr.account.reactivatingTitle : tr.account.reactivate}
             disabled={operation !== "idle"}
-            onPress={() => void unlockBiometric()}
+            onPress={() => void reactivate(true)}
           />
         ) : null}
         {isSupabaseConfigured ? (
@@ -115,11 +99,11 @@ export function FrozenGate() {
               });
             }}
           />
-        ) : (
+        ) : useBiometric ? null : (
           <Button
             label={operation === "reactivating" ? tr.account.reactivatingTitle : tr.account.reactivate}
             disabled={operation !== "idle"}
-            onPress={() => void unlockDirectly()}
+            onPress={() => void reactivate(false)}
           />
         )}
       </View>

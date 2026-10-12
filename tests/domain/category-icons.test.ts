@@ -65,6 +65,5 @@ describe("what a piece of text is about", () => {
    */
   it("resolves an overlap the same way the icon does", () => {
     expect(conceptOf("Araçla Metro")).toBe(conceptOf("Yakıt"));
-    expect(suggestCategoryIcon("Araçla Metro", "expense")).toBe("⛽");
   });
 });

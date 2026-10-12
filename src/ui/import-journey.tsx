@@ -1,34 +1,21 @@
-/**
- * The three steps every import walks: pick the file, check what was read,
- * write it.
- *
- * Shared because the two importers are the same promise made about two file
- * types — a workbook and a card statement — and an owner who has learnt one
- * should not have to learn the other. It lived inside the workbook wizard and
- * the statement screen had nothing, so the more dangerous of the two (a
- * financial document the app cannot verify) was the one with no map.
- */
+/** The three-step map both importers (workbook, card statement) share. */
 
-import React from "react";
+import { Fragment, type ReactNode } from "react";
 import { Text, View } from "react-native";
 import ArrowRight from "lucide-react-native/icons/arrow-right";
 import FileCheck2 from "lucide-react-native/icons/file-check-corner";
 import ScanLine from "lucide-react-native/icons/scan-line";
 import TableProperties from "lucide-react-native/icons/table-properties";
 import type { LucideIcon } from "lucide-react-native";
+import { Card } from "./components";
 import { SuccessPop } from "./motion-primitives";
+import { Body } from "./primitives";
 import { tr } from "../i18n/tr";
 import { circle, font, radius, spacing, type, useTheme } from "./theme";
 
 /**
  * The picture both importers draw: a document on the left, an arrow that
  * becomes a tick, and the Helix surface it lands in on the right.
- *
- * Shared for the same reason `ImportJourney` is, and because the two were
- * asked to look alike. They were copies — the frame, the connector and the
- * destination card were byte-identical in both screens — so the requirement
- * that they match was held together only by nobody editing one of them.
- * Only the document's interior and the destination's icon ever differed.
  */
 export function ImportArtwork({
   ready,
@@ -38,7 +25,7 @@ export function ImportArtwork({
   ready: boolean;
   destinationIcon: LucideIcon;
   /** The source document's interior, which is the one thing that differs. */
-  children: React.ReactNode;
+  children: ReactNode;
 }) {
   const { palette } = useTheme();
   return (
@@ -84,6 +71,44 @@ export function ImportArtwork({
   );
 }
 
+/** The bulleted lines of an importer's guide. */
+export function GuideBullets({ items }: { items: readonly string[] }) {
+  const { palette } = useTheme();
+  return (
+    <>
+      {items.map((line) => (
+        <View key={line} style={{ flexDirection: "row", marginBottom: spacing.xs }}>
+          <Text style={[type.small, { color: palette.primaryText, marginRight: spacing.xs }]}>•</Text>
+          <Text style={[type.small, { color: palette.textSecondary, flex: 1 }]}>{line}</Text>
+        </View>
+      ))}
+    </>
+  );
+}
+
+/** The card both importers open with: the artwork beside a title, a line of text and the pick button. */
+export function ImportHero({ wide, artwork, title, body, children }: {
+  wide: boolean;
+  artwork: ReactNode;
+  title: string;
+  body: string;
+  children: ReactNode;
+}) {
+  const { palette } = useTheme();
+  return (
+    <Card style={{ backgroundColor: palette.surfaceAlt }}>
+      <View style={{ flexDirection: wide ? "row" : "column", alignItems: "center", gap: spacing.lg }}>
+        {artwork}
+        <View style={{ flex: 1, minWidth: 0, alignSelf: "stretch", justifyContent: "center" }}>
+          <Text style={[type.heading, { color: palette.textStrong }]}>{title}</Text>
+          <Body muted style={{ marginTop: spacing.xs, marginBottom: spacing.md }}>{body}</Body>
+          {children}
+        </View>
+      </View>
+    </Card>
+  );
+}
+
 /** How far along the import is: file chosen, reviewed, written. */
 export type ImportStage = 0 | 1 | 2;
 
@@ -98,18 +123,15 @@ export function ImportJourney({ stage, fileIcon }: { stage: ImportStage; fileIco
     <View
       accessible
       accessibilityRole="image"
-      accessibilityLabel={steps.map((step) => step.label).join(", ")}
-      // The block above owns the gap above: every `Card` carries
-      // `marginBottom`, and where this strip comes first on the screen there
-      // is nothing above to separate from. Only the gap BELOW is this
-      // strip's to reserve, because it is not a Card and gets none by default.
+      accessibilityLabel={steps.map((step, index) => (index === stage ? `${step.label} (${tr.importer.currentStep})` : step.label)).join(", ")}
+      // Not a Card, so it reserves its own gap below.
       style={{ flexDirection: "row", alignItems: "center", marginBottom: spacing.md }}
     >
       {steps.map((item, index) => {
         const Icon = item.icon;
         const active = index <= stage;
         return (
-          <React.Fragment key={item.label}>
+          <Fragment key={item.label}>
             <View style={{ flex: 1, minWidth: 0, alignItems: "center", gap: 5 }}>
               {/* Keyed on the stage that owns it, so the step the wizard has
                   just reached lands rather than simply being a different
@@ -141,7 +163,7 @@ export function ImportJourney({ stage, fileIcon }: { stage: ImportStage; fileIco
                 <ArrowRight accessible={false} size={16} color={index < stage ? palette.primary : palette.border} />
               </View>
             ) : null}
-          </React.Fragment>
+          </Fragment>
         );
       })}
     </View>

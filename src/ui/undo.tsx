@@ -18,16 +18,8 @@ import { appAlert } from "./dialog";
 
 type UndoTone = Extract<HapticKind, "success" | "warning">;
 
-/**
- * A second line and a second action, for a save that DID something worth
- * checking: which figure moved, and by how much.
- *
- * Kept optional so the bar stays the same quiet confirmation everywhere else.
- * It is not a dialog and does not block: the owner reads it or ignores it, and
- * it leaves on its own. Nothing here refreshes a screen or remounts a route —
- * the live queries have already delivered the change underneath it.
- */
-export interface UndoDetail {
+/** A second line and a second action, for a save whose effect is worth checking. */
+interface UndoDetail {
   /** One short sentence: the derived effect, e.g. the balance impact. */
   text: string;
   /** A second action beside undo, e.g. "Düzenle". */
@@ -110,13 +102,6 @@ export function UndoSnackbar() {
   const insets = useSafeAreaInsets();
   const reducedMotion = useReducedMotion();
   const [undoing, setUndoing] = React.useState(false);
-  /**
-   * Pushing the bar out of the way.
-   *
-   * It leaves on its own, but "on its own" is six seconds and it sits over the
-   * thing the owner is trying to look at. Downward only: up is where the bar
-   * came from and dragging it there means nothing.
-   */
   const dragY = React.useRef(new Animated.Value(0)).current;
   // The store outlives this component's closures — a responder created once
   // must dismiss whatever bar is up when it fires, not the one it was born on.
@@ -172,7 +157,7 @@ export function UndoSnackbar() {
   return (
     <View
       pointerEvents="box-none"
-      style={{ position: "absolute", left: nav.left + spacing.lg, right: spacing.lg, bottom: nav.bottom + spacing.md, alignItems: "center" }}
+      style={{ position: "absolute", left: spacing.lg, right: spacing.lg, bottom: nav.bottom + spacing.md, alignItems: "center" }}
     >{/* Keyed on the message: a second confirmation arriving while the first
          is still up replaced its words in place and looked like a typo. It
          re-enters, and its mark pops again, because it is a different event. */}
@@ -284,10 +269,6 @@ export function UndoSnackbar() {
               useUndo.getState().show(message, onUndo, "warning");
               void appAlert(tr.errors.undoFailed, tr.errors.title);
             }}
-            // Opacity, not `interactionSurface`: this toast is inverted
-            // (`backgroundColor: palette.text` above), and the shared fill mixes
-            // its tints for a surface the right way up. Laid over the inverse
-            // they land as a wash of the wrong colour.
             style={({ pressed }) => ({
               minHeight: controlSize.minimumTarget,
               justifyContent: "center",

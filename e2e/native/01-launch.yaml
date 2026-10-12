@@ -1,31 +1,16 @@
-# The app opens in a native iOS runtime.
-#
-# The most valuable native assertion available, and the only one that covers
-# these four at once: JavaScript ran, `migrateDb` completed against the NATIVE
-# SQLite driver, the splash dismissed, and the vendored subset fonts loaded
-# from the app bundle. Every one of them is silent in the browser suite, and
-# the font one is new — `assets/fonts/*.ttf` are subsets now, and a face that
-# fails to load on iOS renders nothing at all.
+# Native cold start: JavaScript ran, `migrateDb` completed on the native SQLite driver, the splash
+# dismissed and the subset fonts loaded from the bundle. All silent in the browser suite.
 appId: com.toprak.helix
 ---
 - launchApp:
     clearState: true
-# A dev-client build downloads its JavaScript from Metro on every launch, so
-# the first assertion has to wait for the bundle rather than race it. A release
-# build with an embedded bundle is up in a fraction of this.
+# A dev-client build downloads its JavaScript from Metro on every launch, so the
+# first assertion waits for the bundle; an embedded release bundle is far faster.
 - extendedWaitUntil:
     visible: "Helix"
     timeout: 90000
-# Turkish glyphs specifically: ş, ı, ğ and ü live in the ranges the subset
-# keeps, and a broken subset draws tofu here rather than failing loudly.
-# The greeting, which is one heading beside the mark rather than a line merged
-# into a signature card, and the same text in all three auth modes: this screen
-# is where most people meet Helix for the first time, and it used to greet them
-# by asking them to return to a workspace they had never had.
+# The greeting is one heading beside the mark, the same text in all three auth modes.
 - assertVisible: "Helix'e hoş geldin"
-# The font assertion, and it is this line rather than the heading because of
-# WHICH glyphs it carries: ı, ş, ğ and ö all live in the ranges
-# `scripts/subset-fonts.mjs` keeps, and a broken subset draws tofu here rather
-# than failing loudly. The string this replaced claimed those four and actually
-# contained two of them.
+# The font assertion: ı, ş, ğ and ö live in the ranges `scripts/subset-fonts.mjs` keeps, and a broken
+# subset draws tofu rather than failing loudly.
 - assertVisible: ".*paranın nereye gittiğini gör.*"

@@ -8,8 +8,6 @@
  * a cycle back through this module.
  */
 
-
-
 import React, { useMemo, useRef, type ComponentProps, type ReactNode } from "react";
 import {
   Animated,
@@ -77,37 +75,12 @@ export {
   useLedeAlignment,
 } from "./primitives";
 
-export { Field, MoneyField, MonthStepper, Toggle } from "./fields";
+export { Field, InlineEditRow, MoneyField, MonthStepper, Toggle, ToggleRow } from "./fields";
 export { ChipPicker, ChoiceTile, Segmented, Select, SelectionGrid } from "./selection-controls";
 
 /**
- * A screen arriving for the FIRST time, said with movement instead of opacity.
- *
- * Fading a whole page up from zero is what reads as a refresh: for a few
- * frames the window is empty and then the entire document paints at once,
- * which is exactly the shape of a reload. So the page never changes opacity;
- * it rises into place, which is motion a reload cannot produce.
- *
- * It rises ONCE, on mount, and never again. Replaying it per visit is what
- * three rounds of "girip çıkınca ekran tık diye yenileniyor" were about, and
- * this was the whole of it: measured on the dashboard, every back-navigation
- * AND every tab switch moved the entire 758-node page to +14pt and sprang it
- * back over 21 frames. Nothing was remounting and nothing was refetching —
- * the node count was identical before, during and after — so the only thing
- * a reader could be reacting to was the page itself moving under them. A
- * whole-page motion cannot say "this screen is alive" without also saying
- * "this screen just reloaded", because those look the same.
- *
- * Arriving somewhere new still moves: a pushed screen mounts, so it animates.
- * Coming back to a screen that never went away does not, because nothing
- * about it is new. What replays instead is per-element and local — `useDrawIn`
- * redraws a chart, `FadeIn` with a `replayToken` restages a list — and those
- * still hang off the visit counter. Those are the animations the owner asked
- * to keep; this was the one they asked to stop.
- *
- * It is also the cheapest frame on the web build: `useNativeDriver` is false
- * there, so this was a JS-driven transform of a wrapper holding the entire
- * page, recomputed every frame of every navigation.
+ * A screen arriving for the first time rises into place instead of fading: fading a whole page up from zero is the shape of a reload.
+ * It rises once, on mount; replaying it per visit read as the page reloading. Per-element replays (`useDrawIn`, `FadeIn`) stay.
  */
 function ScreenEntrance({ children, style }: { children: ReactNode; style?: StyleProp<ViewStyle> }) {
   const progress = useEntranceProgress();
@@ -124,21 +97,9 @@ function ScreenEntrance({ children, style }: { children: ReactNode; style?: Styl
   );
 }
 
-/**
- * How far a screen rises as it arrives.
- *
- * Large enough to be unmistakably motion at a glance — 3pt was tried and read
- * as nothing — and small enough that it never uncovers the edge of the
- * scroller or looks like a page transition.
- */
+/** How far a screen rises as it arrives; 3pt read as nothing. */
 const SCREEN_ARRIVAL_RISE = 14;
 
-/**
- * The shared look of every control that accepts a value: text fields, selects
- * and the date trigger. Exported because the date trigger lives in
- * `calendar.tsx` and had grown its own `surfaceAlt` fill, which is why one
- * field on an investment form was grey while the two beside it were not.
- */
 export function Screen({
   children,
   scroll = true,
@@ -170,12 +131,7 @@ export function Screen({
   /** Access to the vertical scroller for explicit workflow navigation. */
   scrollRef?: React.RefObject<ScrollView | null>;
   /**
-   * This screen is a long read with no controls in it.
-   *
-   * Set only where that is true. It makes the scroll region focusable on web
-   * so a keyboard can move it, which is a tab stop the screen would not
-   * otherwise have — worth it on a legal notice nobody can act on without
-   * reading, and noise on a form.
+   * A long read with no controls in it: makes the scroll region focusable on web so a keyboard can move it. Set only where true; elsewhere it is a stray tab stop.
    */
   readable?: boolean;
 }) {
@@ -184,76 +140,37 @@ export function Screen({
   const { width, height } = useWindowDimensions();
   const maxWidth = contentWidth[widthName];
   const segments = useSegments();
-  // The navigator's arrival event must not be React state owned by Screen:
-  // changing it would render the entire page just to restart an entrance.
+  // The arrival event is not React state: changing it would render the whole page just to restart an entrance.
   const visitStore = useScreenVisitController();
-  // Pressing the tab you are already on returns that screen to the top. The
-  // navigator's own hook is used rather than a listener here because it also
-  // resolves the cases a hand-rolled one gets wrong: nested stacks, whether
-  // this screen is the stack's first, and a listener that called
-  // preventDefault. Screens outside a tab navigator are a no-op.
+  // The navigator's own hook resolves nested stacks and a listener that called preventDefault; outside a tab navigator it is a no-op.
   const ownScrollRef = useRef<ScrollView>(null);
   const activeScrollRef = scrollRef ?? ownScrollRef;
   useScrollToTop(activeScrollRef);
-  // Opt-in, and deliberately not automatic. A screen made of nothing but text
-  // has no keyboard route into its own scroll region, which is what
-  // `readable` fixes — but the fix is a DOM effect and an extra tab stop, and
-  // the screens that need it are countable on one hand. Applying it to all
-  // forty to catch the one would put an effect in the app's most-used
-  // primitive to solve a problem thirty-nine of them do not have. The route
-  // sweep in `e2e/visual-a11y.spec.ts` is what catches the next screen that
-  // does need it.
+  // Opt-in: an effect in the most-used primitive would solve a problem few screens have; e2e/visual-a11y.spec.ts catches the next one.
   useKeyboardReachableScroller(activeScrollRef, readable);
-  // A screen that fills its column still needs a margin to read as a page
-  // rather than as content pressed against the window. The phone gutter is the
-  // one the thumb expects; a pointer-sized viewport gets a real one.
+  // A margin to read as a page: the phone gutter is the thumb's, a pointer-sized viewport gets a real one.
   const gutter = shouldUseWideGutter(width) ? spacing.xxl : spacing.lg;
-  // The tab bar floats over its scene, so the navigator no longer reserves its
-  // height — the last row would otherwise sit under it. `tabBarClearance` is
-  // the single source for that space; a modal or stack scene has no bar over it
-  // and only needs the safe-area inset.
-  // One owner for where navigation is — the same hook every layout rule reads.
-  // Only the bottom clearance is applied here: the tab SCENE owns the rail's
-  // left inset, so a nested stack's header is inset by the same rule as the
-  // screen under it.
-  const { bottom: navBottom, left: navLeft, inTabs } = useNavigationSpace();
+  // The tab bar floats over its scene, so the last row would sit under it; a modal or stack scene needs only the safe-area inset.
+  const { bottom: navBottom, inTabs } = useNavigationSpace();
   const bottomPad = inTabs ? navBottom : Math.max(insets.bottom, spacing.lg) + spacing.md;
-  // Content must clear the status bar / Dynamic Island on headerless full
-  // screens. Titled screens already inset the top; the auth + onboarding
-  // screens run with `headerShown: false` and no title, so they need it too
-  // (otherwise the welcome header slid under the Dynamic Island). Modal/stack
-  // screens keep the flat pad — their native header already reserves the inset,
-  // so adding it here would double-pad them.
+  // Headerless full screens must clear the status bar / Dynamic Island; a stack header already reserves the inset, and adding it would double-pad.
   const needsTopInset = title != null || segments[0] === "(auth)" || segments[0] === "(onboarding)";
 
   const header =
     title != null ? (
-      // Identified so a visual baseline can mask it: the dashboard's title is
-      // a greeting and its subtitle today's date, both derived from the clock.
-      // Baking either into a screenshot makes the suite fail by the hour.
+      // Identified so a visual baseline can mask it: the greeting and date derive from the clock.
       <View testID="screen-header" style={{ marginBottom: spacing.lg, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.md }}>
         {leading}
         <View style={{ flex: 1 }}>
           <Text
             accessibilityRole="header"
-            // The whole app announced every heading at level 1 — nine of them
-            // on Settings alone — because React Native's `header` role carries
-            // no level and nothing supplied one. Heading-to-heading jumping is
-            // how a screen reader user navigates a long page, and with one
-            // flat level it tells them nothing. Three levels, one meaning
-            // each: the page, its sections, the panels inside them.
+            // RN's `header` role carries no level: three levels, one meaning each (page, section, panel).
             aria-level={1}
             style={[type.title, { color: palette.textStrong, minWidth: 0, flexShrink: 1 }]}
           >
             {title}
           </Text>
-          {/* The subtitle's line is held even when empty. The tab roots are
-              this header's only users, and the band was 34, 44 or 51pt
-              depending on whether a screen had a subtitle or a button —
-              so a tab change moved the title and everything under it. The
-              text column is the band's tallest child on every platform, so
-              one font metric decides one height everywhere. The
-              no-break space keeps the empty line from collapsing on web. */}
+          {/* The subtitle's line is held even when empty so a tab change does not move the title; the no-break space keeps it from collapsing on web. */}
           <Text
             aria-hidden={!subtitle}
             style={[type.small, { color: palette.textSecondary, marginTop: 2 }]}
@@ -269,28 +186,17 @@ export function Screen({
     padded && { paddingHorizontal: gutter },
     { paddingTop: needsTopInset ? Math.max(insets.top, spacing.lg) : spacing.lg },
     { paddingBottom: bottomPad },
-    // Unconditional: below its cap the column simply fills, so there is no
-    // second layout mode to reason about and no threshold to drift.
+    // Unconditional: below its cap the column simply fills, with no second layout mode.
     { width: "100%", maxWidth, alignSelf: "center" },
-    // Lets a short page distribute its own height instead of stacking against
-    // the header — an empty state can then centre itself in what is left. It
-    // changes nothing once the content is taller than the viewport.
+    // Lets a short page centre its own content; no effect once it is taller than the viewport.
     { flexGrow: 1 },
   ];
 
-  // Navigation and keyboard insets have different owners. `bottomPad` remains
-  // our static safe-area/tab-bar contract; KeyboardSafeScrollView adds only the
-  // temporary keyboard room and follows its native animation. This avoids the
-  // old UIKit inset accumulation that grew a screen after every app switch.
+  // Navigation and keyboard insets have different owners: `bottomPad` is static, KeyboardSafeScrollView adds only the temporary keyboard room.
   if (!scroll) {
     return (
-      // The rail's space is taken here, by the content, and not by the tab scene:
-    // a scene-level inset also shortened the nested stack's header, which is
-    // chrome that belongs to the whole window.
-    <View style={{ flex: 1, backgroundColor: palette.background, paddingLeft: navLeft }}>
-        {/* A tab arrival replays only this wrapper; child state stays mounted.
-            A Back navigation remains inside the same tab and therefore keeps
-            the settled scaffold instead of making a completed form look reset. */}
+    <View style={{ flex: 1, backgroundColor: palette.background }}>
+        {/* A tab arrival replays only this wrapper; Back stays in the same tab and keeps the settled scaffold. */}
         <ScreenVisitContext.Provider value={visitStore}>
           <ScreenEntrance style={[{ flex: 1 }, inner]}>
             {header}
@@ -301,19 +207,9 @@ export function Screen({
     );
   }
   return (
-    // The rail's space is taken here, by the content, and not by the tab scene:
-    // a scene-level inset also shortened the nested stack's header, which is
-    // chrome that belongs to the whole window.
-    <View style={{ flex: 1, backgroundColor: palette.background, paddingLeft: navLeft }}>
-      {/* The scroll edge — only where this screen really does start at the top
-          of the window. Content passes under the status bar there, and with
-          nothing painted over that band a settings row's label ran straight
-          through the clock.
-          `needsTopInset` is the condition, not `insets.top > 0`: a screen under
-          a stack header begins below it, and the window's inset is still ~59pt,
-          so the strip painted an opaque band over the first 59pt of every form
-          — which is the "Tutar ve işlem türü is half hidden" the owner saw on
-          Yeni İşlem and on every editor like it. */}
+    // The content takes the rail's space, not the tab scene: a scene-level inset also shortened the nested stack's header.
+    <View style={{ flex: 1, backgroundColor: palette.background }}>
+      {/* The scroll edge, only where the screen starts at the top of the window. `needsTopInset`, not `insets.top > 0`: under a stack header the strip hid the first 59pt of the form. */}
       {needsTopInset && insets.top > 0 ? (
         <View
           pointerEvents="none"
@@ -331,9 +227,7 @@ export function Screen({
         scrollEnabled={scrollEnabled}
         automaticallyAdjustContentInsets={false}
       >
-        {/* Carries the container's grow through to the children, so a screen
-            with one short block can centre it rather than stack it at the top
-            of an empty page. */}
+        {/* Carries the container's grow to the children, so one short block can centre. */}
         <ScreenVisitContext.Provider value={visitStore}>
           <ScreenEntrance style={{ flexGrow: 1 }}>
             {header}
@@ -385,15 +279,7 @@ export function Card({
       borderColor: toneColor ? toneColor + "66" : palette.border + "70",
       borderRadius: radius.lg,
       paddingHorizontal: padded ? density.list.cardPadding : 0,
-      // A hovered row fills its cell in BOTH directions — to the card's border
-      // left and right, and to the card's edge top and bottom when it is the
-      // first or last row. The lit area is the control, and a control that
-      // stops short of the box it lives in reads as a fill that missed.
-      //
-      // `rows` is what makes the vertical half true: the card gives up its own
-      // vertical padding and the rows carry it instead, inside their
-      // pressables. The card still clips (`overflow: hidden`), so a fill lands
-      // exactly on the border rather than past it.
+      // `rows` gives the card's vertical padding to the rows, inside their pressables, so a hovered first or last row lights to the border (the card clips).
       paddingVertical: rows ? 0 : padded ? density.list.cardPadding : 0,
       marginBottom: spacing.md,
       overflow: "hidden",
@@ -449,33 +335,14 @@ export function HeroCard({ children, style, onLayout }: { children: ReactNode; s
   );
 }
 
-/** Shared, unboxed metric rail. The values stay in a predictable row while
- * surrounding screens decide whether the rail belongs to a hero, chart or
- * portfolio surface. */
-/**
- * A row of labelled figures that stays a row.
- *
- * It used to give each column a 112px basis and let the row wrap, so on a phone
- * "Gelir" and "Çıkış" sat on one line and "Net değişim" dropped to a second —
- * three peers reading as two-then-one. They share the row now, and every money
- * value uses the global compact formatter once it reaches the large-number
- * threshold, rather than asking each strip to decide its own unit.
- */
+/** A row of labelled figures that stays a row; every money value uses the shared compact formatter at the large-number threshold. */
 export function MetricStrip({
   items,
   align = "start",
   style,
   testID,
 }: {
-  /**
-   * One shape, not two.
-   *
-   * `value` used to be `ReactNode | ((compact: boolean) => ReactNode)`, so
-   * every call site had to know which of the two forms it was writing and six
-   * of the nine picked the function only to forward one boolean. A metric is
-   * either an amount — which the shared `Amount` primitive formats and fits —
-   * or something that is not money, which is given as a node and left alone.
-   */
+  /** One shape: money goes through the shared `Amount`; anything else is a node, left alone. */
   items: {
     label: string;
     /** Money. Rendered through the shared `Amount` display policy. */
@@ -485,14 +352,7 @@ export function MetricStrip({
     /** Anything that is not money — a count, a badge. */
     node?: ReactNode;
   }[];
-  /**
-   * How each column's label and figure sit inside their equal share.
-   *
-   * Left is right when the strip reads as a continuation of the block above
-   * it. Centred is right when the labels are long enough to wrap unevenly —
-   * three columns of ragged left-aligned text read as a layout accident,
-   * where the same columns centred read as a deliberate row of figures.
-   */
+  /** Start reads as a continuation of the block above; centre suits labels long enough to wrap unevenly. */
   align?: "start" | "center";
   style?: StyleProp<ViewStyle>;
   testID?: string;
@@ -533,12 +393,7 @@ export function MetricStrip({
           >
             {item.label}
           </Text>
-          {/* One bottom edge for all three figures. Each one fits itself to its
-              own column, so a long amount beside a short one ends up a step
-              smaller — and a smaller line box sits higher, which is the "not
-              quite on the same line" the owner saw with three columns of
-              filtered totals. The row is as tall as the largest figure and they
-              hang from its floor. */}
+          {/* One bottom edge for the figures: each fits its own column, and a smaller line box sits higher, so the row is as tall as the largest and they hang from its floor. */}
           <View style={{ marginTop: 2, minHeight: Math.round(type.amount.fontSize * 1.4), justifyContent: "flex-end" }}>
             {item.minor != null ? (
               <Amount
@@ -593,10 +448,10 @@ export function SectionHeader({
   );
 }
 
-/** Compact title and explanation inside a functional card or pane. */
 /** The square a panel's mark is drawn in. */
 const PANEL_MARK = 36;
 
+/** Compact title and explanation inside a functional card or pane. */
 export function PanelHeader({
   icon: IconCmp,
   title,
@@ -614,15 +469,7 @@ export function PanelHeader({
   const { width: viewportWidth } = useWindowDimensions();
   const stackRight = Boolean(right) && shouldStackPanelAction(viewportWidth);
   const lede = useLedeAlignment(PANEL_MARK);
-  const toneColor = tone === "warning"
-    ? palette.warning
-    : tone === "error"
-      ? palette.error
-      : tone === "success"
-        ? palette.success
-        : tone === "secondary"
-          ? palette.secondary
-          : palette.primary;
+  const toneColor = palette[tone];
   return (
     <View style={{ gap: stackRight ? spacing.xs : spacing.md, marginBottom: spacing.md }}>
       <View style={{ flexDirection: "row", alignItems: "flex-start", gap: spacing.md }}>
@@ -642,11 +489,7 @@ export function PanelHeader({
         >
           <IconCmp accessible={false} size={17} color={tone === "primary" ? palette.accentText : toneColor} strokeWidth={2} />
         </View>
-        {/* Keyed on the title, so the entrance re-runs whenever the panel
-            changes subject. This is the one editor in each settings screen and
-            it switches between "add" and "editing X" in place — without the
-            re-entrance, the only sign that pressing edit did anything was one
-            word changing several lines above the button that was pressed. */}
+        {/* Keyed on the title: the one editor per settings screen switches between "add" and "editing X" in place, and the re-entrance is the sign it did. */}
         <FadeIn key={title} style={{ flex: 1, minWidth: 0 }}>
           <View onLayout={lede.onBlockLayout}>
             <Text
@@ -669,7 +512,6 @@ export function PanelHeader({
   );
 }
 
-/** Signed money text: red for negatives, tabular figures. */
 export function EmptyState({
   icon: IconCmp,
   title,
@@ -679,17 +521,12 @@ export function EmptyState({
   icon?: LucideIcon;
   title: string;
   hint?: string;
-  /** The way out of the empty state. Belongs to the message, so it travels
-   *  with it when the block centres itself instead of being left at the foot
-   *  of the page a screen-height away from the sentence it answers. */
+  /** The way out of the empty state; it travels with the message when the block centres. */
   action?: ReactNode;
 }) {
   const { palette } = useTheme();
   return (
-    // `flexGrow` with a centred main axis, not a fixed block: on a phone there
-    // is no spare height and this is exactly the padded block it always was,
-    // while on a 900px desktop viewport the same message used to sit against
-    // the header with two thirds of the page empty beneath it.
+    // `flexGrow` with a centred main axis: no change on a phone, but on a desktop the message no longer sits against the header.
     <FadeIn style={{ flexGrow: 1, justifyContent: "center", padding: spacing.xxl, alignItems: "center", gap: spacing.sm }}>
       {IconCmp ? (
         <View
@@ -714,29 +551,9 @@ export function EmptyState({
 }
 
 /**
- * The frame a data-backed screen shows before its rows exist.
- *
- * Twenty screens were writing this by hand:
- *
- *     if (!dataReady) {
- *       return (
- *         <Screen>
- *           <DataStateNotice status={dataStatus} retry={retryData} />
- *         </Screen>
- *       );
- *     }
- *
- * Eight of them byte for byte, and the other twelve with one thing added — a
- * `Stack.Screen` carrying the title so the native header is not blank while
- * the query runs, a `{header}` block, a different `width`. Those differences
- * are the reason this is a component with children and screen props rather
- * than a fixed frame: `analytics.tsx` records what happens when the loading
- * frame and the ready frame disagree, so flattening them into one shape would
- * reintroduce a bug this repository has already paid for once.
- *
- * The early return stays at the call site. It is what stops the ready branch's
- * JSX from being built out of data that is not there yet, and no wrapper can
- * take that over without evaluating exactly what the guard exists to skip.
+ * The frame a data-backed screen shows before its rows exist: a component with children and screen props, not a fixed frame,
+ * because the loading and ready frames must be allowed to differ (see `analytics.tsx`). The early return stays at the call site,
+ * so the ready branch's JSX is never built out of data that is not there yet.
  */
 export function DataGateScreen({
   status,
@@ -749,15 +566,7 @@ export function DataGateScreen({
   retry: () => void;
   /** Chrome this screen needs while loading too — a title, a header block. */
   children?: ReactNode;
-  /**
-   * The shape this screen will have once the data lands.
-   *
-   * Without one the page is blank, then three dots at 350ms, then the whole
-   * content in a single frame — a layout shift the web-vitals budget refuses
-   * and the slowest surface here (web on a phone) shows worst. `CardListSkeleton`
-   * is the shape for anything list-like; a screen passing nothing is asserting
-   * that a blank frame is right for it, and the contract test asks it to say so.
-   */
+  /** The shape the screen will have once the data lands; without one the page is blank and then shifts, which the web-vitals budget refuses. */
   skeleton?: ReactNode;
 } & Omit<ComponentProps<typeof Screen>, "children">) {
   return (
@@ -868,15 +677,7 @@ export function OperationStatusNotice({
   );
 }
 
-/** The whole screen while the account's first data pull is still in flight. */
-/**
- * The whole screen while an account operation runs.
- *
- * Signing out, freezing and deleting all end the session on this same blank
- * page, so it has to say which one is running — and it is the only thing on
- * that page, so a 360px bordered strip pinned in the middle of an empty window
- * reads as a placeholder rather than as the app working. It takes the page.
- */
+/** The whole screen while an account operation runs: signing out, freezing and deleting end the session on the same blank page, so it names which. */
 export function WaitingNotice({ message, title, kind }: { message: string; title: string; kind: OperationFlowKind }) {
   return (
     <DelayedLoading>
@@ -902,16 +703,8 @@ export function CardList<T>({
   style?: StyleProp<ViewStyle>;
   padded?: boolean;
 }) {
-  // The cascade belongs to the list's own arrival and to nothing else. Applied
-  // on every render it delayed a NEWLY INSERTED row by up to the whole stagger
-  // budget while everything around it stood still, which is the shape
-  // `theme.ts` warns reads as lag rather than choreography.
-  //
-  // The set is captured once, at mount, and read rather than mutated — a ref
-  // flipped in an effect would be mutable state read during render, which is
-  // what `react-hooks/refs` is for. A row that was here at mount keeps its
-  // place in the cascade; a row that arrives later has no cascade to join and
-  // fades in on its own.
+  // The cascade belongs to the list's own arrival: applied every render it delayed a newly inserted row by the whole stagger budget.
+  // The mount's membership is captured once and read, not a ref mutated during render (`react-hooks/refs`).
   const arrived = useMemo(
     () => new Set(items.map((item, index) => keyExtractor(item, index))),
     // eslint-disable-next-line react-hooks/exhaustive-deps -- the mount's membership is the whole point; recomputing it would restore the bug.
@@ -931,13 +724,7 @@ export function CardList<T>({
   );
 }
 
-/**
- * The shape a list keeps while its rows are still being read.
- *
- * Lifted from the dashboard, which was the only screen that had one. A gap the
- * real card later pushes open is the layout shift the web-vitals budget
- * refuses, and three rows is what an ordinary account shows.
- */
+/** The shape a list keeps while its rows are read: a gap the real card pushes open is a layout shift the web-vitals budget refuses. */
 export function CardListSkeleton({
   rows = 3,
   style,
@@ -985,12 +772,10 @@ export function ListRow({
   stackRightOnNarrow?: boolean;
 }) {
   const { palette } = useTheme();
-  // The row lays itself out inside the content column, so it measures that
-  // column — not the window the rail also takes a share of.
+  // Measures the content column, not the window.
   const contentWidth = useContentWidth();
   const stackRight = Boolean(right && stackRightOnNarrow && shouldStackListActions(contentWidth));
-  // Same rule as `PanelHeader`: the mark centres against its own text and
-  // stops travelling once that text is three lines long.
+  // Same rule as `PanelHeader`: the mark centres against its own text and stops travelling once that text is three lines long.
   const lede = useLedeAlignment(iconSize.control);
   const content = (
     <View style={{ paddingVertical: spacing.md - 2 }}>
@@ -1031,16 +816,7 @@ export function ListRow({
   return <PressableRow onPress={onPress}>{content}</PressableRow>;
 }
 
-/**
- * List row wrapper with quiet, interruptible tonal press feedback.
- *
- * The fill reaches past the text on both sides. Painted on the bare content
- * box it started exactly at the first glyph, so holding a settings row lit a
- * rectangle that looked cropped against its own card — the row read as
- * highlighted only where it had words. The negative margin borrows from the
- * card's own padding and the matching inset gives it straight back, so nothing
- * moves and only the lit area grows.
- */
+/** The fill reaches past the text: the negative margin borrows from the card's padding and the inset gives it back, so only the lit area grows. */
 function PressableRow({ children, onPress }: { children: ReactNode; onPress: () => void }) {
   const { palette } = useTheme();
   return (
@@ -1059,18 +835,7 @@ function PressableRow({ children, onPress }: { children: ReactNode; onPress: () 
   );
 }
 
-/** Cross-platform toggle with one theme-aware geometry. */
-
-/**
- * A control and the sentence that belongs to it, as one block.
- *
- * A control carries its own bottom margin, so a hint placed after it sits a
- * full step away and reads as the next thing rather than as part of this one.
- * The pull-up cancels part of that margin — which is fine, and was already
- * being done, but it was being done inline on each screen with a different
- * number each time. One definition, one gap, and the block below it keeps the
- * form's normal rhythm.
- */
+/** A control and its hint as one block: the pull-up cancels part of the control's bottom margin, once instead of per screen. */
 export function FieldNote({ children, note }: { children: ReactNode; note: ReactNode }) {
   const { palette } = useTheme();
   return (

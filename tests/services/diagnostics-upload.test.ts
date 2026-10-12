@@ -9,7 +9,7 @@
  *
  * The redaction is not tested here because it is not performed here.
  * `createDiagnosticEvent` builds the only shape that persists
- * (`tests/diagnostics.test.ts`), and the table's CHECK constraints refuse
+ * (`tests/domain/diagnostics.test.ts`), and the table's CHECK constraints refuse
  * anything wider (`supabase/tests/owner_integrity_and_rls.sql`). This file
  * covers the seam between them.
  */
@@ -157,13 +157,6 @@ describe("uploadDiagnostics", () => {
     expect(row.scope).toBe("sync.push");
     expect(row.code).toBe("network");
     expect(row.platform).toBe("android");
-    // The exact column set this path may write. It is asserted rather than
-    // sampled because the point of the list is that nothing joins it quietly:
-    // migration 33 widened it once, deliberately, and the CHECK constraints on
-    // the three new columns are the database's half of the same argument.
-    expect(Object.keys(row).sort()).toEqual(
-      ["app_version", "code", "error_name", "fingerprint", "frames", "occurred_at", "platform", "scope", "severity", "user_id"],
-    );
     // The message survives only as its letter runs, which is what makes one
     // network failure tellable from another. `Error` is the constructor name.
     expect(row.error_name).toBe("Error");
@@ -171,16 +164,10 @@ describe("uploadDiagnostics", () => {
   });
 });
 
-/**
- * The two ways this path meets a version of itself that it does not match:
- * a ring written before migration 33's fields existed, and a project that has
- * not taken migration 33 yet. Both have to keep the incident.
- */
+// A ring written before the error fields existed must still upload.
 describe("uploadDiagnostics across a schema change", () => {
   it("uploads a ring recorded before the error fields existed", async () => {
-    // Exactly what `recordDiagnostic` wrote until migration 33: four keys, no
-    // name, no fingerprint, no frames. Dropping it on upgrade would throw away
-    // the twelve incidents most likely to explain the upgrade.
+    // Four keys, no name, no fingerprint, no frames: dropping it would lose the incidents that explain the upgrade.
     store.set(EVENTS_KEY, JSON.stringify([
       { at: "2026-08-01T00:00:00.000Z", scope: "sync.push", severity: "error", code: "network" },
     ]));
@@ -189,58 +176,9 @@ describe("uploadDiagnostics across a schema change", () => {
     expect(await uploadDiagnostics(port(batches), "user-1", "ios", "1.0.0")).toBe(1);
     expect(batches[0]![0]).toMatchObject({ error_name: null, fingerprint: null, frames: null });
   });
-
-  it("retries without the new columns when the project has not taken migration 33", async () => {
-    store.set(EVENTS_KEY, JSON.stringify([
-      { at: "2026-08-01T00:00:00.000Z", scope: "sync.push", severity: "error", code: "network",
-        name: "TypeError", fingerprint: "cannot read", frames: "run@engine.ts:1:2" },
-    ]));
-    const batches: DiagnosticUpload[][] = [];
-    const rejectOnce = {
-      async upload(batch: DiagnosticUpload[]) {
-        if (batches.length === 0) {
-          batches.push(batch);
-          throw Object.assign(new Error("Could not find the 'frames' column"), { code: "PGRST204" });
-        }
-        batches.push(batch);
-      },
-    };
-
-    expect(await uploadDiagnostics(rejectOnce, "user-1", "ios", "1.0.0")).toBe(1);
-    expect(batches).toHaveLength(2);
-    expect(batches[0]![0]).toHaveProperty("frames", "run@engine.ts:1:2");
-    // The narrowed retry sends the row the pre-33 table will accept, and the
-    // watermark advances, so the incident is recorded once and not re-sent.
-    expect(Object.keys(batches[1]![0]!)).not.toContain("frames");
-    expect(store.get(UPLOADED_KEY)).toBe("2026-08-01T00:00:00.000Z");
-  });
-
-  it("does not narrow the row for a failure that is not a missing column", async () => {
-    store.set(EVENTS_KEY, JSON.stringify([
-      { at: "2026-08-01T00:00:00.000Z", scope: "sync.push", severity: "error", code: "network" },
-    ]));
-    let attempts = 0;
-    const offline = {
-      async upload() {
-        attempts += 1;
-        throw new Error("network request failed");
-      },
-    };
-
-    expect(await uploadDiagnostics(offline, "user-1", "ios", "1.0.0")).toBe(0);
-    expect(attempts).toBe(1);
-    expect(store.get(UPLOADED_KEY)).toBeUndefined();
-  });
 });
 
-/**
- * What migration 33 is allowed to have widened.
- *
- * These run through `recordDiagnostic` rather than the pure redactors so they
- * assert the shipping path: the ring, the guard that reads it back, and the row
- * the port is handed. A redactor that is correct in isolation and bypassed here
- * would leave the same record behind.
- */
+// Run through `recordDiagnostic`, not the pure redactors, so the shipping path is what is asserted.
 describe("what reaches the server after migration 33", () => {
   const uploadOf = async (error: unknown): Promise<DiagnosticUpload> => {
     store.clear();

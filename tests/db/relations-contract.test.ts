@@ -62,13 +62,7 @@ function pgTapTableArrays(): string[][] {
     .filter((entries) => entries.some((entry) => synced.has(entry)));
 }
 
-/**
- * This is not a guard against hypothetical drift — it is a guard against drift
- * that already shipped. The suite was written when there were 19 synced tables
- * and stayed at 19 after `attachments` and `matrix_colors` were added, so it
- * kept passing while asserting nothing about the two newest tables' policies.
- * A count assertion cannot notice its own array getting shorter than the truth.
- */
+// A count assertion cannot notice its own array getting shorter than the truth.
 describe("RLS suite coverage", () => {
   it("names every synced table in every table array the pgTAP suite asserts over", () => {
     const expected = Object.keys(SYNCED_TABLES).sort();

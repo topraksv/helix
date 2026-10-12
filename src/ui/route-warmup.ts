@@ -1,27 +1,7 @@
 /**
  * Mount a lazy tab once, while nothing is waiting on the main thread.
  *
- * A bottom-tab screen is lazy: it is created the first time it is focused,
- * which is the one moment it must not be. The navigator is running its `fade`
- * between two scenes while the whole tree is built, styled and committed on the
- * same thread that has to draw those frames.
- *
- * Measured on the shipped web build at 6x CPU throttling, following the exact
- * sequence the owner described — sit on the dashboard, reload, then go straight
- * to Mali Tablo:
- *
- *   without this hook   first arrival: 2 long tasks, 112ms, longest 58ms
- *                       later arrivals: 0
- *   with this hook      first arrival: 0 long tasks
- *
- * Once, then never again, on a ledger holding six transactions — the cost is
- * the tree, not the data, so a real account does not escape it.
- *
- * Preloading does not make the work cheaper; it moves it off the transition and
- * into idle, where a 58ms task drops no frame anyone is looking at. The
- * screen's live queries start early as a result, which is the price: they would
- * have started on first visit anyway, so this brings them forward rather than
- * adding them.
+ * Moves the first-visit build from the tab transition into idle time.
  *
  * `lazy: false` on the navigator was rejected. It warms all five tabs during
  * boot instead of the one the user actually opens, and boot is the other moment

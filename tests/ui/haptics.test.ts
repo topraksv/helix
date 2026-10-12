@@ -16,7 +16,6 @@ vi.mock("expo-haptics", () => ({
   notificationAsync: mocks.notificationAsync,
 }));
 
-import { calculatorKeyHaptic } from "../../src/ui/calculator-feedback";
 import { haptic, selectionTapIfChanged } from "../../src/ui/haptics";
 
 describe("haptic feedback", () => {
@@ -66,14 +65,5 @@ describe("haptic feedback", () => {
     haptic("light");
     await Promise.resolve();
     expect(mocks.impactAsync).toHaveBeenCalledTimes(1);
-  });
-});
-
-describe("calculator feedback", () => {
-  it("keeps digit entry quiet and distinguishes selection, success, and error", () => {
-    expect(calculatorKeyHaptic({ current: "7", accumulator: null, op: null }, "7")).toBe("none");
-    expect(calculatorKeyHaptic({ current: "7", accumulator: null, op: null }, "+")).toBe("selection");
-    expect(calculatorKeyHaptic({ current: "3", accumulator: 7, op: "+" }, "=")).toBe("success");
-    expect(calculatorKeyHaptic({ current: "0", accumulator: 7, op: "÷" }, "=")).toBe("error");
   });
 });

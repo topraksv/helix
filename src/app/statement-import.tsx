@@ -69,7 +69,7 @@ import {
   SectionHeader,
 } from "../ui/components";
 import { useDirtyExitGuard } from "../ui/dirty-exit";
-import { ImportArtwork, ImportJourney } from "../ui/import-journey";
+import { GuideBullets, ImportArtwork, ImportHero, ImportJourney } from "../ui/import-journey";
 import { Select } from "../ui/selection-controls";
 import { interactionBleed, interactionSurface } from "../ui/interaction";
 import { appConfirm, appAlert } from "../ui/dialog";
@@ -112,12 +112,6 @@ function StatementArtwork({ ready }: { ready: boolean }) {
 /** What this reads, and what it refuses — before a file is chosen, not after. */
 function StatementGuide({ wide }: { wide: boolean }) {
   const { palette } = useTheme();
-  const bullet = (line: string) => (
-    <View key={line} style={{ flexDirection: "row", marginBottom: spacing.xs }}>
-      <Text style={[type.small, { color: palette.primaryText, marginRight: spacing.xs }]}>•</Text>
-      <Text style={[type.small, { color: palette.textSecondary, flex: 1 }]}>{line}</Text>
-    </View>
-  );
   return (
     <Card>
       <SectionHeader>{tr.statement.guideTitle}</SectionHeader>
@@ -125,11 +119,11 @@ function StatementGuide({ wide }: { wide: boolean }) {
       <View style={{ flexDirection: wide ? "row" : "column", gap: spacing.xl }}>
         <View style={{ flex: wide ? 1 : undefined }}>
           <Text style={[type.label, { color: palette.text, marginBottom: spacing.sm }]}>{tr.statement.guideReadsTitle}</Text>
-          {[tr.statement.guideReads1, tr.statement.guideReads2, tr.statement.guideReads3].map(bullet)}
+          <GuideBullets items={[tr.statement.guideReads1, tr.statement.guideReads2, tr.statement.guideReads3]} />
         </View>
         <View style={{ flex: wide ? 1 : undefined }}>
           <Text style={[type.label, { color: palette.text, marginBottom: spacing.sm }]}>{tr.statement.guideRefusesTitle}</Text>
-          {[tr.statement.guideRefuses1, tr.statement.guideRefuses2, tr.statement.guideRefuses3].map(bullet)}
+          <GuideBullets items={[tr.statement.guideRefuses1, tr.statement.guideRefuses2, tr.statement.guideRefuses3]} />
         </View>
       </View>
     </Card>
@@ -343,29 +337,24 @@ function useStatementLedger() {
 
 /** The workbook importer's hero, told with a statement: the same picture, the same button, the same place on the page. */
 function StatementHero({ wide, readCount, pending, picking, onPick }: { wide: boolean; readCount: number | null; pending: boolean; picking: boolean; onPick: () => void }) {
-  const { palette } = useTheme();
   const read = readCount != null;
   return (
-    <Card style={{ backgroundColor: palette.surfaceAlt }}>
-      <View style={{ flexDirection: wide ? "row" : "column", alignItems: "center", gap: spacing.lg }}>
-        <StatementArtwork ready={read} />
-        <View style={{ flex: 1, minWidth: 0, alignSelf: "stretch", justifyContent: "center" }}>
-          <Text style={[type.heading, { color: palette.textStrong }]}>{tr.statement.heroTitle}</Text>
-          <Body muted style={{ marginTop: spacing.xs, marginBottom: spacing.md }}>
-            {read ? tr.statement.heroReady(readCount) : tr.statement.intro}
-          </Body>
-          <Button
-            testID="statement-pick"
-            icon={FileText}
-            label={read ? tr.statement.pickAgain : tr.statement.pick}
-            variant={read ? "secondary" : "primary"}
-            onPress={onPick}
-            disabled={pending}
-            loading={picking}
-          />
-        </View>
-      </View>
-    </Card>
+    <ImportHero
+      wide={wide}
+      artwork={<StatementArtwork ready={read} />}
+      title={tr.statement.heroTitle}
+      body={read ? tr.statement.heroReady(readCount) : tr.statement.intro}
+    >
+      <Button
+        testID="statement-pick"
+        icon={FileText}
+        label={read ? tr.statement.pickAgain : tr.statement.pick}
+        variant={read ? "secondary" : "primary"}
+        onPress={onPick}
+        disabled={pending}
+        loading={picking}
+      />
+    </ImportHero>
   );
 }
 

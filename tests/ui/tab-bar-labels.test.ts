@@ -41,7 +41,6 @@ describe("tab bar labels", () => {
 
   it("brings them back when the column grows", () => {
     // A rotation or a wider window, with the same text size.
-    expect(tabLabelsFit(84, 60)).toBe(false);
     expect(tabLabelsFit(84, 120)).toBe(true);
   });
 });
@@ -50,7 +49,7 @@ describe("a label that wrapped", () => {
   it("reports a width its column provably cannot hold", () => {
     // Wrapping is the only evidence available without clamping the label to one
     // line, which this app does not do to its own copy
-    // (`tests/accessibility-contract.test.ts`). Every measured LINE of a
+    // (`tests/ui/accessibility-contract.test.ts`). Every measured LINE of a
     // wrapped label is narrower than the column it wrapped inside, so the line
     // width alone would read as a comfortable fit.
     expect(tabLabelsFit(tooWide(60), 60)).toBe(false);

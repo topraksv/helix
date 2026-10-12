@@ -31,15 +31,7 @@ export function useReducedMotion(): boolean {
   return useSyncExternalStore(subscribe, () => reducedMotion, () => false);
 }
 
-/**
- * The same answer, read without subscribing.
- *
- * For a style a component already re-renders to produce — the hover fill is
- * computed inside a `Pressable`'s style callback, which runs on every pointer
- * enter and leave anyway. A hook there would add a subscriber per control on
- * screen to learn something that cannot change between those two renders
- * without one of them happening.
- */
+/** The same answer without subscribing, for a style a Pressable already re-renders to produce. */
 export function isReducedMotion(): boolean {
   return reducedMotion;
 }
@@ -72,12 +64,7 @@ function subscribeTransparency(listener: () => void) {
   };
 }
 
-/**
- * iOS "Reduce Transparency". Android and web have no equivalent setting and
- * report false, which is correct rather than a gap: neither platform blurs
- * anything the user did not ask for. There is no React Native API for iOS
- * "Increase Contrast", so it is deliberately not claimed anywhere.
- */
+/** iOS "Reduce Transparency"; Android and web blur nothing unasked, so false is correct there. */
 export function useReduceTransparency(): boolean {
   return useSyncExternalStore(subscribeTransparency, () => reduceTransparency, () => false);
 }

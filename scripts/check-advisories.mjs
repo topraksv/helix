@@ -1,97 +1,30 @@
-#!/usr/bin/env node
-/**
- * Fail on any high or critical advisory that has not been individually
- * examined and written down here.
- *
- * `npm audit --audit-level=high` was the whole check until one advisory with
- * no compatible fix turned the job permanently red. The two ways out of that
- * are both wrong: lowering the threshold hides the next real finding, and
- * `--omit=dev` hides nothing useful either, because Expo and React Native
- * declare their build tooling as ordinary dependencies.
- *
- * So the threshold stays at high, and each accepted advisory is named, with
- * the evidence that it cannot reach the running app and the date upstream was
- * last checked. A new high advisory fails the job. An acknowledgement that
- * stops matching also fails it, so an entry cannot outlive the problem it
- * describes.
- *
- * Helix and Gital run this same file; only `UNAUDITED` differs, because it
- * names what each repository's own lockfile installs from outside the registry.
- */
+// Fails on any high or critical advisory not individually examined and written down here, and on any entry that
+// stopped matching. The threshold stays at high: lowering it hides the next real finding, and --omit=dev hides
+// nothing useful because Expo and React Native declare their build tooling as ordinary dependencies.
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 
-/**
- * Every field here is a claim someone checked, not a note someone copied.
- * Before extending this list: confirm the advisory has no compatible fix,
- * prove the package is absent from the export, and date the check.
- *
- * Empty is a state this list is allowed to be in, and reaching it is the point
- * of the check rather than a sign the check stopped working. The two
- * `image-size` entries that lived here were closed by the SDK 57 upgrade, which
- * carried Metro past the version they described: `npm ls image-size --all` now
- * resolves nothing at all. Leaving a closed acknowledgement behind is how a
- * list like this turns into the place advisories go to be forgotten, which is
- * why a stale entry is reported as loudly as an unacknowledged advisory.
- */
+// Each entry is a claim someone checked. Empty is allowed, and a stale entry fails as loudly as an unacknowledged advisory.
 const ACKNOWLEDGED = [
   {
     id: "GHSA-86w9-cpqp-85rv",
     package: "node-forge",
     checkedOn: "2026-10-02",
     recheckAfter: "2026-12-01",
-    // Affects every release through 1.4.0, which is the latest published, so
-    // there is no fix to override to. The flaw is in RSA PKCS#1 v1.5 signature
-    // verification. Both carriers are Node tooling: @expo/cli on the developer
-    // machine and in CI, and @expo/code-signing-certificates, which expo-updates
-    // uses only to make and check code-signing certificates. Neither Helix nor
-    // Gital configures `updates.codeSigningCertificate` in app.json, the phone
-    // verifies nothing through node-forge, and neither web export contains it
-    // (`grep -rl "node-forge\|forge.pki" dist` returns nothing, 2026-10-02).
     expectedPaths: ["expo", "expo-updates"],
-    reason: "No patched release; reached only by build-time tooling and unused code signing, absent from the web export.",
+    reason: "No patched release (RSA PKCS#1 v1.5 signature verification). Carried only by Node tooling: @expo/cli, and @expo/code-signing-certificates, which expo-updates uses for code signing that app.json does not configure. Absent from the web export.",
   },
   {
     id: "GHSA-vfj7-8cjw-p6xm",
     package: "braces",
     checkedOn: "2026-10-04",
     recheckAfter: "2026-12-01",
-    // Affects every release through 3.0.3, the latest published (advisory of
-    // 2026-09-18, no patched version). The flaw is stack exhaustion on a deeply
-    // nested pattern. Every path ends in a Metro file map, through micromatch:
-    // expo's own bundler, and react-native's, react-native-reanimated's and
-    // react-native-worklets', which reach `metro` only as
-    // `@react-native/community-cli-plugin` and `@react-native/metro-config`
-    // (`npm audit --json`, 2026-10-04). It expands the globs the bundler's
-    // config writes, on the developer machine and in CI; no pattern comes from
-    // a user, and the web export does not contain it (only React's "wrap your
-    // children in braces" message matches in `dist`, 2026-10-04).
     expectedPaths: ["expo", "react-native", "react-native-reanimated", "react-native-worklets"],
-    reason: "No patched release; reached only by build-time tooling expanding the project's own globs, absent from the web export.",
+    reason: "No patched release (stack exhaustion on a deeply nested pattern). Every path ends in a Metro file map through micromatch, expanding the bundler config's own globs on the developer machine and in CI; absent from the web export.",
   },
 ];
 
-/**
- * Dependencies the registry audit cannot see, and the review that replaces it.
- *
- * `npm audit` and Dependabot both work from the npm registry. A dependency
- * installed from a tarball URL has no registry record to match, so it is not
- * that it comes back clean — it is that nobody asked. Measured on 2026-09-02:
- * the audit reported 25 advisories across the tree and `xlsx` was not among
- * them, which is the same answer it would give for a version with a known
- * critical hole.
- *
- * SheetJS is Helix's deliberate case. It left npm in 2023 and publishes from its
- * own CDN, and the package is kept on that terms rather than swapped: the
- * spreadsheet import is the feature this app was built around. What it costs
- * is this list.
- *
- * Every entry is a claim someone checked, on the same terms as ACKNOWLEDGED
- * above. `reviewed` is the set of advisories that were read and found not to
- * apply to the pinned version — the CLI below fetches the publisher's own page
- * and fails on anything that is not in it, so a newly published advisory
- * reaches the owner the same week rather than whenever somebody thinks to look.
- */
+// Dependencies installed outside the npm registry, which `npm audit` and Dependabot cannot see; `reviewed` is what was read and found not to apply.
 const UNAUDITED = [
   {
     package: "xlsx",
@@ -110,33 +43,21 @@ const BLOCKING = new Set(["high", "critical"]);
 function audit() {
   let report;
   try {
-    // npm exits non-zero when it finds anything at or above the audit level,
-    // which is the normal case here — the report on stdout is what matters.
+    // npm exits non-zero on findings, the normal case; the stdout report is what matters.
     report = JSON.parse(execFileSync("npm", ["audit", "--json"], { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 }));
   } catch (error) {
     if (typeof error.stdout !== "string" || !error.stdout.trim().startsWith("{")) throw error;
     report = JSON.parse(error.stdout);
   }
-  // An unreachable audit endpoint exits 0 with `{ message, error }` (npm 10,
-  // 2026-10-02): read as a report, that is no advisories and a green gate.
+  // An unreachable audit endpoint exits 0 with `{ message, error }`; read as a report that would be a green gate.
   if (report.error) throw new Error(`npm audit returned no report: ${report.message ?? JSON.stringify(report.error)}`);
   return report;
 }
 
-/**
- * Every distinct advisory reported at a blocking severity, with the packages it
- * affects and the DIRECT dependencies it reaches them through.
- *
- * The roots are what an acceptance is really about. `npm audit` reports an
- * advisory once against the vulnerable package and then a chain of "depends on
- * a vulnerable X" edges; the question that matters is which of this project's
- * own dependencies sit at the top of those chains, because that is what decides
- * whether the code can run at all.
- */
+// Every distinct blocking advisory, with the packages it affects and the DIRECT dependencies it reaches them through.
 export function blockingAdvisories(report) {
   const entries = report.vulnerabilities ?? {};
   const found = new Map();
-  const carriers = new Map(); // advisory id -> Set of package names carrying it
 
   for (const [name, entry] of Object.entries(entries)) {
     for (const via of entry.via ?? []) {
@@ -145,13 +66,10 @@ export function blockingAdvisories(report) {
       const id = via.url?.split("/").pop() ?? String(via.source);
       if (!found.has(id)) found.set(id, { id, title: via.title, package: via.name, affected: new Set(), roots: new Set() });
       found.get(id).affected.add(name);
-      if (!carriers.has(id)) carriers.set(id, new Set());
-      carriers.get(id).add(name);
     }
   }
 
-  // Walk each direct dependency's `via` edges down to the packages that carry
-  // the advisory. Depth is bounded by the visited set, so a cycle terminates.
+  // The visited set bounds the walk, so a cycle terminates.
   const reaches = (start, targets) => {
     const seen = new Set();
     const stack = [start];
@@ -170,18 +88,15 @@ export function blockingAdvisories(report) {
 
   for (const [name, entry] of Object.entries(entries)) {
     if (!entry.isDirect) continue;
-    for (const [id, targets] of carriers) {
-      if (reaches(name, targets)) found.get(id).roots.add(name);
+    for (const advisory of found.values()) {
+      if (reaches(name, advisory.affected)) advisory.roots.add(name);
     }
   }
   return found;
 }
 
 /**
- * The failure modes, as data: an advisory nobody has looked at, one that has
- * appeared through a consumer nobody examined, a tree that moved under an
- * acceptance, an acceptance past its re-examination date, and one that has
- * outlived the advisory it describes.
+ * Failure modes as data: unacknowledged, unexamined path, tree moved, expired, stale.
  *
  * @param {{ vulnerabilities?: Record<string, any> }} report
  * @param {{ id: string, package: string, checkedOn: string, reason: string,
@@ -197,17 +112,17 @@ export function evaluate(report, acknowledgements = ACKNOWLEDGED, today = new Da
   for (const [id, advisory] of advisories) {
     const entry = acknowledged.get(id);
     if (entry) {
-      // The acceptance covers a known tree. A root outside it is a consumer
-      // nobody examined, and it may well be one that reaches runtime.
-      const unexpected = [...advisory.roots].filter((root) => !(entry.expectedPaths ?? []).includes(root));
+      const expected = entry.expectedPaths ?? [];
+      // A root outside the examined tree is a consumer nobody looked at.
+      const unexpected = [...advisory.roots].filter((root) => !expected.includes(root));
       if (unexpected.length > 0) {
         problems.push(
           `UNEXPECTED PATH ${id} (${entry.package}) now reaches through: ${unexpected.sort().join(", ")}\n` +
-            `  Examined roots: ${(entry.expectedPaths ?? []).join(", ") || "(none)"}.\n` +
+            `  Examined roots: ${expected.join(", ") || "(none)"}.\n` +
             `  Prove this consumer cannot reach runtime, or fix the advisory.`,
         );
       }
-      const missing = (entry.expectedPaths ?? []).filter((root) => !advisory.roots.has(root));
+      const missing = expected.filter((root) => !advisory.roots.has(root));
       if (missing.length > 0) {
         problems.push(
           `TREE CHANGED ${id} (${entry.package}) no longer reaches through: ${missing.sort().join(", ")}\n` +
@@ -244,11 +159,7 @@ export function evaluate(report, acknowledgements = ACKNOWLEDGED, today = new Da
 }
 
 /**
- * Which installed packages came from somewhere other than the npm registry.
- *
- * Read from the lockfile rather than listed by hand, because the point is to
- * notice a blind spot that GREW. A second tarball dependency added later is
- * exactly the case a hand-written list cannot catch.
+ * Read from the lockfile, not a hand-written list, so a blind spot that GREW is noticed.
  *
  * @param {{ packages?: Record<string, { resolved?: string, version?: string }> }} lock
  */
@@ -274,9 +185,7 @@ export function unregisteredPackages(lock) {
 }
 
 /**
- * The failure modes, again as data: a blind spot nobody has written down, an
- * entry for a package that is no longer outside the registry, an entry that
- * describes a version other than the installed one, and one past its date.
+ * Failure modes as data: untracked, version moved, expired, stale.
  *
  * @param {Map<string, { host: string, version?: string }>} unregistered
  * @param {{ package: string, version: string, recheckAfter?: string }[]} [entries]
@@ -323,14 +232,7 @@ export function evaluateUnaudited(unregistered, entries = UNAUDITED, today = new
 }
 
 /**
- * Advisory identifiers on a publisher's page that nobody has read yet.
- *
- * Deliberately a plain scan of the fetched text for CVE identifiers rather
- * than a parse of the page's markup: the shape of somebody else's HTML is not
- * something this repository can hold stable, and a parser that silently
- * matched nothing would report "no new advisories" for ever — the one answer
- * this check must never give by accident. That is also why an empty result is
- * treated as a failure by the caller.
+ * A plain scan for CVE identifiers, not a parse of someone else's HTML; the caller treats an empty scan as a failure.
  *
  * @param {string} pageText
  * @param {readonly string[]} reviewed
@@ -340,15 +242,7 @@ export function newAdvisories(pageText, reviewed) {
   return { seen, unreviewed: seen.filter((id) => !reviewed.includes(id)) };
 }
 
-/**
- * Read a publisher's advisory page and say what has appeared on it.
- *
- * Fails closed, in three directions. A page that will not load is not "no news"
- * — it is no answer, and a security check that passes when it cannot reach its
- * source is worse than not having it. A page that yields no identifiers at all
- * means its shape changed under the scan, which reads identically to "nothing
- * is wrong" and must not. And anything unreviewed fails by definition.
- */
+// Fails closed: an unreachable page, a page with no identifiers (its shape changed) and an unreviewed identifier all fail.
 async function reviewPublisherAdvisories(entry) {
   let text;
   try {
@@ -379,17 +273,16 @@ async function reviewPublisherAdvisories(entry) {
   return [];
 }
 
-// Only audit when run as a command; importing this file must not shell out.
-if (process.argv[1] && import.meta.url.endsWith(process.argv[1].split("/").pop())) {
+// Importing this file must not shell out.
+if (import.meta.main) {
   const report = audit();
   const { advisories, accepted, problems } = evaluate(report);
 
-  // The other half of the same question, from the source the registry cannot
-  // answer for. Same job, same report: "is anything unreviewed reaching this
-  // app" does not become two questions because the answers live in two places.
   const unregistered = unregisteredPackages(JSON.parse(readFileSync("package-lock.json", "utf8")));
-  problems.push(...evaluateUnaudited(unregistered));
-  for (const entry of UNAUDITED) {
+  const { dependencies = {} } = JSON.parse(readFileSync("package.json", "utf8"));
+  const unaudited = UNAUDITED.filter((e) => e.package in dependencies);
+  problems.push(...evaluateUnaudited(unregistered, unaudited));
+  for (const entry of unaudited) {
     if (!unregistered.has(entry.package)) continue;
     console.log(`tracked ${entry.package}@${entry.version} from ${new URL(entry.advisories).host}, last read ${entry.checkedOn}`);
     problems.push(...(await reviewPublisherAdvisories(entry)));

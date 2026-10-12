@@ -14,6 +14,7 @@ import { addTransaction, deleteTransaction, restoreTransaction, saveCellNote } f
 import {
   useAttachmentsState,
   useAutoConfirmedTransactionIds,
+  usePendingExpectedState,
   useCategoriesState,
   useCellNotesState,
   useLedgerState,
@@ -24,17 +25,17 @@ import {
 } from "../data/hooks";
 import { combineLiveStates } from "../data/live-state";
 import { dateForMonthEntry, firstDayOf, lastDayOf, monthKeyOf, todayISO, yearOf } from "../domain/dates";
-import { expectationEffect, type PlannedExpectation } from "../domain/expected";
+import { selfCellEffect, type PlannedExpectation } from "../domain/expected";
 import { isValidCellParams } from "../domain/route-params";
 import { installmentDisplayTitle } from "../domain/installments";
 import { formatMinorCompact, parseAmountExpression } from "../domain/money";
-import { categoryTableEntryType, isWorkbookRemainderRow, signedBalanceEffectOf } from "../domain/transactions";
+import { categoryTableEntryType, signedBalanceEffectOf } from "../domain/transactions";
 import { transactionDateText } from "../ui/transaction-date";
 import { dateLabel, monthLabel, tr } from "../i18n/tr";
 import { scheduleSync } from "../sync/engine";
 import { Amount, Body, Button, Card, DataGateScreen, DataStateNotice, Divider, EmptyState, Field, MoneyField, PanelHeader, Row, Screen, SectionHeader } from "../ui/components";
-import { ExpectationRow, TransactionRow } from "../ui/transaction-row";
-import { placeholderPools, useRotatingPlaceholder } from "../ui/placeholders";
+import { ExpectationRow, TransactionRow, transactionBadge } from "../ui/transaction-row";
+import { useRotatingPlaceholder } from "../ui/placeholders";
 import { useUndo } from "../ui/undo";
 import { spacing, type, useTheme } from "../ui/theme";
 import { useOperationGuard } from "../ui/operation-guard";
@@ -47,12 +48,8 @@ import { WorkspaceGrid } from "../ui/workspace-layout";
  * Both params are hostile input: the route is directly addressable (bookmark,
  * shared link, or the Pages 404 shell resolving a bare path).
  *
- * The gate is here, in the OUTER component, so an invalid link never reaches a
- * database query — the editor below only mounts with validated params and takes
- * them as REQUIRED props. Two earlier shapes were wrong: `categoryId!` with the
- * redirect in an effect (the effect runs after the query is built, so
- * `undefined` was already bound into drizzle's `eq`), and a sentinel id, which
- * hid invalid input inside a well-formed query instead of refusing it.
+ * The gate is in the outer component, so an invalid link never reaches a
+ * database query; the editor below takes the validated params as required props.
  *
  * Recovery is a declarative `Redirect`, not a dead-end error screen: the
  * established contract — asserted by `e2e/resilience.spec.ts` "hostile route
@@ -75,10 +72,10 @@ function CellEditor({ month, categoryId }: { month: string; categoryId: string }
   const categories = categoriesState.data;
   const persons = personsState.data;
   const plans = plansState.data;
-  const rangeMonth = month;
-  const transactionsState = useSettledTransactionsBetweenState(firstDayOf(rangeMonth), lastDayOf(rangeMonth));
+  const transactionsState = useSettledTransactionsBetweenState(firstDayOf(month), lastDayOf(month));
   const transactions = transactionsState.data;
-  const ledgerState = useLedgerState(yearOf(rangeMonth));
+  const ledgerState = useLedgerState(yearOf(month));
+  const pendingExpectedState = usePendingExpectedState();
   const autoConfirmed = useAutoConfirmedTransactionIds();
   const undo = useUndo();
   const { palette } = useTheme();
@@ -92,12 +89,9 @@ function CellEditor({ month, categoryId }: { month: string; categoryId: string }
   const planTitle = new Map(plans.map((plan) => [plan.id, plan.title]));
   const cellTx = transactions.filter((t) => t.categoryId === categoryId);
   const cellExpected = (ledgerState.data?.plannedExpectations ?? []).filter(
-    (item) => item.categoryId === categoryId && monthKeyOf(item.dueDate) === rangeMonth,
+    (item) => item.categoryId === categoryId && monthKeyOf(item.dueDate) === month,
   );
-  const selfSum = cellTx
-    .filter((t) => selfIds.has(t.personId))
-    .reduce((sum, t) => sum + signedBalanceEffectOf(t.type, t.amountTryMinor, category?.kind ?? null), 0)
-    + cellExpected.reduce((sum, item) => sum + expectationEffect(item), 0);
+  const selfSum = selfCellEffect(cellTx, selfIds, category?.kind ?? null, cellExpected);
   const openRule = (item: PlannedExpectation) =>
     router.push(item.kind === "subscription" ? { pathname: "/subscription-form", params: { id: item.refId } } : "/incomes");
 
@@ -111,15 +105,17 @@ function CellEditor({ month, categoryId }: { month: string; categoryId: string }
     [attachmentsState.data],
   );
   const note = cellNotesState.data.find(
-    (row) => row.month === rangeMonth && row.categoryId === categoryId,
+    (row) => row.month === month && row.categoryId === categoryId,
   );
-  const { status: dataStatus, ready: dataReady, retry: retryData } = combineLiveStates([categoriesState, personsState, plansState, transactionsState, ledgerState, cellNotesState]);
+  const { status: dataStatus, ready: dataReady, retry: retryData } = combineLiveStates([categoriesState, personsState, plansState, transactionsState, ledgerState, cellNotesState, attachmentsState, pendingExpectedState]);
 
   useDirtyExitGuard(
     (entryRaw.trim() !== "" || (noteDraft != null && noteDraft !== (note?.body ?? ""))) && !busy,
   );
 
   const entryMinor = parseAmountExpression(entryRaw);
+  // A leading minus is a sign, not an expression.
+  const isExpression = entryRaw.includes("+") || entryRaw.trim().slice(1).includes("-");
 
   const addEntry = async () => {
     const selfId = persons.find((p) => p.isSelf)?.id;
@@ -133,18 +129,17 @@ function CellEditor({ month, categoryId }: { month: string; categoryId: string }
         // investment withdrawal reduces the transfer total without changing the
         // category/type invariant.
         const baseType = categoryTableEntryType(category);
-        const hasExpr = entryRaw.includes("+") || entryRaw.trim().slice(1).includes("-");
         await addTransaction(userId, {
           type: baseType,
           amountMinor: entryMinor,
           currency: "TRY",
           fxRate: null,
           amountTryMinor: entryMinor,
-          effectiveDate: dateForMonthEntry(rangeMonth, today),
+          effectiveDate: dateForMonthEntry(month, today),
           categoryId: category.id,
           paymentSourceId: null,
           personId: selfId,
-          note: hasExpr ? entryRaw.trim() : null,
+          note: isExpression ? entryRaw.trim() : null,
           // An arithmetic expression is still one dated transaction. Aggregate
           // means an intentionally dateless monthly total, not "the user typed +".
           isAggregate: false,
@@ -164,7 +159,8 @@ function CellEditor({ month, categoryId }: { month: string; categoryId: string }
     await operationGuard.run(async () => {
       setBusy(true);
       try {
-        await saveCellNote(userId, rangeMonth, category.id, body, note);
+        await saveCellNote(userId, month, category.id, body, note);
+        scheduleSync(userId);
         setNoteDraft(null);
       } catch {
         void appAlert(tr.errors.saveFailed, tr.errors.title);
@@ -177,7 +173,8 @@ function CellEditor({ month, categoryId }: { month: string; categoryId: string }
   const removeTx = async (id: string) => {
     try {
       const snapshot = await deleteTransaction(userId, id);
-      if (snapshot) undo.show(tr.tx.deletedUndo, () => restoreTransaction(userId, snapshot), "warning");
+      scheduleSync(userId);
+      if (snapshot) undo.show(tr.tx.deletedUndo, () => restoreTransaction(userId, snapshot).then(() => scheduleSync(userId)), "warning");
     } catch {
       void appAlert(tr.errors.saveFailed, tr.errors.title);
     }
@@ -215,10 +212,10 @@ function CellEditor({ month, categoryId }: { month: string; categoryId: string }
             accessibilityLabel={tr.cell.quickEntry}
             value={entryRaw}
             onChangeMinor={(raw) => setEntryRaw(raw)}
-            placeholder={useRotatingPlaceholder(placeholderPools.amount)}
+            placeholder={useRotatingPlaceholder(tr.placeholders.amount)}
             expression
           />
-          {entryMinor != null && (entryRaw.includes("+") || entryRaw.includes("-")) ? (
+          {entryMinor != null && isExpression ? (
             <Body muted style={{ marginBottom: spacing.sm }}>
               = {formatMinorCompact(entryMinor)}
             </Body>
@@ -270,7 +267,7 @@ function CellEditor({ month, categoryId }: { month: string; categoryId: string }
   if (!dataReady) {
     return (
       <DataGateScreen status={dataStatus} retry={retryData}>
-        <Stack.Screen options={{ title: monthLabel(rangeMonth) }} />
+        <Stack.Screen options={{ title: monthLabel(month) }} />
       </DataGateScreen>
     );
   }
@@ -280,7 +277,7 @@ function CellEditor({ month, categoryId }: { month: string; categoryId: string }
     // one number. That is a form, not a workspace — given the wide column the
     // movement rows put their amount 350px from their own label.
     <Screen scroll={false} width="form">
-      <Stack.Screen options={{ title: `${category?.name ?? ""} · ${monthLabel(rangeMonth)}` }} />
+      <Stack.Screen options={{ title: `${category?.name ?? ""} · ${monthLabel(month)}` }} />
       <FlatList
         data={cellTx}
         keyExtractor={(t) => t.id}
@@ -315,13 +312,7 @@ function CellEditor({ month, categoryId }: { month: string; categoryId: string }
               pending={t.status === "pending"}
               hasDocuments={documented.has(t.id)}
               automatic={autoConfirmed.has(t.id)}
-              reversalBadge={
-                isWorkbookRemainderRow(t)
-                  ? { text: tr.analysis.remainderBadge, tone: "muted" }
-                  : t.amountTryMinor < 0
-                    ? { text: tr.tx.reversalLabel(t.type), tone: t.type === "income" ? "negative" : "positive" }
-                    : null
-              }
+              reversalBadge={transactionBadge(t)}
               amountMinor={signedBalanceEffectOf(t.type, t.amountTryMinor, category?.kind ?? null)}
               onEdit={() => router.push({ pathname: "/transaction", params: { id: t.id } })}
               onDelete={() => void removeTx(t.id)}

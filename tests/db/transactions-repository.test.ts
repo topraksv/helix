@@ -12,18 +12,10 @@ vi.mock("../../src/db/client", async () => {
   return sqliteClientMock(() => harness.db!, () => { harness.dbAcquisitions += 1; });
 });
 
-vi.mock("../../src/db/ids", () => ({
+vi.mock("../../src/db/ids", async () => ({
   newId: () => `transaction-${String(++harness.nextId).padStart(2, "0")}`,
   deterministicId: async (key: string) => `det:${key}`,
-  naturalKeys: new Proxy(
-    {},
-    {
-      get:
-        (_target, property) =>
-        (...parts: unknown[]) =>
-          `${String(property)}|${parts.join("|")}`,
-    },
-  ),
+  naturalKeys: (await import("../helpers")).naturalKeysProxy(),
 }));
 
 vi.mock("../../src/services/fx-fetch", () => ({ lookupRate: vi.fn() }));
@@ -694,6 +686,9 @@ describe("transaction repository persistence", () => {
       .rejects.toThrow("note input exceeds its maximum length");
     await expect(setCurrentBalance(USER, MAX_ABS_AMOUNT_MINOR, -MAX_ABS_AMOUNT_MINOR))
       .rejects.toThrow("Amount is outside the supported range");
+    // A target past the range whose difference is still inside it.
+    await expect(setCurrentBalance(USER, MAX_ABS_AMOUNT_MINOR + 1, 1))
+      .rejects.toThrow("Amount is outside the supported range");
     expect(harness.db!.prepare("SELECT COUNT(*) AS n FROM balance_adjustments").get()).toEqual({ n: 0 });
     expect(harness.db!.prepare("SELECT COUNT(*) AS n FROM outbox").get()).toEqual({ n: 0 });
 
@@ -836,6 +831,8 @@ describe("transaction repository persistence", () => {
         .rejects.toThrow("Statement payment must be positive");
       await expect(addStatementPayment(USER, { statementId, paidOn: "2026-08-13", amountMinor: -1_00, kind: "full", note: null }))
         .rejects.toThrow("Statement payment must be positive");
+      await expect(addStatementPayment(USER, { statementId, paidOn: "2026-08-13", amountMinor: MAX_ABS_AMOUNT_MINOR + 1, kind: "full", note: null }))
+        .rejects.toThrow("Amount is outside the supported range");
       await expect(addStatementPayment(OTHER_USER, { statementId, paidOn: "2026-08-13", amountMinor: 1_00, kind: "full", note: null }))
         .rejects.toThrow("Statement does not belong to the owner's card");
       harness.db!.prepare("UPDATE persons SET is_self = 0 WHERE id = 'self'").run();
@@ -864,6 +861,8 @@ describe("transaction repository persistence", () => {
       ]);
       await expect(declareMonthOpeningBalance(USER, "2026-09", 1_00, 0)).rejects.toThrow("Invalid declaration month");
       await expect(declareMonthOpeningBalance(USER, "2026-8" as never, 1_00, 0)).rejects.toThrow("Invalid declaration month");
+      await expect(declareMonthOpeningBalance(USER, "2026-07", MAX_ABS_AMOUNT_MINOR + 1, 0)).rejects.toThrow("Amount is outside the supported range");
+      await expect(declareMonthOpeningBalance(USER, "2026-07", 0, MAX_ABS_AMOUNT_MINOR + 1)).rejects.toThrow("Amount is outside the supported range");
     });
 
     it("links a refund to its expense and refuses more than is left of it", async () => {

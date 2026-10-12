@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { INPUT_LIMITS, MIN_NEW_PASSWORD_LENGTH, assertInputWithinLimit, isEmail, isInputWithinLimit, isValidNewPassword, textLength, utf8ByteLength } from "../../src/domain/input";
+import { INPUT_LIMITS, assertInputWithinLimit, isEmail, isInputWithinLimit, isValidNewPassword, textLength, utf8ByteLength } from "../../src/domain/input";
 
 describe("shared input limits", () => {
   it.each(Object.entries(INPUT_LIMITS))("enforces the %s field boundary", (kind, limit) => {
     expect(isInputWithinLimit("x".repeat(limit), kind as keyof typeof INPUT_LIMITS)).toBe(true);
+    expect(() => assertInputWithinLimit("x".repeat(limit), kind as keyof typeof INPUT_LIMITS)).not.toThrow();
     expect(isInputWithinLimit("x".repeat(limit + 1), kind as keyof typeof INPUT_LIMITS)).toBe(false);
     expect(() => assertInputWithinLimit("x".repeat(limit + 1), kind as keyof typeof INPUT_LIMITS)).toThrow();
   });
@@ -15,6 +16,14 @@ describe("shared input limits", () => {
 
   it("counts UTF-8 bytes without confusing code units and code points", () => {
     expect(utf8ByteLength("Ağrı 🧭")).toBe(new TextEncoder().encode("Ağrı 🧭").byteLength);
+    expect(utf8ByteLength("A¢€🧭")).toBe(1 + 2 + 3 + 4);
+  });
+
+  it("counts UTF-8 code point thresholds inclusively", () => {
+    expect(utf8ByteLength(String.fromCodePoint(0x7f))).toBe(1);
+    expect(utf8ByteLength(String.fromCodePoint(0x7ff))).toBe(2);
+    expect(utf8ByteLength(String.fromCodePoint(0xffff))).toBe(3);
+    expect(isValidNewPassword("x".repeat(INPUT_LIMITS.password))).toBe(true);
   });
 
   it("uses the same Unicode code-point length as PostgreSQL", () => {
@@ -24,7 +33,6 @@ describe("shared input limits", () => {
   });
 
   it("requires at least eight characters for every newly chosen password", () => {
-    expect(MIN_NEW_PASSWORD_LENGTH).toBeGreaterThanOrEqual(8);
     expect(isValidNewPassword("1234567")).toBe(false);
     expect(isValidNewPassword("12345678")).toBe(true);
     expect(isValidNewPassword("x".repeat(INPUT_LIMITS.password + 1))).toBe(false);

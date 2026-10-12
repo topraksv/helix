@@ -1,31 +1,15 @@
-import { newId } from "../../db/ids";
 import { pruneAttentionState, type AttentionState } from "../../domain/attention";
 import { parseMatrixColorLabels, type MatrixColorLabels } from "../../domain/matrix-colors";
 import { parseBalanceColumns, type StoredBalanceColumns } from "../../domain/matrix-preferences";
-import {
-  discardSyncDeadLetter as discardLocalSyncDeadLetter,
-  pendingOutboxCount,
-  requeueSyncDeadLetter as requeueLocalSyncDeadLetter,
-  writeSetting,
-  type DeadLetterRetry,
+import { writeSetting } from "../../db/mutations";
+
+export { newId as createRecordId } from "../../db/ids";
+export {
+  pendingOutboxCount as pendingSyncChangeCount,
+  requeueSyncDeadLetter as retrySyncDeadLetter,
+  // Forgets one quarantine clue; the row it points at is not touched.
+  discardSyncDeadLetter as dismissSyncDeadLetter,
 } from "../../db/mutations";
-
-export function createRecordId(): string {
-  return newId();
-}
-
-export function pendingSyncChangeCount(): Promise<number> {
-  return pendingOutboxCount();
-}
-
-export function retrySyncDeadLetter(userId: string, deadLetterId: number): Promise<DeadLetterRetry> {
-  return requeueLocalSyncDeadLetter(userId, deadLetterId);
-}
-
-/** Forget one quarantine clue. The row it points at is not touched. */
-export function dismissSyncDeadLetter(deadLetterId: number): Promise<boolean> {
-  return discardLocalSyncDeadLetter(deadLetterId);
-}
 
 export function setAccountFrozen(userId: string, frozen: boolean): Promise<void> {
   return writeSetting(userId, "account_frozen", frozen);
@@ -40,51 +24,24 @@ export function setPendingTableVisibility(userId: string, visible: boolean): Pro
   return writeSetting(userId, "show_pending_in_table", visible);
 }
 
-/**
- * Rename one Mali Tablo mark colour, for the whole account.
- *
- * The whole map is written as a unit because that is how it is stored: two
- * devices renaming two different slots converge on the later write rather than
- * on a half-merged object, and a merged object is not something the sync layer
- * can produce anyway.
- */
+/** Rename a Mali Tablo mark colour. The whole map is one value: two devices converge on the later write, never a merge. */
 export function setMatrixColorLabels(userId: string, labels: MatrixColorLabels): Promise<void> {
   if (parseMatrixColorLabels(labels) === null) throw new Error("Invalid matrix colour labels");
   return writeSetting(userId, "matrix_color_labels", labels);
 }
 
-/**
- * The balance the user last told the app they really have, and when.
- *
- * The reconciliation itself is a `balance_adjustments` row, which makes the
- * ledger land on that figure — and from that moment on the app has no record of
- * what was actually confirmed. Keeping the declaration is what lets every
- * surface say "you told me X on this date; the ledger now says Y" instead of
- * silently drifting away from the only number the user checked against a bank.
- */
+/** The balance the user last declared and when; the adjustment row alone would lose what was actually confirmed. */
 export function setBalanceDeclaration(userId: string, minor: number, at: string): Promise<void> {
   return writeSetting(userId, "balance_declared", { minor, at });
 }
 
-/**
- * What the owner calls the two balance columns, and whether both are drawn.
- *
- * Written as one value for the reason the colour labels are: the three parts
- * are one decision made on one card, and storing them separately would let two
- * devices sync half of it.
- */
+/** The two balance column names and whether both are drawn; one value, as the colour labels are. */
 export function setBalanceColumns(userId: string, columns: StoredBalanceColumns): Promise<void> {
   if (parseBalanceColumns(columns) === null) throw new Error("Invalid balance column preference");
   return writeSetting(userId, "balance_columns", columns);
 }
 
-/**
- * Record what the owner did to an attention item.
- *
- * Pruned on every write against the ids still being derived, so the one stored
- * value cannot grow with the age of the account — a decision about an item that
- * no longer exists is not a decision worth keeping.
- */
+/** Record what the owner did to an attention item; pruned on every write so the stored value cannot grow with the account's age. */
 export async function setAttentionState(
   userId: string,
   state: AttentionState,

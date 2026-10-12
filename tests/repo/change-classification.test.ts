@@ -10,7 +10,7 @@ const root = resolve(process.cwd());
 const classifier = resolve(root, "scripts/classify-changes.mjs");
 
 /** A scratch repository with one committed file; the caller removes it. */
-function repositoryWith(file: string): { repository: string; base: string } {
+function repositoryWith(file: string): { repository: string; base: string; git: (...args: string[]) => string } {
   const repository = mkdtempSync(join(tmpdir(), "helix-classifier-"));
   const git = (...args: string[]) => execFileSync("git", args, { cwd: repository, encoding: "utf8" }).trim();
   git("init", "--quiet");
@@ -20,7 +20,7 @@ function repositoryWith(file: string): { repository: string; base: string } {
   writeFileSync(join(repository, file), "export const shipped = true;\n");
   git("add", ".");
   git("commit", "--quiet", "-m", "base");
-  return { repository, base: git("rev-parse", "HEAD") };
+  return { repository, base: git("rev-parse", "HEAD"), git };
 }
 
 function filesUnder(directory: string): string[] {
@@ -98,7 +98,7 @@ describe("change classification", () => {
 
   for (const [area, file, shipping] of [
     ["dependency lock", "package-lock.json", true],
-    ["coverage policy", "vitest.coverage.config.mts", false],
+    ["coverage policy", "vitest.config.mts", false],
     ["mutation policy", "stryker.config.mjs", false],
     ["a test behind the coverage floors", "tests/domain/balance.test.ts", false],
     ["the tests' shared harness", "tests/helpers.ts", false],
@@ -141,7 +141,7 @@ describe("change classification", () => {
     // A changed browser test runs the browser suite, on the light tier: the
     // push that changed a test is the one that runs it.
     for (const [file, e2e] of [
-      ["tests/balance.test.ts", false],
+      ["tests/ui/selection.test.ts", false],
       ["e2e/core-flow.spec.ts", true],
       ["e2e/native/01-launch.yaml", false],
     ] as const) {
@@ -313,7 +313,7 @@ describe("change classification", () => {
       deploy_web: true,
       deploy_mobile: false,
     });
-    for (const file of ["assets/images/icon.png", "assets/fonts/Inter_400Regular.ttf"]) {
+    for (const file of ["assets/icon.png", "assets/fonts/Inter_400Regular.ttf"]) {
       expect(classify([file]), file).toMatchObject({
         full_gate: false,
         deploy_web: true,
@@ -353,7 +353,7 @@ describe("change classification", () => {
     const samples = [
       [],
       ["README.md"],
-      ["tests/a.test.ts"],
+      ["tests/ui/selection.test.ts"],
       ["src/app/upcoming.tsx"],
       ["src/domain/money.ts"],
       ["public/sw.js"],
@@ -365,18 +365,13 @@ describe("change classification", () => {
     }
   });
 
-  it("does not retain the obsolete agent-routing output", () => {
-    expect(classify(["src/domain/money.ts"])).not.toHaveProperty("quality_checks");
-  });
-
   it("classifies both sides of a rename so a shipped removal cannot disappear", () => {
-    const { repository, base } = repositoryWith("src/ui/removed.ts");
+    const { repository, base, git } = repositoryWith("src/ui/removed.ts");
     try {
-
       mkdirSync(join(repository, "docs"), { recursive: true });
-      execFileSync("git", ["mv", "src/ui/removed.ts", "docs/removed.ts"], { cwd: repository });
-      execFileSync("git", ["commit", "--quiet", "-m", "move"], { cwd: repository });
-      const head = execFileSync("git", ["rev-parse", "HEAD"], { cwd: repository, encoding: "utf8" }).trim();
+      git("mv", "src/ui/removed.ts", "docs/removed.ts");
+      git("commit", "--quiet", "-m", "move");
+      const head = git("rev-parse", "HEAD");
       const output = execFileSync(process.execPath, [classifier, base, head], {
         cwd: repository,
         encoding: "utf8",
@@ -392,17 +387,15 @@ describe("change classification", () => {
 
   /**
    * A diff that resolved and came back empty is an answer, not a missing one.
-   * Both used to land on the same empty list, so a commit touching only
-   * Git-ignored paths — `.claude/`, `docs/`, `AGENTS.md`, ordinary work here —
-   * ran the full gate and republished both surfaces for a tree that was
-   * already live: cd2b1f6 cost 10m36s and two publishes for zero tracked files.
-   * A deliberate republish is what `workflow_dispatch` is for.
+   * A misclassified path runs the full gate for nothing: a commit touching
+   * only Git-ignored paths must ship nothing. A deliberate republish is what
+   * `workflow_dispatch` is for.
    */
   it("ships nothing for a resolved diff that is empty, and fails open only without one", () => {
-    const { repository, base } = repositoryWith("src/app.ts");
+    const { repository, base, git } = repositoryWith("src/app.ts");
     try {
-      execFileSync("git", ["commit", "--quiet", "--allow-empty", "-m", "ignored paths only"], { cwd: repository });
-      const head = execFileSync("git", ["rev-parse", "HEAD"], { cwd: repository, encoding: "utf8" }).trim();
+      git("commit", "--quiet", "--allow-empty", "-m", "ignored paths only");
+      const head = git("rev-parse", "HEAD");
       const run = (...refs: string[]) => execFileSync(process.execPath, [classifier, ...refs], { cwd: repository, encoding: "utf8" });
 
       const empty = run(base, head);

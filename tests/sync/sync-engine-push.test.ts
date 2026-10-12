@@ -1,12 +1,6 @@
 /**
  * The push half of the sync engine, driven for real.
  *
- * Measured before this file existed: `src/sync/engine.ts` scored 16.60 with 269
- * mutants uncovered, and NO test imported it — twenty suites replace it with
- * `vi.mock`. It is 646 lines deciding what leaves this device and what is
- * cleared from the outbox once it has left, and none of it had ever run in a
- * test.
- *
  * The stand-in is the network and nothing else: a fake PostgREST whose replies
  * the tests choose. The database is real SQLite with the real migrations, and
  * `merge-policy`, `outbound-validation`, `session-epoch` and the status store
@@ -60,9 +54,7 @@ vi.mock("../../src/sync/attachment-mirror", () => ({
   reconcileAttachments: harness.reconcileAttachments,
 }));
 vi.mock("../../src/services/diagnostics", () => ({ uploadDiagnostics: harness.uploadDiagnostics }));
-// The screen counter is NOT mocked here. It rides the same success path, and
-// the port that carries it lives in the engine — mocking the service left that
-// port unexecuted, which is how 470 mutants arrived with no test behind them.
+// Not mocked: the screen counter's port lives in the engine and rides the success path.
 vi.mock("../../src/services/kv", () => ({
   kv: {
     get: async (key: string) => harness.kv.get(key) ?? null,
@@ -212,6 +204,17 @@ beforeEach(async () => {
   useSyncStatus.getState().set({ state: "idle", error: null, lastSyncAt: null, remoteChangeAt: null });
 });
 
+const row = (id: string, deleted: boolean, version: number) => JSON.stringify({
+  id, user_id: USER, created_at: NOW, updated_at: NOW, deleted_at: deleted ? NOW : null,
+  name: id, kind: "expense", icon: null, color: null,
+  sort_order: 0, is_column: 0, is_transfer: 0, tombstone_version: version,
+});
+
+/** The usage report is fire-and-forget by design, so the assertion has to wait for it. */
+const settle = async () => {
+  for (let i = 0; i < 6; i += 1) await new Promise((resolve) => setTimeout(resolve, 0));
+};
+
 describe("what leaves the outbox", () => {
   it("clears a row the server acknowledged", async () => {
     queueCategory("01a06b2c-0000-7000-8000-000000000001");
@@ -223,19 +226,10 @@ describe("what leaves the outbox", () => {
     expect(outboxCount(), "an acknowledged row is no longer unsent").toBe(0);
   });
 
-  /**
-   * A short acknowledgement means the server did not take every row, and the
-   * engine cannot tell which. Clearing the batch anyway would drop the missing
-   * one silently and for ever — the outbox is the only record it existed.
-   */
   it("sends a row generations ahead once more at the server's, and clears it", async () => {
     const ahead = "01a06b2c-0000-7000-8000-000000000009";
     // Deleted, taken back and deleted again before any of it was sent.
-    queueEvent(ahead, JSON.stringify({
-      id: ahead, user_id: USER, created_at: NOW, updated_at: NOW, deleted_at: NOW,
-      name: "Market", kind: "expense", icon: null, color: null,
-      sort_order: 0, is_column: 0, is_transfer: 0, tombstone_version: 2,
-    }));
+    queueEvent(ahead, row(ahead, true, 2));
     harness.held.set(ahead, 0);
     const sent: number[] = [];
     harness.onUpsert = (_table, rows) => {
@@ -255,11 +249,7 @@ describe("what leaves the outbox", () => {
   it("does not bring back, by stepping down, a row another device deleted", async () => {
     const restored = "01a06b2c-0000-7000-8000-00000000000b";
     // Live here after two deletes taken back; deleted elsewhere meanwhile.
-    queueEvent(restored, JSON.stringify({
-      id: restored, user_id: USER, created_at: NOW, updated_at: NOW, deleted_at: null,
-      name: "Market", kind: "expense", icon: null, color: null,
-      sort_order: 0, is_column: 0, is_transfer: 0, tombstone_version: 4,
-    }));
+    queueEvent(restored, row(restored, false, 4));
     harness.held.set(restored, 1);
     harness.heldDeleted.add(restored);
     const sent: number[] = [];
@@ -277,11 +267,6 @@ describe("what leaves the outbox", () => {
   });
 
   it("steps each row of a refused run down by what the server holds of it", async () => {
-    const row = (id: string, deleted: boolean, version: number) => JSON.stringify({
-      id, user_id: USER, created_at: NOW, updated_at: NOW, deleted_at: deleted ? NOW : null,
-      name: id, kind: "expense", icon: null, color: null,
-      sort_order: 0, is_column: 0, is_transfer: 0, tombstone_version: version,
-    });
     const bothDeleted = "01a06b2c-0000-7000-8000-00000000000c";
     const bothLive = "01a06b2c-0000-7000-8000-00000000000d";
     const unknown = "01a06b2c-0000-7000-8000-00000000000e";
@@ -336,6 +321,11 @@ describe("what leaves the outbox", () => {
     expect(outboxCount()).toBe(1);
   });
 
+  /**
+   * A short acknowledgement means the server did not take every row, and the
+   * engine cannot tell which. Clearing the batch anyway would drop the missing
+   * one silently and for ever — the outbox is the only record it existed.
+   */
   it("keeps every row when the acknowledgement is short", async () => {
     queueCategory("01a06b2c-0000-7000-8000-000000000001");
     queueCategory("01a06b2c-0000-7000-8000-000000000002");
@@ -508,17 +498,12 @@ describe("a completed sync", () => {
   });
 
   it("reports the screens counted since the last sync, and survives a server that has no such function", async () => {
-    // The counter rides this success path, and the port that carries it lives
-    // in the engine. The stand-in `rpc` answers PGRST202 for everything, which
-    // is exactly the state of a project that has not taken migration 41 yet:
-    // the call must still be made, and the refusal must cost the sync nothing.
+    // The stand-in rpc answers PGRST202 for everything: the call is still made, and the refusal costs the sync nothing.
     harness.kv.set("helix.usage_counters.v1", JSON.stringify({ "2026-09-20|tabs.cash-flow": 3 }));
     startSyncSession(USER);
 
     expect(await syncNow(USER)).toBe(true);
-    // The report is fire-and-forget by design — the sync must never wait on it —
-    // so the assertion has to.
-    for (let i = 0; i < 6; i += 1) await new Promise((resolve) => setTimeout(resolve, 0));
+    await settle();
 
     expect(harness.rpcs).toContain("record_usage");
     expect(harness.rpcArgs[harness.rpcs.indexOf("record_usage")]).toEqual({
@@ -532,7 +517,7 @@ describe("a completed sync", () => {
     startSyncSession(USER);
 
     expect(await syncNow(USER)).toBe(true);
-    for (let i = 0; i < 6; i += 1) await new Promise((resolve) => setTimeout(resolve, 0));
+    await settle();
 
     expect(harness.rpcs).not.toContain("record_usage");
   });

@@ -27,10 +27,6 @@ export function pushOverlay(): () => void {
   };
 }
 
-function anyOverlayOpen(): boolean {
-  return openOverlays > 0;
-}
-
 /**
  * Submit `onSubmit` when the user presses Enter (web only). Disabled via
  * `enabled` (e.g. when the form is invalid), while any overlay is open, or when
@@ -43,7 +39,7 @@ export function useSubmitOnEnter(onSubmit: () => void, enabled = true): void {
     if (Platform.OS !== "web" || !enabled) return;
     const handler = (e: KeyboardEvent) => {
       if (e.key !== "Enter" || e.shiftKey || e.metaKey || e.ctrlKey || e.altKey) return;
-      if (e.isComposing || anyOverlayOpen()) return;
+      if (e.isComposing || openOverlays > 0) return;
       if (focusOwnsEnterKey(document.activeElement as HTMLElement | null)) return;
       e.preventDefault();
       ref.current();

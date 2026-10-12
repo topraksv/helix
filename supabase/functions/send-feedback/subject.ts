@@ -1,19 +1,9 @@
 /**
- * The subject line a feedback report arrives under.
- *
- * It lives in the edge function rather than in `src/domain/` because this is
- * the only place it runs: the client never sends a subject, and it must not —
- * the subject is an email header, and a header a client can dictate is a
- * header a client can inject into. There WAS a `feedbackSubject` in the domain
- * carrying this rule, and it was dead: the function built its own subject with
- * a hard `slice(0, 60)`, so the better implementation was the unused one.
- *
- * Its own file, with no Deno global in it, so the behaviour below is asserted
- * by `tests/domain/feedback.test.ts` rather than by reading this text back.
- *
- * Collapsing whitespace is doing two jobs at once and both matter: it is what
- * keeps a subject on one line, and it is what stops a CR or LF in a person's
- * message from starting a header of its own.
+ * The subject a feedback report arrives under. Here, never in the client: a
+ * header a client dictates is a header a client injects into. Collapsing
+ * whitespace keeps it on one line, and so keeps a CR or LF in a message from
+ * starting a header of its own. Its own file, with no Deno global, so
+ * `tests/domain/feedback.test.ts` runs it.
  */
 const SUBJECT_LIMIT = 60;
 

@@ -61,7 +61,7 @@ describe("ratchet", () => {
 
   /**
    * A low baseline is a measurement, not permission to go lower. Every file
-   * recorded on 2026-08-19 is held to its own number, including the ones that
+   * recorded is held to its own number, including the ones that
    * scored near zero because per-test coverage cannot attribute the repo
    * layer's integration tests.
    */
@@ -102,6 +102,15 @@ describe("ratchet", () => {
 
 describe("recorded baseline", () => {
   const recorded = JSON.parse(readFileSync("mutation-baseline.json", "utf8"));
+  interface Entry {
+    score: number;
+    killed: number;
+    timeout: number;
+    survived: number;
+    noCoverage: number;
+    measuredOn: string;
+    measuredDate: string;
+  }
 
   /**
    * Provenance is per FILE, not per document.
@@ -112,11 +121,19 @@ describe("recorded baseline", () => {
    */
   it("says which tree each entry was measured on, not one date for all of them", () => {
     expect(Object.keys(recorded)).toEqual(["files"]);
-    const entries = Object.entries(recorded.files) as [string, Record<string, unknown>][];
+    const entries = Object.entries(recorded.files) as [string, Entry][];
     expect(entries.length).toBeGreaterThan(0);
     for (const [file, entry] of entries) {
       expect(entry.measuredOn, file).toMatch(/^[0-9a-f]{40}$/);
       expect(entry.measuredDate, file).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+      // The counts behind every score, so a number can be re-derived.
+      for (const field of ["score", "killed", "timeout", "survived", "noCoverage"] as const) {
+        expect(entry[field], `${file}.${field}`).toBeTypeOf("number");
+      }
+      const detected = entry.killed + entry.timeout;
+      const valid = detected + entry.survived + entry.noCoverage;
+      const derived = valid === 0 ? 100 : Number(((detected / valid) * 100).toFixed(2));
+      expect(derived, file).toBe(entry.score);
     }
   });
 
@@ -135,26 +152,5 @@ describe("recorded baseline", () => {
     expect(sentinels.length).toBeGreaterThan(0);
     const missing = sentinels.filter((file: string) => recorded.files[file] === undefined);
     expect(missing, `unrecorded sentinel file(s): ${missing.join(", ")}`).toEqual([]);
-  });
-
-  it("carries the counts behind every score, so a number can be re-derived", () => {
-    interface Entry {
-      score: number;
-      killed: number;
-      timeout: number;
-      survived: number;
-      noCoverage: number;
-    }
-    const entries = Object.entries(recorded.files) as [string, Entry][];
-    expect(entries.length).toBeGreaterThan(0);
-    for (const [file, entry] of entries) {
-      for (const field of ["score", "killed", "timeout", "survived", "noCoverage"] as const) {
-        expect(entry[field], `${file}.${field}`).toBeTypeOf("number");
-      }
-      const detected = entry.killed + entry.timeout;
-      const valid = detected + entry.survived + entry.noCoverage;
-      const derived = valid === 0 ? 100 : Number(((detected / valid) * 100).toFixed(2));
-      expect(derived, file).toBe(entry.score);
-    }
   });
 });

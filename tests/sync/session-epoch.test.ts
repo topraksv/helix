@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { SessionEpoch, SessionEpochCancelledError } from "../../src/sync/session-epoch";
+import { runSessionEpochTask, SessionEpoch, SessionEpochCancelledError } from "../../src/sync/session-epoch";
 
 describe("session epoch", () => {
   it("keeps the same user's active epoch stable", () => {
@@ -31,5 +31,21 @@ describe("session epoch", () => {
     expect(token.signal.aborted).toBe(true);
     expect(epoch.capture("user-a")).toBeNull();
     expect(epoch.isCurrent(token)).toBe(false);
+  });
+
+  it("drops user A's late response after user B becomes active", async () => {
+    let release!: () => void;
+    const response = new Promise<void>((resolve) => { release = resolve; });
+    const epoch = new SessionEpoch();
+    epoch.start("user-a");
+    const task = runSessionEpochTask(epoch, "user-a", async () => {
+      await response;
+      return "response-a";
+    });
+
+    epoch.start("user-b");
+    release();
+
+    expect(await task).toBeUndefined();
   });
 });

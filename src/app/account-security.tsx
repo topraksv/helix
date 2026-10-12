@@ -18,7 +18,7 @@ import { useUserId } from "../data/hooks";
 import { pendingSyncChangeCount, setAccountFrozen } from "../data/repo";
 import { tr } from "../i18n/tr";
 import { Body, Button, Card, Divider, Field, ListRow, PanelHeader, Screen } from "../ui/components";
-import { appAlert, appConfirm, appPrompt } from "../ui/dialog";
+import { appAlert, appConfirm, confirmWithPassword } from "../ui/dialog";
 import { density, spacing, type, useTheme } from "../ui/theme";
 import { navigateBack } from "../ui/navigation";
 import { useOperationGuard } from "../ui/operation-guard";
@@ -138,24 +138,6 @@ function CloudAccountSecurityScreen() {
     }
   };
 
-  // The confirmation and re-authentication run inside the shared guard too, so
-  const confirmWithPassword = async (message: string, confirmLabel: string): Promise<boolean> => {
-    const password = await appPrompt(tr.account.confirmPasswordTitle, message, {
-      secure: true,
-      placeholder: tr.auth.password,
-      confirmLabel,
-      danger: true,
-      operation: "delete",
-    });
-    if (password == null) return false;
-    const verifyError = await verifyPassword(password);
-    if (verifyError) {
-      void appAlert(verifyError, tr.errors.title);
-      return false;
-    }
-    return true;
-  };
-
   const handleDeleteAccount = async () => {
     if (deleting) return;
     const accepted = await appConfirm(tr.account.deleteConfirm1Title, tr.account.deleteConfirm1Body, {
@@ -164,7 +146,7 @@ function CloudAccountSecurityScreen() {
       operation: "delete",
     });
     if (!accepted) return;
-    if (!(await confirmWithPassword(tr.account.deletePasswordBody, tr.account.deleteConfirm))) return;
+    if (!(await confirmWithPassword(verifyPassword, { body: tr.account.deletePasswordBody, confirmLabel: tr.account.deleteConfirm, operation: "delete" }))) return;
     setLifecycleIntent("delete");
     setDeleting(true);
     try {
@@ -186,8 +168,7 @@ function CloudAccountSecurityScreen() {
     }
   };
 
-  // a second press cannot arm a second freeze while the first is still asking
-  // for the password.
+  // Confirmation and re-authentication run inside the guard, so a second press cannot arm a second freeze while the first still asks for the password.
   const freezeAccount = () =>
     operationGuard.run(async () => {
       const accepted = await appConfirm(tr.account.freezeConfirmTitle, tr.account.freezeConfirmBody, {
@@ -196,19 +177,7 @@ function CloudAccountSecurityScreen() {
         operation: "freeze",
       });
       if (!accepted) return;
-      const password = await appPrompt(tr.account.confirmPasswordTitle, tr.account.freezePasswordBody, {
-        secure: true,
-        placeholder: tr.auth.password,
-        confirmLabel: tr.account.freezeConfirm,
-        danger: true,
-        operation: "freeze",
-      });
-      if (password == null) return;
-      const verifyError = await verifyPassword(password);
-      if (verifyError) {
-        void appAlert(verifyError, tr.errors.title);
-        return;
-      }
+      if (!(await confirmWithPassword(verifyPassword, { body: tr.account.freezePasswordBody, confirmLabel: tr.account.freezeConfirm, operation: "freeze" }))) return;
 
       setLifecycleIntent("freeze");
       setFreezing(true);
@@ -336,9 +305,7 @@ function CloudAccountSecurityScreen() {
         </View>
       </Card>
 
-      {/* The two ways an account ends, in order of severity and in one place.
-          Deleting used to live at the foot of Settings, a screen away from the
-          reversible version of the same decision. */}
+      {/* The two ways an account ends, in order of severity. */}
       <Card rows>
         <View testID="account-freeze-action">
           <ListRow

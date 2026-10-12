@@ -1,21 +1,8 @@
 version: 2
-# Dependabot opens nothing. Both ecosystems are capped at zero open pull
-# requests, which is how a version update is switched off, and Dependabot
-# security updates are disabled on the repository itself — together they were
-# the only two things in this project that could create a branch. This tree is
-# delivered by committing to `main`; a dependency moves when someone applies it
-# there, gates it, and pushes, which is also the only way the lockfile is ever
-# recomputed against the tree it will ship with.
-#
-# Nothing is lost by it. `security.yml` audits `package-lock.json` against the
-# advisory database every Monday and on every push that touches it, so a
-# vulnerable version is still reported — with evidence, in a run, instead of in
-# a branch. The rest is routine, and routine belongs in a sweep.
-#
-# Everything below is kept because it is still true: the groups say how an
-# update would be batched, and the `ignore` list is the written record of which
-# packages must not move on their own and why each one broke when it did. Raise
-# a limit and it all applies again, unchanged.
+# Dependabot opens nothing: both ecosystems are capped at zero open pull
+# requests because delivery is commits to `main`. `security.yml` still reports
+# vulnerable versions. The ignore list records what must not move on its own,
+# and applies again if a limit is raised.
 updates:
   - package-ecosystem: npm
     directory: /
@@ -30,77 +17,38 @@ updates:
     groups:
       safe-npm-updates:
         update-types: [minor, patch]
-    # Expo SDK owns the compatible React/React Native/native-library matrix.
-    # Dependabot treats React Native's pre-1.0 minor jumps as ordinary minors,
-    # and can also propose unsupported patch lines. Ignore routine version
-    # updates at every SemVer level; Dependabot security updates remain
-    # eligible. Remove these guards only in the same change as a coordinated,
-    # compatibility-tested SDK/toolchain upgrade.
     ignore:
+      # The Expo matrix moves only together, in a deliberate SDK upgrade.
+      # Dependabot reads React Native's pre-1.0 minors as ordinary, and
+      # reanimated and worklets desynchronise if bumped alone. All three levels
+      # stay listed: that keeps security updates eligible.
       - dependency-name: "expo*"
         update-types: ["version-update:semver-patch", "version-update:semver-minor", "version-update:semver-major"]
-      - dependency-name: "babel-preset-expo"
-        update-types: ["version-update:semver-patch", "version-update:semver-minor", "version-update:semver-major"]
-      - dependency-name: "react"
-        update-types: ["version-update:semver-patch", "version-update:semver-minor", "version-update:semver-major"]
-      - dependency-name: "react-dom"
+      - dependency-name: "react*"
         update-types: ["version-update:semver-patch", "version-update:semver-minor", "version-update:semver-major"]
       - dependency-name: "@types/react"
         update-types: ["version-update:semver-patch", "version-update:semver-minor", "version-update:semver-major"]
-      - dependency-name: "react-native"
-        update-types: ["version-update:semver-patch", "version-update:semver-minor", "version-update:semver-major"]
-      - dependency-name: "react-native-web"
-        update-types: ["version-update:semver-patch", "version-update:semver-minor", "version-update:semver-major"]
-      - dependency-name: "react-native-safe-area-context"
-        update-types: ["version-update:semver-patch", "version-update:semver-minor", "version-update:semver-major"]
-      - dependency-name: "react-native-screens"
-        update-types: ["version-update:semver-patch", "version-update:semver-minor", "version-update:semver-major"]
-      - dependency-name: "react-native-svg"
-        update-types: ["version-update:semver-patch", "version-update:semver-minor", "version-update:semver-major"]
-      # Reanimated pins its own worklets runtime and both are resolved by the
-      # SDK, so a routine bump of either desynchronises the pair. PR #113
-      # proposed reanimated 4.1.1 -> 4.5.3, worklets 0.5.1 -> 0.11.3 and
-      # keyboard-controller 1.18.5 -> 1.22.3 while `expo install --check`
-      # reported the installed versions as the SDK 54 matrix.
-      - dependency-name: "react-native-reanimated"
-        update-types: ["version-update:semver-patch", "version-update:semver-minor", "version-update:semver-major"]
-      - dependency-name: "react-native-worklets"
-        update-types: ["version-update:semver-patch", "version-update:semver-minor", "version-update:semver-major"]
-      - dependency-name: "react-native-keyboard-controller"
+      - dependency-name: "babel-preset-expo"
         update-types: ["version-update:semver-patch", "version-update:semver-minor", "version-update:semver-major"]
       - dependency-name: "eslint-config-expo"
         update-types: ["version-update:semver-patch", "version-update:semver-minor", "version-update:semver-major"]
-      # ESLint 10 and TypeScript 7 are both blocked by the lint plugins Expo's
-      # config bundles, and both were measured on 2026-09-09 rather than
-      # assumed. ESLint 10 removed `context.getFilename()`; the NEWEST
-      # `eslint-plugin-react` (7.37.5) still calls it and its own peer range
-      # stops at `^9.7`, so `expo lint` dies on the first file. TypeScript 7
-      # typechecks this tree clean, but the newest
-      # `@typescript-eslint/typescript-estree` (8.70.0) declares
-      # `typescript: ">=4.8.4 <6.1.0"` and throws before linting a line.
-      # Neither has an upstream release that would work; re-check when
-      # `eslint-plugin-react` publishes an ESLint 10 peer. The typecheck itself
-      # already runs on 7 through the `typescript-7` alias (docs/ARCHITECTURE.md).
+      # ESLint 10 and TypeScript 7 are blocked by the lint plugins Expo's config
+      # bundles: `eslint-plugin-react` calls an API ESLint 10 removed, and
+      # `@typescript-eslint` refuses TypeScript past 6.0. The typecheck already
+      # runs on 7 through the `typescript-7` alias.
       - dependency-name: "eslint"
         update-types: ["version-update:semver-patch", "version-update:semver-minor", "version-update:semver-major"]
       - dependency-name: "typescript"
         update-types: ["version-update:semver-major"]
       # Vitest's major moves with the mutation gate: Stryker reruns a mutant's
-      # tests by name and Vitest 5 joins names differently, so a major here is
-      # re-measured against scripts/stryker-vitest-files.mjs first
-      # (docs/ARCHITECTURE.md, 2026-10-09 "Vitest 5, through Gital's runner").
+      # tests by name, so re-measure against scripts/stryker-vitest-files.mjs.
       - dependency-name: "vitest"
         update-types: ["version-update:semver-major"]
       - dependency-name: "@vitest/coverage-v8"
         update-types: ["version-update:semver-major"]
       - dependency-name: "@stryker-mutator/*"
         update-types: ["version-update:semver-major"]
-      # `@types/node` follows the RUNTIME, not the registry. `.nvmrc` pins Node
-      # 22 and CI runs it; the types for Node 26 describe APIs that runtime does
-      # not have. Measured 2026-09-09: the inherited 26.x produced 206 typecheck
-      # errors against a tree that compiles cleanly on 22.x, which is why the
-      # version in `package.json` is exact rather than a range. Move it in the
-      # same change as `.nvmrc`, never on its own.
+      # `@types/node` follows the runtime `.nvmrc` pins, never the registry.
       - dependency-name: "@types/node"
         update-types: ["version-update:semver-major", "version-update:semver-minor"]
 

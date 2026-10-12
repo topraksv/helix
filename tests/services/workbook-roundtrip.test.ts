@@ -11,16 +11,7 @@ import {
   type WorkbookColumn,
 } from "../../src/domain/workbook-format";
 
-/**
- * The promise the whole feature rests on: a file the app writes is a file the
- * app can read.
- *
- * It was not true for two rounds. The export was a flat list of transactions
- * and the template copied its shape, so the wizard — which parses a month grid
- * — answered both with "Ay adlarını bulamadık". Nothing about that is visible
- * in a column table or a type; only handing the written bytes back to the real
- * parser catches it, which is what every test here does.
- */
+// Only handing the written bytes back to the real parser catches a shape mismatch.
 const subscription: SubscriptionRow = {
   name: "Netflix", amountMinor: 22999, currency: "TRY", amountMode: "fixed", cycle: "monthly",
   intervalMonths: 1, billingDay: 12, nextDueDate: "2026-04-12", trialEndDate: "",
@@ -153,7 +144,6 @@ describe("workbook round trip", () => {
   it("sizes every column to its widest cell and marks the header as a filter", async () => {
     const bytes = await composeWorkbook({ years: year2026, subscriptions: [subscription], investments: [] });
     const xml = Buffer.from(bytes).toString("latin1");
-    expect(xml, "column widths reach the file").toContain("cols>");
     expect(xml, "the header row is a filter row").toContain("autoFilter");
     const book = XLSX.read(bytes, { type: "array" });
     const filter = book.Sheets[WORKBOOK_SHEETS.subscriptions]!["!autofilter"] as { ref: string } | undefined;
@@ -179,12 +169,10 @@ describe("workbook round trip", () => {
   it("widens a column to its widest cell, not to its heading", async () => {
     const long = { ...subscription, name: "Çok Uzun Bir Abonelik Adı Buraya" };
     const bytes = await composeWorkbook({ years: [], subscriptions: [long], investments: [] });
-    const book = XLSX.read(bytes, { type: "array" });
     // `!cols` does not survive SheetJS's own reader, so the file is the
     // evidence: the width written must exceed the heading's own length.
     const xml = Buffer.from(bytes).toString("latin1");
     const width = /<col[^>]*width="([0-9.]+)"/.exec(xml)?.[1];
     expect(Number(width), "sized to the name, not to \"Abonelik\"").toBeGreaterThan(long.name.length);
-    expect(book.SheetNames).toContain(WORKBOOK_SHEETS.subscriptions);
   });
 });

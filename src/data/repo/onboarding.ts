@@ -9,19 +9,8 @@ import { signedBalanceEffectOf } from "../../domain/transactions";
 import { isValidCardCycle } from "../../domain/card-statements";
 import { CreditCardCycleRequiredError } from "./errors";
 import { monthOpeningDeclarationWrite } from "./transactions";
+import { categoryRow, type TemplateCategory } from "./categories";
 import { tr } from "../../i18n/tr";
-
-// ---------------------------------------------------------------------------
-// Onboarding seed
-// ---------------------------------------------------------------------------
-
-export interface TemplateCategory {
-  name: string;
-  kind: "expense" | "income";
-  isColumn: boolean;
-  isTransfer?: boolean;
-  icon?: string;
-}
 
 /**
  * Starter category set offered on first run. Broad, everyday items that fit
@@ -84,9 +73,8 @@ function tombstoneRemovedRows(
 }
 
 /**
- * Re-seeding is also the commit step after an importer. Rows removed from the
- * draft must therefore be tombstoned in the same write as the rows that remain;
- * otherwise a cancelled source/person/template silently survives onboarding.
+ * Re-seeding is also the commit step after an importer, so rows removed from the draft are
+ * tombstoned in the same write; otherwise a cancelled source/person/template survives onboarding.
  */
 async function removedSeedRows(
   userId: string,
@@ -127,14 +115,9 @@ async function removedOnboardingSlotRows(
 }
 
 /**
- * Seed (or re-seed) the onboarding workspace. Fully idempotent: every seeded
- * row gets a DETERMINISTIC id (self person, watch-only persons by slot, sources
- * by slot, template categories by name), so re-entering setup — after a reload,
- * or opening an importer then committing — upserts the same rows instead of
- * duplicating the whole workspace (the old `newId()` seed multiplied everything
- * on every re-run). The opening balance / start month are applied through the
- * earlier-wins rule so a re-seed on commit never clobbers an earlier ledger
- * anchor set by an Excel import.
+ * Seed (or re-seed) the onboarding workspace. Idempotent: every seeded row has a DETERMINISTIC id,
+ * so re-entering setup upserts the same rows instead of duplicating the workspace. The opening
+ * balance goes through the earlier-wins rule, so a re-seed never clobbers an anchor set by an Excel import.
  */
 export async function seedWorkspace(userId: string, input: SeedInput): Promise<void> {
   if (input.persons.length === 0 || input.persons.filter((person) => person.isSelf).length !== 1) {
@@ -209,29 +192,14 @@ export async function seedWorkspace(userId: string, input: SeedInput): Promise<v
   input.templateCategories.forEach((c, i) => {
     writes.push({
       table: "categories",
-      row: {
-        id: categoryIds[i],
-        name: c.name,
-        kind: c.kind,
-        icon: c.icon ?? null,
-        color: null,
-        sortOrder: i,
-        isColumn: c.isColumn,
-        isTransfer: c.kind === "expense" && c.isTransfer === true,
-        deletedAt: null,
-      },
+      row: categoryRow(categoryIds[i]!, { ...c, icon: c.icon ?? null, sortOrder: i }),
     });
   });
-  // The ledger anchor (start_month + opening_balance_minor) is ONE semantic
-  // unit — `useLedgerState` consumes both together — so it joins the same
-  // transaction as the seeded rows. Chaining separate writes let a failure
-  // between them anchor the ledger at the new month with the PREVIOUS opening
-  // balance, i.e. a wrong balance on every screen, with no error surfaced.
+  // The ledger anchor (start_month + opening_balance_minor) is one unit and joins the seeded rows'
+  // transaction: separate writes could anchor the new month with the previous opening balance.
   writes.push(...(await onboardingBalanceRows(userId, input.startMonth, input.openingBalanceMinor)));
   await writeRows(userId, writes);
-  // NB: does NOT mark onboarded — the setup screen seeds first (so history can
-  // be imported into a real workspace) and calls finalizeOnboarding() only when
-  // the user taps "save & start". See setup.tsx.
+  // Does not mark onboarded: setup seeds first so history can be imported, and finalizes on "save & start".
 }
 
 /**
@@ -244,20 +212,11 @@ async function onboardingBalanceRows(
   startMonth: MonthKey,
   openingBalanceMinor: Minor,
 ): Promise<RowWrite[]> {
-  if (!isMonthKey(startMonth) || startMonth > monthKeyOf(todayISO())) {
-    throw new Error("Invalid opening balance month");
-  }
-  assertSupportedMinorAmount(openingBalanceMinor);
+  const anchor = await anchorRows(userId, startMonth, openingBalanceMinor);
   const currentStart = await readSetting<MonthKey>(userId, "start_month");
-  if (!currentStart || startMonth <= currentStart) {
-    return [
-      await settingRow(userId, "start_month", startMonth),
-      await settingRow(userId, "opening_balance_minor", openingBalanceMinor),
-    ];
-  }
-  // An import already reached back past this month and kept the figure typed
-  // here as the month's declared opening (spec §8.3), so coming back to change
-  // it restates that declaration. A zero is the form's empty optional field.
+  if (!currentStart || startMonth <= currentStart) return anchor;
+  // An import already reached back past this month, so the figure typed here restates that month's
+  // declared opening (spec §8.3). A zero is the form's empty optional field.
   if (openingBalanceMinor === 0) return [];
   const date = lastDayOf(addMonthsToKey(startMonth, -1));
   const differenceMinor = openingBalanceMinor - (await balanceBeforeDeclaring(userId, currentStart, date, startMonth));
@@ -265,10 +224,9 @@ async function onboardingBalanceRows(
 }
 
 /**
- * The balance at the end of `date` as a client older than declarations reads
- * it, which sees a declaration only as the difference stored with it: the
- * anchor's opening plus every counted row and adjustment from the anchor's
- * month on, the declaration about to be written excepted.
+ * The balance at the end of `date` as a client older than declarations reads it (a declaration is
+ * only its stored difference): the anchor's opening plus every counted row and adjustment from the
+ * anchor's month on, except the declaration about to be written.
  */
 async function balanceBeforeDeclaring(userId: string, anchorMonth: MonthKey, date: ISODate, declaredMonth: MonthKey): Promise<Minor> {
   const sqlite = await getSqliteAsync();
@@ -290,16 +248,21 @@ async function balanceBeforeDeclaring(userId: string, anchorMonth: MonthKey, dat
     + Number(adjusted?.total ?? 0);
 }
 
-/** Replace the historical ledger anchor as one validated atomic write. */
-export async function setOpeningBalance(userId: string, startMonth: MonthKey, openingBalanceMinor: Minor): Promise<void> {
+/** The validated ledger anchor: start month and opening balance, written together or not at all. */
+async function anchorRows(userId: string, startMonth: MonthKey, openingBalanceMinor: Minor): Promise<RowWrite[]> {
   if (!isMonthKey(startMonth) || startMonth > monthKeyOf(todayISO())) {
     throw new Error("Invalid opening balance month");
   }
   assertSupportedMinorAmount(openingBalanceMinor);
-  await writeRows(userId, [
+  return [
     await settingRow(userId, "start_month", startMonth),
     await settingRow(userId, "opening_balance_minor", openingBalanceMinor),
-  ]);
+  ];
+}
+
+/** Replace the historical ledger anchor as one validated atomic write. */
+export async function setOpeningBalance(userId: string, startMonth: MonthKey, openingBalanceMinor: Minor): Promise<void> {
+  await writeRows(userId, await anchorRows(userId, startMonth, openingBalanceMinor));
 }
 
 /** Mark onboarding complete → the route guard lets the user into the app. */

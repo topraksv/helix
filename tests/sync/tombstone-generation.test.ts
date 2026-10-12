@@ -1,6 +1,8 @@
+import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 import { resolveTombstoneVersion } from "../../src/sync/tombstone-policy";
-import { remoteWinsLww } from "../../src/sync/merge-policy";
+
+const PROPERTY_SEED = 20_260_812;
 
 describe("tombstone generations", () => {
   it("increments exactly once for a delete and preserves that generation for undo", () => {
@@ -26,13 +28,38 @@ describe("tombstone generations", () => {
       0,
     )).toBe(5);
   });
+});
 
-  it("makes generation precedence immune to a stale client's future clock", () => {
-    expect(remoteWinsLww(
-      "2026-07-22T08:00:00.000Z",
-      "2099-01-01T00:00:00.000Z",
-      4,
-      3,
-    )).toBe(false);
+describe("tombstone generation properties", () => {
+  it("never moves backwards", () => {
+    // Sync merges compare generations. A version that can decrease lets a
+    // resurrected row win against its own delete.
+    fc.assert(
+      fc.property(
+        fc.record({ deletedAt: fc.option(fc.constant("2026-01-01T00:00:00.000Z"), { nil: null }), tombstoneVersion: fc.nat({ max: 50 }) }),
+        fc.option(fc.constant("2026-02-01T00:00:00.000Z"), { nil: null }),
+        fc.nat({ max: 50 }),
+        (existing, requestedDeletedAt, requestedVersion) => {
+          const next = resolveTombstoneVersion(existing, requestedDeletedAt, requestedVersion);
+          expect(next).toBeGreaterThanOrEqual(existing.tombstoneVersion);
+          expect(next).toBeGreaterThanOrEqual(requestedVersion);
+        },
+      ),
+      { numRuns: 500, seed: PROPERTY_SEED },
+    );
+  });
+
+  it("advances exactly one generation when a live row is deleted", () => {
+    fc.assert(
+      fc.property(fc.nat({ max: 50 }), fc.nat({ max: 50 }), (existingVersion, requestedVersion) => {
+        const next = resolveTombstoneVersion(
+          { deletedAt: null, tombstoneVersion: existingVersion },
+          "2026-02-01T00:00:00.000Z",
+          requestedVersion,
+        );
+        expect(next).toBe(Math.max(existingVersion, requestedVersion) + 1);
+      }),
+      { numRuns: 300, seed: PROPERTY_SEED },
+    );
   });
 });

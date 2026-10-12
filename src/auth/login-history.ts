@@ -1,4 +1,4 @@
-/** Device-local previous-successful-login bookkeeping. */
+/** Device-local record of the sign-in before this one, for the account screen. */
 
 export interface LoginHistoryStorage {
   get(key: string): Promise<string | null>;
@@ -6,15 +6,20 @@ export interface LoginHistoryStorage {
   remove(key: string): Promise<void>;
 }
 
+const APP = "helix";
+
 function currentKey(userId: string): string {
-  return `helix.login.current.${userId}`;
+  return `${APP}.login.current.${userId}`;
 }
 
 function previousKey(userId: string): string {
-  return `helix.login.previous.${userId}`;
+  return `${APP}.login.previous.${userId}`;
 }
 
-/** The timestamp returned is the opening before this one, never this one. */
+/**
+ * Advance history only after a complete successful sign-in. The timestamp
+ * returned is the login before the one being recorded, never this session.
+ */
 export async function recordSuccessfulLogin(
   storage: LoginHistoryStorage,
   userId: string,
@@ -37,6 +42,7 @@ export async function startLoginHistory(
   await storage.set(currentKey(userId), signedInAt);
 }
 
+/** The stored sign-in before the current one; offline reopening reads it without advancing. */
 export function loadPreviousLogin(storage: LoginHistoryStorage, userId: string): Promise<string | null> {
   return storage.get(previousKey(userId));
 }

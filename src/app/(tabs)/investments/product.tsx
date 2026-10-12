@@ -1,19 +1,13 @@
 import { useState } from "react";
 import { Text, View } from "react-native";
-import Bitcoin from "lucide-react-native/icons/bitcoin";
-import ChartNoAxesCombined from "lucide-react-native/icons/chart-no-axes-combined";
-import Coins from "lucide-react-native/icons/coins";
-import Landmark from "lucide-react-native/icons/landmark";
 import PackagePlus from "lucide-react-native/icons/package-plus";
 import Shapes from "lucide-react-native/icons/shapes";
-import Umbrella from "lucide-react-native/icons/umbrella";
-import WalletCards from "lucide-react-native/icons/wallet-cards";
-import type { LucideIcon } from "lucide-react-native";
 import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
 import { saveInvestmentProduct } from "../../../data/repo";
 import { useInvestmentProfilesState, useUserId } from "../../../data/hooks";
 import { INVESTMENT_MARKET_TITLES } from "../../../domain/investment-catalog";
-import type { InvestmentAssetType, InvestmentOperationKind } from "../../../domain/investments";
+import { INVESTMENT_ASSET_TYPES, type InvestmentAssetType, type InvestmentOperationKind } from "../../../domain/investments";
+import { ASSET_TYPE_ICONS } from "../../../ui/category-icon";
 import { userMessage } from "../../../domain/user-error";
 import { tr } from "../../../i18n/tr";
 import { scheduleSync } from "../../../sync/engine";
@@ -21,7 +15,7 @@ import { Body, Button, Card, ChoiceTile, DataStateNotice, Field, PanelHeader, Sc
 import { appAlert } from "../../../ui/dialog";
 import { navigateBack } from "../../../ui/navigation";
 import { useDirtyExitGuard, useDraftDirty } from "../../../ui/dirty-exit";
-import { placeholderPools, useRotatingPlaceholder } from "../../../ui/placeholders";
+import { useRotatingPlaceholder } from "../../../ui/placeholders";
 import { font, radius, spacing, type, useTheme, type Palette } from "../../../ui/theme";
 
 function metalMark(
@@ -50,16 +44,6 @@ function metalMark(
   );
 }
 
-const TYPES: InvestmentAssetType[] = ["metal", "currency", "equity", "fund", "crypto", "pension"];
-const TYPE_ICONS: Record<InvestmentAssetType, LucideIcon> = {
-  metal: Coins,
-  currency: WalletCards,
-  equity: ChartNoAxesCombined,
-  fund: Landmark,
-  crypto: Bitcoin,
-  pension: Umbrella,
-};
-
 export default function InvestmentProductScreen() {
   const router = useRouter();
   const { next } = useLocalSearchParams<{ next?: string }>();
@@ -76,19 +60,18 @@ export default function InvestmentProductScreen() {
   const [marketCode, setMarketCode] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [note, setNote] = useState("");
-  /** Whole-percent text; basis points are the stored unit, not the typed one. */
   const [busy, setBusy] = useState(false);
   // Before the `Redirect` below, because a hook after a conditional return is
   // not a hook this component always runs.
   const { allowExit } = useDirtyExitGuard(useDraftDirty(JSON.stringify({ assetType, marketCode, name, note }), true) && !busy);
-  const productPlaceholder = useRotatingPlaceholder(placeholderPools.investmentProduct);
-  const notePlaceholder = useRotatingPlaceholder(placeholderPools.investmentNote);
+  const productPlaceholder = useRotatingPlaceholder(tr.placeholders.investmentProduct);
+  const notePlaceholder = useRotatingPlaceholder(tr.placeholders.investmentNote);
   const catalog = INVESTMENT_MARKET_TITLES.filter((item) => item.assetType === assetType);
   const catalogMode = assetType === "metal" || assetType === "currency";
   const selectedCatalog = catalog.find((item) => item.code === marketCode);
   const customCode = assetType === "metal" ? "OTHER_METAL" : "OTHER_CURRENCY";
   const customCatalog = catalogMode && marketCode === customCode;
-  const ProductIcon = TYPE_ICONS[assetType];
+  const ProductIcon = ASSET_TYPE_ICONS[assetType];
   const effectiveName = catalogMode
     ? customCatalog ? name.trim() : selectedCatalog?.label ?? ""
     : name.trim();
@@ -132,9 +115,9 @@ export default function InvestmentProductScreen() {
           accessibilityLabel={tr.investments.productType}
           style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.sm, marginBottom: spacing.md }}
         >
-          {TYPES.map((typeKey) => {
+          {INVESTMENT_ASSET_TYPES.map((typeKey) => {
             const selected = typeKey === assetType;
-            const Icon = TYPE_ICONS[typeKey];
+            const Icon = ASSET_TYPE_ICONS[typeKey];
             return (
               <ChoiceTile
                 key={typeKey}

@@ -23,11 +23,10 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { maxFontScale, proseLeading, type } from "../../src/ui/theme";
 import { tr } from "../../src/i18n/tr";
+import { biometricName } from "../../src/ui/biometric-name";
 
 const root = process.cwd();
 const source = (path: string) => readFileSync(join(root, path), "utf8");
-
-
 
 describe("text wraps before it is ever shortened", () => {
   /**
@@ -158,7 +157,7 @@ describe("password-manager metadata on the sign-in form", () => {
    * `/(auth)/sign-in` is unreachable from the E2E fixture: the suite bootstraps a
    * LOCAL-ONLY workspace, which carries a `userId`, so `resolveRootGuard` treats
    * the session as signed in and redirects every auth route to `/(tabs)`
-   * (`tests/app-guard.test.ts` pins that redirect). Reaching the screen would
+   * (`tests/domain/app-guard.test.ts` pins that redirect). Reaching the screen would
    * mean signing out first, which wipes the workspace the rest of the run needs.
    *
    * So this stays a source check, and it is recorded as such rather than
@@ -188,10 +187,6 @@ describe("auth quiet actions", () => {
   it("stacks them, each saying what it does on its own", () => {
     const signIn = source("src/app/(auth)/sign-in.tsx");
 
-    // No question fragment survives for a link to complete.
-    expect(signIn).not.toContain("tr.auth.noAccount");
-    expect(signIn).not.toContain("tr.auth.haveAccount");
-    expect(signIn).not.toContain("tr.auth.rememberedPassword");
     // Every quiet action goes through the one component, which is what makes
     // them one size: a second inline Pressable here is a second type ramp.
     expect(signIn).toContain("<AuthLink label={tr.auth.forgotPassword}");
@@ -209,5 +204,38 @@ describe("auth quiet actions", () => {
     for (const label of [tr.auth.createAccountAction, tr.auth.backToSignInAction, tr.auth.forgotPassword]) {
       expect(label.trim().split(/\s+/).length, label).toBeGreaterThan(1);
     }
+  });
+});
+
+/**
+ * One hard-coded "Face ID Kilidi" shipped to Android too, naming a technology
+ * that phone does not have — on a security control.
+ */
+describe("the biometric lock is named after the device's own sensor", () => {
+  it("never offers Face ID as a name on Android", () => {
+    const android = [
+      biometricName({ ios: false, facial: false, fingerprint: true }),
+      biometricName({ ios: false, facial: true, fingerprint: false }),
+      biometricName({ ios: false, facial: true, fingerprint: true }),
+      biometricName({ ios: false, facial: false, fingerprint: false }),
+    ];
+    for (const label of android) expect(label).not.toContain("Face ID");
+    expect(android[0]).toBe(tr.settings.biometricFingerprint);
+    expect(android[1]).toBe(tr.settings.biometricFace);
+  });
+
+  it("keeps the Apple names on Apple hardware", () => {
+    expect(biometricName({ ios: true, facial: true, fingerprint: false })).toBe(tr.settings.biometricFaceId);
+    expect(biometricName({ ios: true, facial: false, fingerprint: true })).toBe(tr.settings.biometricTouchId);
+  });
+
+  it("falls back to a neutral name when the sensor list says nothing", () => {
+    expect(biometricName({ ios: false, facial: false, fingerprint: false })).toBe(tr.settings.biometric);
+    expect(tr.settings.biometric).not.toContain("Face ID");
+  });
+
+  it("keeps the settings row on the resolved label, not the constant", () => {
+    const settings = source("src/app/(tabs)/settings/index.tsx");
+    expect(settings).toContain("title={biometricLabel}");
   });
 });

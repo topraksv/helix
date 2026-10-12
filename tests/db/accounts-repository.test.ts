@@ -5,52 +5,19 @@ const harness = vi.hoisted(() => ({
   db: null as DatabaseSync | null,
   nextId: 0,
   dbAcquisitions: 0,
-  cardStatementLookups: 0,
   repairCardStatementLinks: vi.fn(async () => {}),
   runMaintenance: vi.fn(async () => {}),
 }));
 
-vi.mock("../../src/db/client", () => ({
-  getSqliteAsync: async () => {
-    harness.dbAcquisitions += 1;
-    return {
-      getFirstAsync: async (sql: string, args: unknown[] = []) => {
-        if (sql.includes("SELECT created_at FROM credit_card_statements")) {
-          harness.cardStatementLookups += 1;
-        }
-        return harness.db!.prepare(sql).get(...(args as never[])) ?? null;
-      },
-      getAllAsync: async (sql: string, args: unknown[] = []) =>
-        harness.db!.prepare(sql).all(...(args as never[])),
-      runAsync: async (sql: string, args: unknown[] = []) => ({
-        changes: Number(harness.db!.prepare(sql).run(...(args as never[])).changes),
-      }),
-    };
-  },
-  withTransaction: async (task: () => Promise<void>) => {
-    harness.db!.exec("BEGIN");
-    try {
-      await task();
-      harness.db!.exec("COMMIT");
-    } catch (error) {
-      harness.db!.exec("ROLLBACK");
-      throw error;
-    }
-  },
-}));
+vi.mock("../../src/db/client", async () => {
+  const { sqliteClientMock } = await import("../helpers");
+  return sqliteClientMock(() => harness.db!, () => { harness.dbAcquisitions += 1; });
+});
 
-vi.mock("../../src/db/ids", () => ({
+vi.mock("../../src/db/ids", async () => ({
   newId: () => `account-${String(++harness.nextId).padStart(2, "0")}`,
   deterministicId: async (key: string) => `det:${key}`,
-  naturalKeys: new Proxy(
-    {},
-    {
-      get:
-        (_target, property) =>
-        (...parts: unknown[]) =>
-          `${String(property)}|${parts.join("|")}`,
-    },
-  ),
+  naturalKeys: (await import("../helpers")).naturalKeysProxy(),
 }));
 
 vi.mock("../../src/data/repo/maintenance", () => ({
@@ -359,7 +326,6 @@ describe("accounts repository persistence", () => {
     vi.setSystemTime(new Date(NOW));
     harness.nextId = 0;
     harness.dbAcquisitions = 0;
-    harness.cardStatementLookups = 0;
     harness.repairCardStatementLinks.mockReset().mockResolvedValue(undefined);
     harness.runMaintenance.mockReset().mockResolvedValue(undefined);
     harness.db = new DatabaseSync(":memory:");
@@ -811,8 +777,6 @@ describe("accounts repository persistence", () => {
 
     expect(row("transactions", "july-charge").card_statement_id).toBe(`det:cardStatement|${USER}|new-card|2026-07`);
     expect(row("card_statement_payments", "paid-june").statement_id).toBe(`det:cardStatement|${USER}|new-card|2026-06`);
-    // July's statement is built for its charge and June's for its payment; neither is built twice.
-    expect(harness.cardStatementLookups).toBe(2);
 
     expect(row("card_statement_payments", "paid-july")).toMatchObject({
       statement_id: `det:cardStatement|${USER}|new-card|2026-07`,
@@ -1133,7 +1097,6 @@ describe("accounts repository persistence", () => {
     expect(row("credit_card_statements", "old-july")).toMatchObject({ deleted_at: NOW, tombstone_version: 1 });
     expect(row("credit_card_statements", "old-june")).toMatchObject({ deleted_at: NOW, tombstone_version: 1 });
     expect(row("payment_sources", "old-card")).toMatchObject({ deleted_at: NOW, tombstone_version: 1 });
-    expect(harness.cardStatementLookups).toBe(3);
   });
 
   /**

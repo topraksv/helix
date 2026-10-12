@@ -1,13 +1,7 @@
 /**
- * Whether an undo actually restored anything.
- *
- * Undo callbacks were written as `() => void restoreRow(...)`: the snackbar
- * dismissed itself the moment it was tapped, so a failed restore looked exactly
- * like a successful one and the row stayed deleted with no message. `void` is
- * not error handling — it only silences the floating-promise lint.
- *
- * The decision is pure so it can be asserted without a renderer; the caller
- * supplies the effect that reports a failure.
+ * Whether an undo actually restored anything: a fire-and-forget `void` callback
+ * makes a failed restore look like a successful one. Pure; the caller supplies
+ * the effect that reports a failure.
  */
 type UndoOutcome = { ok: true } | { ok: false; error: unknown };
 

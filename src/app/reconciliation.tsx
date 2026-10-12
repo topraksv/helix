@@ -50,6 +50,11 @@ export default function CatchUpScreen() {
   const [editing, setEditing] = useState<string | null>(null);
   const [amountRaw, setAmountRaw] = useState("");
   const [amountMinor, setAmountMinor] = useState<number | null>(null);
+  const openEditor = (id: string | null) => {
+    setEditing(id);
+    setAmountRaw("");
+    setAmountMinor(null);
+  };
   const actionClusterWidth = useClusterWidth(3);
   const { confirmDiscard } = useDirtyExitGuard(editing != null && amountRaw.trim() !== "");
   // One confirmation at a time (spinner on the active button) — a double-tap
@@ -85,9 +90,7 @@ export default function CatchUpScreen() {
           actualAmountMinor: actual,
         });
         scheduleSync(userId);
-        setEditing(null);
-        setAmountRaw("");
-        setAmountMinor(null);
+        openEditor(null);
         // Straight through, so a failed revert rejects and the bar keeps its
         // retry instead of clearing as though it had worked.
         undo.show(`${nameOf(e)} ✓`, () => revertExpected(userId, e.id).then(() => scheduleSync(userId)));
@@ -106,10 +109,8 @@ export default function CatchUpScreen() {
   /**
    * Skipping is a real write, so it gets the same ownership as confirming:
    * serialized by the shared operation guard, a busy state on the row, an
-   * error surfaced instead of an unhandled rejection, sync scheduled only
-   * AFTER the write resolves, and an undo — a skip is otherwise silent and
-   * irreversible from the UI. It used to be
-   * an unowned fire-and-forget call with sync scheduled alongside it.
+   * error surfaced, sync scheduled only after the write resolves, and an undo,
+   * since a skip is otherwise silent and irreversible from the UI.
    */
   const skip = async (e: (typeof expected)[number]) => {
     await operationGuard.run(async () => {
@@ -194,11 +195,7 @@ export default function CatchUpScreen() {
                 </Row>
               </View>
             ) : (
-              // Three choices, three widths taken from their own labels and one
-              // gap between them: mark it paid, correct the amount, skip it.
-              // They used to be stretched to 1 / 1.45 / 0.7 of the row, so the
-              // cluster read as one squeezed block rather than as three
-              // choices.
+              // Three choices (mark paid, correct the amount, skip), each as wide as its own label.
               <Row gap={spacing.sm} style={{ marginTop: spacing.md, maxWidth: actionClusterWidth, flexWrap: "wrap" }}>
                 <View>
                   <Button
@@ -211,9 +208,7 @@ export default function CatchUpScreen() {
                     onPress={() => {
                       if (needsAmountEntry(e)) {
                         confirmDiscard(() => {
-                          setEditing(e.id);
-                          setAmountRaw("");
-                          setAmountMinor(null);
+                          openEditor(e.id);
                         });
                       } else {
                         void confirm(e);
@@ -227,11 +222,7 @@ export default function CatchUpScreen() {
                     label={needsAmountEntry(e) ? tr.subs.enterAmount : tr.catchup.fixAmount}
                     subject={nameOf(e)}
                     variant="secondary"
-                    onPress={() => confirmDiscard(() => {
-                      setEditing(e.id);
-                      setAmountRaw("");
-                      setAmountMinor(null);
-                    })}
+                    onPress={() => confirmDiscard(() => openEditor(e.id))}
                   />
                 </View>
                 <View>

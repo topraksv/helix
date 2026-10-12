@@ -6,12 +6,6 @@
  * than a device. A pointer HOVERING a slice or a column asks a passing
  * question, so it clears when the pointer leaves. A tap or a click is a
  * decision, so it survives the pointer leaving and the finger lifting.
- *
- * Before this they shared one piece of state: clicking a legend row selected
- * it and moving the mouse one pixel away threw the selection straight back, so
- * on the web a lock could not be held at all — and there was no way out of a
- * selection except finding and re-pressing the exact element that made it,
- * which on a three-percent arc is a target a few pixels wide.
  */
 export interface ChartFocusState {
   /** Set deliberately, and therefore held. */

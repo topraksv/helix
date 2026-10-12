@@ -1,6 +1,5 @@
 import { deterministicId, naturalKeys } from "../../db/ids";
 import { assertLiveRow, nowIso, writeRowsValidated, type RowWrite } from "../../db/mutations";
-import { scheduleSync } from "../../sync/engine";
 import { isMonthKey } from "../../domain/dates";
 import { assertInputWithinLimit } from "../../domain/input";
 
@@ -23,11 +22,8 @@ export async function saveCellNote(
   const normalized = body.trim();
   const deletedAt = normalized === "" ? nowIso() : null;
   const writes: RowWrite[] = [];
-  // Editing a legacy random-id note converges it to the natural key instead of
-  // leaving two active rows after multi-device sync. The tombstone must come
-  // FIRST: push upserts a batch in write order, and the server's partial
-  // unique index (one live note per user/month/category) would reject the
-  // canonical row while the legacy one is still live.
+  // A legacy random-id note converges to the natural key. The tombstone must come FIRST: push
+  // upserts in write order and the server's unique index (one live note per cell) would reject the canonical row.
   if (existing && existing.id !== id) {
     writes.push({
       table: "cell_notes",
@@ -36,5 +32,4 @@ export async function saveCellNote(
   }
   writes.push({ table: "cell_notes", row: { id, month, categoryId, body: normalized, deletedAt } });
   await writeRowsValidated(userId, writes, (sqlite) => assertLiveRow(sqlite, "categories", userId, categoryId));
-  scheduleSync(userId);
 }

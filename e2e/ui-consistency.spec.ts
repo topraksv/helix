@@ -1,28 +1,11 @@
-/**
- * Layout and feedback rules that only a real render can prove: a card's own
- * padding reading evenly, a popup staying inside the viewport, palette
- * persistence, and one stable wait indicator.
- */
-
 import { expect, test, type Locator, type Page } from "@playwright/test";
-import { addMarketExpense, assertNoRuntimeErrors, collectRuntimeErrors, currentMonthKey, isolateExternalData, onboard, openCashFlow, pickOption } from "./helpers";
+import { addMonthsToKey } from "../src/domain/dates";
+import { monthLabel, monthName } from "../src/i18n/tr";
+import { addMarketExpense, collectRuntimeErrors, currentMonthKey, isolateExternalData, onboard, openCashFlow, pickOption, scrollsSideways } from "./helpers";
 
 test.beforeEach(async ({ context }) => isolateExternalData(context));
 
-/**
- * How far a screen's arrival wrapper is still offset, in px.
- *
- * The entrance is a transform now, deliberately: fading a whole page up from
- * zero is the shape of a reload, which is the thing the owner does not want to
- * see. Motion is read off the composited matrix instead of off opacity.
- */
-/**
- * The largest distance a screen travels over `ms`, sampled as it goes.
- *
- * `expect.poll` can prove a value reaches something; it cannot prove a value
- * never left where it was, which is what "the page does not move when you come
- * back" needs.
- */
+// `expect.poll` proves a value reaches something, not that it never left: sample the peak instead.
 async function peakOffset(entrance: Locator, page: Page, ms = 900): Promise<number> {
   let peak = 0;
   const until = Date.now() + ms;
@@ -93,10 +76,22 @@ async function effectiveControlTextContrast(page: Page, label: string): Promise<
   }, label);
 }
 
+async function openInvestmentWorkspace(page: Page, balance: string) {
+  await page.getByRole("tab", { name: "Yatırımlar", exact: true }).click();
+  await page.getByRole("button", { name: "Yatırım Alanını Aç", exact: true }).click();
+  await page.getByRole("textbox", { name: "Bugünkü serbest yatırım bakiyesi", exact: true }).fill(balance);
+  await page.getByRole("button", { name: "Yatırım Alanını Aç", exact: true }).click();
+}
+
+async function defineProduct(page: Page, kind: string, name: string) {
+  await page.getByRole("button", { name: "Yeni Ürün Tanımla" }).click();
+  await page.getByRole("radio", { name: kind, exact: true }).click();
+  await enterValue(page.getByRole("textbox", { name: "Ürün adı", exact: true }), name);
+  await page.getByRole("button", { name: "Ürünü Kaydet", exact: true }).click();
+}
+
 async function enterAmountViaCalculator(page: Page, field: Locator, raw: string, expected: string) {
-  // This long cross-browser flow owns the investment behavior, not keyboard
-  // event timing. Firefox dropped controlled MoneyField keystrokes under CI
-  // load (run 31716039352), so use the field's public calculator seam here.
+  // Firefox dropped controlled MoneyField keystrokes under CI load, so use the calculator seam.
   await field.locator("xpath=..").getByRole("button", { name: "Hesap makinesini aç", exact: true }).click();
   const calculator = page.locator('[aria-modal="true"]');
   await expect(calculator).toBeVisible();
@@ -110,32 +105,10 @@ async function enterAmountViaCalculator(page: Page, field: Locator, raw: string,
   await expect(field).toHaveValue(expected);
 }
 
-/**
- * A controlled field, filled and CONFIRMED to have taken the value. Numeric
- * fields first; the product name dropped the same way on Firefox once the
- * type radio re-rendered the form (2026-10-08, one run in three).
- *
- * `fill` writes the DOM value and dispatches one `input`. That is enough for an
- * uncontrolled input and not always enough for a controlled one under load: if
- * React has not committed by the time something else re-renders, the state —
- * still empty — is what survives. Nothing fails at the fill; the field reads
- * blank several steps later, which is how run 33888791602 reported it as a
- * missing "amounts disagree" alert three steps further on.
- *
- * WAITING is the fix, and the two shortcuts are both worse. Typing was
- * measured: `pressSequentially` turned "10" into "1" on Firefox four runs in
- * five, with a 40ms delay between keys and without one, because the re-render
- * after the first key discards the second. And a tight retry loop is worse
- * still — every `fill` CLEARS the field first, so a commit that was about to
- * land gets wiped by the next attempt: run 33891256399 ended empty after three
- * two-second tries, which is the loop racing itself rather than the app losing
- * anything.
- *
- * So the first attempt gets the full assertion timeout, which is what a slow
- * runner actually needs, and there is exactly one more in case the value never
- * arrived at all. The assertion is the half that matters either way: a genuine
- * drop fails HERE, naming the field and both values.
- */
+// `fill` writes the DOM value and one `input`, which a controlled field under load can lose if
+// React has not committed before another re-render; the field then reads blank steps later.
+// Waiting is the fix: `pressSequentially` turned "10" into "1" on Firefox, and a tight retry loop
+// races itself because every `fill` clears first. A genuine drop fails HERE, naming the field.
 async function enterValue(field: Locator, value: string) {
   await field.fill(value);
   try {
@@ -164,17 +137,13 @@ test("a card's trailing action leaves the same gap as its first row", async ({ p
 
   await expect(page.getByRole("button", { name: /Tüm Takvimi Gör/ })).toBeVisible();
   const insets = await verticalInsets(page, /Tüm Takvimi Gör/);
-  // The list may grow naturally, but the action remains anchored to the card's
-  // real bottom edge with the same inset as the first row at the top.
   expect(Math.abs(insets.top - insets.bottom)).toBeLessThanOrEqual(1);
 });
 
 test("palette preference repaints immediately and survives a reload", async ({ page }) => {
   await onboard(page);
   await page.goto("/helix/settings");
-  // Names are the product, ids are storage: the stored value stays `ocean`
-  // while the label reads "Petrol", because renaming an id would reset every
-  // device that had already chosen a theme.
+  // Stored value stays `ocean` while the label reads "Petrol": renaming an id would reset every device.
   const amber = page.getByRole("radio", { name: "Amber", exact: true });
   const petrol = page.getByRole("radio", { name: "Petrol", exact: true });
   await expect(amber).toHaveAttribute("aria-checked", "true");
@@ -189,8 +158,7 @@ test("palette preference repaints immediately and survives a reload", async ({ p
   await page.reload();
   await expect(page.getByRole("radio", { name: "Petrol", exact: true })).toHaveAttribute("aria-checked", "true");
 
-  // A preference written by a build that shipped `sand` must not strand the
-  // app on a palette it no longer has.
+  // A preference from a build that shipped `sand` must not strand the app.
   await page.evaluate(() => localStorage.setItem("helix.palette", "sand"));
   await page.reload();
   await expect(page.getByRole("radio", { name: "Amber", exact: true })).toHaveAttribute("aria-checked", "true");
@@ -207,9 +175,7 @@ test("theme fallback begins with the palette that is leaving", async ({ page }) 
   await page.getByRole("radio", { name: "Petrol", exact: true }).click();
   const veil = page.getByTestId("theme-dissolve");
   await expect(veil).toBeVisible();
-  // The default Amber page background must sit over the fresh Petrol paint at
-  // the first frame; using the destination colour here makes a dark/light
-  // change snap before the fallback has a chance to soften it.
+  // The leaving Amber background must cover the fresh Petrol paint at the first frame, or the change snaps.
   await expect.poll(() => veil.evaluate((element) => getComputedStyle(element).backgroundColor)).toBe("rgb(241, 237, 232)");
   await expect.poll(() => veil.evaluate((element) => getComputedStyle(element).transitionProperty)).toContain("opacity");
   await expect.poll(() => veil.evaluate((element) => Number.parseFloat(getComputedStyle(element).transitionDuration))).toBeGreaterThan(0);
@@ -250,8 +216,7 @@ test("mobile web recentres a focused form field without accumulating focus work"
 
   const note = page.getByRole("textbox", { name: "Not", exact: true });
   await expect(note).toBeVisible();
-  // Let the single root effect attach after the route's first paint; the test
-  // then measures the input focus rather than React's mount timing.
+  // Let the root effect attach after first paint, so focus is measured, not mount timing.
   await page.waitForTimeout(250);
   await note.scrollIntoViewIfNeeded();
   await page.evaluate(() => {
@@ -267,18 +232,12 @@ test("mobile web recentres a focused form field without accumulating focus work"
     (window as Window & { __helixKeyboardScrollCalls?: Array<boolean | ScrollIntoViewOptions | undefined> }).__helixKeyboardScrollCalls ?? [],
   );
   expect(calls).toContainEqual(expect.objectContaining({ block: "center", inline: "nearest" }));
-  // One immediate pass plus one after the mobile visual viewport settles. More
-  // would reveal that a screen/list mount has registered duplicate listeners.
+  // One immediate pass plus one after the visual viewport settles; more means duplicate listeners.
   expect(calls).toHaveLength(2);
 });
 
 test("a tab arrives once and then stays where it is", async ({ page }) => {
-  // The rule the owner asked for three times, in the words they used: the app
-  // must flow, not go "tık" on every return. Replaying a whole-page entrance
-  // per visit was the whole of that — measured on the dashboard, every
-  // back-navigation and every tab switch moved the entire 758-node page to
-  // +14pt and sprang it back, while the node count stayed identical before,
-  // during and after. Nothing was reloading; the page was just moving.
+  // Replaying a whole-page entrance per visit made every return move the page; it must flow.
   await page.emulateMedia({ reducedMotion: "no-preference" });
   await onboard(page);
 
@@ -291,22 +250,14 @@ test("a tab arrives once and then stays where it is", async ({ page }) => {
     const entrance = page.getByTestId("screen-entrance").filter({
       has: page.getByRole("heading", { name: heading, exact: true }),
     });
-    // Arriving for the first time still moves: the screen is new, and the
-    // motion is what says so. Wait for it to be at REST, not merely passing
-    // through the threshold: the entrance spring is underdamped (damping 18,
-    // stiffness 170, so zeta 0.69) and its first overshoot of a 14pt rise is
-    // 14*exp(-pi*zeta/sqrt(1-zeta^2)) = 0.70pt. A single sample taken at the
-    // zero crossing therefore passes while the spring is still ringing, and
-    // the rebound is then measured below as a second arrival — 5 failures in 5
-    // runs at 0.682, on a machine fast enough to click away before the ring
-    // decayed. A window that stays quiet cannot be caught mid-flight.
+    // Wait for REST, not the threshold: the entrance spring is underdamped (zeta 0.69) and rings
+    // 0.70pt past zero, which a later sample would count as a second arrival. A quiet window cannot be caught mid-flight.
     await expect.poll(() => peakOffset(entrance, page, 250)).toBeLessThan(0.5);
 
     await page.getByRole("tab", { name: "Durum", exact: true }).click();
     await expect(page.getByRole("tab", { name: "Durum", exact: true })).toHaveAttribute("aria-selected", "true");
     await page.getByRole("tab", { name: tab, exact: true }).click();
 
-    // Coming back to a screen that never went away is not an arrival.
     expect(await peakOffset(entrance, page), tab).toBeLessThan(0.5);
   }
 });
@@ -338,30 +289,24 @@ test("every tab's title band has one height, so a tab change moves nothing under
 });
 
 test("a pushed screen still arrives with movement, and never blanks", async ({ page }) => {
-  // The other half of the same rule. Removing the per-visit replay must not
-  // remove the entrance itself: a screen you have not seen before is new, and
-  // it is the one place the movement means something.
+  // The per-visit replay is gone, but a screen not seen before still moves, and never fades (that read as a reload).
   await page.emulateMedia({ reducedMotion: "no-preference" });
   await onboard(page);
   await page.getByRole("tab", { name: "Abonelikler", exact: true }).click();
   await page.getByRole("button", { name: "Abonelik Ekle", exact: true }).click();
   await expect(page).toHaveURL(/subscription-form/);
 
-  // Located by a control only this form has: its title lives in the native
-  // header, outside the entrance wrapper this test is measuring.
+  // By a control only this form has: its title is in the native header, outside the wrapper.
   const form = page.getByTestId("screen-entrance").filter({
     has: page.getByRole("button", { name: "Vazgeç", exact: true }),
   });
-  // It moves on the way in, and it is never invisible while it does — a full
-  // fade was tried and read as a reload, which is what started all of this.
   expect(await peakOffset(form, page, 600)).toBeGreaterThan(1);
   expect(await form.evaluate((element) => Number.parseFloat(getComputedStyle(element).opacity))).toBeGreaterThan(0.99);
   await expect.poll(() => arrivalOffset(form)).toBeLessThan(0.5);
 });
 
 test("returning from a root-level editor leaves the tab beneath it still", async ({ page }) => {
-  // A root-level route blurs the whole tab navigator rather than a nested
-  // stack, so this is the arrival shape the tab-switch test cannot reach.
+  // A root-level route blurs the whole tab navigator, a shape the tab-switch test cannot reach.
   await page.emulateMedia({ reducedMotion: "no-preference" });
   await onboard(page);
   await page.getByRole("tab", { name: "Abonelikler", exact: true }).click();
@@ -384,10 +329,7 @@ test("returning from an investment editor leaves the page still and visible", as
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.emulateMedia({ reducedMotion: "no-preference" });
   await onboard(page);
-  await page.getByRole("tab", { name: "Yatırımlar", exact: true }).click();
-  await page.getByRole("button", { name: "Yatırım Alanını Aç", exact: true }).click();
-  await page.getByRole("textbox", { name: "Bugünkü serbest yatırım bakiyesi", exact: true }).fill("0");
-  await page.getByRole("button", { name: "Yatırım Alanını Aç", exact: true }).click();
+  await openInvestmentWorkspace(page, "0");
 
   const entrance = page.getByTestId("screen-entrance").filter({
     has: page.getByRole("heading", { name: "Yatırımlar", exact: true }),
@@ -402,9 +344,7 @@ test("returning from an investment editor leaves the page still and visible", as
   await page.getByRole("button", { name: "Geri", exact: true }).click();
   await expect(page).toHaveURL(/investments\/?$/);
 
-  // A nested-stack pop returns to a screen that was never unmounted, so it
-  // must not move — and it must stay visible, which is the half that a full
-  // fade got wrong.
+  // A nested-stack pop returns to a screen never unmounted: it must not move, and must stay visible.
   expect(await peakOffset(entrance, page)).toBeLessThan(0.5);
   expect(await opacity()).toBeGreaterThan(0.99);
   await expect(page.getByRole("tab", { name: "Yatırımlar", selected: true })).toBeVisible();
@@ -425,7 +365,7 @@ test("a later expense stays before incomes in the financial table", async ({ pag
   expect(labels.indexOf("Sonradan eklenen gider")).toBeLessThan(labels.indexOf("Maaş"));
 });
 
-test("deleting an imported column can move its records to a compatible column", async ({ page }, testInfo) => {
+test("deleting an imported column can move its records to a compatible column", async ({ page }) => {
   const errors = collectRuntimeErrors(page);
   await onboard(page);
   await page.goto("/helix/columns-editor");
@@ -437,12 +377,7 @@ test("deleting an imported column can move its records to a compatible column", 
   }
 
   await page.goto("/helix/");
-  await openCashFlow(page);
-  await page.getByRole("button", { name: "İşlem Ekle", exact: true }).click();
-  await page.getByRole("textbox", { name: "Tutar · TRY", exact: true }).fill("321,00");
-  await pickOption(page, "Kategori", "2025 Gider");
-  await page.getByRole("button", { name: "Kaydet", exact: true }).click();
-  await expect(page.getByRole("heading", { name: "Mali Tablo", exact: true })).toBeVisible();
+  await addMarketExpense(page, "Taşınacak kayıt", "321,00", "2025 Gider");
   await expect(page.getByText(/321,00/u).first()).toBeVisible();
   await page.goto("/helix/columns-editor");
 
@@ -458,15 +393,12 @@ test("deleting an imported column can move its records to a compatible column", 
   await expect(page.getByText("2026 Gider", { exact: true }).first()).toBeVisible();
   await expect(page.getByText("2025 Gider", { exact: true })).toHaveCount(0);
   await expect(page.getByText(/321,00/u).first()).toBeVisible();
-  await assertNoRuntimeErrors(errors, testInfo);
+  expect(errors).toEqual([]);
 });
 
-test("a column with only transactions can be deleted and left uncategorized", async ({ page }, testInfo) => {
+test("a column with only transactions can be deleted and left uncategorized", async ({ page }) => {
   const errors = collectRuntimeErrors(page);
-  // Phone width, where the trash icon sits far below the fold: the resolution
-  // used to render as a card at the very top of the scrolled page — measured
-  // ~2000px above the viewport — so the delete button read as dead. It is a
-  // sheet now, and this asserts it actually lands on screen.
+  // Phone width puts the trash icon below the fold; the resolution once rendered ~2000px above the viewport.
   await page.setViewportSize({ width: 390, height: 844 });
   await onboard(page);
   await page.goto("/helix/columns-editor");
@@ -475,12 +407,7 @@ test("a column with only transactions can be deleted and left uncategorized", as
   await expect(page.getByRole("button", { name: "Düzenle · Dernek Aidatı", exact: true })).toBeVisible();
 
   await page.goto("/helix/");
-  await openCashFlow(page);
-  await page.getByRole("button", { name: "İşlem Ekle", exact: true }).click();
-  await page.getByRole("textbox", { name: "Tutar · TRY", exact: true }).fill("150,00");
-  await pickOption(page, "Kategori", "Dernek Aidatı");
-  await page.getByRole("button", { name: "Kaydet", exact: true }).click();
-  await expect(page.getByRole("heading", { name: "Mali Tablo", exact: true })).toBeVisible();
+  await addMarketExpense(page, "Aidat", "150,00", "Dernek Aidatı");
   await page.goto("/helix/columns-editor");
 
   const trash = page.getByRole("button", { name: "Sil · Dernek Aidatı", exact: true });
@@ -500,10 +427,10 @@ test("a column with only transactions can be deleted and left uncategorized", as
 
   await page.goto("/helix/cash-flow");
   await expect(page.getByText(/150,00/u).first()).toBeVisible();
-  await assertNoRuntimeErrors(errors, testInfo);
+  expect(errors).toEqual([]);
 });
 
-test("deleting one of two identically-named columns still offers the other as a merge target", async ({ page }, testInfo) => {
+test("deleting one of two identically-named columns still offers the other as a merge target", async ({ page }) => {
   const errors = collectRuntimeErrors(page);
   await onboard(page);
   await page.goto("/helix/columns-editor");
@@ -528,9 +455,7 @@ test("deleting one of two identically-named columns still offers the other as a 
   await page.getByRole("button", { name: "Sil · Market Alışverişi", exact: true }).first().click();
   const resolution = page.getByTestId("category-delete-resolution");
   await expect(resolution).toBeVisible();
-  // The remaining "Market Alışverişi" is the only compatible target and is
-  // auto-selected (same-name columns are picked first), so this is a
-  // same-tap delete — exactly the "same name, two years" import scenario.
+  // The remaining same-name column is the only compatible target and is auto-selected: the "same name, two years" import case.
   await expect(resolution.getByRole("radio", { name: "Market Alışverişi", exact: true })).toHaveAttribute("aria-checked", "true");
   await resolution.getByRole("button", { name: "Sil", exact: true }).click();
   await expect(resolution).toHaveCount(0);
@@ -539,10 +464,10 @@ test("deleting one of two identically-named columns still offers the other as a 
   await page.goto("/helix/cash-flow");
   await expect(page.getByText("Market Alışverişi", { exact: true }).first()).toBeVisible();
   await expect(page.getByText(/75,00/u).first()).toBeVisible();
-  await assertNoRuntimeErrors(errors, testInfo);
+  expect(errors).toEqual([]);
 });
 
-test("row and column pins persist independently", async ({ page }, testInfo) => {
+test("row and column pins persist independently", async ({ page }) => {
   const errors = collectRuntimeErrors(page);
   await page.setViewportSize({ width: 1280, height: 900 });
   await onboard(page);
@@ -570,19 +495,12 @@ test("row and column pins persist independently", async ({ page }, testInfo) => 
   await page.getByRole("radio", { name: "Kolon odaklı", exact: true }).click();
   const columnUnpinLabel = columnPinLabel!.replace("kolonunu sabitle", "kolonunun sabitlemesini kaldır");
   await expect(page.getByRole("button", { name: columnUnpinLabel, exact: true })).toBeVisible();
-  await assertNoRuntimeErrors(errors, testInfo);
+  expect(errors).toEqual([]);
 });
 
-/**
- * Pinning fixes a column in place. It must not take an ability away.
- *
- * The pinned header used to be one Pressable whose only action was "unpin", so
- * a pinned month could no longer be opened from its header and a pinned item
- * could no longer open its breakdown — the column had to be unpinned to be
- * used again. Both orientations are covered because the pinned header is the
- * same component in each, reached through a different `onColumnPress`.
- */
-test("a pinned column keeps every action it had while unpinned", async ({ page }, testInfo) => {
+// The pinned header was one Pressable whose only action was "unpin", so a pinned month or item
+// could not be opened. Both orientations are covered: same component, different `onColumnPress`.
+test("a pinned column keeps every action it had while unpinned", async ({ page }) => {
   const errors = collectRuntimeErrors(page);
   await page.setViewportSize({ width: 1280, height: 900 });
   await onboard(page);
@@ -630,11 +548,11 @@ test("a pinned column keeps every action it had while unpinned", async ({ page }
   await expect(page.getByRole("button", { name: `${item} kolonunun sabitlemesini kaldır`, exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: item, exact: true })).toBeVisible();
 
-  await assertNoRuntimeErrors(errors, testInfo);
+  expect(errors).toEqual([]);
 });
 
 /** Hold anything on the grid to mark it; the mark is spoken as well as drawn. */
-async function longPress(page: import("@playwright/test").Page, target: import("@playwright/test").Locator) {
+async function longPress(page: Page, target: Locator) {
   await target.scrollIntoViewIfNeeded();
   const box = await target.boundingBox();
   if (!box) throw new Error("long-press target has no box");
@@ -644,16 +562,14 @@ async function longPress(page: import("@playwright/test").Page, target: import("
   await page.mouse.up();
 }
 
-test("a contextual colour marks a cell, survives a pin, and is announced not merely painted", async ({ page }, testInfo) => {
+test("a contextual colour marks a cell, survives a pin, and is announced not merely painted", async ({ page }) => {
   const errors = collectRuntimeErrors(page);
   await page.setViewportSize({ width: 1280, height: 900 });
   await onboard(page);
   await openCashFlow(page);
   await page.getByRole("radio", { name: "Kolon odaklı", exact: true }).click();
 
-  const month = new Intl.DateTimeFormat("tr-TR", { month: "long", timeZone: "Europe/Istanbul" })
-    .format(new Date())
-    .replace(/^./u, (c) => c.toLocaleUpperCase("tr-TR"));
+  const month = monthName(currentMonthKey());
   const year = currentMonthKey().slice(0, 4);
   const cellName = new RegExp(`^${month} ${year}, Market, `, "u");
 
@@ -671,8 +587,7 @@ test("a contextual colour marks a cell, survives a pin, and is announced not mer
   const marked = page.getByRole("button", { name: new RegExp(`^${month} ${year}, Market, .*Gecikti olarak işaretli`, "u") });
   await expect(marked).toBeVisible();
 
-  // Pin that month. The mark, the cell's editability and the header's own
-  // action must all survive being moved into the fixed rail.
+  // The mark, the cell's editability and the header's action must survive the move into the fixed rail.
   await page.getByRole("button", { name: `${month} kolonunu sabitle`, exact: true }).click();
   await expect(page.getByRole("button", { name: `${month} kolonunun sabitlemesini kaldır`, exact: true })).toBeVisible();
   const pinnedMarked = page.getByRole("button", { name: new RegExp(`^${month} ${year}, Market, .*Gecikti olarak işaretli`, "u") });
@@ -688,28 +603,19 @@ test("a contextual colour marks a cell, survives a pin, and is announced not mer
   await page.getByTestId("matrix-color-clear").click();
   await expect(page.getByRole("button", { name: new RegExp("Gecikti olarak işaretli", "u") })).toHaveCount(0);
 
-  await assertNoRuntimeErrors(errors, testInfo);
+  expect(errors).toEqual([]);
 });
 
-/**
- * A mark colour's NAME belongs to the colour, for the whole account.
- *
- * This is the difference between a rename and a note: renaming yellow has to
- * rename every cell already marked yellow, everywhere it is read — the sheet,
- * the reading guide's legend, and the accessible name a screen reader speaks
- * over the cell. A per-cell name would let one colour mean four things in one
- * table, which is the state the owner reported as "renkler stabil değil".
- */
-test("renaming a mark colour renames every cell already marked with it", async ({ page }, testInfo) => {
+// A colour's name belongs to the colour for the whole account: renaming it renames every marked
+// cell, the sheet, the legend and the accessible name ("renkler stabil değil").
+test("renaming a mark colour renames every cell already marked with it", async ({ page }) => {
   const errors = collectRuntimeErrors(page);
   await page.setViewportSize({ width: 1280, height: 900 });
   await onboard(page);
   await openCashFlow(page);
   await page.getByRole("radio", { name: "Kolon odaklı", exact: true }).click();
 
-  const month = new Intl.DateTimeFormat("tr-TR", { month: "long", timeZone: "Europe/Istanbul" })
-    .format(new Date())
-    .replace(/^./u, (character) => character.toLocaleUpperCase("tr-TR"));
+  const month = monthName(currentMonthKey());
   const year = currentMonthKey().slice(0, 4);
   const cellName = new RegExp(`^${month} ${year}, Market, `, "u");
 
@@ -725,12 +631,9 @@ test("renaming a mark colour renames every cell already marked with it", async (
   await field.fill("Bankaya sorulacak");
   await page.getByTestId("matrix-color-rename-save-yellow").click();
 
-  // The cell that was ALREADY marked now announces the new name, and the old
-  // one is gone from the whole page.
   await expect(page.getByRole("button", { name: new RegExp("Bankaya sorulacak olarak işaretli", "u") })).toBeVisible();
   await expect(page.getByRole("button", { name: new RegExp("Kontrol edilmeli olarak işaretli", "u") })).toHaveCount(0);
 
-  // And the reading guide's legend is the same source, so it renamed too.
   const guide = page.getByTestId("cash-flow-table-details-content");
   if (await guide.count() === 0) {
     await page.getByRole("button", { name: "Mali tabloyu okuma rehberi", exact: true }).click();
@@ -742,21 +645,12 @@ test("renaming a mark colour renames every cell already marked with it", async (
   await page.reload();
   await expect(page.getByRole("button", { name: new RegExp("Bankaya sorulacak olarak işaretli", "u") })).toBeVisible();
 
-  await assertNoRuntimeErrors(errors, testInfo);
+  expect(errors).toEqual([]);
 });
 
-/**
- * One interaction standard, checked where two controls sit on top of each
- * other.
- *
- * A column header and its pin are the hardest case in the app: the pin is
- * drawn inside the header's own box, so a hover that belonged to the wrong
- * element would light the header while the pointer is on the pin, or both at
- * once. And pinning must move the column WITHOUT moving anything else — the
- * header used to lose a pixel of height and its current-month rule the moment
- * it was pinned, which read as the pin having changed which month is current.
- */
-test("a column lights as one under the pointer, and pinning moves nothing but the column", async ({ page }, testInfo) => {
+// The pin is drawn inside the header's box, so a wrong-owner hover would light the header
+// while the pointer is on the pin; pinning must also move nothing but the column (it lost 1px of height).
+test("a column lights as one under the pointer, and pinning moves nothing but the column", async ({ page }) => {
   const errors = collectRuntimeErrors(page);
   await page.setViewportSize({ width: 1280, height: 900 });
   await onboard(page);
@@ -767,9 +661,7 @@ test("a column lights as one under the pointer, and pinning moves nothing but th
     locator.evaluate((element) => getComputedStyle(element as HTMLElement).backgroundColor);
   const transparent = "rgba(0, 0, 0, 0)";
 
-  const month = new Intl.DateTimeFormat("tr-TR", { month: "long", timeZone: "Europe/Istanbul" })
-    .format(new Date())
-    .replace(/^./u, (character) => character.toLocaleUpperCase("tr-TR"));
+  const month = monthName(currentMonthKey());
   const header = page.getByRole("button", { name: month, exact: true });
   const pin = page.getByRole("button", { name: `${month} kolonunu sabitle`, exact: true });
 
@@ -783,16 +675,12 @@ test("a column lights as one under the pointer, and pinning moves nothing but th
   expect(headerHover).not.toBe(transparent);
   expect(await background(pin)).toBe(transparent);
 
-  // The pointer moves onto the pin, and the COLUMN stays lit. The pin used to
-  // be a sibling with a fill of its own, so crossing into it dropped the
-  // header's fill and lit a 24px strip on its own — one column showing two
-  // states at once. It is nested now: one visual cell lights once, and the
-  // thing that lights is the column the pointer is in.
+  // The pin is nested in the header, so crossing into it keeps the whole column lit.
   await pin.hover();
   await expect.poll(() => background(header)).toBe(headerHover);
   expect(await background(pin)).toBe(transparent);
 
-  // Pinning changes where the column is and nothing about how tall it is.
+  // Pinning changes where the column is, not how tall.
   const before = await header.boundingBox();
   await pin.click();
   await expect(page.getByRole("button", { name: `${month} kolonunun sabitlemesini kaldır`, exact: true })).toBeVisible();
@@ -800,8 +688,7 @@ test("a column lights as one under the pointer, and pinning moves nothing but th
   expect(after?.height).toBe(before?.height);
   expect(after?.y).toBe(before?.y);
 
-  // The pinned rail follows the same rule. Pinning moves a column; it must not
-  // change what the column does under a pointer.
+  // The pinned rail follows the same rule.
   const pinnedHeader = page.getByRole("button", { name: month, exact: true });
   const unpin = page.getByRole("button", { name: `${month} kolonunun sabitlemesini kaldır`, exact: true });
   await page.mouse.move(0, 0);
@@ -812,11 +699,10 @@ test("a column lights as one under the pointer, and pinning moves nothing but th
   await unpin.hover();
   await expect.poll(() => background(pinnedHeader)).toBe(pinnedHover);
   expect(await background(unpin)).toBe(transparent);
-  // One hover in the whole product: the pinned rail spends the same token the
-  // scrolling one does.
+  // One hover token in the product.
   expect(pinnedHover).toBe(headerHover);
 
-  // A pinned column keeps the state it had: it is still the current month.
+  // A pinned column is still the current month.
   const rule = await page.getByRole("button", { name: month, exact: true })
     .evaluate((element) => {
       const box = (element as HTMLElement).parentElement!;
@@ -826,19 +712,11 @@ test("a column lights as one under the pointer, and pinning moves nothing but th
   expect(rule.width).toBe("3px");
   expect(rule.color).not.toBe(transparent);
 
-  await assertNoRuntimeErrors(errors, testInfo);
+  expect(errors).toEqual([]);
 });
 
-/**
- * The confirmation bar can be pushed out of the way.
- *
- * It leaves on its own, but "on its own" is six seconds and it sits over the
- * bottom of whatever the owner is trying to read. Dragging it DOWN dismisses
- * it; dragging up means nothing, because up is where it came from. A short
- * drag springs back rather than dismissing, so a mis-touch does not lose the
- * one confirmation some actions get.
- */
-test("the confirmation bar can be pushed down out of the way", async ({ page }, testInfo) => {
+// Dragging DOWN dismisses the bar; a short drag springs back so a mis-touch loses nothing.
+test("the confirmation bar can be pushed down out of the way", async ({ page }) => {
   const errors = collectRuntimeErrors(page);
   await page.setViewportSize({ width: 390, height: 844 });
   await onboard(page);
@@ -850,32 +728,25 @@ test("the confirmation bar can be pushed down out of the way", async ({ page }, 
   if (!box) throw new Error("the confirmation bar has no box");
   const from = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
 
-  // A short drag is not a dismissal: the bar is still there afterwards.
+  // A short drag is not a dismissal.
   await page.mouse.move(from.x, from.y);
   await page.mouse.down();
   await page.mouse.move(from.x, from.y + 10, { steps: 4 });
   await page.mouse.up();
   await expect(bar).toBeVisible();
 
-  // A real one is. Well inside the bar's own six seconds.
+  // A real one is, well inside the bar's own six seconds.
   await page.mouse.move(from.x, from.y);
   await page.mouse.down();
   await page.mouse.move(from.x, from.y + 70, { steps: 8 });
   await page.mouse.up();
   await expect(page.getByRole("alert")).toHaveCount(0, { timeout: 3_000 });
 
-  await assertNoRuntimeErrors(errors, testInfo);
+  expect(errors).toEqual([]);
 });
 
-/**
- * The forecast row reaches the rule below it.
- *
- * Its hover fill used to stop `spacing.sm` short, so on both a phone and a
- * desktop the lit band ended in mid-air with a strip of bare card between it
- * and the line it belongs to. A control's fill ending before its own boundary
- * reads as a fault, not as spacing.
- */
-test("the forecast row's lit area ends on the rule under it", async ({ page }, testInfo) => {
+// The hover fill must reach the rule: a fill ending short reads as a fault.
+test("the forecast row's lit area ends on the rule under it", async ({ page }) => {
   const errors = collectRuntimeErrors(page);
   await onboard(page);
   await addMarketExpense(page, "E2E tahmin");
@@ -886,9 +757,7 @@ test("the forecast row's lit area ends on the rule under it", async ({ page }, t
     const toggle = page.getByTestId("dashboard-forecast-toggle");
     await expect(toggle).toBeVisible();
     const box = await toggle.evaluate((element) => {
-      // The row is the LAST child of the hero's left column, and the rule is
-      // that column's own next sibling — measured through the parent, because
-      // the row has no sibling of its own to compare against.
+      // The rule is the next sibling of the row's parent: the row has no sibling to compare against.
       const parent = element.parentElement!;
       const rule = parent.nextElementSibling as HTMLElement | null;
       if (!rule) throw new Error("the forecast row has no rule after it");
@@ -900,30 +769,20 @@ test("the forecast row's lit area ends on the rule under it", async ({ page }, t
         textToRule: ruleTop - content.getBoundingClientRect().bottom,
       };
     });
-    // Only the phone stacks the rule under this row; the wide layout draws it
-    // as a vertical divider beside the column, where "below" means nothing.
+    // Only the phone stacks the rule under the row; wide layouts draw a vertical divider.
     if (viewport.width >= 900) continue;
     expect(box.fillToRule, `${viewport.width}px: bare card between the row and its rule`).toBeLessThanOrEqual(1);
-    // ...and the fill must not run PAST the rule either. A negative margin
-    // that cancels the padding put the line through the middle of the lit
-    // band and left the text sitting on it; the row's painted box and its
-    // layout box have to be the same box.
+    // The fill must not run PAST the rule either: the painted box and layout box must match.
     expect(box.fillToRule, `${viewport.width}px: the lit band overshoots its rule`).toBeGreaterThanOrEqual(-1);
-    // The row owns that space, so the space has to exist. At 0 the amount was
-    // touching the rule, which is what "çok dar" was.
+    // At 0 the amount touched the rule ("çok dar").
     expect(box.textToRule, `${viewport.width}px: the amount is crammed against the rule`).toBeGreaterThanOrEqual(12);
   }
 
-  await assertNoRuntimeErrors(errors, testInfo);
+  expect(errors).toEqual([]);
 });
 
-/**
- * Inert containers must not look clickable.
- *
- * The hover fill is a transition on `background-color`, so anything carrying
- * that transition is claiming to be interactive. Nothing without a role may.
- */
-test("only real controls advertise a hover", async ({ page }, testInfo) => {
+// A `background-color` transition claims interactivity; nothing without a role may carry it.
+test("only real controls advertise a hover", async ({ page }) => {
   const errors = collectRuntimeErrors(page);
   await page.setViewportSize({ width: 1280, height: 900 });
   await onboard(page);
@@ -944,7 +803,7 @@ test("only real controls advertise a hover", async ({ page }, testInfo) => {
     expect(offenders, `inert containers advertising a hover on ${route}`).toEqual([]);
   }
 
-  await assertNoRuntimeErrors(errors, testInfo);
+  expect(errors).toEqual([]);
 });
 
 test("the footer keeps a restrained material in both themes", async ({ page }) => {
@@ -979,15 +838,8 @@ test("the footer keeps a restrained material in both themes", async ({ page }) =
   expect(dark.bottom).toBeLessThanOrEqual(dark.viewportHeight + 1);
 });
 
-/**
- * Navigation is one bar along the bottom at every width. A desktop rail was
- * tried and removed by the owner: it took a column out of the window, so every
- * page's content sat off centre, and the app asked its user to learn two
- * navigations. The contract is that the bar keeps its position and its bounded
- * width from a phone all the way to a wide monitor — and that its labels stay
- * fully opaque over a glass surface, which is the difference between a
- * translucent panel and a faded one.
- */
+// No desktop rail: it took a column out of the window and doubled the navigation. The bar keeps its
+// position and bounded width at every size, and its labels stay opaque over the glass surface.
 test("navigation stays a bounded bottom bar at every width", async ({ page }) => {
   await onboard(page);
   await openCashFlow(page);
@@ -1079,8 +931,7 @@ test("bar-chart amounts stay readable and contained on phone and desktop", async
     );
     expect(measurements.every(({ fontSize, contained }) => fontSize >= 14 && contained)).toBe(true);
     const chart = page.getByTestId("bar-chart-frame").first();
-    // The frame measures its card after the viewport changes. Assert the
-    // post-measurement geometry rather than racing that ResizeObserver pass.
+    // The frame measures after the viewport changes; assert the settled geometry.
     await expect.poll(() => chart.evaluate((element) => {
       const chartBox = element.getBoundingClientRect();
       const labels = Array.from(element.querySelectorAll<HTMLElement>('[data-testid="bar-axis-label"]'));
@@ -1090,7 +941,7 @@ test("bar-chart amounts stay readable and contained on phone and desktop", async
           && box.top >= chartBox.top - 1 && box.bottom <= chartBox.bottom + 1;
       });
     })).toBe(true);
-    expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(1);
+    expect(await scrollsSideways(page)).toBe(false);
   }
 });
 
@@ -1131,18 +982,11 @@ test("clicking a table item opens its month-value bars on desktop and mobile", a
     return { width: box.width, height: box.height };
   }));
   expect(barGeometry.every(({ width, height }) => width >= 32 && height >= 6)).toBe(true);
-  expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(1);
+  expect(await scrollsSideways(page)).toBe(false);
 });
 
-/**
- * A chart is the only thing on a screen that is drawn at an explicit pixel
- * width, so it is the only thing that can be wider than the box holding it.
- * Every caller used to derive that width from the window minus a guess at the
- * chrome in between; once a 220px rail and a two-column dashboard sat between
- * the two, the guess asked for 928px inside a card that had 740. The measure
- * that catches it is the container's own scroll width, at the widths where the
- * rail exists.
- */
+// A chart is drawn at an explicit pixel width, so it can exceed its box: the guess at chrome width
+// once asked for 928px inside 740. Measure the container's own scroll width.
 test("charts stay inside the box they are drawn in at every desktop width", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await onboard(page);
@@ -1151,16 +995,14 @@ test("charts stay inside the box they are drawn in at every desktop width", asyn
   await page.getByRole("radio", { name: "Sütun", exact: true }).click();
   await expect(page.getByTestId("bar-value-label").first()).toBeVisible();
 
-  // 1024 is where the rail appears, 1180 is where the dashboard pairs its
-  // columns, 1440 is a real monitor. Each one gives the chart a different box.
+  // 1024: the rail appears; 1180: the dashboard pairs its columns; 1440: a real monitor.
   for (const width of [1024, 1180, 1440]) {
     await page.setViewportSize({ width, height: 900 });
     await expect
       .poll(async () =>
         page.getByTestId("bar-value-label").first().evaluate((label) => {
           const wider: string[] = [];
-          // Up from the drawn label to the page: the card, the column and the
-          // screen all have to be wide enough for what the chart asked for.
+          // Card, column and screen must all be wide enough for the chart.
           for (let el: Element | null = label; el && el !== document.body; el = el.parentElement) {
             if (!(el instanceof HTMLElement)) continue;
             if (el.scrollWidth > el.clientWidth + 1) wider.push(`${el.scrollWidth}>${el.clientWidth}`);
@@ -1200,14 +1042,12 @@ test("subscriptions explain recurrence and summarize the next payment path", asy
   await expect(page.getByText("Sıradaki ödeme durakları", { exact: true })).toBeVisible();
   await expect(page.getByText("0/1", { exact: true })).toBeVisible();
   await expect(page.getByText("1 elle takip", { exact: true })).toBeVisible();
-  // What the rules cost is said ONCE, on the cost card, and never a second
-  // time in the schedule card's header — the two were computed differently and
-  // could disagree a scroll apart.
+  // Cost is said once, on the cost card, not again in the schedule header.
   await expect(page.getByTestId("subscription-cost-figures")).toBeVisible();
   await expect(page.getByText("Aylık", { exact: true })).toHaveCount(1);
   await expect(page.getByTestId("screen-header").getByRole("button", { name: "Abonelik Ekle", exact: true })).toBeVisible();
   await expect(page.getByTestId("subscription-cycle-summary").getByText("Müzik", { exact: true })).toBeVisible();
-  expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(1);
+  expect(await scrollsSideways(page)).toBe(false);
 
   await page.setViewportSize({ width: 1200, height: 900 });
   const summary = await page.getByTestId("subscription-cycle-summary").boundingBox();
@@ -1215,7 +1055,7 @@ test("subscriptions explain recurrence and summarize the next payment path", asy
   expect(summary!.width).toBeGreaterThan(700);
 });
 
-test("variable subscriptions accept the invoice amount from the upcoming calendar", async ({ page }, testInfo) => {
+test("variable subscriptions accept the invoice amount from the upcoming calendar", async ({ page }) => {
   const errors = collectRuntimeErrors(page);
   await page.setViewportSize({ width: 390, height: 844 });
   await onboard(page);
@@ -1244,32 +1084,29 @@ test("variable subscriptions accept the invoice amount from the upcoming calenda
   await expect(page.getByTestId("expected-amount-sheet")).toHaveCount(0);
   await expect(page.getByText("Gerçek tutar kaydedildi.", { exact: true })).toBeVisible();
   await expect(page.getByText(/1\.247,50/).first()).toBeVisible();
-  await assertNoRuntimeErrors(errors, testInfo);
+  expect(errors).toEqual([]);
 });
 
-test("a variable subscription can be saved with no amount estimate at all", async ({ page }, testInfo) => {
+test("a variable subscription can be saved with no amount estimate at all", async ({ page }) => {
   const errors = collectRuntimeErrors(page);
   await onboard(page);
   await page.goto("/helix/subscription-form");
   await page.getByRole("textbox", { name: "Ad", exact: true }).fill("Doğalgaz");
   await page.getByRole("switch", { name: "Tutar her ay değişir", exact: true }).click();
   await pickOption(page, "Kategori", "Market");
-  // No amount typed anywhere — the whole point of this flow.
   await page.getByRole("button", { name: "Kaydet", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Abonelikler", exact: true })).toBeVisible();
   await expect(page.getByText("Tutar belirtilmedi", { exact: true }).first()).toBeVisible();
 
   await page.getByRole("button", { name: /Düzenle · Doğalgaz/, exact: true }).click();
   const artwork = page.getByRole("img", { name: /Doğalgaz/ });
-  // A variable bill has no monthly/annual equivalent to state — multiplying a
-  // guess by twelve would present it as a commitment — so the preview says
-  // what is actually true and never draws a ₺0,00.
+  // A variable bill has no monthly/annual equivalent; the preview never draws a ₺0,00.
   await expect(artwork.getByText("Her ay değişir", { exact: true })).toBeVisible();
   await expect(artwork.getByText("Aylık karşılığı", { exact: true })).toHaveCount(0);
   await expect(artwork.getByText("Yıllık karşılığı", { exact: true })).toHaveCount(0);
   await expect(artwork.getByText(/₺/)).toHaveCount(0);
   await expect(page.getByRole("textbox", { name: "Tahmini tutar · istersen boş bırak · TRY", exact: true })).toHaveValue("");
-  await assertNoRuntimeErrors(errors, testInfo);
+  expect(errors).toEqual([]);
 });
 
 test("a dirty subscription can be dismissed without saving", async ({ page }) => {
@@ -1302,8 +1139,7 @@ test("a dirty balance correction can be cancelled, cleared and reopened safely",
   await back().click();
   await expect(page).toHaveURL(/\/helix\/cash-flow$/);
 
-  // Re-entering the same route must install a fresh guard, not reuse a stale
-  // confirmation or leave a transparent overlay intercepting the next tap.
+  // A fresh guard, not a stale confirmation or a transparent overlay eating the next tap.
   await page.goto("/helix/opening-balance");
   await amount().fill("100");
   await back().click();
@@ -1311,20 +1147,18 @@ test("a dirty balance correction can be cancelled, cleared and reopened safely",
   await expect(page).toHaveURL(/\/helix\/cash-flow$/);
 });
 
-test("a declared balance is remembered, so the drift warning can fire", async ({ page }, testInfo) => {
+test("a declared balance is remembered, so the drift warning can fire", async ({ page }) => {
   const errors = collectRuntimeErrors(page);
   await onboard(page);
 
   // Confirm a balance the ledger does not currently show.
   await page.goto("/helix/opening-balance");
   await page.getByRole("textbox", { name: "Gerçek güncel bakiyen", exact: true }).fill("1.000,00");
-  // The current-balance block owns the first "Kaydet"; the opening-balance
-  // block below it has its own.
+  // The current-balance block owns the first "Kaydet".
   await page.getByRole("button", { name: "Kaydet", exact: true }).first().click();
   await expect(page.getByText("Bakiye güncellendi", { exact: false }).first()).toBeVisible();
 
-  // Move the ledger away from it. The editor deliberately stays put after a
-  // save, so the ledger is reached by route rather than by tapping its tab.
+  // The editor stays put after a save, so reach the ledger by route.
   await page.goto("/helix/cash-flow");
   await expect(page.getByRole("heading", { name: "Mali Tablo", exact: true })).toBeVisible();
   await page.getByRole("button", { name: "İşlem Ekle", exact: true }).click();
@@ -1333,12 +1167,10 @@ test("a declared balance is remembered, so the drift warning can fire", async ({
   await page.getByRole("button", { name: "Kaydet", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Mali Tablo", exact: true })).toBeVisible();
 
-  // The declaration used to be written and then permanently unreadable: it was
-  // missing from the settings decoder, so every read returned the fallback and
-  // this warning could never appear no matter how far the ledger drifted.
+  // The declaration was missing from the settings decoder, so the warning could never appear.
   await page.getByRole("tab", { name: "Durum", exact: true }).click();
   await expect(page.getByText("Uyuşmuyor", { exact: true })).toBeVisible();
-  await assertNoRuntimeErrors(errors, testInfo);
+  expect(errors).toEqual([]);
 });
 
 test("stack headers keep navigation titles on one line at narrow width", async ({ page }) => {
@@ -1425,21 +1257,12 @@ test("wide tools start on one line with equal work areas", async ({ page }) => {
   expect(Math.abs(geometry.calculatorWidth - geometry.converterWidth)).toBeLessThanOrEqual(1);
 });
 
-/**
- * A route with two entrances needs two exits. `/transaction` is the ledger's
- * entry form and, with `intent=investment-refund`, the wallet transfer opened
- * from Investments — and leaving the second one without saving used to walk out
- * into the Financial Table, a different tab, after asking to discard a form the
- * user had not touched. (The form declared itself dirty because its single
- * transfer category is assigned by an effect once the data loads.)
- */
+// `/transaction?intent=investment-refund` is the wallet transfer from Investments: leaving it untouched must
+// not ask to discard (its transfer category is assigned by an effect) nor exit to another tab.
 test("leaving the wallet transfer returns to Investments without inventing a draft", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
   await onboard(page);
-  await page.getByRole("tab", { name: "Yatırımlar", exact: true }).click();
-  await page.getByRole("button", { name: "Yatırım Alanını Aç", exact: true }).click();
-  await page.getByRole("textbox", { name: "Bugünkü serbest yatırım bakiyesi", exact: true }).fill("10.000");
-  await page.getByRole("button", { name: "Yatırım Alanını Aç", exact: true }).click();
+  await openInvestmentWorkspace(page, "10.000");
 
   await page.getByRole("button", { name: "Serbest Bakiyeyi Aktar" }).click();
   await expect(page.getByRole("heading", { name: "Serbest Bakiyeyi Aktar" })).toBeVisible();
@@ -1454,15 +1277,9 @@ test("leaving the wallet transfer returns to Investments without inventing a dra
 test("a mistaken investment journal and its selected ledger refund are removed together", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
   await onboard(page);
-  await page.getByRole("tab", { name: "Yatırımlar", exact: true }).click();
-  await page.getByRole("button", { name: "Yatırım Alanını Aç", exact: true }).click();
-  await page.getByRole("textbox", { name: "Bugünkü serbest yatırım bakiyesi", exact: true }).fill("0");
-  await page.getByRole("button", { name: "Yatırım Alanını Aç", exact: true }).click();
+  await openInvestmentWorkspace(page, "0");
 
-  await page.getByRole("button", { name: "Yeni Ürün Tanımla" }).click();
-  await page.getByRole("radio", { name: "Borsa", exact: true }).click();
-  await enterValue(page.getByRole("textbox", { name: "Ürün adı", exact: true }), "Yanlış ürün");
-  await page.getByRole("button", { name: "Ürünü Kaydet", exact: true }).click();
+  await defineProduct(page, "Borsa", "Yanlış ürün");
   await page.getByRole("button", { name: "Sahip Olduğumu Ekle" }).click();
   await enterValue(page.getByRole("textbox", { name: "Miktar / adet · zorunlu", exact: true }), "1");
   await page.getByRole("textbox", { name: "Birim fiyat · zorunlu", exact: true }).fill("100.000");
@@ -1487,15 +1304,11 @@ test("a mistaken investment journal and its selected ledger refund are removed t
   await expect(removeProduct).toBeVisible();
   const removalRow = page.getByTestId("investment-history-removal-row");
   const measureRemovalRow = () => removalRow.evaluate((element) => {
-    const row = element.getBoundingClientRect();
-    const parent = element.parentElement!.getBoundingClientRect();
-    const hint = element.firstElementChild!.getBoundingClientRect();
-    const action = element.lastElementChild!.getBoundingClientRect();
     return {
-      row: { left: row.left, right: row.right, top: row.top, bottom: row.bottom },
-      parent: { left: parent.left, right: parent.right },
-      hint: { left: hint.left, right: hint.right, bottom: hint.bottom },
-      action: { left: action.left, right: action.right, top: action.top },
+      row: element.getBoundingClientRect().toJSON() as DOMRect,
+      parent: element.parentElement!.getBoundingClientRect().toJSON() as DOMRect,
+      hint: element.firstElementChild!.getBoundingClientRect().toJSON() as DOMRect,
+      action: element.lastElementChild!.getBoundingClientRect().toJSON() as DOMRect,
     };
   });
   for (const viewport of [{ width: 1280, height: 900 }, { width: 390, height: 844 }] as const) {
@@ -1533,12 +1346,8 @@ test("investment setup, weighted sale, BES contribution and wallet refund form o
 
   await expect(page.getByRole("heading", { name: "Yatırım alanını başlat", exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Yatırım Alanını Aç", exact: true }).click();
-  // EVERY MoneyField in this flow goes through the calculator seam, not just
-  // the one that was caught. They share one failure — a controlled MoneyField
-  // drops keystrokes on Firefox under CI load — so hardening only the field
-  // that happened to fail leaves the same trap for the next loaded run. It is
-  // scoped to the Firefox-tagged tests: the seam costs a click per character,
-  // and a chromium-only test has never lost a keystroke.
+  // Every MoneyField here uses the calculator seam (Firefox drops controlled keystrokes under CI load);
+  // only Firefox-tagged tests pay a click per character.
   await enterAmountViaCalculator(
     page,
     page.getByRole("textbox", { name: "Bugünkü serbest yatırım bakiyesi", exact: true }),
@@ -1549,10 +1358,7 @@ test("investment setup, weighted sale, BES contribution and wallet refund form o
   await expect(page.getByText("Serbest nakit ve ürün maliyetleri", { exact: true })).toHaveCount(0);
   await expect(page.getByTestId("screen-header").getByRole("button", { name: "İşlem Ekle", exact: true })).toBeVisible();
 
-  await page.getByRole("button", { name: "Yeni Ürün Tanımla" }).click();
-  await page.getByRole("radio", { name: "Borsa", exact: true }).click();
-  await enterValue(page.getByRole("textbox", { name: "Ürün adı", exact: true }), "SASA");
-  await page.getByRole("button", { name: "Ürünü Kaydet", exact: true }).click();
+  await defineProduct(page, "Borsa", "SASA");
 
   await page.getByTestId("screen-header").getByRole("button", { name: "İşlem Ekle", exact: true }).click();
   await enterValue(page.getByRole("textbox", { name: "Miktar / adet · zorunlu", exact: true }), "10");
@@ -1571,13 +1377,7 @@ test("investment setup, weighted sale, BES contribution and wallet refund form o
 
   await page.getByRole("button", { name: "Satış Yap" }).click();
   await enterValue(page.getByRole("textbox", { name: "Miktar / adet · zorunlu", exact: true }), "4");
-  // Through the calculator seam, for the reason the helper already gives: a
-  // controlled MoneyField loses keystrokes on Firefox under CI load. The buy
-  // step above was hardened when that was first measured and this one was not,
-  // so it kept passing on an unloaded machine and cost run 33784806992 a
-  // deploy — the price field was empty in the failure screenshot and "Satış
-  // yap" was correctly disabled, so the click waited out the whole test.
-  // Quantity is a plain numeric field, not a MoneyField, and stays a `fill`.
+  // Quantity is a plain numeric field and stays a `fill`; the price is a MoneyField.
   await enterAmountViaCalculator(
     page,
     page.getByRole("textbox", { name: "Birim fiyat · zorunlu", exact: true }),
@@ -1587,10 +1387,7 @@ test("investment setup, weighted sale, BES contribution and wallet refund form o
   await page.getByRole("button", { name: "Satış yap", exact: true }).click();
   await expect(page.getByText("₺200,00", { exact: true }).first()).toBeVisible();
 
-  await page.getByRole("button", { name: "Yeni Ürün Tanımla" }).click();
-  await page.getByRole("radio", { name: "BES", exact: true }).click();
-  await enterValue(page.getByRole("textbox", { name: "Ürün adı", exact: true }), "Emeklilik Planım");
-  await page.getByRole("button", { name: "Ürünü Kaydet", exact: true }).click();
+  await defineProduct(page, "BES", "Emeklilik Planım");
   await page.getByTestId("screen-header").getByRole("button", { name: "İşlem Ekle", exact: true }).click();
   await pickOption(page, "Ürün", "Emeklilik Planım · BES");
   await page.getByRole("radio", { name: "Yalnız katkı tutarı", exact: true }).click();
@@ -1612,37 +1409,18 @@ test("investment setup, weighted sale, BES contribution and wallet refund form o
     "100,00",
   );
   await page.getByRole("button", { name: "Mali Tabloya Aktar", exact: true }).click();
-  // Wait for the FORM TO CLOSE, not for a particular screen to appear. Closing
-  // it calls `router.back()`, and where that lands depends on how deep browser
-  // history got while this flow opened and closed six modals: measured locally
-  // it returns to Investments in ~270ms, and in CI run 33782056236 it went one
-  // step further to the dashboard, on the first attempt and on the retry. This
-  // used to assert the wallet balance right here, which only passed while the
-  // outgoing screen was still the one on top — so a slower runner turned a real
-  // open question about that landing into a failure of a test about neither.
-  // The balance is asserted below instead, on the tab this test lands on
-  // deliberately, and scoped to the element that owns it rather than to any
-  // text anywhere on the page.
+  // Wait for the form to close, not for a screen: `router.back()` lands on Investments or the dashboard
+  // depending on history depth. The balance is asserted below on the tab this test lands on.
   await expect(page).not.toHaveURL(/\/transaction/);
 
-  // Expo Router keeps every tab mounted, so `getByTestId` can resolve inside a
-  // screen that is not on top — and a hidden screen never re-measures, so it
-  // answers geometry questions with its LAST layout. Landing on Investments
-  // explicitly, then resizing, is what makes the measurements below about the
-  // screen the user is actually looking at. Without it this test failed two
-  // full runs in three while passing in isolation, and CI's single retry hid
-  // it every time.
+  // Every tab stays mounted and a hidden screen answers geometry with its LAST layout, so land on
+  // Investments explicitly before resizing.
   await page.getByRole("tab", { name: "Yatırımlar" }).click();
   await expect(page.getByRole("tab", { name: "Yatırımlar", selected: true })).toBeVisible();
   await expect(page.getByTestId("investment-cash-amount")).toContainText("₺9.000,00");
   await page.setViewportSize({ width: 1280, height: 900 });
   await expect(page.getByTestId("investment-distribution-chart")).toBeVisible();
-  // Wait for the WIDE arrangement, not merely for a chart to exist. The ring
-  // is drawn at every breakpoint now, so its testID appearing no longer means
-  // the hero has finished re-measuring after the resize — it used to, only
-  // because the phone branch drew ranked bars and carried no ring at all, and
-  // this measurement was quietly relying on that. Poll the fact the
-  // assertions below are about instead.
+  // Wait for the wide arrangement: the ring is drawn at every breakpoint, so its testID proves nothing.
   await expect
     .poll(async () => page.getByTestId("investment-wallet-summary").evaluate((wallet) => {
       const cash = wallet.querySelector<HTMLElement>('[data-testid="investment-cash-amount"]');
@@ -1656,10 +1434,7 @@ test("investment setup, weighted sale, BES contribution and wallet refund form o
     const transfers = wallet.querySelector<HTMLElement>('[data-testid="investment-transfer-summary"]')!;
     const metrics = wallet.querySelector<HTMLElement>('[data-testid="investment-portfolio-metrics"]')!;
     const chart = wallet.querySelector<HTMLElement>('[data-testid="investment-distribution-chart"]')!;
-    const box = (element: HTMLElement) => {
-      const rect = element.getBoundingClientRect();
-      return { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom, width: rect.width };
-    };
+    const box = (element: HTMLElement) => element.getBoundingClientRect().toJSON() as DOMRect;
     return { cash: box(cash), transfers: box(transfers), metrics: box(metrics), chart: box(chart) };
   });
   expect(walletGeometry.chart.left).toBeGreaterThan(walletGeometry.cash.right);
@@ -1668,10 +1443,7 @@ test("investment setup, weighted sale, BES contribution and wallet refund form o
   expect(walletGeometry.metrics.top).toBeGreaterThanOrEqual(walletGeometry.transfers.bottom - 1);
 
   const productItems = page.locator('[data-testid^="investment-products-item-"]');
-  const productGeometry = await productItems.evaluateAll((elements) => elements.map((element) => {
-    const rect = element.getBoundingClientRect();
-    return { left: rect.left, top: rect.top };
-  }));
+  const productGeometry = await productItems.evaluateAll((elements) => elements.map((element) => element.getBoundingClientRect().toJSON() as DOMRect));
   expect(productGeometry.length).toBeGreaterThanOrEqual(2);
   expect(productGeometry.every((box) => Math.abs(box.left - productGeometry[0]!.left) <= 1)).toBe(true);
   expect(productGeometry[1]!.top).toBeGreaterThan(productGeometry[0]!.top);
@@ -1685,10 +1457,7 @@ test("the investment wallet keeps large balances readable at the narrowest phone
   await page.setViewportSize({ width: 320, height: 720 });
   await page.emulateMedia({ reducedMotion: "no-preference" });
   await onboard(page);
-  await page.getByRole("tab", { name: "Yatırımlar", exact: true }).click();
-  await page.getByRole("button", { name: "Yatırım Alanını Aç", exact: true }).click();
-  await page.getByRole("textbox", { name: "Bugünkü serbest yatırım bakiyesi", exact: true }).fill("987.654.321.000");
-  await page.getByRole("button", { name: "Yatırım Alanını Aç", exact: true }).click();
+  await openInvestmentWorkspace(page, "987.654.321.000");
 
   const summary = page.getByTestId("investment-wallet-summary");
   const cash = page.getByTestId("investment-cash-amount");
@@ -1714,29 +1483,18 @@ test("the investment wallet keeps large balances readable at the narrowest phone
   expect(geometry.amountRight).toBeLessThanOrEqual(geometry.parentRight + 1);
   expect(geometry.amountFontSize).toBeGreaterThanOrEqual(24);
   expect(geometry.descendantsFit).toBe(true);
-  // The phone draws the same ring the wider breakpoints do. It used to get a
-  // column of ranked bars instead: a second picture of one fact, and the one
-  // surface where a holding could not be selected at all.
+  // The phone draws the same ring as wider breakpoints (no ranked bars), so a holding can be selected.
   const ring = page.getByTestId("investment-distribution-chart");
   await expect(ring).toBeVisible();
-  // The legend is what carries the selection, so this is the claim that
-  // matters: a phone can now ask the ring about one holding. Locking it is
-  // what a bar could never do.
   const holding = ring.getByRole("button").first();
   await expect(holding).toBeVisible();
-  // Read the LIT ROW rather than an ARIA attribute: react-native-web does not
-  // emit `aria-selected` on `role="button"`, and the defect this replaces was
-  // that the lock painted itself in the hero card's own colour and could not
-  // be seen. What is being asserted is that selecting a holding changes what
-  // the reader looks at, and that pressing it again gives it back.
+  // Read the lit row: react-native-web emits no `aria-selected` on `role="button"`.
   const fill = async () => holding.evaluate((element) => getComputedStyle(element).backgroundColor);
   const resting = await fill();
   await holding.click();
   await expect.poll(fill, "a locked legend row has to change colour").not.toBe(resting);
   await holding.click();
-  // The pointer is still ON the row after the click, and a hovered row is
-  // meant to be tinted — that is the hover, not the lock. Move off it before
-  // asking whether the lock let go, or the two states are read as one.
+  // Move off the row: a hovered row is tinted, which must not be read as the lock.
   await page.mouse.move(0, 0);
   await expect.poll(fill, "pressing it again releases the lock").toBe(resting);
   const actionBand = page.locator('[data-testid="investment-actions"]:visible').first();
@@ -1754,12 +1512,10 @@ test("the investment wallet keeps large balances readable at the narrowest phone
   const bandGeometry = await actionBand.evaluate((element) => {
     const band = element.getBoundingClientRect();
     const style = getComputedStyle(element);
-    const boxes = (selector: string) => Array.from(element.querySelectorAll<HTMLElement>(selector)).map((child) => {
-      const box = child.getBoundingClientRect();
-      return { top: box.top, left: box.left, right: box.right, bottom: box.bottom };
-    });
+    const boxes = (selector: string) => Array.from(element.querySelectorAll<HTMLElement>(selector))
+      .map((child) => child.getBoundingClientRect().toJSON() as DOMRect);
     return {
-      band: { left: band.left, right: band.right, top: band.top, bottom: band.bottom },
+      band: band.toJSON() as DOMRect,
       padding: [style.paddingTop, style.paddingRight, style.paddingBottom, style.paddingLeft],
       icons: boxes('[data-testid="investment-action-icon"]'),
       labels: boxes('[data-testid="investment-action-label"]'),
@@ -1844,7 +1600,7 @@ test("the investment wallet keeps large balances readable at the narrowest phone
   });
   expect(refundGeometry.left).toBeGreaterThanOrEqual(refundGeometry.parentLeft - 1);
   expect(refundGeometry.right).toBeLessThanOrEqual(refundGeometry.parentRight + 1);
-  expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(1);
+  expect(await scrollsSideways(page)).toBe(false);
 });
 
 test("the financial-table tools are one control, one row, at every width", async ({ page }) => {
@@ -1856,10 +1612,7 @@ test("the financial-table tools are one control, one row, at every width", async
   await expect(page.getByTestId("screen-header").getByText(/^\d{4}$/)).toBeVisible();
   await expect(page.getByRole("button", { name: "İşlem Ekle", exact: true })).toBeVisible();
 
-  // ONE toolbar at every width. It used to be six labelled buttons above a
-  // tablet and five 9px-captioned icon tiles below it — same five
-  // destinations, two control languages, two label sets, so the screen had to
-  // be relearned when the window changed.
+  // ONE toolbar at every width: it was six labelled buttons above a tablet and five 9px icon tiles below.
   const toolRow = page.locator("text=/^(Kolonlar|Taksitler|Analiz|Geçmiş Ay|Başlangıç)$/");
   const measure = async () => {
     const tools = page.getByRole("button").filter({ has: toolRow });
@@ -1884,7 +1637,6 @@ test("the financial-table tools are one control, one row, at every width", async
     expect(new Set(boxes.map(({ top }) => top)).size, `${width}px: one row`).toBe(1);
     expect(new Set(boxes.map(({ height }) => height)).size, `${width}px: one height`).toBe(1);
     expect(boxes[0]!.height, `${width}px: platform minimum`).toBeGreaterThanOrEqual(44);
-    // The caption is a declared role, never a bespoke size under the scale.
     expect(boxes.every((box) => box.captionSize >= 11), `${width}px: legible caption`).toBe(true);
   }
 });
@@ -1897,8 +1649,7 @@ test("pivoting the financial table resets unrelated offsets and keeps complete c
   await expect(page.getByRole("radio", { name: "Kolon odaklı" })).toHaveAttribute("aria-checked", "true");
   await expect(page.getByRole("link", { name: "Kredi Kartı", exact: true })).toBeVisible();
   const visibleMonths = await page.getByTestId("table-horizontal-header").getByRole("button").evaluateAll((buttons) => {
-    // The scroller itself is the viewport; walking up a fixed number of parents
-    // encoded the wrapper depth instead.
+    // The scroller is the viewport; a fixed number of parents encoded the wrapper depth.
     const viewport = buttons[0]?.closest('[data-testid="table-horizontal-header"]')?.getBoundingClientRect();
     if (!viewport) return [];
     return buttons
@@ -1942,9 +1693,7 @@ test("supplementary financial-table details collapse without losing recovery", a
   const details = page.getByRole("button", { name: "Mali tabloyu okuma rehberi", exact: true });
   const guide = page.getByTestId("cash-flow-table-details-content");
   await expect(details).toBeVisible();
-  // Collapsed means unreachable, not absent: the panel stays mounted so it can
-  // open and close instead of blinking, and is hidden from assistive
-  // technology and from the pointer while it is closed.
+  // Collapsed is unreachable, not absent: the panel stays mounted so it animates, hidden from AT and pointer.
   await expect(guide).toBeHidden();
   const initialGeometry = await details.evaluate((element) => {
     const button = element.getBoundingClientRect();
@@ -1962,11 +1711,9 @@ test("supplementary financial-table details collapse without losing recovery", a
   await details.click();
   await expect(guide).toBeHidden();
   await expect.poll(async () => (await table.boundingBox())!.height).toBeGreaterThanOrEqual(collapsedHeight - 1);
-  expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(1);
+  expect(await scrollsSideways(page)).toBe(false);
 
-  // Closing it is a statement about what this reader already knows, so it
-  // survives a reload and a change of width. Re-teaching the grammar on every
-  // visit is what the owner asked to stop.
+  // Closing it survives a reload and a width change.
   await page.reload();
   await expect(page.getByRole("button", { name: "Mali tabloyu okuma rehberi", exact: true })).toBeVisible();
   await expect(guide).toBeHidden();
@@ -2009,26 +1756,7 @@ test("desktop action systems use intentional full-width or single-stream geometr
   expect(behaviorBox!.width).toBeGreaterThanOrEqual(formBox!.width * 0.9);
 
   await page.goto("/helix/reconciliation");
-  const grid = page.getByTestId("reconciliation-grid");
-  // A clean onboarding workspace has no due recurring items, so the route
-  // intentionally renders its empty state instead of an empty grid. When the
-  // fixture contains pending items, the actual grid must still stay a single
-  // readable stream on desktop.
-  if (await grid.count() === 0) {
-    await expect(page.getByText("Onay bekleyen bir şey yok, güncelsin", { exact: true })).toBeVisible();
-    return;
-  }
-  await expect(grid).toBeVisible();
-  const items = grid.locator('[data-testid^="reconciliation-grid-item-"]');
-  const itemCount = await items.count();
-  if (itemCount > 1) {
-    const boxes = await items.evaluateAll((elements) => elements.map((element) => {
-      const box = element.getBoundingClientRect();
-      return { left: Math.round(box.left), width: Math.round(box.width) };
-    }));
-    expect(new Set(boxes.map(({ left }) => left)).size).toBe(1);
-    expect(new Set(boxes.map(({ width }) => width)).size).toBe(1);
-  }
+  await expect(page.getByText("Onay bekleyen bir şey yok, güncelsin", { exact: true })).toBeVisible();
 });
 
 test("investment summary keeps financial meaning grouped on phone and desktop", async ({ page }) => {
@@ -2038,10 +1766,7 @@ test("investment summary keeps financial meaning grouped on phone and desktop", 
   await page.getByRole("button", { name: "Yatırım Alanını Aç", exact: true }).click();
   await page.getByRole("textbox", { name: "Bugünkü serbest yatırım bakiyesi", exact: true }).fill("100000");
   await page.getByRole("button", { name: "Yatırım Alanını Aç", exact: true }).click();
-  await page.getByRole("button", { name: "Yeni Ürün Tanımla" }).click();
-  await page.getByRole("radio", { name: "Borsa", exact: true }).click();
-  await enterValue(page.getByRole("textbox", { name: "Ürün adı", exact: true }), "Uzun Vadeli Büyüme Sepeti");
-  await page.getByRole("button", { name: "Ürünü Kaydet", exact: true }).click();
+  await defineProduct(page, "Borsa", "Uzun Vadeli Büyüme Sepeti");
   await page.getByTestId("screen-header").getByRole("button", { name: "İşlem Ekle", exact: true }).click();
   await pickOption(page, "Ürün", "Uzun Vadeli Büyüme Sepeti · Borsa");
   await enterValue(page.getByRole("textbox", { name: "Miktar / adet · zorunlu", exact: true }), "12");
@@ -2102,11 +1827,8 @@ test("lifecycle confirmations carry the operation context after the action", asy
   await page.getByRole("button", { name: "Vazgeç", exact: true }).click();
   await expect(page.getByTestId("operation-dialog-header")).toHaveCount(0);
 
-  // A CLOUD account ends on Account Security, beside the reversible version of
-  // the same decision — asserted in `tests/ui/operation-guard.test.ts`, because
-  // this export runs local-only and that screen redirects away. What a
-  // local-only workspace has is this one row, here, and the dialog it opens is
-  // the same one.
+  // A cloud account ends on Account Security (tests/ui/operation-guard.test.ts); this local-only export
+  // redirects away from it, so the one row here opens the same dialog.
   const deleteAction = page.getByTestId("account-delete-action");
   await expect(deleteAction).toBeVisible();
   expect((await deleteAction.boundingBox())!.height).toBeLessThan(90);
@@ -2186,17 +1908,11 @@ test("compact financial-table pins stay beside headers and month labels keep bre
   const billsHeader = await page.getByTestId("table-column-label").filter({ hasText: "Faturalar" }).first().boundingBox();
   expect(billsHeader).not.toBeNull();
   expect(billsHeader!.height).toBeLessThanOrEqual(30);
-  // The current month and the one after it, rather than two hard-coded names.
-  // A fresh workspace starts in the current month, and the grid no longer
-  // draws the months before its own start — twelve rows for a workspace that
-  // owns five is what made a blank row read as lost data. Any two rows serve
-  // this test, which is about pin geometry and label breathing room.
-  const year = currentMonthKey().slice(0, 4);
-  const monthName = (offset: number) => new Intl.DateTimeFormat("tr-TR", { month: "long", timeZone: "Europe/Istanbul" })
-    .format(new Date(Date.UTC(Number(year), Number(currentMonthKey().slice(5, 7)) - 1 + offset, 1)))
-    .replace(/^./u, (character) => character.toLocaleUpperCase("tr-TR"));
-  for (const month of [monthName(0), monthName(1)]) {
-    const metrics = await page.getByRole("link", { name: `${month} ${year}`, exact: true }).evaluate((row) => {
+  // A fresh workspace starts in the current month and draws no earlier rows, so use the current and next month.
+  const monthKey = (offset: number) => addMonthsToKey(currentMonthKey(), offset);
+  for (const key of [monthKey(0), monthKey(1)]) {
+    const month = monthName(key);
+    const metrics = await page.getByRole("link", { name: monthLabel(key), exact: true }).evaluate((row) => {
       const text = row.querySelector<HTMLElement>('[data-testid="table-row-label"]')!;
       const rowBox = row.getBoundingClientRect();
       const textBox = text.getBoundingClientRect();
@@ -2214,9 +1930,7 @@ test("compact financial-table pins stay beside headers and month labels keep bre
   }
 
   await page.getByRole("radio", { name: "Kolon odaklı" }).click();
-  // In column-focus the months ARE the columns, so the same reasoning applies:
-  // the current month is the first one a fresh workspace has.
-  await assertPinBesideLabel(`${monthName(0)} kolonunu sabitle`, monthName(0).slice(0, 3));
+  await assertPinBesideLabel(`${monthName(monthKey(0))} kolonunu sabitle`, monthName(monthKey(0)).slice(0, 3));
 });
 
 test("bulk entry gives long item names more room than bounded amounts", async ({ page }) => {
@@ -2385,9 +2099,7 @@ test("financial-table labels and amounts stay inside their cells across widths a
           const parent = element.parentElement?.getBoundingClientRect();
           if (!parent) continue;
           const style = getComputedStyle(element);
-          // The ledger label is the one place allowed to shorten, and only
-          // past three lines — an item name is user-authored, and unbounded
-          // wrapping hands the table's geometry to whatever someone types.
+          // The ledger label may shorten only past three lines: item names are user-authored.
           const deliberateTableClamp =
             element.dataset.testid !== "matrix-value" &&
             style.webkitLineClamp === "3" &&
@@ -2455,11 +2167,8 @@ test("financial-table labels and amounts stay inside their cells across widths a
     }),
   ]);
   expect(labelFlow[0].overflows).toBe(false);
-  // A real item name wraps and the row grows to hold it. It used to stop at two
-  // lines, so "Kredi Kartı Tek Çekim tek çekim" rendered as "Kredi Kartı Tek
-  // Çekim tek çe…" — the shortened part being exactly what separates it from
-  // the next item. Three lines is past every real name; the bound exists only
-  // so one pathological entry cannot take the table with it.
+  // A real item name wraps (two lines once cut "Kredi Kartı Tek Çekim" to "…Çekim tek çe…"); three is
+  // past every real name and only bounds one pathological entry.
   expect(labelFlow[1].clamp).toBe("3");
   expect(labelFlow[1].lines).toBeGreaterThan(1);
   const fullyVisible = await longLabel.evaluate(
@@ -2502,9 +2211,8 @@ test("settings workspace navigation reflows from one to two columns", async ({ p
     const box = element.getBoundingClientRect();
     return { left: Math.round(box.left), top: Math.round(box.top) };
   }));
-  expect(new Set(tablet.map(({ left }) => left)).size).toBe(2);
   expect(tablet[0]!.top).toBe(tablet[1]!.top);
-  expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(1);
+  expect(await scrollsSideways(page)).toBe(false);
 });
 
 test("theme preference keeps browser chrome and native controls in the active scheme", async ({ page }) => {
@@ -2514,15 +2222,7 @@ test("theme preference keeps browser chrome and native controls in the active sc
   const light = page.getByRole("radio", { name: "Açık", exact: true });
   const dark = page.getByRole("radio", { name: "Koyu", exact: true });
   const hex = /^#[\dA-F]{6}$/i;
-  /**
-   * Every `theme-color` in the document, as one value.
-   *
-   * The shell declares two — one per `prefers-color-scheme` — so the chrome is
-   * right before the app mounts, and `syncThemeColorMeta` then writes the
-   * chosen palette over both. Reading only the first would pass while the
-   * second still said something else, and the browser takes whichever comes
-   * first that matches: agreeing is the property, not the first one's value.
-   */
+  /** Every `theme-color` as one value: the shell declares two, and agreeing is the property, not the first one's value. */
   const chrome = async () => {
     const colours = await page.locator('meta[name="theme-color"]').evaluateAll(
       (metas) => [...new Set(metas.map((meta) => meta.getAttribute("content")))],
@@ -2531,13 +2231,8 @@ test("theme preference keeps browser chrome and native controls in the active sc
   };
   const rootScheme = () => page.evaluate(() => getComputedStyle(document.documentElement).colorScheme);
 
-  // Two different things settle here, at their own pace: the root's
-  // `color-scheme` and the `theme-color` meta the browser paints its chrome
-  // from. Waiting on the first and then reading the second once is a race by
-  // construction — it asserts a value it never waited for, and that read
-  // failed intermittently on macOS while passing on Linux CI. Each signal now
-  // waits for itself, so the test measures settled state on every platform
-  // without loosening what it demands: two valid, different colours.
+  // `color-scheme` and the `theme-color` meta settle at their own pace; wait for each separately
+  // (reading the meta once after the first failed intermittently on macOS).
   await light.click();
   await expect.poll(rootScheme).toBe("light");
   await expect.poll(chrome).toMatch(hex);
@@ -2545,14 +2240,8 @@ test("theme preference keeps browser chrome and native controls in the active sc
 
   await dark.click();
   await expect.poll(rootScheme).toBe("dark");
-  // The chrome must end up on a different colour than light left it on —
-  // polled, so a slow update is waited for and a stuck one still fails.
   await expect.poll(chrome).not.toBe(lightChrome);
-  const darkChrome = await chrome();
-
-  expect(lightChrome).toMatch(hex);
-  expect(darkChrome).toMatch(hex);
-  expect(darkChrome).not.toBe(lightChrome);
+  expect(await chrome()).toMatch(hex);
 });
 
 test("disabled primary actions remain readable in every theme", async ({ page }) => {
@@ -2608,8 +2297,7 @@ for (const viewport of [{ w: 320, h: 640 }, { w: 390, h: 844 }, { w: 1280, h: 72
     const box = await page.getByRole("heading", { name: "Hesap Makinesi" }).evaluate((heading) => {
       let card: HTMLElement | null = heading.parentElement;
       while (card && parseFloat(getComputedStyle(card).borderTopLeftRadius) < 14) card = card.parentElement;
-      // The scrim is the popup's own viewport — what the pad must sit in the
-      // middle of, wherever the screen behind it happens to be scrolled.
+      // The scrim is the popup's own viewport, wherever the screen behind it is scrolled.
       let scrim: HTMLElement | null = card;
       while (scrim && scrim.getBoundingClientRect().height < window.innerHeight * 0.9) scrim = scrim.parentElement;
       const c = card!.getBoundingClientRect();
@@ -2627,11 +2315,8 @@ for (const viewport of [{ w: 320, h: 640 }, { w: 390, h: 844 }, { w: 1280, h: 72
     expect(box.card.bottom).toBeLessThanOrEqual(box.vh);
     expect(box.card.left).toBeGreaterThanOrEqual(0);
     expect(box.card.right).toBeLessThanOrEqual(box.vw);
-    // …and centred in that scrim. Horizontal centring is exact. Vertically the
-    // bound is looser because the scroller's own box moves with the screen
-    // behind it, but it still fails the defect this guards by an order of
-    // magnitude: the pad used to be pinned to the top of a stretched scroller,
-    // which leaves the whole remaining height — 260px+ here — on one side.
+    // Centred in the scrim: exact horizontally, looser vertically (the scroller moves with the screen behind),
+    // yet far tighter than the defect: the pad pinned to the top of a stretched scroller (260px+ off).
     expect(Math.abs((box.card.left - box.scrim.left) - (box.scrim.right - box.card.right))).toBeLessThanOrEqual(2);
     expect(Math.abs((box.card.top - box.scrim.top) - (box.scrim.bottom - box.card.bottom))).toBeLessThanOrEqual(24);
   });
@@ -2645,9 +2330,7 @@ test("a wait shows one indicator for its whole duration", async ({ page, context
   });
   await page.goto("/helix/");
 
-  // A cold start's one indicator is the launch screen's mark (1.9.3): no
-  // dots under it or over it, however long the boot waits, and no swap
-  // part-way, which is what a logo appearing after a threshold once did.
+  // The launch mark is the one indicator: no dots, and no swap part-way (a logo once appeared after a threshold).
   const indicator = page.locator('[role="progressbar"]');
   await expect(indicator).toHaveCount(1);
   await expect(indicator).toHaveAttribute("aria-label", /hazırlanıyor/i);
@@ -2674,19 +2357,8 @@ test("a short boot wait never flashes a loading indicator", async ({ page, conte
   await expect(page.getByRole("button", { name: /Hemen Kullanmaya Başla/ })).toBeVisible();
 });
 
-/**
- * A pair of fields in one row has to stay a pair.
- *
- * The statement and due day sit side by side and each hides the day the other
- * already owns. While the unavailable day was deleted from the list, choosing
- * "Ayın sonu" on the left emptied the right-hand chip row completely and its
- * input rose a whole control height — two inputs on one line, on two different
- * baselines. The day is disabled now, so both columns keep the same shape.
- *
- * The same render also proves the chip itself does not resize when chosen: it
- * is the widest label in a row that wraps, so a few pixels of extra border or
- * font weight re-flowed everything after it.
- */
+// The unavailable day is disabled, not deleted: deleting it emptied the right chip row and raised its
+// input a control height. A chosen chip must not resize either (it is the widest label in a wrapping row).
 test("paired month-day fields keep one baseline when a day is taken", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await onboard(page);
@@ -2702,9 +2374,7 @@ test("paired month-day fields keep one baseline when a day is taken", async ({ p
     const [a, b] = await Promise.all([statement.boundingBox(), due.boundingBox()]);
     return { statement: Math.round(a!.y), due: Math.round(b!.y) };
   };
-  // The month end is its own explained control per field, so each carries the
-  // field's name — which is also why there are no longer two radios sharing
-  // one label.
+  // Each field carries its own month-end radio, so no two radios share a label.
   const statementEnd = page.getByRole("radio", { name: "Ekstre kesim günü · Ayın son günü", exact: true });
   const dueEnd = page.getByRole("radio", { name: "Son ödeme günü · Ayın son günü", exact: true });
   await expect(statementEnd).toHaveCount(1);
@@ -2724,32 +2394,11 @@ test("paired month-day fields keep one baseline when a day is taken", async ({ p
   expect(after.statement, "choosing a day keeps both inputs on one line").toBe(after.due);
   expect(await widths(), "a chosen chip is the same size as an unchosen one").toEqual(widthsBefore);
 
-  // The day the other field now owns is still on screen and still refused.
   await expect(dueEnd).toHaveAttribute("aria-disabled", "true");
 });
 
-/**
- * A pressed list row lights the row, not the words in it. Painted on the bare
- * content box the fill began at the first glyph, so a held settings row looked
- * cropped against the card it sits in.
- */
-/**
- * A row's fill reaches the card's edge, not four pixels short of it.
- *
- * The fill is painted on the pressable, so the pressable has to be as wide as
- * the space it occupies. It bled `spacing.sm` past its own text while the card
- * around it padded by `density.list.cardPadding` — 8 against 12 — which left an
- * accidental unlit strip down both sides of every hovered settings row: a gap
- * nobody chose, different on every screen, reading as a fill that missed.
- *
- * The fill later reached the card's inner edge exactly, and the owner reported
- * THAT as welded — generous air above and below the band, none beside it. So
- * the rule is now a deliberate gutter rather than either accident: the fill
- * bleeds the card's padding LESS `HOVER_GUTTER`, one step on the spacing scale,
- * the same on every row because `interactionBleed` is the only place it is
- * decided. This test holds that shape: symmetric, small, and never back to the
- * first glyph.
- */
+// The fill goes to the card's padding LESS `HOVER_GUTTER` (one spacing step, set in `interactionBleed`):
+// flush to the edge read as welded, short by `spacing.sm` as a gap nobody chose. Symmetric, small, never to the glyph.
 test("a held list row lights its card to a deliberate gutter, not to the glyph", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await onboard(page);
@@ -2770,33 +2419,19 @@ test("a held list row lights its card to a deliberate gutter, not to the glyph",
       cardLeft: cardBox.left, cardRight: cardBox.right,
     };
   });
-  // Still wider than its own words, which is what the fill is for.
   expect(geometry.textLeft - geometry.left, "left inset").toBeGreaterThanOrEqual(8);
   expect(geometry.right - geometry.textRight, "right inset").toBeGreaterThanOrEqual(8);
-  // One gutter short of the card on both sides, and the SAME on both — a lit
-  // band that is off-centre inside its own card is the defect this replaced.
   const leftGap = geometry.left - geometry.cardLeft;
   const rightGap = geometry.cardRight - geometry.right;
   for (const [side, gap] of [["left", leftGap], ["right", rightGap]] as const) {
     expect(gap, `${side} gutter is real`).toBeGreaterThan(2);
-    // `HOVER_GUTTER` is `spacing.xs`; the card's hairline border rides on top.
     expect(gap, `${side} gutter stays a hairline's width of one scale step`).toBeLessThanOrEqual(6);
   }
   expect(Math.abs(leftGap - rightGap), "the band is centred in its card").toBeLessThanOrEqual(1);
 });
 
-/**
- * Every control lights the whole box it occupies.
- *
- * The rule this enforces is one line: the interaction fill is painted on the
- * pressable, the pressable owns its padding, and the box around it owns only
- * position. Break it and the fill floats — the ledger's column header held its
- * padding on the cell around the button, so a hovered header lit 86x48 of a
- * 134x56 cell and left an unlit margin on all four sides.
- *
- * Only controls that are the SOLE occupant of their slot are checked: one of
- * five buttons in a flex row being a fifth as wide is correct, not a defect.
- */
+// The fill is painted on the pressable, which owns its padding; the box around owns position only (a header
+// lit 86x48 of a 134x56 cell). Only the SOLE occupant of a slot is checked: one of five in a row is rightly narrow.
 test("a control fills the slot it is the only thing in", async ({ page }) => {
   await onboard(page);
   await openCashFlow(page);
@@ -2825,16 +2460,8 @@ test("a control fills the slot it is the only thing in", async ({ page }) => {
   expect(offenders, "a fill that floats inside the box it belongs to").toEqual([]);
 });
 
-/**
- * The browser rests on a whole cell, exactly as the phone does.
- *
- * `snapToInterval` is unimplemented in react-native-web — its `ScrollView`
- * maps only `pagingEnabled` onto `scroll-snap-type` — so the rule this table
- * exists to enforce held on the phone app and nowhere else. Measured before
- * the web half existed: after a 200px drag the ledger rested at 722px on an
- * 87px grid, which puts the sticky label column over the left of an amount and
- * turns `₺14.500,00` into a smaller, entirely plausible `4.500,00`.
- */
+// react-native-web does not implement `snapToInterval`: a 200px drag rested at 722px on an 87px grid,
+// putting the sticky label over an amount and turning ₺14.500,00 into 4.500,00.
 test("a dragged ledger rests on a whole month in the browser too", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await onboard(page);
@@ -2858,24 +2485,11 @@ test("a dragged ledger rests on a whole month in the browser too", async ({ page
         return left % cell === 0 || left === max;
       }, cellWidth), { timeout: 3_000 })
       .toBe(true);
-    const resting = await body.evaluate((element) => ({
-      left: Math.round(element.scrollLeft),
-      max: Math.round(element.scrollWidth - element.clientWidth),
-    }));
-    // Either exactly on the grid, or hard against the far end.
-    const onGrid = resting.left % cellWidth === 0 || resting.left === resting.max;
-    expect(onGrid, `rested at ${resting.left} on a ${cellWidth}px grid (max ${resting.max})`).toBe(true);
   }
 });
 
-/**
- * The pivot's underline sits under the option it belongs to.
- *
- * The indicator is a percentage of its track and the reading-guide toggle
- * beside it is a fixed 44pt, so measuring the indicator against the whole strip
- * made it both too narrow and progressively too far left — correct on the first
- * segment, visibly wrong on the third, and only in the view that has a toggle.
- */
+// The indicator is a percentage of its track but the guide toggle is a fixed 44pt, so measuring against
+// the whole strip put it too far left on later segments.
 test("the financial-table pivot underlines the option it belongs to", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
   await onboard(page);

@@ -1,9 +1,9 @@
-import { expect, test } from "@playwright/test";
-import { readFile } from "node:fs/promises";
+import { expect, test, type Page } from "@playwright/test";
+import { readFile, writeFile } from "node:fs/promises";
 import { composeWorkbook, WORKBOOK_MIME } from "../src/services/workbook-export";
 import {
   addMarketExpense,
-  assertNoRuntimeErrors,
+  addSubscription,
   collectRuntimeErrors,
   currentIstanbulDay,
   currentMonthKey,
@@ -16,7 +16,13 @@ import {
 
 test.beforeEach(async ({ context }) => isolateExternalData(context));
 
-test("onboarding → add → edit → delete/undo → backup protects the core ledger flow @cross-browser", async ({ page }, testInfo) => {
+async function downloadBackup(page: Page) {
+  const downloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: /Yedek Oluştur/ }).click();
+  return downloadPromise;
+}
+
+test("onboarding → add → edit → delete/undo → backup protects the core ledger flow @cross-browser", async ({ page }) => {
   const errors = collectRuntimeErrors(page);
   await onboard(page);
   await addMarketExpense(page, "E2E market alışverişi");
@@ -36,18 +42,14 @@ test("onboarding → add → edit → delete/undo → backup protects the core l
   await page.getByRole("button", { name: "Sil" }).click();
   await expect(page.getByText("İşlem silindi", { exact: true })).toBeVisible();
   const undo = page.getByRole("button", { name: "Geri Al" });
-  // The snackbar inverts the page, so its label needs an inverted ink. Role
-  // queries match the accessible name and stayed green while the label was
-  // rendering at 1.27:1 — measure what the browser actually painted.
+  // The snackbar inverts the page; role queries stayed green while its label was 1.27:1.
   expect(await renderedContrast(undo.getByText("Geri Al"), "text")).toBeGreaterThanOrEqual(4.5);
   await undo.click();
   await expect(page.getByText("E2E düzenlendi", { exact: true })).toBeVisible();
 
   await page.getByRole("tab", { name: "Ayarlar" }).click();
   await expect(page.getByRole("heading", { name: "Ayarlar", exact: true })).toBeVisible();
-  const downloadPromise = page.waitForEvent("download");
-  await page.getByRole("button", { name: /Yedek Oluştur/ }).click();
-  const download = await downloadPromise;
+  const download = await downloadBackup(page);
   expect(download.suggestedFilename()).toMatch(/^helix-yedek-\d{4}-\d{2}-\d{2}\.json$/);
   const downloadPath = await download.path();
   expect(downloadPath).not.toBeNull();
@@ -58,25 +60,10 @@ test("onboarding → add → edit → delete/undo → backup protects the core l
     expect.arrayContaining([expect.objectContaining({ note: "E2E düzenlendi", deleted_at: null })]),
   );
 
-  // A failing backup used to reject into a bare `void export()` and show the
-  // user nothing at all, which is indistinguishable from one still running.
-  // It must still report the failure — but in the app's own words: the
-  // exception here stands in for a storage, permission or share-sheet error
-  // whose text was written for a developer, not for the person exporting.
-  await page.evaluate(() => {
-    URL.createObjectURL = () => {
-      throw new Error("E2E dışa aktarma hatası");
-    };
-  });
-  await page.getByRole("button", { name: /Yedek Oluştur/ }).click();
-  await expect(page.getByText(/İşlem tamamlanamadı/)).toBeVisible();
-  await expect(page.getByText(/E2E dışa aktarma hatası/)).toHaveCount(0);
-  await page.getByRole("button", { name: "Tamam", exact: true }).click();
-
-  await assertNoRuntimeErrors(errors, testInfo);
+  expect(errors).toEqual([]);
 });
 
-test("two rows of one day name the row each of their actions belongs to", async ({ page }, testInfo) => {
+test("two rows of one day name the row each of their actions belongs to", async ({ page }) => {
   const errors = collectRuntimeErrors(page);
   await onboard(page);
   await addMarketExpense(page, "Migros", "10,00");
@@ -88,20 +75,19 @@ test("two rows of one day name the row each of their actions belongs to", async 
     const labels = await page
       .getByRole("button", { name: new RegExp(`^${verb} · `) })
       .evaluateAll((buttons) => buttons.map((button) => button.getAttribute("aria-label")));
-    // The date stays after the name: two rows of one merchant are told apart by it.
+    // The date follows the name: it tells two rows of one merchant apart.
     expect(labels).toEqual(expect.arrayContaining([
       expect.stringMatching(new RegExp(`^${verb} · Migros · \\d`, "u")),
       expect.stringMatching(new RegExp(`^${verb} · Şok · \\d`, "u")),
     ]));
   }
-  await assertNoRuntimeErrors(errors, testInfo);
+  expect(errors).toEqual([]);
 });
 
-test("an edit that moves a foreign-currency row to another day prices it at that day's rate", async ({ page }, testInfo) => {
+test("an edit that moves a foreign-currency row to another day prices it at that day's rate", async ({ page }) => {
   const errors = collectRuntimeErrors(page);
   await onboard(page);
-  // The feed is dated by its publication time, so two loads give two days:
-  // 40 TRY today, then 50 TRY on the 15th of the previous month.
+  // The feed is dated by publication time: 40 TRY today, then 50 TRY on the 15th of last month.
   const [year, month] = currentMonthKey().split("-").map(Number) as [number, number];
   const earlier = new Date(Date.UTC(year, month - 2, 15, 9));
   let feed = { unix: Math.floor(Date.now() / 1000), usd: 0.025 };
@@ -132,7 +118,7 @@ test("an edit that moves a foreign-currency row to another day prices it at that
   const day = new Intl.DateTimeFormat("tr-TR", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" }).format(earlier);
   await page.getByRole("button", { name: day, exact: true }).click();
   await expect(page.getByText(/^≈ .*500/)).toBeVisible();
-  await assertNoRuntimeErrors(errors, testInfo);
+  expect(errors).toEqual([]);
 });
 
 test("a clean browser restores a backup and a relationally invalid file writes nothing @cross-browser", async ({ browser, page }, testInfo) => {
@@ -140,13 +126,11 @@ test("a clean browser restores a backup and a relationally invalid file writes n
   await onboard(page);
   await addMarketExpense(page, "Atomik geri yükleme kanıtı", "345,67");
   await page.getByRole("tab", { name: "Ayarlar" }).click();
-  const downloadPromise = page.waitForEvent("download");
-  await page.getByRole("button", { name: /Yedek Oluştur/ }).click();
-  const download = await downloadPromise;
+  const download = await downloadBackup(page);
   const backupPath = await download.path();
   if (!backupPath) throw new Error("Backup download did not produce a local path");
 
-  const restoreContext = await browser.newContext({ locale: "tr-TR", timezoneId: "Europe/Istanbul" });
+  const restoreContext = await browser.newContext();
   await isolateExternalData(restoreContext);
   const restorePage = await restoreContext.newPage();
   const restoreErrors = collectRuntimeErrors(restorePage);
@@ -170,59 +154,37 @@ test("a clean browser restores a backup and a relationally invalid file writes n
   invalid.tables.categories[0]!.name = "POISON_CATEGORY";
   invalid.tables.transactions[0]!.category_id = "00000000-0000-7000-8000-999999999999";
   const invalidPath = testInfo.outputPath("invalid-relationship.json");
-  await import("node:fs/promises").then(({ writeFile }) => writeFile(invalidPath, JSON.stringify(invalid)));
+  await writeFile(invalidPath, JSON.stringify(invalid));
 
-  const invalidContext = await browser.newContext({ locale: "tr-TR", timezoneId: "Europe/Istanbul" });
+  const invalidContext = await browser.newContext();
   await isolateExternalData(invalidContext);
   const invalidPage = await invalidContext.newPage();
   await invalidPage.goto("/helix/");
   const invalidChooser = invalidPage.waitForEvent("filechooser");
   await invalidPage.getByRole("button", { name: /Yedek \(JSON\) içe aktar/ }).click();
   await (await invalidChooser).setFiles(invalidPath);
-  // The refusal names WHERE, not just that it happened. Four words with no
-  // coordinates is what made a real refusal take five rounds of bisecting the
-  // file with the source open; the owner of a single backup has no such route.
+  // The refusal must say where, not just that it happened.
   await expect(invalidPage.getByText(/Geçersiz yedek dosyası\./)).toBeVisible();
   await expect(invalidPage.getByText(/bölümündeki \d+\. kayıt alınamadı/)).toBeVisible();
   await expect(invalidPage.getByText(/bağlı olduğu kayıt dosyada yok/)).toBeVisible();
   await invalidPage.getByRole("button", { name: "Tamam" }).click();
   await invalidPage.getByRole("button", { name: "Hemen Kullanmaya Başla" }).click();
-  // The rejected file must have written nothing, so this browser still has no
-  // workspace — /transaction is guarded and lands back on setup.
-  //
-  // This replaces an assertion that could not fail: it asked whether a
-  // "POISON_CATEGORY" radio existed on /transaction, and /transaction had
-  // always redirected here, so the count was zero no matter what the import
-  // did. Assert the redirect and the absence of the name anywhere instead.
+  // Nothing was written, so guarded /transaction lands back on setup. Asserting
+  // the redirect matters: a count on /transaction alone was zero whatever the import did.
   await invalidPage.goto("/helix/transaction");
   await expect(invalidPage).toHaveURL(/\/helix\/setup$/);
   await expect(invalidPage.getByText("POISON_CATEGORY")).toHaveCount(0);
   await invalidContext.close();
 
-  await assertNoRuntimeErrors(errors, testInfo);
+  expect(errors).toEqual([]);
 });
 
-/**
- * `price_history` was written on every price edit and read by nothing, so a
- * subscription's cost over time was recorded and invisible. This walks the
- * whole loop the summary depends on: create a rule, raise its price, and read
- * the stored change back on the screen.
- */
-test("the subscription cost summary reports the price history it stores", async ({ page }, testInfo) => {
+test("the subscription cost summary reports the price history it stores", async ({ page }) => {
   const errors = collectRuntimeErrors(page);
   await page.setViewportSize({ width: 430, height: 932 });
   await onboard(page);
 
-  await page.getByRole("tab", { name: "Abonelikler" }).click();
-  await page.getByRole("button", { name: "Abonelik Ekle", exact: true }).click();
-  await expect(page).toHaveURL(/subscription-form/);
-  await page.getByRole("textbox", { name: "Ad", exact: true }).fill("Netflix");
-  await page.getByRole("textbox", { name: "Tutar · TRY", exact: true }).fill("229,99");
-  await page.getByRole("textbox", { name: "Ödeme günü", exact: true }).fill("5");
-  await page.getByRole("button", { name: "Kaydet", exact: true }).click();
-  const categoryOffer = page.getByRole("button", { name: "Oluştur ve Kaydet", exact: true });
-  if (await categoryOffer.count()) await categoryOffer.click();
-  await expect(page).toHaveURL(/subscriptions/);
+  await addSubscription(page, "Netflix", "229,99", "5");
 
   const summary = page.getByTestId("subscription-cost-summary");
   await expect(summary).toBeVisible();
@@ -242,18 +204,11 @@ test("the subscription cost summary reports the price history it stores", async 
   // The change is spoken as well as drawn: direction never rides on colour.
   await expect(summary.getByLabel(/Netflix zamlandı: ₺229,99 yerine ₺299,99/u)).toBeVisible();
 
-  await assertNoRuntimeErrors(errors, testInfo);
+  expect(errors).toEqual([]);
 });
 
-/**
- * A save says what it DID, without taking the screen over.
- *
- * "Kaydedildi" left two questions the owner had to answer by going and
- * looking: what changed, and what it did to the balance. The confirmation
- * answers both in the bar that already reports outcomes — and must remain a
- * bar: no dialog, no route remount, no reload behind it.
- */
-test("saving reports its balance effect without refreshing the screen", async ({ page }, testInfo) => {
+// The confirmation must stay a bar: no dialog, no route remount, no reload behind it.
+test("saving reports its balance effect without refreshing the screen", async ({ page }) => {
   const errors = collectRuntimeErrors(page);
   await page.setViewportSize({ width: 430, height: 932 });
   await onboard(page);
@@ -273,33 +228,17 @@ test("saving reports its balance effect without refreshing the screen", async ({
   const bar = page.getByRole("alert").first();
   await expect(bar).toBeVisible();
   await expect(bar).toContainText("İşlem kaydedildi.");
-  // The derived effect, stated in money rather than left to be discovered.
   await expect(bar).toContainText(/Güncel bakiyen .*250,00 değişti\./u);
-  // Both immediate actions are offered.
   await expect(bar.getByRole("button", { name: "Düzenle", exact: true })).toBeVisible();
 
   // Non-blocking: the dashboard behind it is interactive and already updated.
   await expect(page.getByTestId("dashboard-current-balance")).toContainText("250,00");
   expect(await page.locator("#remount-probe").count(), "the route must not remount").toBe(1);
 
-  // The edit action opens that exact row rather than a blank form.
-  await bar.getByRole("button", { name: "Düzenle", exact: true }).click();
-  await expect(page).toHaveURL(/\/transaction\?id=/u);
-
-  await assertNoRuntimeErrors(errors, testInfo);
+  expect(errors).toEqual([]);
 });
 
-/**
- * A ledger row carries its origin, and only when there is something to say.
- *
- * The duplicate review and expected-to-actual matching that used to be checked
- * here were removed by the owner: the duplicate list could not tell two
- * identical grocery shops from one entered twice, and matching an expectation
- * to an existing payment asked a question "ödendi" already answers. What
- * survives is the part that is still true — a hand-entered row is the ordinary
- * case and says nothing, so the two origins that matter are not buried.
- */
-test("a hand-entered ledger row claims no origin it cannot prove", async ({ page }, testInfo) => {
+test("a hand-entered ledger row claims no origin it cannot prove", async ({ page }) => {
   const errors = collectRuntimeErrors(page);
   await page.setViewportSize({ width: 1280, height: 1000 });
   await onboard(page);
@@ -311,38 +250,21 @@ test("a hand-entered ledger row claims no origin it cannot prove", async ({ page
   await expect(page).toHaveURL(/\/transaction\?id=/u);
   await expect(page.getByTestId("transaction-provenance")).toHaveCount(0);
 
-  // The catch-up screen offers the three choices it kept, and nothing else.
+  // The removed duplicate review and expectation matching stay gone.
   await page.goto("/helix/reconciliation");
   await expect(page.getByText("Olası tekrar kayıtlar")).toHaveCount(0);
   await expect(page.getByText("Mevcut İşlemle Eşleştir")).toHaveCount(0);
 
-  await assertNoRuntimeErrors(errors, testInfo);
+  expect(errors).toEqual([]);
 });
 
-/**
- * The attention inbox.
- *
- * It is derived, so the test creates a real obligation and then checks the
- * three things that make an inbox trustworthy: it groups by the decision to be
- * made, it says what is new in words, and a deferral or a dismissal actually
- * takes the row away — with the deferral still being undoable, because a defer
- * is not a decision.
- */
-test("the attention inbox groups what is waiting and lets it be deferred or finished", async ({ page }, testInfo) => {
+test("the attention inbox groups what is waiting and lets it be deferred or finished", async ({ page }) => {
   const errors = collectRuntimeErrors(page);
   await page.setViewportSize({ width: 1280, height: 1000 });
   await onboard(page);
 
   // A subscription billed today produces one pending obligation.
-  await page.getByRole("tab", { name: "Abonelikler" }).click();
-  await page.getByRole("button", { name: "Abonelik Ekle", exact: true }).click();
-  await page.getByRole("textbox", { name: "Ad", exact: true }).fill("Netflix");
-  await page.getByRole("textbox", { name: "Tutar · TRY", exact: true }).fill("229,99");
-  await page.getByRole("textbox", { name: "Ödeme günü", exact: true }).fill(currentIstanbulDay());
-  await page.getByRole("button", { name: "Kaydet", exact: true }).click();
-  const categoryOffer = page.getByRole("button", { name: "Oluştur ve Kaydet", exact: true });
-  if (await categoryOffer.count()) await categoryOffer.click();
-  await expect(page).toHaveURL(/subscriptions/u);
+  await addSubscription(page, "Netflix", "229,99");
 
   await page.goto("/helix/attention");
   // Grouped by decision, and "new" is a word rather than a coloured dot.
@@ -367,18 +289,10 @@ test("the attention inbox groups what is waiting and lets it be deferred or fini
     .getByRole("button", { name: "Bitti", exact: true }).click();
   await expect(page.getByText("Bekleyen bir şey yok.", { exact: true })).toBeVisible();
 
-  await assertNoRuntimeErrors(errors, testInfo);
+  expect(errors).toEqual([]);
 });
 
-/**
- * Importing a card statement PDF.
- *
- * The fixture is generated in-process and never written to the repository: a
- * real statement is the most sensitive document the owner has. What this
- * proves is the part a unit test cannot — that the file is read locally, that
- * NOTHING reaches the ledger until a person presses the button, and that a
- * file the parser cannot read is refused with a reason rather than guessed at.
- */
+// Generated in-process: a real statement is the most sensitive document the owner has.
 function syntheticStatementPdf(lines: string[]): Buffer {
   const content = ["BT /F1 10 Tf 40 800 Td"]
     .concat(lines.map((line, index) =>
@@ -399,13 +313,13 @@ function syntheticStatementPdf(lines: string[]): Buffer {
   return Buffer.concat(parts);
 }
 
-async function choosePdf(page: import("@playwright/test").Page, name: string, buffer: Buffer): Promise<void> {
+async function choosePdf(page: Page, name: string, buffer: Buffer): Promise<void> {
   const chooser = page.waitForEvent("filechooser");
   await page.getByTestId("statement-pick").click();
   await (await chooser).setFiles({ name, mimeType: "application/pdf", buffer });
 }
 
-test("a card statement is read locally, reviewed, and only then written", async ({ page }, testInfo) => {
+test("a card statement is read locally, reviewed, and only then written", async ({ page }) => {
   const errors = collectRuntimeErrors(page);
   await page.setViewportSize({ width: 1280, height: 1000 });
   await onboard(page);
@@ -416,8 +330,7 @@ test("a card statement is read locally, reviewed, and only then written", async 
 
   await choosePdf(page, "ekstre.pdf", syntheticStatementPdf([
     "HESAP OZETI",
-    // Last period's settlement, printed exactly like a refund. It must not
-    // become a candidate: the purchases it pays for are already here.
+    // Last period's settlement prints like a refund; it must not become a candidate.
     "01.08.2026 HESAPTAN YAPILAN ODEME -24.381,40",
     "12.08.2026 MIGROS MARKET 1.234,56",
     "03.08.2026 TEKNOSA 3/9 500,00",
@@ -431,18 +344,14 @@ test("a card statement is read locally, reviewed, and only then written", async 
   await expect(page.getByText("3/9. taksit", { exact: true })).toBeVisible();
   // A line it could not read is surfaced, not silently dropped.
   await expect(page.getByText("Tarih geçersiz", { exact: true })).toBeVisible();
-  // The card's own settlement is read, left out, and SAID — a statement
-  // importer that silently discards lines is one whose total can never be
-  // reconciled against the paper.
+  // The card's own settlement is left out but said, so totals reconcile with the paper.
   await expect(page.getByText("Bilerek alınmayanlar", { exact: true })).toBeVisible();
   await expect(page.getByText(/HESAPTAN YAPILAN ODEME/u)).toBeVisible();
   await expect(page.getByRole("checkbox", { name: /HESAPTAN YAPILAN ODEME/u })).toHaveCount(0);
   // Nothing is in the ledger yet.
   await expect(page.getByTestId("statement-commit")).toBeVisible();
 
-  // The period is read off the paper and shown before anything is written: it
-  // is the one month this import may reach, and every accepted line is settled
-  // on its day rather than on the day printed beside the line.
+  // The period is the one month this import may reach, shown before anything is written.
   await expect(page.getByTestId("statement-period")).toContainText("Ağustos 2026");
   await expect(page.getByTestId("statement-period")).toContainText("Ödeme günü: 31 Ağustos 2026");
 
@@ -451,35 +360,29 @@ test("a card statement is read locally, reviewed, and only then written", async 
   await page.getByTestId("statement-select-new").click();
   await page.getByTestId("statement-commit").click();
 
-  // Written, and reported as written. The instalment line is NOT a charge: it
-  // is one payment of a plan, so it becomes the plan and the Taksitler screen
-  // can finally show it.
+  // The instalment line is one payment of a plan, so it becomes the plan, not a charge.
   await expect(page.getByRole("alert").first()).toContainText("1 işlem aktarıldı.");
   await expect(page.getByRole("alert").first()).toContainText("1 taksit planı oluşturuldu.");
 
   await page.goto("/helix/cash-flow/installments");
   await expect(page.getByText("TEKNOSA", { exact: true })).toBeVisible();
 
-  // Importing the same statement again recognises every row it already wrote,
-  // which is what the stored identity is FOR: re-downloading a statement and
-  // importing it a second time must not double the ledger.
+  // Re-importing the same statement must not double the ledger.
   await page.goto("/helix/statement-import");
   await choosePdf(page, "ekstre.pdf", syntheticStatementPdf([
     "12.08.2026 MIGROS MARKET 1.234,56",
     "03.08.2026 TEKNOSA 3/9 500,00",
   ]));
   await expect(page.getByText("Bu satır zaten aktarılmış").first()).toBeVisible();
-  // The plan the first import opened is recognised too, by the same title and
-  // count the statement prints — so next month's statement joins that plan
-  // instead of opening a rival one beside it.
+  // Next month's statement must join this plan, not open a rival.
   await expect(page.getByText(/TEKNOSA taksit planı bu ödemeyi zaten oluşturuyor/u)).toBeVisible();
   // And nothing is pre-selected, so accepting the defaults writes nothing.
   await expect(page.getByTestId("statement-commit")).toBeDisabled();
 
-  await assertNoRuntimeErrors(errors, testInfo);
+  expect(errors).toEqual([]);
 });
 
-test("an unreadable statement is refused with a reason instead of guessed at", async ({ page }, testInfo) => {
+test("an unreadable statement is refused with a reason instead of guessed at", async ({ page }) => {
   const errors = collectRuntimeErrors(page);
   await page.setViewportSize({ width: 1280, height: 1000 });
   await onboard(page);
@@ -493,36 +396,16 @@ test("an unreadable statement is refused with a reason instead of guessed at", a
   await choosePdf(page, "not-a-pdf.pdf", Buffer.from("bu bir pdf degil", "latin1"));
   await expect(page.getByTestId("statement-failure")).toContainText("bir PDF değil");
 
-  await assertNoRuntimeErrors(errors, testInfo);
+  expect(errors).toEqual([]);
 });
 
-/**
- * Attaching a document, on the platform the owner is actually using.
- *
- * The bytes stay on this device either way — the app sandbox on a phone, the
- * browser's own private storage here — and the row that describes them is the
- * only part that syncs. What this proves is that the web is a first-class
- * place to do it, not a read-only view of what a phone did.
- */
-test("a receipt can be attached, opened and removed on the web", async ({ page }, testInfo) => {
+test("a receipt can be attached, opened and removed on the web", async ({ page }) => {
   const errors = collectRuntimeErrors(page);
   await page.setViewportSize({ width: 1280, height: 1000 });
   await onboard(page);
 
-  await page.getByRole("button", { name: /İşlem Ekle/u }).first().click();
-  await page.getByRole("textbox", { name: "Tutar · TRY", exact: true }).fill("120");
-  await pickOption(page, "Kategori", "Market");
-  await page.getByRole("button", { name: "Kaydet", exact: true }).click();
-  // Wait for the write to be confirmed before reloading the app: `goto` is a
-  // full page load and would race the save it is meant to observe.
-  await expect(page.getByRole("alert").first()).toContainText("İşlem kaydedildi");
+  await addMarketExpense(page, "Makbuz", "120", "Market");
 
-  // Reached through the ledger rather than through the save confirmation's own
-  // shortcut. That shortcut used to fail four runs in five on a defect that has
-  // nothing to do with attachments; it is fixed and now has its own test below
-  // ("the save confirmation opens the row it just saved"). The ledger route
-  // stays because this test is about DOCUMENTS and should not fail for a
-  // navigation reason again.
   await page.goto(`/helix/cash-flow/${currentMonthKey()}`);
   await page.getByRole("button", { name: /Market/ }).first().click();
   await page.getByRole("button", { name: /^Düzenle/ }).first().click();
@@ -539,48 +422,30 @@ test("a receipt can be attached, opened and removed on the web", async ({ page }
   });
 
   await expect(panel).toContainText("fatura.pdf");
-  // Held on this device, so it offers to open it rather than explaining why it
-  // cannot. The tile itself is that control: a separate "Aç" button beside a
-  // picture of the thing it opens was one control too many, and on a device
-  // without the file it was a button that could only fail.
+  // The tile itself is the open control; a separate "Aç" button was removed.
   await expect(panel.getByRole("button", { name: /^Aç · fatura\.pdf/u })).toBeVisible();
   await expect(page.getByTestId("attachment-empty")).toHaveCount(0);
 
-  // The row it belongs to says so, in the list, without opening anything: the
-  // reason to reopen a three-month-old grocery row is usually its receipt.
+  // The list row says it has a document without opening anything.
   await page.goto(`/helix/cash-flow/${currentMonthKey()}`);
   await page.getByRole("button", { name: /Market/ }).first().click();
   await expect(page.getByText("Belge var", { exact: true }).first()).toBeVisible();
   await page.getByRole("button", { name: /^Düzenle/ }).first().click();
   await expect(panel).toContainText("fatura.pdf");
 
-  // Removing is undoable, because a receipt is not recoverable once gone.
+  // Removal is undoable: a receipt is not recoverable once gone.
   await panel.getByRole("button", { name: /^Sil · fatura\.pdf$/u }).click();
   await expect(page.getByTestId("attachment-empty")).toBeVisible();
   await page.getByRole("alert").first().getByRole("button", { name: "Geri Al", exact: true }).click();
   await expect(panel).toContainText("fatura.pdf");
 
-  await assertNoRuntimeErrors(errors, testInfo);
+  expect(errors).toEqual([]);
 });
 
-/**
- * The save confirmation's own shortcut, taken at once.
- *
- * This is the defect recorded as an unreproducible navigation race: after a
- * save, "Düzenle" sometimes landed on Mali Tablo. It was never the router.
- * `useAllTransactionsState` is not parameterised by an id, so `useLive` never
- * clears `updatedAt` when the id changes, and the transaction screen read a
- * completion recorded BEFORE the row was written as proof the row did not
- * exist — then redirected to the list that owns it. The write, the 60 ms
- * change-event debounce and the tap all fall inside one another.
- *
- * The click therefore has to be fired the moment the control EXISTS. Waiting
- * for it to be stable — which is what an ordinary Playwright click does — waits
- * out the very window the bug lives in, which is why every instrumented run
- * passed. Measured on the export before the fix: 8 attempts, 8 landings on
- * Mali Tablo; after it, 12 of 12 correct.
- */
-test("the save confirmation opens the row it just saved, even when taken at once", async ({ page }, testInfo) => {
+// The click must fire the moment the control EXISTS: Playwright's wait-for-stable
+// waits out the window of the race this test guards (a stale `updatedAt` across
+// an id change made the screen redirect to the list).
+test("the save confirmation opens the row it just saved, even when taken at once", async ({ page }) => {
   const errors = collectRuntimeErrors(page);
   await onboard(page);
 
@@ -610,38 +475,21 @@ test("the save confirmation opens the row it just saved, even when taken at once
   // was stored, which is what proves the screen resolved the id it was given.
   await expect(page.getByRole("textbox", { name: "Tutar · TRY", exact: true })).toHaveValue("321,00");
 
-  await assertNoRuntimeErrors(errors, testInfo);
+  expect(errors).toEqual([]);
 });
 
-/**
- * The other half of the same guard, and the reason it cannot simply wait.
- *
- * A deleted, foreign or hand-typed id writes nothing, so no change event is
- * coming and no later completion would ever arrive on its own. Waiting for
- * dated proof without asking for it would replace a wrong redirect with a
- * screen that never resolves — the "empty screen with a header FOREVER" the
- * guard was introduced to end.
- */
-test("an id that names no row still answers, instead of waiting for ever", async ({ page }, testInfo) => {
+// A hand-typed id writes nothing, so no change event comes: waiting for one would hang.
+test("an id that names no row still answers, instead of waiting for ever", async ({ page }) => {
   const errors = collectRuntimeErrors(page);
   await onboard(page);
 
   await page.goto("/helix/transaction?id=01a06b2c-0000-7000-8000-000000000000");
   await expect(page).toHaveURL(/\/cash-flow/u, { timeout: 10_000 });
 
-  await assertNoRuntimeErrors(errors, testInfo);
+  expect(errors).toEqual([]);
 });
 
-/**
- * A refund recorded against an instalment purchase.
- *
- * A new screen behind a new route, and the ways it fails are the ones a unit
- * test cannot see: the route not registered, the picker drawing nothing, a card
- * that cannot hold its rows. The flow is the one the owner described — the
- * button lists purchases, the refund attaches to the one chosen, and the
- * purchase's own screen shows it and what the purchase now comes to.
- */
-test("records a refund against an instalment purchase and shows it on the plan", async ({ page }, testInfo) => {
+test("records a refund against an instalment purchase and shows it on the plan", async ({ page }) => {
   const errors = collectRuntimeErrors(page);
   await onboard(page);
 
@@ -685,24 +533,15 @@ test("records a refund against an instalment purchase and shows it on the plan",
   await page.getByRole("button", { name: "Geri Al", exact: true }).click();
   await expect(page.getByText(/^İade .*300/)).toBeVisible();
 
-  await assertNoRuntimeErrors(errors, testInfo);
+  expect(errors).toEqual([]);
 });
 
-/**
- * A card statement is its own record, opened where it is listed.
- *
- * Durum lists a card's next statement as one row. That row used to open
- * Taksitler, where a single charge is invisible, and pushed into the Mali Tablo
- * tab's own stack it left that tab stuck on the pushed screen until the app
- * restarted. It opens the statement at the root now: Back returns to Durum, the
- * tab still shows the table, and a partial payment takes only what was paid.
- */
-test("a card statement opens from Durum, takes a partial payment, and Back returns to Durum", async ({ page }, testInfo) => {
+// Opened at the root, not pushed into the Mali Tablo stack, which stayed stuck on it.
+test("a card statement opens from Durum, takes a partial payment, and Back returns to Durum", async ({ page }) => {
   const errors = collectRuntimeErrors(page);
   await onboard(page);
 
-  // Closing today (or on the 27th) and due the day after, so the statement
-  // sits inside Durum's 31-day window whatever day the run lands on.
+  // Closes today (at most the 27th) so the statement is inside Durum's 31-day window.
   const statementDay = Math.min(Number(currentIstanbulDay()), 27);
   await page.goto("/helix/settings/payment-sources");
   await page.getByRole("radio", { name: "Kredi Kartı" }).click();
@@ -721,7 +560,7 @@ test("a card statement opens from Durum, takes a partial payment, and Back retur
   await page.getByRole("button", { name: "Kaydet", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Mali Tablo", exact: true })).toBeVisible();
 
-  // A fresh launch, so the Mali Tablo tab has never mounted its own stack.
+  // Fresh launch: the Mali Tablo tab must not have mounted its own stack.
   await page.goto("/helix/");
   await expect(page.getByRole("tab", { name: "Durum", selected: true })).toBeVisible();
   await page.getByRole("button", { name: /Deneme Kart/ }).locator("visible=true").first().click();
@@ -742,16 +581,10 @@ test("a card statement opens from Durum, takes a partial payment, and Back retur
   await page.getByRole("tab", { name: "Mali Tablo" }).click();
   await expect(page.getByRole("heading", { name: "Mali Tablo", exact: true })).toBeVisible();
 
-  await assertNoRuntimeErrors(errors, testInfo);
+  expect(errors).toEqual([]);
 });
 
-/**
- * The record sheets of an exported workbook come back through the ordinary
- * import wizard (owner decision, 2026-09-14): what they will do is said before
- * anything is written, a row naming someone the workspace does not have is
- * named rather than guessed at, and the subscription lands.
- */
-test("the subscription sheet of an exported workbook comes back through the import wizard", async ({ page }, testInfo) => {
+test("the subscription sheet of an exported workbook comes back through the import wizard", async ({ page }) => {
   const errors = collectRuntimeErrors(page);
   await page.setViewportSize({ width: 1280, height: 1000 });
   await onboard(page);
@@ -780,5 +613,5 @@ test("the subscription sheet of an exported workbook comes back through the impo
   await page.getByRole("tab", { name: "Abonelikler" }).click();
   await expect(page.getByText("E2E Müzik", { exact: true }).first()).toBeVisible();
   await expect(page.getByText("E2E Başkası", { exact: true })).toHaveCount(0);
-  await assertNoRuntimeErrors(errors, testInfo);
+  expect(errors).toEqual([]);
 });

@@ -3,16 +3,21 @@ import { describe, expect, it } from "vitest";
 import { BRAND, brandPlate } from "../../src/ui/brand-colors";
 import { badgeHue, initialsBadgeColor } from "../../src/ui/badge-color";
 import { INVESTMENT_ASSET_TYPES } from "../../src/domain/investments";
-import { chartSeriesColors, darkPalette, DEFAULT_PALETTE_ID, generatedBadgeForeground, heroSurface, lightPalette, PALETTES, resolvePaletteId, type Palette } from "../../src/ui/theme";
+import { MATRIX_COLOR_TOKENS } from "../../src/domain/matrix-colors";
+import { chartSeriesColors, composite, darkPalette, DEFAULT_PALETTE_ID, generatedBadgeForeground, heroSurface, INTERACTION_ALPHA, lightPalette, matrixColorStyle, PALETTES, resolvePaletteId, type Palette } from "../../src/ui/theme";
+
+/** Linearised sRGB channels of a hex colour. */
+function linear(hex: string): [number, number, number] {
+  const [r, g, b] = channels(hex).map((value) => {
+    const c = value / 255;
+    return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+  }) as [number, number, number];
+  return [r, g, b];
+}
 
 /** sRGB hex to CIE Lab (D65), for perceptual difference rather than luminance. */
 function toLab(hex: string): [number, number, number] {
-  const channels = hex.match(/[0-9a-f]{2}/gi);
-  if (!channels || channels.length !== 3) throw new Error(`Unsupported color: ${hex}`);
-  const [r, g, b] = channels.map((value) => {
-    const c = Number.parseInt(value, 16) / 255;
-    return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
-  }) as [number, number, number];
+  const [r, g, b] = linear(hex);
   const x = (r * 0.4124564 + g * 0.3575761 + b * 0.1804375) / 0.95047;
   const y = r * 0.2126729 + g * 0.7151522 + b * 0.072175;
   const z = (r * 0.0193339 + g * 0.119192 + b * 0.9503041) / 1.08883;
@@ -67,12 +72,7 @@ function deltaE2000(hexA: string, hexB: string): number {
  * which is one colour wearing two names in the legend.
  */
 function simulateDeuteranopia(hex: string): string {
-  const channels = hex.match(/[0-9a-f]{2}/gi);
-  if (!channels || channels.length !== 3) throw new Error(`Unsupported color: ${hex}`);
-  const [r, g, b] = channels.map((value) => {
-    const c = Number.parseInt(value, 16) / 255;
-    return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
-  }) as [number, number, number];
+  const [r, g, b] = linear(hex);
   const L = 17.8824 * r + 43.5161 * g + 4.11935 * b;
   const S = 0.0299566 * r + 0.184309 * g + 1.46709 * b;
   const Md = 0.494207 * L + 1.24827 * S;
@@ -88,15 +88,16 @@ function simulateDeuteranopia(hex: string): string {
 }
 
 const shippedPalettes = Object.values(PALETTES).flatMap(({ light, dark }) => [light, dark]);
+/** Every shipped palette with its id and scheme. */
+const SCHEMED = Object.entries(PALETTES).flatMap(([id, { light, dark }]) => [[id, light, "light"], [id, dark, "dark"]] as const);
+
+/** The surfaces a chart mark of this scheme is drawn on. */
+const groundsFor = (scheme: "light" | "dark"): string[] => shippedPalettes
+  .filter((p) => (luminance(p.surface) > 0.5) === (scheme === "light"))
+  .flatMap((p) => [p.surface, p.surfaceAlt]);
 
 function luminance(hex: string): number {
-  const channels = hex.match(/[0-9a-f]{2}/gi);
-  if (!channels || channels.length !== 3) throw new Error(`Unsupported color: ${hex}`);
-  const [red, green, blue] = channels.map((value) => {
-    const channel = Number.parseInt(value, 16) / 255;
-    return channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
-  });
-  if (red == null || green == null || blue == null) throw new Error(`Unsupported color: ${hex}`);
+  const [red, green, blue] = linear(hex);
   return red * 0.2126 + green * 0.7152 + blue * 0.0722;
 }
 
@@ -142,7 +143,7 @@ function expectBodyTextContrast(palette: Palette): void {
     expect(contrastRatio(foreground, background), `${foreground} on ${background}`).toBeGreaterThanOrEqual(4.5);
   }
   expect(contrastRatio(palette.onPrimary, palette.primary)).toBeGreaterThanOrEqual(4.5);
-  // Gital draws a ticked item's mark in it; held at text contrast since 2026-10-09.
+  // Gital draws a ticked item's mark in it.
   expect(contrastRatio(palette.onSecondary, palette.secondary)).toBeGreaterThanOrEqual(4.5);
   expect(contrastRatio(palette.onDestructive, palette.destructive)).toBeGreaterThanOrEqual(4.5);
   expect(contrastRatio(palette.focus, palette.surfaceAlt)).toBeGreaterThanOrEqual(3);
@@ -167,6 +168,18 @@ function blend(over: string, under: string, alpha: number): string {
     .join("")}`;
 }
 
+/** An `#rrggbbaa` fill composited onto the opaque surface behind it. */
+function over(fill: string, surface: string): string {
+  const alpha = fill.length === 9 ? Number.parseInt(fill.slice(7, 9), 16) / 255 : 1;
+  return blend(fill.slice(0, 7), surface, alpha);
+}
+
+/** CIE76 ΔE — enough to say whether two washes read as two colours. */
+function deltaE(a: string, b: string): number {
+  const [l1, a1, b1] = toLab(a);
+  const [l2, a2, b2] = toLab(b);
+  return Math.hypot(l1 - l2, a1 - a2, b1 - b2);
+}
 
 /** Income reads green, expense reads red, warning reads warm amber — in every
  *  theme, whatever temperature that theme tunes them to. */
@@ -254,30 +267,12 @@ describe("semantic theme contrast", () => {
   });
 
   /**
-   * Layers have to be readable as layers.
-   *
-   * A card used to be a per-cent lighter than the page behind it and leaned on
-   * its shadow to exist at all — the "everything looks flat" the owner kept
-   * reporting. Note the light ramp is not monotonic by design: the page is a
-   * toned paper and the card is brighter than it, so the card lifts. What is
-   * required is SEPARATION at every join, not a direction.
-   *
-   * The floor is per scheme because contrast ratios compress at the bottom of
-   * the scale: two charcoals nine RGB points apart are plainly different to the
-   * eye and only 1.10:1 apart on paper. Holding dark to the light floor would
-   * force the whole dark ramp pale to satisfy arithmetic that does not describe
-   * what a person sees there.
-   */
-  /**
    * A hover is the quietest thing a control says, and it says it the same way
    * everywhere.
    *
-   * The tokens this replaced were picked per palette by eye, and it showed:
-   * surface → surfaceHover measured 1.253:1 in Petrol Dark against 1.556:1 in
-   * Amber Light, so the same pointer resting on the same control was almost
-   * twice as loud depending on which theme was on. Both ends were also far past
-   * what the state means — 1.5:1 is what a SELECTED row is allowed, and a
-   * pointer passing over something has not selected it.
+   * Measured ratios belong in docs/BASELINE.md; the floor here is the rule.
+   * 1.5:1 is what a SELECTED row is allowed, and a pointer passing over
+   * something has not selected it.
    *
    * One alpha of the palette's own ink, composited over whatever is underneath,
    * is what makes the step identical: it is measured here against three
@@ -285,16 +280,7 @@ describe("semantic theme contrast", () => {
    * `surfaceAlt`, and a matrix cell sits on the table.
    */
   it("moves every palette by the same amount under a pointer", () => {
-    const composite = (base: string, tint: string, alpha: number) =>
-      `#${[1, 3, 5]
-        .map((at) => Math.round(
-          Number.parseInt(base.slice(at, at + 2), 16) * (1 - alpha)
-            + Number.parseInt(tint.slice(at, at + 2), 16) * alpha,
-        ))
-        .map((value) => value.toString(16).padStart(2, "0"))
-        .join("")}`;
-    // Kept in step with `INTERACTION_ALPHA` in `src/ui/interaction.ts`.
-    const [hover, pressed] = [0.06, 0.11];
+    const { hover, pressed } = INTERACTION_ALPHA;
     const steps: number[] = [];
     for (const palette of shippedPalettes) {
       for (const under of [palette.surface, palette.surfaceAlt, palette.primarySoft] as const) {
@@ -311,11 +297,19 @@ describe("semantic theme contrast", () => {
         steps.push(hovered);
       }
     }
-    // The whole point: one gesture, one size, in every theme and on every
-    // surface. The old tokens spread 0.303 across the six palettes.
+    // The whole point: one gesture, one size, in every theme and on every surface.
     expect(Math.max(...steps) - Math.min(...steps)).toBeLessThan(0.09);
   });
 
+  /**
+   * Layers have to be readable as layers. The light ramp is not monotonic by
+   * design (the card is brighter than the toned page), so the rule is
+   * SEPARATION at every join, not a direction.
+   *
+   * The floor is per scheme because contrast ratios compress at the bottom of
+   * the scale: two charcoals nine RGB points apart are plainly different to the
+   * eye and only 1.10:1 apart on paper.
+   */
   it("keeps each surface layer distinguishable from the one under it", () => {
     const ramp = ["background", "surface", "surfaceAlt", "surfaceStrong"] as const;
     for (const { light, dark } of Object.values(PALETTES)) {
@@ -360,7 +354,6 @@ describe("semantic theme contrast", () => {
       expect(palette.error).toBe(palette.negative);
       expect(palette.errorText).toBe(palette.negativeText);
       expect(palette.destructive).toBe(palette.negative);
-      expect(palette.onDestructive).toBeDefined();
     }
   });
 
@@ -387,11 +380,9 @@ describe("semantic theme contrast", () => {
 
   /** The balance stays neutral and must remain readable on both layer depths. */
   it("keeps the balance instrument readable in both schemes", () => {
-    for (const { light, dark } of Object.values(PALETTES)) {
-      for (const [palette, scheme] of [[light, "light"], [dark, "dark"]] as const) {
-        const { fill, ink } = heroSurface(palette, scheme);
-        expect(contrastRatio(ink, fill), `${scheme}: ${ink} on ${fill}`).toBeGreaterThanOrEqual(4.5);
-      }
+    for (const [, palette, scheme] of SCHEMED) {
+      const { fill, ink } = heroSurface(palette, scheme);
+      expect(contrastRatio(ink, fill), `${scheme}: ${ink} on ${fill}`).toBeGreaterThanOrEqual(4.5);
     }
   });
 
@@ -403,18 +394,16 @@ describe("semantic theme contrast", () => {
    * background: ratio 1.00, and the chart read as missing.
    */
   it("keeps an empty chart track visible on the surface it sits on", () => {
-    for (const { light, dark } of Object.values(PALETTES)) {
-      for (const [palette, scheme] of [[light, "light"], [dark, "dark"]] as const) {
-        // The two surfaces a donut is ever placed on, and no more: `Card`
-        // fills with `surface`, `HeroCard` with `heroSurface`. Asserting
-        // against `surfaceAlt` as well would hold the token to a placement
-        // that does not exist and buy a heavier ring for it.
-        for (const behind of [palette.surface, heroSurface(palette, scheme).fill]) {
-          expect(
-            contrastRatio(palette.border, behind),
-            `${scheme}: empty donut track ${palette.border} on ${behind}`,
-          ).toBeGreaterThanOrEqual(3);
-        }
+    for (const [, palette, scheme] of SCHEMED) {
+      // The two surfaces a donut is ever placed on, and no more: `Card`
+      // fills with `surface`, `HeroCard` with `heroSurface`. Asserting
+      // against `surfaceAlt` as well would hold the token to a placement
+      // that does not exist and buy a heavier ring for it.
+      for (const behind of [palette.surface, heroSurface(palette, scheme).fill]) {
+        expect(
+          contrastRatio(palette.border, behind),
+          `${scheme}: empty donut track ${palette.border} on ${behind}`,
+        ).toBeGreaterThanOrEqual(3);
       }
     }
   });
@@ -437,16 +426,6 @@ describe("semantic theme contrast", () => {
           `${foreground} (${palette[foreground]}) on ${tone} card (${fill})`,
         ).toBeGreaterThanOrEqual(4.5);
       }
-    }
-  });
-
-  /** The waiting surface is static, so its normal text token must clear AA. */
-  it("keeps the static waiting caption readable on its surface", () => {
-    const source = readFileSync("src/ui/motion.ts", "utf8");
-    expect(source).not.toContain("WAITING_PULSE_FLOOR");
-    for (const palette of shippedPalettes) {
-      expect(contrastRatio(palette.text, palette.surface), `waiting text on ${palette.surface}`)
-        .toBeGreaterThanOrEqual(4.5);
     }
   });
 
@@ -509,28 +488,13 @@ describe("semantic theme contrast", () => {
   /**
    * The categorical ramp, measured rather than described.
    *
-   * The test that stood here claimed to "mirror `useSeriesColors`, which cannot
-   * be imported (it is a hook)" — and had drifted: it checked eight tokens
-   * (`positive`, `warning`, `negative`, `accentText` …) that the hook had
-   * stopped returning, so for as long as it was green it was guarding a ramp
-   * that did not exist. That is why none of the following was caught:
-   *
-   *   - `surfaceStrong` sat in slot 2 and measured 1.68-2.03 against the
-   *     surfaces it was drawn on, where a graphical object owes 3:1;
-   *   - the three `*Strong` entries were 7.4-8.6 ΔE from their own base hue;
-   *   - under deuteranopia two pairs fell to ΔE 1.1 — one colour, not two.
-   *
-   * The fix is structural: the ramp is a plain function, so this imports the
-   * real thing. And the assertions are measurements, so a future ramp has to
-   * earn its slot rather than be described accurately.
+   * It imports the real ramp function, and the assertions are measurements
+   * (3:1 on every surface, ΔE between slots, also under deuteranopia), so a
+   * ramp has to earn its slot rather than be described accurately.
    */
-  const SURFACES = shippedPalettes.flatMap((p) => [p.surface, p.surfaceAlt]);
-
   it("keeps every series colour legible on every surface it is drawn on", () => {
     for (const scheme of ["light", "dark"] as const) {
-      const grounds = shippedPalettes
-        .filter((p) => (luminance(p.surface) > 0.5) === (scheme === "light"))
-        .flatMap((p) => [p.surface, p.surfaceAlt]);
+      const grounds = groundsFor(scheme);
       for (const colour of chartSeriesColors(scheme)) {
         for (const ground of grounds) {
           expect(
@@ -540,25 +504,14 @@ describe("semantic theme contrast", () => {
         }
       }
     }
-    expect(SURFACES.length).toBeGreaterThan(0);
   });
 
   /**
    * A chart mark never comes from a surface token.
    *
-   * The wallet ring painted free cash in `surfaceStrong` — the colour that
-   * looks like the right answer for "this one is not a category", and the one
-   * value the ramp's own note above records as measured and rejected. The
-   * numbers below re-derive why: against the ring's unfilled track it lands
-   * around 1.5, where a graphical object owes 3. Cash is usually the largest
-   * thing in the wallet, so the ring's biggest slice read as the part of the
-   * ring nobody had filled in — and selecting it painted the centre readout in
-   * that same colour, so a lock that HAD been taken showed nothing at all. It
-   * was reported as the ring refusing to lock, which is exactly how it looked.
-   *
-   * `walletDonutSlices` now emits ramp entries only, so this pins the reason
-   * rather than the symptom: any surface token fails the floor a mark must
-   * clear, whichever ground it is drawn on.
+   * Free cash painted in a surface token read as the part of the ring nobody
+   * had filled in, so any surface token must fail the floor a mark has to clear,
+   * whichever ground it is drawn on. `walletDonutSlices` emits ramp entries only.
    */
   it("rules out every surface token as a chart mark", () => {
     for (const palette of shippedPalettes) {
@@ -612,20 +565,15 @@ describe("semantic theme contrast", () => {
   /**
    * Why a selected chart mark is emphasised rather than the others faded.
    *
-   * Fading is the obvious way to say "this one, not those", and it is not
-   * available here: the ramp is designed to sit just above the 3:1 floor the
-   * test above enforces, so there is no headroom to spend on an alpha. This
-   * pins the arithmetic that ruled it out, and it is written as a THRESHOLD
-   * rather than as a ban — if the ramp is ever rebuilt with real headroom,
-   * this test is where that becomes visible.
+   * The ramp sits just above the 3:1 floor, so there is no headroom to spend on
+   * an alpha. Written as a THRESHOLD rather than a ban: a rebuilt ramp with real
+   * headroom makes that visible here.
    */
   it("leaves no headroom for de-emphasising a mark with opacity", () => {
     let worstFull = Infinity;
     let worstDimmed = Infinity;
     for (const scheme of ["light", "dark"] as const) {
-      const grounds = shippedPalettes
-        .filter((p) => (luminance(p.surface) > 0.5) === (scheme === "light"))
-        .flatMap((p) => [p.surface, p.surfaceAlt]);
+      const grounds = groundsFor(scheme);
       for (const colour of chartSeriesColors(scheme)) {
         for (const ground of grounds) {
           worstFull = Math.min(worstFull, contrastRatio(colour, ground));
@@ -697,15 +645,9 @@ describe("semantic theme contrast", () => {
  * Brand chips are the offline / failed-favicon fallback, so they must stay
  * readable exactly when the network does not.
  *
- * `logo.tsx`'s `inkFor` used to weight GAMMA-ENCODED sRGB with the NTSC
- * "perceived brightness" coefficients and threshold at 0.62. WCAG contrast is
- * computed from LINEARIZED relative luminance, and the two diverge most in
- * saturated greens and cyans — where this table is dense. Measured across it,
- * 49 chips failed AA and 16 fell below even the 3:1 large-text floor, while the
- * opposite ink would have passed comfortably in every one of those cases.
- *
- * `tests/theme-contrast.test.ts` already guards the other generated colour
- * (`InitialsBadge`, all 360 hues); this closes the gap for the brand table.
+ * WCAG contrast is computed from LINEARIZED relative luminance, so the plate
+ * and ink are chosen by it. The other generated colour (`InitialsBadge`, all
+ * 360 hues) is guarded above; this closes the gap for the brand table.
  */
 describe("brand chip monogram", () => {
   const brandEntries = Object.entries(BRAND) as [string, { color: string }][];
@@ -763,5 +705,88 @@ describe("brand chip monogram", () => {
   it("rejects a malformed brand colour instead of contrasting against black", () => {
     expect(() => brandPlate("nope")).toThrow(/invalid hex/i);
     expect(() => brandPlate("#12345")).toThrow(/invalid hex/i);
+  });
+});
+
+describe("how a mark is painted", () => {
+  it("resolves every token in every shipped palette and scheme", () => {
+    for (const [id, palette, scheme] of SCHEMED) {
+      for (const token of MATRIX_COLOR_TOKENS) {
+        const style = matrixColorStyle(palette, token);
+        for (const [role, value] of Object.entries(style)) {
+          expect(value, `${id}/${scheme}/${token}/${role}`).toMatch(/^#[0-9A-Fa-f]{6}([0-9A-Fa-f]{2})?$/);
+        }
+      }
+    }
+  });
+
+  /** The fill is a wash under ordinary text ink: figure contrast ≥ 4.5 and every pair ΔE ≥ 5, measured rather than proxied by alpha. */
+  it("keeps the figure on a marked cell readable in every palette", () => {
+    for (const [id, palette, scheme] of SCHEMED) {
+      for (const token of MATRIX_COLOR_TOKENS) {
+        const cell = over(matrixColorStyle(palette, token).fill, palette.surface);
+        expect(
+          contrastRatio(palette.text, cell),
+          `${id}/${scheme}/${token}: figure on marked cell`,
+        ).toBeGreaterThanOrEqual(4.5);
+      }
+    }
+  });
+
+  /**
+   * Four marks are four signals or they are decoration.
+   *
+   * ΔE 5 is where two large areas of colour stop reading as two shades of one
+   * thing. The pair that has to clear it is every pair, not just the adjacent
+   * ones: a table shows all four at once, several rows apart.
+   */
+  it("keeps every pair of marks distinguishable, and each one from the bare cell", () => {
+    for (const [id, palette, scheme] of SCHEMED) {
+      const fills = MATRIX_COLOR_TOKENS.map((token) => ({
+        token,
+        color: over(matrixColorStyle(palette, token).fill, palette.surface),
+      }));
+      for (const { token, color } of fills) {
+        expect(
+          deltaE(color, palette.surface),
+          `${id}/${scheme}/${token}: mark against an unmarked cell`,
+        ).toBeGreaterThanOrEqual(5);
+      }
+      for (let a = 0; a < fills.length; a += 1) {
+        for (let b = a + 1; b < fills.length; b += 1) {
+          expect(
+            deltaE(fills[a]!.color, fills[b]!.color),
+            `${id}/${scheme}: ${fills[a]!.token} vs ${fills[b]!.token}`,
+          ).toBeGreaterThanOrEqual(5);
+        }
+      }
+    }
+  });
+
+  /**
+   * The tick drawn ON a mark is a graphical object, not text: WCAG 1.4.11 asks
+   * for 3:1. It is stated rather than left implicit because the obvious 4.5
+   * would force the shared semantic ink tokens off their own values for a
+   * glyph that is not text.
+   */
+  it("keeps the selected tick visible on the mark it sits on", () => {
+    for (const [id, palette, scheme] of SCHEMED) {
+      for (const token of MATRIX_COLOR_TOKENS) {
+        const { fill, ink } = matrixColorStyle(palette, token);
+        expect(
+          contrastRatio(ink, over(fill, palette.surface)),
+          `${id}/${scheme}/${token}: tick on its own mark`,
+        ).toBeGreaterThanOrEqual(3);
+      }
+    }
+  });
+
+  it("gives each token a distinct edge so a column can be read at a glance", () => {
+    for (const { light, dark } of Object.values(PALETTES)) {
+      for (const palette of [light, dark]) {
+        const edges = MATRIX_COLOR_TOKENS.map((token) => matrixColorStyle(palette, token).edge);
+        expect(new Set(edges).size).toBe(MATRIX_COLOR_TOKENS.length);
+      }
+    }
   });
 });

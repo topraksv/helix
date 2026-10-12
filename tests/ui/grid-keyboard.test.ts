@@ -1,13 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { nextGridPosition } from "../../src/ui/grid-navigation";
 
-/**
- * Mali Tablo used to be 240 separate tab stops with no arrow-key behaviour at
- * all: reaching the navigation bar behind a two-year ledger meant 240 Tab
- * presses. These are the movement rules the grid now follows; the clamping and
- * the Home/Ctrl+Home distinction are the parts that are invisible in a
- * screenshot and easy to get subtly wrong.
- */
+/** Movement rules of the ledger grid; clamping and the Home/Ctrl+Home distinction are invisible in a screenshot. */
 describe("grid keyboard navigation", () => {
   const size = { rows: 12, columns: 20 };
   const at = (row: number, column: number) => ({ row, column });

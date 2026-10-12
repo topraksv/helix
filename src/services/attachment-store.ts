@@ -1,20 +1,4 @@
-/**
- * This device's copy of an attachment's bytes (spec §2.5).
- *
- * It used to be the only copy. `src/sync/attachment-mirror.ts` now sends what
- * is here to the owner's Storage bucket and fetches what is not, so this is a
- * cache: authoritative for what can be opened right now, not for what exists.
- *
- * The original objection survives the change and shapes it. Replicating every
- * receipt onto every device is still the wrong behaviour, so the mirror uploads
- * eagerly and downloads lazily — only the documents a screen is showing. What
- * changed is that a file this device lacks is now "not here yet" rather than
- * unreachable, and the panel asks the mirror before it tells the owner
- * anything.
- *
- * Native uses the app sandbox; `attachment-store.web.ts` is the browser's
- * equivalent and keeps this exact interface.
- */
+// This device's cache of attachment bytes (spec §2.5); `attachment-store.web.ts` keeps this interface.
 
 import { Directory, File, Paths } from "expo-file-system";
 import * as Sharing from "expo-sharing";

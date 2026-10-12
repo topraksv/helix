@@ -1,20 +1,8 @@
-/**
- * Screen counts, accumulated on the device and reported as deltas.
- *
- * The shape follows `diagnostics.ts` deliberately: a bounded device-local
- * store, a flush that happens only where the app already knows it has a
- * session and a network, and a failure that costs nothing. What differs is the
- * clearing rule — a counter is reported and then forgotten, because the server
- * adds deltas, while an incident is kept so the owner can still read it
- * offline.
- *
- * Nothing here may record a diagnostic of its own, for the reason
- * `diagnostics.ts` gives: a failing upload that logged its own failure would
- * grow the ring on every attempt.
- */
+// Local counters only; nothing here leaves the device.
 
 import { kv } from "./kv";
-import { isUsageDelta, localDay, type UsageDelta } from "../domain/usage";
+import { todayISO } from "../domain/dates";
+import { isUsageDelta, type UsageDelta } from "../domain/usage";
 
 const PENDING_KEY = "helix.usage_counters.v1";
 /** Two hundred days of screens would be a bug, not a user. The cap is what
@@ -43,9 +31,9 @@ async function readPending(): Promise<Pending> {
   }
 }
 
-/** Count one visit. Never awaits the caller's render. */
+/** Count one visit under the device's local day: a server `current_date` would move an evening visit into tomorrow west of UTC. */
 export function recordScreenView(screen: string, at: Date = new Date()): void {
-  const key = entryKey(localDay(at), screen);
+  const key = entryKey(todayISO(at), screen);
   write = write
     .then(async () => {
       const pending = await readPending();

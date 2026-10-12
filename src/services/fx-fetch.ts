@@ -71,28 +71,18 @@ export async function refreshRates(userId: string, signal?: AbortSignal): Promis
   // next minute fired a SECOND request for the same rates. Measured: every route
   // issued one rate request, the calculator issued two.
   lastEnsureAt = Date.now();
-  let batch: ProviderRateBatch;
-  // TCMB's today.xml sends no CORS headers, so on web it always fails with a
-  // noisy console error — use only the CORS-enabled open endpoint there.
-  // Native has no CORS restriction, so it prefers TCMB with that feed
-  // as a fallback.
-  if (Platform.OS === "web") {
+  // TCMB is unreachable from the browser (CORS), so web uses the open-rates source only.
+  const providers = Platform.OS === "web" ? [fetchFromOpenRates] : [fetchFromTcmb, fetchFromOpenRates];
+  let batch: ProviderRateBatch | null = null;
+  for (const fetchBatch of providers) {
     try {
-      batch = await fetchFromOpenRates(signal);
+      batch = await fetchBatch(signal);
+      break;
     } catch {
-      return false;
-    }
-  } else {
-    try {
-      batch = await fetchFromTcmb(signal);
-    } catch {
-      try {
-        batch = await fetchFromOpenRates(signal);
-      } catch {
-        return false;
-      }
+      // Next provider.
     }
   }
+  if (!batch) return false;
   if (signal?.aborted) return false;
   const sqlite = await getSqliteAsync();
   const existingRows = await sqlite.getAllAsync<{ currency: string; rate_try: string; deleted_at: string | null }>(

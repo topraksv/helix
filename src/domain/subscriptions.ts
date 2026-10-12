@@ -1,5 +1,7 @@
 /** Pure helpers for subscription category selection. */
 
+import { normalizedMonthlyLoadMinor } from "./analytics";
+import { groupBy } from "./card-statements";
 import type { ISODate } from "./dates";
 import { tr } from "../i18n/tr";
 
@@ -68,12 +70,9 @@ export function hasUnknownAmount(occurrence: OccurrenceAmount): boolean {
 }
 
 /**
- * How an occurrence's amount reads in a list.
- *
- * One rule, one place: the dashboard, the catch-up screen and the upcoming
- * calendar each carried their own copy of this three-way choice, which is
- * three chances for a figure to be presented as settled money when it is a
- * guess — or as ₺0,00 when it is simply unknown.
+ * How an occurrence's amount reads in a list: settled, estimated, or unknown.
+ * One rule for every surface, so a guess is never shown as settled money nor an
+ * unknown as ₺0,00.
  */
 export function occurrenceAmountText(
   occurrence: OccurrenceAmount,
@@ -94,7 +93,7 @@ export const AMOUNT_LABELS = { unknown: tr.subs.unknownAmount, estimated: tr.sub
 // ---------------------------------------------------------------------------
 
 /** A stored `price_history` row, as the summary needs it. */
-export interface PriceHistoryLike {
+interface PriceHistoryLike {
   subscriptionId: string;
   amountMinor: number;
   currency: string;
@@ -102,7 +101,7 @@ export interface PriceHistoryLike {
 }
 
 /** The slice of a subscription a cost summary reads. */
-export interface SubscriptionCostLike {
+interface SubscriptionCostLike {
   id: string;
   name: string;
   amountMinor: number;
@@ -114,20 +113,12 @@ export interface SubscriptionCostLike {
 }
 
 /**
- * The range a variable bill has actually charged, from its own history.
- *
- * A variable rule stores 0 for "invoice not in yet", and that zero has been
- * leaking onto screens as ₺0,00 — which asserts a free bill. But the app is
- * not empty-handed here: every entered invoice is already appended to
- * `price_history`, and nothing ever read it back. Two or more samples make a
- * band worth showing; one makes a single previous figure, which is still more
- * than "unknown"; none leaves it genuinely unknown.
- *
- * Deliberately a plain min/max of what was charged, not an average or a
- * trend. An electricity bill is seasonal, and a mean over four samples would
- * be a confident-looking number with nothing behind it.
+ * The range a variable bill has actually charged, from its own
+ * `price_history`: the stored 0 for "invoice not in yet" would read as a free
+ * bill. A plain min/max, not an average: a seasonal bill's mean over a few
+ * samples is a confident number with nothing behind it.
  */
-export interface VariableAmountBand {
+interface VariableAmountBand {
   minMinor: number;
   maxMinor: number;
   currency: string;
@@ -180,23 +171,17 @@ export interface SubscriptionCostSummary {
 }
 
 /**
- * What the subscriptions screen reports about cost, in one pass.
+ * What the subscriptions screen reports about cost: monthly and annual totals
+ * and recent price changes.
  *
- * Deliberately small: it re-uses `normalizedMonthlyLoadMinor` for the monthly
- * figure the screen already showed and adds only the two things the stored
- * data could support but nothing read — the annual cost, and the price
- * changes `upsertSubscription` has been appending to `price_history` since the
- * table existed without any surface ever reading them back.
- *
- * Foreign-currency rules are COUNTED, not converted. Converting here would
- * need a rate this module has no business holding, and silently dropping them
- * would make a total that is wrong in a direction the user cannot see.
+ * Foreign-currency rules are COUNTED, not converted: converting needs a rate
+ * this module must not hold, and silently dropping them would make a total
+ * wrong in a direction the user cannot see.
  */
 export function subscriptionCostSummary(
   subscriptions: SubscriptionCostLike[],
   priceHistory: PriceHistoryLike[],
   today: ISODate,
-  monthlyLoad: (amountMinor: number, intervalMonths: number) => number,
   limit = 3,
 ): SubscriptionCostSummary {
   const active = subscriptions.filter((subscription) => subscription.isActive);
@@ -210,20 +195,15 @@ export function subscriptionCostSummary(
       continue;
     }
     if (subscription.amountMode === "variable" && subscription.amountMinor === 0) unknownAmountCount += 1;
-    monthlyTryMinor += monthlyLoad(subscription.amountMinor, subscription.intervalMonths);
-    annualTryMinor += monthlyLoad(subscription.amountMinor * 12, subscription.intervalMonths);
+    monthlyTryMinor += normalizedMonthlyLoadMinor(subscription.amountMinor, subscription.intervalMonths);
+    annualTryMinor += normalizedMonthlyLoadMinor(subscription.amountMinor * 12, subscription.intervalMonths);
   }
 
   const nameById = new Map(subscriptions.map((subscription) => [subscription.id, subscription.name]));
   // A change needs the price BEFORE it, so history is walked per rule in
   // chronological order and the first entry of each rule is its opening price,
   // never a change from nothing.
-  const byRule = new Map<string, PriceHistoryLike[]>();
-  for (const row of priceHistory) {
-    const bucket = byRule.get(row.subscriptionId);
-    if (bucket) bucket.push(row);
-    else byRule.set(row.subscriptionId, [row]);
-  }
+  const byRule = groupBy(priceHistory, (row) => row.subscriptionId);
   const changes: PriceChange[] = [];
   for (const [subscriptionId, rows] of byRule) {
     const name = nameById.get(subscriptionId);
@@ -269,4 +249,19 @@ export function subscriptionCostSummary(
         }
       : null,
   };
+}
+
+/** Each subscription's latest realized charge date, so an auto-paid cycle is not read as unpaid. */
+export function lastRealizedCharges(
+  transactions: readonly { subscriptionId?: string | null; status: string; effectiveDate: ISODate }[],
+): Map<string, ISODate> {
+  const latest = new Map<string, ISODate>();
+  for (const transaction of transactions) {
+    if (!transaction.subscriptionId || transaction.status !== "realized") continue;
+    const current = latest.get(transaction.subscriptionId);
+    if (!current || transaction.effectiveDate > current) {
+      latest.set(transaction.subscriptionId, transaction.effectiveDate);
+    }
+  }
+  return latest;
 }

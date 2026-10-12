@@ -41,18 +41,7 @@ function polylineLength(points: { x: number; y: number }[]): number {
   return total * 1.25 + 1;
 }
 
-/**
- * The box a pixel-sized chart is drawn into.
- *
- * `Bars` and `Lines` need a number, and every caller used to compute one from
- * the window: `Math.min(width - spacing.lg * 4, 1040)`. That expression encodes
- * a guess about how much chrome sits between the window and the chart, and the
- * guess broke the moment a 220px rail and a second column appeared — at a
- * 1024px window it asked for 928px inside a card that had 740, which is a
- * horizontal scrollbar on a screen that should not have one.
- *
- * So the frame measures itself and hands the chart the width it really has.
- */
+/** Measures itself and hands the chart the width it really has. */
 export function ChartFrame({
   children,
   min = 240,
@@ -101,23 +90,7 @@ interface DonutSlice {
 
 /** The legend's preferred column: one category name beside its share. */
 const LEGEND_BASIS = 220;
-/**
- * The ring may sit beside its legend only while it is at least as wide as it.
- *
- * This was 140 against a 220 legend, which paired them the moment the box
- * reached 378px — a card inner width a large phone clears. The result is the
- * layout this was reported for: a phone showing the ring squeezed into the
- * left third with the categories crowded down the right, when the whole point
- * of a handset layout is the ring on top and the list under it. It also made
- * the ring the SMALLER half of its own chart, which is the wrong way round for
- * the thing the screen is named after.
- *
- * Tied to the legend rather than to a viewport breakpoint because the question
- * is about the box the chart was given, not the window: the same ring is a
- * full-width card on a phone and one column of a desktop pair. The number it
- * produces — pairing from about a 520px viewport — is where
- * `shouldUseNarrowAnalytics` already says analytics stops being narrow.
- */
+/** The ring pairs with its legend only while it is at least as wide as the legend. */
 const MIN_PAIRED_RING = LEGEND_BASIS;
 
 /** Sentinel colour for a legend row that is not a slice of the ring. */
@@ -135,21 +108,7 @@ export function distributionDonutData(
       : [{ label: tr.common.none, valueMinor: distribution.uncategorizedExpenseMinor }])
     .sort((a, b) => b.valueMinor - a.valueMinor);
   const positive = rows.filter((row) => row.valueMinor > 0);
-  /**
-   * Six named categories, not seven.
-   *
-   * The ring can hold three kinds of slice at once — the named categories,
-   * "Diğer", and "Yatırıma ayrılan" — and the ramp has eight colours, so seven
-   * categories left nothing for the other two. It did not fall back: "Yatırıma
-   * ayrılan" was hard-coded to `colors[4]` and the refund rows to `colors[1]`,
-   * both of which a fifth or second category had already taken, so any month
-   * with five or more categories AND a transfer drew two different slices in
-   * the same colour and printed two identical swatches in the legend.
-   *
-   * Six leaves slot 6 for "Diğer" and slot 7 for the aside, which is the most
-   * the ring can distinguish anyway — and the sixth-largest category in a
-   * month is already a sliver.
-   */
+  // Six named slices leave slots 6 and 7 for "Diğer" and the investment aside, so no two slices share a colour.
   const NAMED_SLICES = 6;
   const remainder = positive.slice(NAMED_SLICES).reduce((sum, row) => sum + row.valueMinor, 0);
   return {
@@ -177,25 +136,7 @@ export function distributionDonutData(
   };
 }
 
-/**
- * The investments wallet ring: free cash, then one arc per asset type that
- * holds anything.
- *
- * WHY CASH IS NOT `surfaceStrong`. That token reads like the obvious "this one
- * is not a category" colour, and it is the single value `theme.ts` measured and
- * rejected as a mark: 1.68-2.03 against the surfaces this app paints it on,
- * where a graphical object owes 3:1. Against the ring's OWN empty track it is
- * 1.55. Cash is usually the largest thing in the wallet, so the ring's biggest
- * slice looked like the part of the ring that had not been filled in — and
- * selecting it painted the centre readout in that same colour, so a lock that
- * had in fact been taken showed nothing. It was reported as the ring not
- * locking, which is exactly what it looked like.
- *
- * So cash takes a measured ramp entry, and it takes the LAST one: asset types
- * fill the ramp from the front, so cash keeps its colour when a seventh type is
- * added rather than sliding to whichever slot is left over.
- * `tests/ui/theme-contrast.test.ts` owns both halves of that rule.
- */
+/** Cash takes the ramp's last entry: `surfaceStrong` fails 3:1 as a mark, and assets fill from the front. */
 export function walletDonutSlices(input: {
   cashLabel: string;
   cashMinor: number;
@@ -224,7 +165,7 @@ export function walletDonutSlices(input: {
  * and its legend are two drawings of one list: locking an arc lights its
  * legend row, and locking a legend row thickens its arc.
  */
-export interface ChartFocus {
+interface ChartFocus {
   active: number | null;
   locked: number | null;
   /** A tap or click: lock this one, or release it if it is already locked. */
@@ -265,21 +206,7 @@ export function Donut({
   size?: number;
 }) {
   const { palette } = useTheme();
-  // The caller's `size` is a ceiling, not a demand. A ring and its legend read
-  // as one chart only while they sit side by side, and the box they sit in is
-  // no longer the screen: paired into a dashboard column the row had 471px for
-  // a 236 ring, a 16 gap and a 220 legend, so the legend dropped underneath a
-  // centred ring and the card grew a wasted band on both sides of it. Below the
-  // point where shrinking the ring would make it unreadable, wrapping is the
-  // right answer and the caller's size stands.
-  //
-  // THE PHONE APP NEVER PAIRS THEM. Measuring the box is the correct question
-  // for a browser window, and the wrong one for a handset: a phone held
-  // sideways clears the budget easily, and what it buys is a shrunken ring
-  // beside a column of clipped category names. There is no pointer there to
-  // spend the width on, so the ring stays the chart and the legend stays the
-  // list under it. Web keeps the measurement, and a narrow browser window
-  // reaches the same stacked layout through it.
+  // `size` is a ceiling: the ring and legend pair only while the box holds both, and the phone app never pairs them (a ring beside clipped names).
   const [boxWidth, onBoxLayout] = useMeasuredWidth(size + LEGEND_BASIS + spacing.lg);
   const ringBudget = boxWidth - LEGEND_BASIS - spacing.lg - 2;
   const sideBySide = Platform.OS === "web" && ringBudget >= MIN_PAIRED_RING;
@@ -298,22 +225,10 @@ export function Donut({
   const centreLabelSize = Math.max(chart.axisFontSize, Math.round(fittedSize * chart.centreLabelRatio));
   const centreValueSize = Math.max(type.label.fontSize, Math.round(fittedSize * chart.centreValueRatio));
   const circumference = 2 * Math.PI * r;
-  // Redrawn whenever the arcs themselves change — a different period, a
-  // different filter, an edited amount. Without a token the reveal was a
-  // first-render-only affair and every later answer replaced the previous
-  // picture in a single frame.
+  // Redrawn whenever the arcs change, not only on first render.
   const draw = useDrawIn(true, motion.draw, slices.map((s) => `${s.label}:${s.valueMinor}`).join("|"));
 
-  /**
-   * Which slice the reader is asking about, or `null` for the whole ring.
-   *
-   * The ring used to be a picture: it drew itself once and then sat there,
-   * while the legend beside it held every figure it could not show. Touching an
-   * arc — or hovering a legend row with a pointer — now answers "what is that
-   * one?" in the middle of the ring, which is where the eye already is. It is
-   * a READOUT, so it lives in state rather than in a shared value; it changes
-   * when the finger crosses into a different arc, not once per frame.
-   */
+  // The readout lives in state, not a shared value: it changes when the finger crosses into another arc, not per frame.
   const focus = useChartFocus();
   const active = focus.active;
 
@@ -399,11 +314,7 @@ export function Donut({
             fill="none"
           />
           {arcs.map((a, i) => {
-            // Thinner, never fainter. Fading the other slices would drop the
-            // ramp's weakest colour under the 3:1 floor it was designed to
-            // clear — see `chart.donutLift`. A narrower arc recedes just as
-            // clearly and keeps every colour at the contrast it was measured
-            // at, which also means the ring is still readable mid-gesture.
+            // Thinner, never fainter: fading would drop the ramp's weakest colour under 3:1 (see `chart.donutLift`).
             const width = active == null
               ? strokeWidth
               : active === a.sliceIndex
@@ -419,10 +330,7 @@ export function Donut({
               onPressIn: () => focus.preview(a.sliceIndex),
             };
             if (a.sweep >= 359.9) {
-              // A ring that is one category is still a ring being drawn. This
-              // used to be a plain circle, so the single-category case — which
-              // is every new account, and any month with one dominant
-              // category — was the one donut in the app that simply appeared.
+              // A one-category ring is still drawn in, like every other donut.
               return (
                 <AnimatedCircle
                   key={i}
@@ -511,12 +419,7 @@ export function Donut({
           flexBasis: LEGEND_BASIS,
           minWidth: 160,
           position: "relative",
-          // Stretched to the ring's height ONLY beside it, so the space below
-          // the last row is part of the legend and can be pressed to release a
-          // lock. Stacked there is no ring height to reach and nothing to
-          // centre against, and the legend takes the card's full width so its
-          // rows read as the list they are rather than a narrow column under a
-          // centred ring.
+          // Stretched to the ring's height only beside it, so the space below the last row can release a lock.
           alignSelf: "stretch",
           justifyContent: sideBySide ? "center" : "flex-start",
           gap: 6,
@@ -537,10 +440,7 @@ export function Donut({
         />
         {largest ? (
           <View
-            // A read-only caption must not eat a press meant for the surface
-            // behind it: this chip sits over the legend's release area, so a
-            // tap on "the empty part of the legend" landed on the label and
-            // did nothing.
+            // A read-only caption must not eat a press meant for the legend's release area behind it.
             pointerEvents="none"
             style={{
               alignSelf: "stretch",
@@ -558,13 +458,7 @@ export function Donut({
             </Text>
           </View>
         ) : null}
-        {/* A ghost legend row, and no sentence. The ring beside it is already
-            drawn empty, so explaining that in words said the same thing twice
-            — and "grafik sıfırdan başlıyor" told the owner about the chart's
-            internals rather than about their money. The bar keeps the legend
-            column its own width so the card does not resize when the first
-            holding arrives; the reading of it stays in the accessible summary
-            above, where there is no ring to look at. */}
+        {/* A ghost legend row, no sentence: the ring is already drawn empty. The bar keeps the legend column its width so the card does not resize when the first holding arrives. */}
         {[...slices, ...supplementalSlices].length === 0 ? (
           <View testID="donut-empty-state" style={{ gap: spacing.sm, marginBottom: 2 }}>
             <View style={{ height: 4, borderRadius: 2, backgroundColor: palette.surfaceAlt }} />
@@ -578,13 +472,7 @@ export function Donut({
           const selectable = !supplemental && s.valueMinor > 0;
           const isActive = selectable && active === i;
           return (
-            // The share rule needs its own air: at a 3px gap under a 3px bar it
-            // read as an underline on the label rather than as a track beside
-            // the donut it belongs to.
-            //
-            // The row is the pointer's way in. `onHoverIn` is web-only and a
-            // no-op on native, where the tap does the same job — so one control
-            // serves both without a platform branch.
+            // The row is the pointer's way in: `onHoverIn` is web-only and a no-op on native, where the tap does the same job.
             <Pressable
               key={`${s.label}-${i}`}
               disabled={!selectable}
@@ -603,29 +491,14 @@ export function Donut({
                 {
                   gap: 6,
                   marginBottom: 2,
-                  // The inset is EXPLICIT here because this row is not in a
-                  // card: the legend is a column beside the ring and carries no
-                  // padding of its own, so the default — reach the card's edge
-                  // — would spill the fill into the gap between the two. It
-                  // still goes through the one rule rather than a bare
-                  // negative margin, which is what keeps it a decision rather
-                  // than a number someone typed.
+                  // Explicit inset: the legend is no card, so the default (reach the card's edge) would spill the fill into the gap beside the ring.
                   ...interactionBleed(spacing.xs),
-                  // The actual defect this row was reported for: at 2px the lit
-                  // band was thinner than the text inside it, so a hover here
-                  // read as a hairline rather than as a row lighting up.
+                  // At 2px the lit band was thinner than the text inside it.
                   paddingVertical: spacing.xs,
                   borderRadius: radius.sm,
                 },
                 selectable
-                  // `primarySoft` and NOT `surfaceAlt` for the locked base.
-                  // `heroSurface` resolves to `surfaceAlt` in the dark theme,
-                  // so a neutral lock painted the selected row in the card's
-                  // own colour: the same ring, the same code and the same tap
-                  // showed a highlight on the analysis screen and nothing at
-                  // all on the investments hero. An accent tint is a colour
-                  // no surface in this app is, so the lock reads wherever the
-                  // ring is placed.
+                  // `primarySoft`, not `surfaceAlt` for the locked base: `heroSurface` is `surfaceAlt` in dark, so a neutral lock vanished on the investments hero.
                   ? interactionSurface(palette, state, { base: isActive ? palette.primarySoft : "transparent" })
                   : null,
               ]}
@@ -674,18 +547,8 @@ interface LineSeries {
 }
 
 /**
- * Turn a run of points into a smooth path.
- *
- * A polyline of monthly figures is a zig-zag, and the eye spends its effort on
- * the corners instead of the trend. This is Catmull-Rom converted to cubic
- * Bézier: each segment's control points come from its neighbours, so the curve
- * passes through every real value — it smooths the join, never the number.
- *
- * The control points are then clamped into their own segment's range. Without
- * that the curve overshoots after a flat run: a category with nothing until
- * June and a spike in July was drawn dipping BELOW ZERO in May, inventing a
- * month of income out of the interpolation. A chart of money may round a
- * corner; it may not draw a value that never existed.
+ * Turn a run of points into a smooth path: Catmull-Rom as cubic Bézier, so the curve passes through every real value.
+ * Control points are clamped into their segment's range, or a spike after a flat run dips below zero and draws a value that never existed.
  */
 function smoothPath(points: { x: number; y: number }[]): string {
   if (points.length === 0) return "";
@@ -724,25 +587,7 @@ function segmentsOf(points: (number | null)[]): number[][] {
   return runs;
 }
 
-/**
- * Multi-series line chart on a ruled field.
- *
- * The line used to float on the card's own surface with a single rule under it,
- * which made a value impossible to place: there was nothing to read a height
- * against. The plot is now its own tinted panel ruled both ways — squared
- * paper — with the value axis labelled down the left and the zero line the one
- * rule drawn at full strength.
- */
-/**
- * The floating value box a chart shows while a finger is on it.
- *
- * Absolutely positioned, and that is the whole point: the chart's box must be
- * the same height with a finger on it as without, or the chart moves under the
- * finger reading it — and `e2e/ui-consistency.spec.ts` asserts that nothing in
- * a chart's ancestry overflows. `Lines` and `Bars` both draw one, and they had
- * drifted into two copies of the same twenty lines with a comment on the second
- * saying it had to match the first. One component is that comment, enforced.
- */
+/** The floating value box a chart shows while a finger is on it. Absolutely positioned: the chart must be the same height with a finger on it, or it moves under the finger. */
 function ChartReadout({ text }: { text: string }) {
   const { palette } = useTheme();
   return (
@@ -764,6 +609,7 @@ function ChartReadout({ text }: { text: string }) {
   );
 }
 
+/** Multi-series line chart on a ruled field: a tinted plot ruled both ways, the value axis labelled down the left, the zero line at full strength. */
 export function Lines({
   series,
   xLabels,
@@ -775,30 +621,14 @@ export function Lines({
   xLabels: string[];
   height?: number;
   width?: number;
-  /**
-   * Where the vertical axis starts.
-   *
-   * `zero` for money moving over time: a spending line that did not start at
-   * zero would exaggerate every wobble into a cliff. `range` for a PRICE,
-   * where the opposite is true — gram gold sits near seven thousand lira and a
-   * zero-anchored axis flattens a whole year of it into one horizontal line.
-   */
+  /** Where the axis starts: `zero` for money over time (else a wobble becomes a cliff); `range` for a price, which zero would flatten. */
   baseline?: "zero" | "range";
 }) {
   const { palette } = useTheme();
-  // No right gutter: the only caller draws one series whose name is already the
-  // card's heading, so an end label repeated it and cost a sixth of the plot.
+  // No right gutter: the one series is named by the card's heading.
   const draw = useDrawIn(true, motion.draw, series.map((s) => `${s.label}:${s.points.join(",")}`).join("|"));
   const clipId = `line-reveal-${React.useId().replace(/[^a-zA-Z0-9]/g, "")}`;
-  /**
-   * Which x position the finger is on, or `null` when nobody is touching.
-   *
-   * State rather than a shared value: what changes is the READOUT, and a
-   * readout is text that needs a render anyway. It only changes when the
-   * nearest index changes — a handful of times per drag, not once per frame —
-   * so the frame-accurate machinery `UI.md` reserves for scroll- and
-   * gesture-driven values would buy nothing here.
-   */
+  // Which x position the finger is on, or `null`. State, not a shared value: a readout needs a render anyway and changes only when the nearest index does.
   const [scrubIndex, setScrubIndex] = React.useState<number | null>(null);
   const values = series.flatMap((s) => s.points.filter((p): p is number => p != null));
   if (values.length === 0) return null;
@@ -814,9 +644,7 @@ export function Lines({
   const TICKS = 5;
   const ticks = Array.from({ length: TICKS }, (_, i) => max - ((max - min) / (TICKS - 1)) * i);
   const axisScale = chartAxisScale([...values, ...ticks]);
-  // Same two steps `Bars` picks between, and the gutter is measured from the
-  // size actually drawn — it used to be measured from 9 while the labels were
-  // drawn at 9 too, so raising one without the other would have clipped them.
+  // Same two steps `Bars` picks between; the gutter is measured from the size drawn.
   const axisFontSize = shouldUseLargeAxisType(width) ? chart.axisFontSizeLarge : chart.axisFontSize;
   const padding = { left: chartAxisLabelGutter(ticks, axisFontSize, 54, axisScale), right: 12, top: 12, bottom: 24 };
   const plotW = width - padding.left - padding.right;
@@ -831,27 +659,8 @@ export function Lines({
     return `${item.label}: ${itemValues}`;
   }).join(". "));
 
-  /**
-   * Which x positions get a tick — one rule for the gridlines and the labels.
-   *
-   * They used to disagree: a label every sixth slot, but a gridline on EVERY
-   * one. At twelve months that reads as a grid; at the fifty-three weekly
-   * candles a price chart draws it is a line every six pixels, which is a grey
-   * wash with a chart somewhere behind it.
-   *
-   * Six was then a fixed answer to a question that depends on two things it
-   * never looked at: how wide the plot is, and how long the labels are. Three
-   * short month names have room to spare where six dates do not — measured on
-   * a 390pt phone, the price chart's plot is about 200px and its six date
-   * labels overlapped into one unreadable run of text.
-   *
-   * 0.66em, where the value gutter below reserves 0.72em. That gutter is
-   * guarding against a CLIP — a label wider than its reserve starts outside the
-   * viewBox and loses glyphs — so it takes the ceiling of Inter's numeric
-   * advance. These are mixed-case Turkish words whose real average is lower,
-   * they are inside the plot either way, and the ceiling costs a whole label:
-   * at 0.72 a thirty-day range drops from four dates to three.
-   */
+  // One rule for the gridlines and the labels, counted by how wide the plot is and how long the labels are.
+  // 0.66em, not the value gutter's 0.72em: that one guards a clip, while these mixed-case words average narrower and 0.72 drops a thirty-day range from four dates to three.
   const widestLabel = xLabels.reduce((widest, label) => Math.max(widest, label.length), 0);
   // The two end labels are anchored to the plot edges rather than centred, so
   // the gap either side of them has to carry one and a half labels between
@@ -963,13 +772,7 @@ export function Lines({
               {runs.map((run) => {
                 const pts = run.map((i) => ({ x: x(i), y: y(s.points[i]!) }));
                 const line = smoothPath(pts);
-                // The fill closes the same curve down to the axis floor, so the
-                // area and the line can never disagree about where a month sat.
-                //
-                // The floor is the axis's own start, not always zero. On a
-                // price axis zero sits thousands of lira below the plot, and
-                // closing there sent the fill straight through the bottom edge
-                // and washed a translucent band over the x labels.
+                // The fill closes the same curve down to the axis floor, which is the axis's own start: on a price axis zero would wash a band over the x labels.
                 const floor = y(baseline === "zero" ? 0 : min);
                 const area = `${line} L${pts.at(-1)!.x},${floor} L${pts[0]!.x},${floor} Z`;
                 const length = polylineLength(pts);
@@ -1080,15 +883,7 @@ function formatChartAxis(valueMinor: number, scale: ChartAxisScale = "full"): st
     : formatMinorCompactAtScale(roundedMinor, scale);
 }
 
-/**
- * Reserve the real ink width of the longest ruler label before drawing the
- * plot. A fixed 58/64px gutter was enough for ordinary figures, but a signed
- * billion label is wider than that and SVG clips text that starts outside its
- * viewBox. Inter's measured numeric advance is roughly 0.6–0.7em; the
- * conservative 0.72em ceiling keeps the first and last glyph inside on both
- * the web font and the native face without giving the axis a permanent empty
- * desktop rail.
- */
+/** Reserves the ink width of the longest ruler label: SVG clips text starting outside its viewBox, so the gutter uses Inter's 0.72em numeric-advance ceiling. */
 function chartAxisLabelGutter(values: number[], fontSize: number, minimum: number, scale: ChartAxisScale): number {
   const longest = values.reduce((width, value) => Math.max(width, formatChartAxis(value, scale).length), 0);
   return Math.ceil(Math.max(minimum, longest * fontSize * 0.72 + 12));
@@ -1122,15 +917,8 @@ function barShape(x: number, top: number, width: number, height: number, positiv
 }
 
 /**
- * Grouped vertical bars — one cluster per x slot, one bar per series. Signed
- * values dip below a shared zero line.
- *
- * Full-precision amounts do not sit inside the SVG. Those labels used to hang above
- * each bar on leader lines: passable for one month, but cramped at three and
- * unreadable under Dynamic Type. The plot now uses a rounded monetary ruler
- * for comparison, while short ranges get a real-text ledger directly below
- * it. The colour rule and series name bind each figure to its bar without
- * relying on colour alone.
+ * Grouped vertical bars: one cluster per x slot, one bar per series, signed values below a shared zero line.
+ * Full-precision amounts are real text below the plot, not SVG labels, which are unreadable under Dynamic Type.
  */
 export function Bars({
   groups,
@@ -1146,15 +934,7 @@ export function Bars({
   const { palette } = useTheme();
   const draw = useDrawIn(true, motion.draw, groups.map((g) => `${g.label}:${g.values.join(",")}`).join("|"));
   const clipId = `bar-reveal-${React.useId().replace(/[^a-zA-Z0-9]/g, "")}`;
-  /**
-   * Which column the reader is asking about, or `null` for none.
-   *
-   * The x labels are thinned to at most six, so on a twelve-month chart most
-   * columns had no name at all and no figure anywhere — the only way to read
-   * one was to count across from a label that was still drawn. Touching a
-   * column (or hovering it with a pointer) now names it and prints every series
-   * in it, above the plot and without changing the chart's height.
-   */
+  // Which column the reader is asking about, or `null`: x labels are thinned to six, so touching a column names it and prints its series without changing the chart's height.
   const focus = useChartFocus();
   const activeGroup = focus.active;
   const axis = resolveBarAxis(groups.flatMap((g) => g.values));
@@ -1184,20 +964,9 @@ export function Bars({
   const barW = Math.max(3, (clusterW - barGap * (nSeries - 1)) / nSeries);
   const y = (v: number) => pad.top + plotH - ((v - min) / span) * plotH;
   const zeroY = y(0);
-  // Collision is a question about pixels, not about amounts. The axis drops a
-  // reference line whose value is close to a real one, but "close" in value
-  // depends on the step while "overlapping" depends on the plot's height: a
-  // 190px plot with six rungs puts them 30px apart, and two 11px labels a few
-  // pixels apart are unreadable whatever their values say. Zero is structural
-  // and always survives — it is the line the signs are read against.
+  // Collision is about pixels, not amounts: a 190px plot with six rungs puts them 30px apart. Zero is structural and always survives.
   const labelGap = axisFontSize + 3;
-  // One pass over everything that wants a label, in priority order, keeping a
-  // tick only when it clears every label already placed. Filtering the ruler
-  // against the real figures alone was not enough: nothing stopped two rungs —
-  // or zero and a small negative extreme — from landing within a few pixels of
-  // each other on a short chart, which is exactly the "-7 Mr sitting on top of
-  // 0" the owner reported. The rules are still drawn for every tick; only the
-  // text yields, and the real figures never do.
+  // One pass in priority order, keeping a tick only if it clears every label placed; the rules are drawn for every tick, only the text yields.
   const placed: number[] = [];
   const clears = (value: number) => placed.every((other) => Math.abs(y(value) - y(other)) >= labelGap);
   for (const value of axis.valueTicks) if (clears(value)) placed.push(value);

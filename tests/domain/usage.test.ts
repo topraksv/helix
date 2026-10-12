@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { isUsageDelta, localDay, screenKey } from "../../src/domain/usage";
+import { isUsageDelta, screenKey } from "../../src/domain/usage";
 
 /**
  * The database refuses a screen key that does not match its CHECK, so every
@@ -66,15 +66,6 @@ describe("screenKey", () => {
         expect(key.length, path).toBeLessThanOrEqual(60);
       }
     }
-  });
-});
-
-describe("localDay", () => {
-  it("uses the device's own day rather than UTC", () => {
-    // 23:30 on the 15th in a zone ahead of UTC is still the 15th to the person
-    // who opened the screen, whatever the server would have called it.
-    const late = new Date(2026, 8, 15, 23, 30);
-    expect(localDay(late)).toBe("2026-09-15");
   });
 });
 

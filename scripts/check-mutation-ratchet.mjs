@@ -1,38 +1,11 @@
-#!/usr/bin/env node
-/**
- * Fail when a mutated file detects fewer mutants than it did last time.
- *
- * Helix and Gital run this same file. It replaced an absolute threshold of 98
- * that no real change could meet: measured on 2026-08-19 against the first
- * product diff to reach it, Helix's sixteen selected files scored 54.22, and
- * the release before it had shipped from a `workflow_dispatch` that ran
- * sentinels. A gate no change can pass is one everyone routes around. What is
- * worth enforcing is that a file never gets worse, and that no file enters
- * unmeasured: a mutated file with no recorded score fails rather than being
- * adopted at whatever it happens to score.
- *
- * `--record` adopts the last run's scores into `mutation-baseline.json`,
- * merged over what is there, since a run covers only the scope it was given.
- * It is a decision made after reading what survived, which is why nothing
- * here adopts on its own.
- */
+// Fails when a mutated file detects fewer mutants than recorded, or has no recorded score; `--record` adopts the last run by hand.
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { pathToFileURL } from "node:url";
 
 const REPORT = "reports/mutation/mutation.json";
 const BASELINE = "mutation-baseline.json";
 
-/**
- * How far a score may fall before it counts. Not slack: Stryker's timeout is
- * wall-clock and counts as detected, so how many mutants tip over it moves a
- * score with no code changed. Helix measured 5, 36 and 72 timeouts across
- * three runs of one tree, and the per-file drift stayed under half a point
- * once the static-only schema left the scope.
- *
- * So record from a quiet machine. A run with more timeouts scores higher, and
- * adopting it leaves the next quieter run failing an honest commit.
- */
+// Stryker counts a timeout as detected and timeouts vary with load, so a score drifts without code changing; record from a quiet machine.
 const TOLERANCE = 0.5;
 
 // A compile or runtime error is not a mutant the tests could have detected.
@@ -67,12 +40,7 @@ export function recordedFrom(report, measuredOn, measuredDate) {
   }));
 }
 
-/**
- * @param {Record<string, number>} measured file -> score from this run
- * @param {{ files: Record<string, { score: number }> }} baseline
- * @param {(file: string) => boolean} exists injected so a stale entry is testable
- */
-/** Read whole, with no look first: a check and a later write was a race code scanning named. */
+/** Read whole, with no existence check first (TOCTOU). */
 function readBaseline() {
   try {
     return JSON.parse(readFileSync(BASELINE, "utf8"));
@@ -98,7 +66,7 @@ export function evaluate(measured, baseline, exists = existsSync) {
   return { problems, improvements };
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (import.meta.main) {
   if (!existsSync(REPORT)) {
     console.error(`No mutation report at ${REPORT}. Run the mutation gate first.`);
     process.exit(1);

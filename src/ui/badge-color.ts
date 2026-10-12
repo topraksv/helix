@@ -1,14 +1,7 @@
 /**
  * Deterministic avatar colour for the name-derived initials badge.
  *
- * The hue is a stable hash of the name, but a raw HSL ramp at one fixed
- * lightness is not a safe canvas for the white monogram drawn on it: relative
- * luminance varies enormously around the wheel (yellow at L=46% is ~4x brighter
- * than blue), so white text dropped to 2.6:1 on roughly half of the hues. The
- * generated colour is therefore capped in RELATIVE LUMINANCE — the quantity
- * WCAG contrast is computed from — instead of in HSL lightness. Hues that were
- * already dark enough are returned unchanged; only the bright half is darkened,
- * and every hue keeps the same readable floor.
+ * The hue is capped by relative luminance, not HSL lightness, so white initials keep contrast on every hue.
  */
 
 const SATURATION = 0.42;

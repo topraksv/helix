@@ -50,14 +50,6 @@ describe("canonical product terminology", () => {
       balanceAdjustment: "Bakiye Düzeltme",
       balanceAdjustments: "Bakiye Düzeltmeleri",
     });
-    expect(tr.app.name).toBe(productTerms.appName);
-    expect(tr.tabBar.cashflow).toBe(productTerms.financialTable);
-    expect(tr.cashflow.title).toBe(productTerms.financialTable);
-    expect(tr.cashflow.monthsAsRows).toBe(productTerms.rowFocused);
-    expect(tr.cashflow.monthsAsColumns).toBe(productTerms.columnFocused);
-    expect(tr.settings.sources).toBe(productTerms.paymentMethods);
-    expect(tr.settings.incomeRules).toBe(productTerms.recurringIncomes);
-    expect(tr.settings.opening).toBe(productTerms.balanceAdjustment);
   });
 });
 

@@ -1,12 +1,4 @@
-/**
- * Backup round trip, including into a DIFFERENT account.
- *
- * A backup is the last safety valve this product has, and the one flow no
- * unit test covered end to end: every other backup test checks the validator
- * in isolation. This drives the real export builder over a real SQLite
- * database and imports the result back under a second user id, which is what
- * "restore my backup on my other account" actually does.
- */
+// A backup must restore into the same account and into a different one, over a real database.
 import { DatabaseSync } from "node:sqlite";
 import { createHash } from "node:crypto";
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
@@ -60,13 +52,26 @@ import { setMatrixColor } from "../../src/data/repo/matrix-colors";
 import { deterministicId, naturalKeys } from "../../src/db/ids";
 import { resetLocalWorkspace, writeSetting } from "../../src/db/mutations";
 import { buildIdRemap, isDeterministicId } from "../../src/services/backup-remap";
-import { buildExportText, buildWorkbookBytes, importBundle, parseExportBundleText } from "../../src/services/export-import";
+import { buildExportText, buildWorkbookBytes, importBundle } from "../../src/services/export-import";
+import { parseExportBundleText } from "../../src/services/backup-validation";
 import { parseWorkbookBytes } from "../../src/services/spreadsheet-import";
 import { migrationStatements } from "../helpers";
 
 // Accounts are uuids in the product; the validator enforces that too.
 const SOURCE_USER = "11111111-1111-4111-8111-111111111111";
 const TARGET_USER = "22222222-2222-4222-8222-222222222222";
+
+function counts(userId: string) {
+  return {
+    persons: countFor("persons", userId),
+    categories: countFor("categories", userId),
+    transactions: countFor("transactions", userId),
+    category_budgets: countFor("category_budgets", userId),
+    cell_notes: countFor("cell_notes", userId),
+    matrix_colors: countFor("matrix_colors", userId),
+    subscriptions: countFor("subscriptions", userId),
+  };
+}
 
 function countFor(table: string, userId: string): number {
   const row = harness.db!.prepare(`SELECT COUNT(*) AS n FROM ${table} WHERE user_id = ?`).get(userId) as { n: number };
@@ -83,19 +88,12 @@ async function seedSourceAccount(): Promise<void> {
   });
   await upsertCategoryBudget(SOURCE_USER, { month: "2026-07" as never, categoryId: expenseId, amountMinor: 2_000_00 });
   await saveCellNote(SOURCE_USER, "2026-07" as never, expenseId, "temmuz notu");
-  // All three colour scopes, because each one nulls a different column and the
-  // suite had only ever carried `cell`. The ROW mark is the shape whose `month`
-  // is null, and that null reached the generic month check as "not a month key"
-  // and made this whole file unrestorable — the same failure the subscription
-  // comment below records, arrived at through a different column. The COLUMN
-  // mark nulls `item_key` instead, which is the key `remapRow` has to rewrite
-  // by name because it does not end in `_id`; carrying all three is what makes
-  // the cross-account test below exercise every branch of `resolveMatrixColors`.
+  // All three colour scopes, because each nulls a different column: a row mark has no month,
+  // a column mark has no `item_key`, which `remapRow` must rewrite by name.
   await setMatrixColor(SOURCE_USER, { scope: "row", itemKey: expenseId, month: null }, "red");
   await setMatrixColor(SOURCE_USER, { scope: "column", itemKey: null, month: "2026-07" as never }, "green");
   await setMatrixColor(SOURCE_USER, { scope: "cell", itemKey: expenseId, month: "2026-07" as never }, "orange");
-  // A variable-amount subscription: the newest feature, and the one most
-  // likely to be missing from a backup written before it existed.
+  // A variable-amount subscription, which a backup written before it existed would lack.
   await upsertSubscription(SOURCE_USER, {
     name: "Elektrik", amountMinor: 0, amountMode: "variable", currency: "TRY", cycle: "monthly",
     intervalMonths: 1, billingDay: 15, nextDueDate: "2026-08-15" as never, paymentSourceId: null,
@@ -117,21 +115,11 @@ describe("backup round trip", () => {
 
   it("restores its own account's backup, including a variable bill with no estimate", async () => {
     await seedSourceAccount();
-    const before = {
-      persons: countFor("persons", SOURCE_USER),
-      categories: countFor("categories", SOURCE_USER),
-      transactions: countFor("transactions", SOURCE_USER),
-      category_budgets: countFor("category_budgets", SOURCE_USER),
-      cell_notes: countFor("cell_notes", SOURCE_USER),
-      matrix_colors: countFor("matrix_colors", SOURCE_USER),
-      subscriptions: countFor("subscriptions", SOURCE_USER),
-    };
+    const before = counts(SOURCE_USER);
     expect(before.subscriptions).toBe(1);
     expect(before.matrix_colors, "the seed must carry one mark of every scope").toBe(3);
 
-    // A zero-amount variable subscription used to make the account's OWN
-    // backup unreadable: the validator required a positive amount, so the
-    // whole file was rejected as "Geçersiz yedek dosyası".
+    // A zero-amount variable subscription must not make the account's own backup unreadable.
     const bundle = parseExportBundleText(await buildExportText(SOURCE_USER));
     await expect(importBundle(SOURCE_USER, bundle)).resolves.toBeTruthy();
 
@@ -165,11 +153,8 @@ describe("backup round trip", () => {
   });
 
   it("names only the tables that hold rows, so an older build refuses only what it would lose", async () => {
-    // A build's validator refuses a whole file for one table name it does not
-    // know. Naming every table meant each new one — `card_statement_payments`
-    // in 1.8 — made every later backup unreadable to the version before it,
-    // including an account that had never written a row there. An absent table
-    // restores exactly as an empty one does: restore merges what is present.
+    // An older build's validator refuses a whole file for one table name it does not know, so
+    // an empty table must be absent: restore merges what is present.
     await seedSourceAccount();
     const bundle = parseExportBundleText(await buildExportText(SOURCE_USER));
 
@@ -197,15 +182,7 @@ describe("backup round trip", () => {
 
   it("restores another account's backup, re-deriving deterministic ids and staying idempotent on retry", async () => {
     await seedSourceAccount();
-    const before = {
-      persons: countFor("persons", SOURCE_USER),
-      categories: countFor("categories", SOURCE_USER),
-      transactions: countFor("transactions", SOURCE_USER),
-      category_budgets: countFor("category_budgets", SOURCE_USER),
-      cell_notes: countFor("cell_notes", SOURCE_USER),
-      matrix_colors: countFor("matrix_colors", SOURCE_USER),
-      subscriptions: countFor("subscriptions", SOURCE_USER),
-    };
+    const before = counts(SOURCE_USER);
     const sourceRowMark = harness.db!.prepare(
       `SELECT id, item_key FROM matrix_colors WHERE user_id = ? AND scope = 'row'`,
     ).get(SOURCE_USER) as { id: string; item_key: string };
@@ -215,20 +192,14 @@ describe("backup round trip", () => {
     const sourceNoteId = (harness.db!.prepare(
       `SELECT id FROM cell_notes WHERE user_id = ?`,
     ).get(SOURCE_USER) as { id: string }).id;
-    // A plain uuidv7 row (created via `addTransaction`'s `newId()`) carries no
-    // account identity and must survive the remap byte-for-byte.
+    // A plain uuidv7 row carries no account identity and must survive the remap byte-for-byte.
     const sourceTxId = (harness.db!.prepare(
       `SELECT id FROM transactions WHERE user_id = ?`,
     ).get(SOURCE_USER) as { id: string }).id;
 
     const bundle = parseExportBundleText(await buildExportText(SOURCE_USER));
-    // The real app wipes local SQLite on an account switch (`resetLocalWorkspace`,
-    // called from session.ts when a different account signs in on this
-    // device — the cloud is RLS-scoped source of truth, so local storage only
-    // ever holds ONE account at a time). Simulate that here: a plain uuidv7
-    // id from account A must not still be physically present as account A's
-    // OWN row when account B restores it, or the write layer's (deliberate,
-    // untouched-by-this-change) ownership guard refuses the write.
+    // The app wipes local SQLite on an account switch; otherwise account A's plain uuidv7 ids
+    // would still be A's own rows and the write layer's ownership guard would refuse B's restore.
     await resetLocalWorkspace();
     const result = await importBundle(TARGET_USER, bundle);
     expect(result.imported).toBeGreaterThan(0);
@@ -259,10 +230,8 @@ describe("backup round trip", () => {
     // A uuidv7 id is untouched by the remap.
     expect(targetTx?.id, "a uuidv7 transaction id is untouched by the remap").toBe(sourceTxId);
 
-    // Every scope survives the account change with its own nulls intact. The
-    // category here is a plain uuid the remap leaves alone, so the `item_key`
-    // REWRITE is not what this proves — the test below, whose category id is
-    // derived from the account, is where that branch actually fires.
+    // Every scope survives with its own nulls intact. The category id here is a plain uuid, so
+    // the `item_key` rewrite is proven by the test below, whose category id is account-derived.
     const targetRowMark = harness.db!.prepare(
       `SELECT id, item_key, month, token FROM matrix_colors WHERE user_id = ? AND scope = 'row'`,
     ).get(TARGET_USER) as { id: string; item_key: string; month: string | null; token: string };
@@ -276,9 +245,7 @@ describe("backup round trip", () => {
     expect(targetColumnMark.item_key, "a column mark still has no item after a restore").toBeNull();
     expect(targetColumnMark.month).toBe("2026-07");
 
-    // Re-running the SAME import must converge, not duplicate: the remap is a
-    // pure function of (bundle, source, target), so a second pass computes
-    // the identical target ids and the upsert lands on the same rows.
+    // The remap is a pure function of (bundle, source, target), so a repeat converges.
     const second = await importBundle(TARGET_USER, bundle);
     expect(second.imported).toBe(0);
     for (const [table, expected] of Object.entries(before)) {
@@ -305,24 +272,17 @@ describe("backup round trip", () => {
       sortOrder: 0,
     });
     await writeSetting(SOURCE_USER, "column_years", { "2026": [sourceCategoryId] });
-    // `matrix_colors.item_key` is the third place an id hides from the generic
-    // `*_id` rule, and the only one of the three that is a column rather than
-    // JSON. It belongs in this test because the category here is re-derived
-    // under the target account, which is the only condition under which the
-    // rewrite can be observed at all.
+    // `item_key` is the third place an id hides from the generic `*_id` rule; the rewrite is
+    // only observable because this category is re-derived under the target account.
     await setMatrixColor(SOURCE_USER, { scope: "row", itemKey: sourceCategoryId, month: null }, "red");
 
     const bundle = parseExportBundleText(await buildExportText(SOURCE_USER));
-    // See the previous test: local SQLite holds one account at a time in the
-    // real app, so simulate the account-switch wipe before restoring account
-    // A's backup under account B.
+    // As above: the account-switch wipe.
     await resetLocalWorkspace();
     await importBundle(TARGET_USER, bundle);
 
-    // `seedCategory` embeds the account id, so the category is re-seeded under
-    // a DIFFERENT id for the target account — computed independently here
-    // (not read off the target DB) to prove the remap actually recomputed the
-    // embedded reference rather than merely copying whatever landed.
+    // Computed independently, not read off the target DB, so the remap is proven to recompute
+    // the embedded reference rather than copy whatever landed.
     const targetCategoryId = await deterministicId(naturalKeys.seedCategory(TARGET_USER, categoryName));
     expect(targetCategoryId).not.toBe(sourceCategoryId);
 
@@ -362,29 +322,17 @@ describe("backup round trip", () => {
     expect(restored.amount_mode, "an older backup restores as a fixed subscription").toBe("fixed");
   });
 
-  /**
-   * A restore is all-or-nothing, and the investment wallet is replayed as a
-   * whole — so a bundle whose operations do not add up has no single row to
-   * point at. The refusal used to be four words ("Geçersiz yedek dosyası"),
-   * and finding the real cause of one took five rounds of bisecting the file
-   * with the source open. It names the section now.
-   */
+  // The investment wallet is replayed as a whole, so a bundle that does not add up has no single row to blame; the refusal names the section.
   it("says which section a replay-level refusal came from", async () => {
-    const personId = await createPerson(SOURCE_USER, "Ben");
-    void personId;
+    await createPerson(SOURCE_USER, "Ben");
     const bundle = parseExportBundleText(await buildExportText(SOURCE_USER));
     const now = "2026-08-01T00:00:00.000Z";
     const id = (n: number) => `00000000-0000-7000-8000-${String(n).padStart(12, "0")}`;
     const row = (extra: Record<string, unknown>) => ({
       user_id: SOURCE_USER, created_at: now, updated_at: now, deleted_at: null, tombstone_version: 0, ...extra,
     });
-    // `setup_completed` is deliberately still here. Migration 0013 dropped it
-    // from the local schema — it was written once at setup and read by nothing —
-    // and every backup taken before that carries it. `toDbShape` walks the
-    // SCHEMA's columns rather than the row's keys, so a field the schema no
-    // longer has is dropped on the way in instead of reaching the INSERT as a
-    // column that does not exist. This fixture is what proves that, and it is
-    // the reason the drop needed no compatibility shim of its own.
+    // `setup_completed` is deliberately still here: older backups carry a column the schema
+    // dropped, and `toDbShape` walks the schema's columns so it never reaches the INSERT.
     bundle.tables.investment_profiles = [row({
       id: id(901), started_on: "2026-01-01", opening_cash_minor: 1_000_00, setup_completed: 1,
     })];
@@ -453,11 +401,7 @@ describe("backup round trip", () => {
       expect(ownMonths(TARGET_USER)).toEqual(ownMonths(SOURCE_USER));
     });
 
-    /**
-     * The wizard leaves a card's cycle blank when nobody knows it (1.7.2). That
-     * card made the account's own next backup "Geçersiz yedek dosyası": the
-     * export copies what is stored, and restore refused the card.
-     */
+    // The wizard leaves a card's cycle blank when nobody knows it; the export copies that and restore must accept it.
     it("restores the backup of an import whose card cycle was left blank", async () => {
       const self = await createPerson(SOURCE_USER, "Ben");
       const phone = await createCategory(SOURCE_USER, { name: "Elektronik", kind: "expense", isTransfer: false, sortOrder: 0 });

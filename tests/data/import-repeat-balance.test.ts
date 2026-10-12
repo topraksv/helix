@@ -30,6 +30,7 @@ vi.mock("../../src/db/ids", () => ({
 }));
 vi.mock("../../src/sync/engine", () => ({ scheduleSync: vi.fn() }));
 
+import { ImportBatchUnreadableError } from "../../src/data/repo/errors";
 import { importSheets, importWorkbookRecords, openingBalanceFromSheets, planWorkbookRecords } from "../../src/data/repo/imports";
 import type { InvestmentRecord, SubscriptionRecord } from "../../src/domain/workbook-format";
 import { closeInstallmentPlan, createInstallmentPlan, reopenInstallmentPlan } from "../../src/data/repo/installments";
@@ -237,10 +238,7 @@ describe("importing the same workbook twice", () => {
    * importing and nothing else.
    *
    * The batch index records which rows belong to which year precisely so that
-   * re-importing 2026 cannot touch 2025 — and the protection is a filter over
-   * ids, which is the kind of thing that keeps working right up until the
-   * moment it silently does not. Nothing exercised it, and the failure would
-   * look like a year of records disappearing during an ordinary re-import.
+   * re-importing 2026 cannot touch 2025; the protection is a filter over ids.
    */
   it("re-importing one year leaves another year's rows alone", async () => {
     const yearSheet = (year: number): ParsedSheet => ({
@@ -298,9 +296,6 @@ describe("importing the same workbook twice", () => {
    * remove — so the only safe answer is to refuse, and to refuse in ADD mode
    * too, because add mode overwrites the same record and would leave the old
    * rows both unremovable and unattributed.
-   *
-   * Nothing exercised this. It is the guard that decides whether a corrupt
-   * setting costs an error message or a year of doubled rows.
    */
   describe("when a year's batch record cannot be read", () => {
     const corrupt = (year: number, value: string) => {
@@ -312,13 +307,13 @@ describe("importing the same workbook twice", () => {
 
     it("refuses a replace rather than orphaning the rows it cannot find", async () => {
       corrupt(2026, "{ not json");
-      await expect(importSheets(USER, request("replace"))).rejects.toThrow();
+      await expect(importSheets(USER, request("replace"))).rejects.toBeInstanceOf(ImportBatchUnreadableError);
       expect(liveRows()).toEqual([]);
     });
 
     it("refuses an add for the same reason, and writes nothing", async () => {
       corrupt(2026, JSON.stringify({ transactions: "not-an-array" }));
-      await expect(importSheets(USER, request("add"))).rejects.toThrow();
+      await expect(importSheets(USER, request("add"))).rejects.toBeInstanceOf(ImportBatchUnreadableError);
       expect(liveRows()).toEqual([]);
       // The anchor is part of the same transaction, so a refusal leaves it too.
       expect(setting("opening_balance_minor")).toBeNull();
@@ -341,7 +336,7 @@ describe("importing the same workbook twice", () => {
   /**
    * A "Taksit" column whose cell comments list the instalments is the one place
    * the importer builds STRUCTURE — a card, a plan and its whole schedule —
-   * rather than rows. None of it was covered.
+   * rather than rows.
    */
   describe("reconstructing an instalment plan from a comment", () => {
     const CARD = "Kart A";
@@ -653,8 +648,7 @@ describe("importing the same workbook twice", () => {
     /**
      * A loan closed in the app is the owner's later word on it, so a workbook
      * that still lists its instalments does not bring them back — and undoing
-     * the closure afterwards still restores exactly what the closure took
-     * (owner decision, 2026-09-14).
+     * the closure afterwards still restores exactly what the closure took.
      */
     it("keeps a plan closed in the app closed through a re-import, and still undoable", async () => {
       const req = planRequest({ [CARD]: { statementDay: 25, dueDay: 10 } });
@@ -685,9 +679,7 @@ describe("importing the same workbook twice", () => {
   /**
    * A workbook kept by hand does not chain across its own sheets: the owner
    * reconciles against the bank and types what was really there. Carrying our
-   * own sum across that point reproduces the drift they had already corrected,
-   * in a ledger that then disagrees with every balance in the file from there
-   * on — measured at 24.592,14 out by Ağustos 2022 and 37.416,25 by 2024.
+   * own sum across that point reproduces the drift they had already corrected.
    */
   it("restates the balance where the workbook restarts its own", async () => {
     const second: ParsedSheet = {
@@ -739,12 +731,8 @@ describe("importing the same workbook twice", () => {
   });
 
   /**
-   * Re-importing the same workbook converges, restatements included.
-   *
-   * The second run moves no anchor — it is already this workbook's — and the
-   * corrections used to be written only by a run that DID move one. Replace
-   * mode had meanwhile tombstoned the first run's, so every second import
-   * silently handed back the drift the file had already corrected.
+   * Re-importing the same workbook converges, restatements included: the second
+   * run moves no anchor, but replace mode has tombstoned the first run's corrections.
    */
   it("keeps the restatement when the same workbook is imported again", async () => {
     const second: ParsedSheet = { ...sheet(), sheetName: "2026-2", months: ["2026-03"], cells: [[money(1_000_00), money(500_00)]] };
@@ -787,10 +775,7 @@ describe("importing the same workbook twice", () => {
    * typed for the later month is kept as that month's declared opening.
    *
    * The workbook's first month opens at its own figure or at zero, so the
-   * history reads as the file says. Until 1.8.0 the typed balance was then
-   * simply gone (measured on the owner's file: 30.657,28 became −18.053,53);
-   * it is a statement of what was in hand, later than the file's, and it holds
-   * its month (owner decision, 2026-09-13).
+   * history reads as the file says.
    */
   const noOpeningColumn = (): ParsedSheet => {
     const base = sheet();
@@ -821,12 +806,7 @@ describe("importing the same workbook twice", () => {
     expect(kept()).toEqual([{ date: "2026-05-31", amount_minor: 50_000_00 + 1_500_00 + 2_500_00, declared_minor: 50_000_00, deleted_at: null }]);
   });
 
-  /**
-   * A second import has to reckon with the owner's own declarations too. It
-   * used to run the file's arithmetic as if the kept balance were not there,
-   * found nothing to restate after it, and dropped the restatement the first
-   * import wrote — leaving the month after the typed one off the file.
-   */
+  /** A second import has to reckon with the owner's own declarations too, or it drops the first import's restatement. */
   it("keeps restating the file after a typed balance on every import", async () => {
     const threeMonths = (): ParsedSheet => ({
       ...sheet(),
@@ -852,11 +832,7 @@ describe("importing the same workbook twice", () => {
     expect(harness.db!.prepare(`SELECT COUNT(*) AS n FROM balance_adjustments WHERE declared_minor IS NOT NULL`).get()).toEqual({ n: 0 });
   });
 
-  /**
-   * Back on the setup screen after the import, a changed figure restates the
-   * month it was typed for. The anchor has already moved earlier, so it used
-   * to be dropped without a word.
-   */
+  /** Back on the setup screen after the import, a changed figure restates the month it was typed for. */
   it("restates the kept balance when setup is saved again with a new figure", async () => {
     await setOpeningBalance(USER, "2026-06", 50_000_00);
     await importSheets(USER, { ...request("replace"), sheets: [noOpeningColumn()], excludedLabels: [] });
@@ -880,14 +856,7 @@ describe("importing the same workbook twice", () => {
   });
 });
 
-/**
- * The anchor the whole chained ledger hangs off.
- *
- * It used to be written silently and only when the workbook's month was
- * EARLIER than the current anchor — so the first import's answer was permanent
- * and re-importing a corrected workbook could never put a wrong opening balance
- * right. The importer states the figure and the owner decides.
- */
+/** The anchor the whole chained ledger hangs off: the importer states the figure and the owner decides. */
 describe("adopting a workbook's opening balance", () => {
   const anchorSheet = (year: number, minor: number | null): ParsedSheet => ({
     sheetName: String(year),
@@ -909,15 +878,7 @@ describe("adopting a workbook's opening balance", () => {
     expect(openingBalanceFromSheets([])).toBeNull();
   });
 
-  /**
-   * The first month opens at zero when nothing states otherwise, and the
-   * anchor still lands ON it.
-   *
-   * A workbook whose earliest year has no opening column — the owner's 2021
-   * sheet is exactly that — used to anchor at the first year that DID carry
-   * one, and the chain then back-computed the years before it and opened them
-   * thousands in the red. Where the data starts is where the ledger starts.
-   */
+  // Where the data starts is where the ledger starts.
   it("anchors at the earliest month even when no column states a figure there", () => {
     expect(openingBalanceFromSheets([{ ...anchorSheet(2026, null), openingColumn: null }]))
       .toEqual({ month: "2026-01", minor: null });
@@ -978,9 +939,8 @@ describe("adopting a workbook's opening balance", () => {
 });
 
 /**
- * The record sheets of a Helix workbook, brought back (owner decision,
- * 2026-09-14): matched rows update, new rows add, nothing is deleted, and a row
- * the workspace cannot place is named rather than guessed at.
+ * The record sheets of a Helix workbook, brought back: matched rows update, new rows add,
+ * nothing is deleted, and a row the workspace cannot place is named rather than guessed at.
  */
 describe("bringing the record sheets back", () => {
   beforeEach(() => {

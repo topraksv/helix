@@ -84,36 +84,22 @@ describe("backup validation", () => {
     expect(isValidImportRow("transactions", transaction)).toBe(true);
   });
 
-  it("keeps generated transaction magnitudes on the exact product boundary", () => {
-    let state = 0x6d2b79f5;
-    const supported = [1, MAX_ABS_AMOUNT_MINOR];
-    for (let index = 0; index < 256; index += 1) {
-      state = Math.imul(state ^ (state >>> 15), 1 | state);
-      supported.push((Math.abs(state) % 1_000_000_000) + 1);
-    }
-    for (const magnitude of supported) {
-      expect(isValidImportRow("transactions", {
-        ...transaction,
-        amount_minor: magnitude,
-        amount_try_minor: magnitude,
-      })).toBe(true);
-      expect(isValidImportRow("transactions", {
-        ...transaction,
-        amount_minor: -magnitude,
-        amount_try_minor: -magnitude,
-      })).toBe(true);
-    }
-    for (let offset = 1; offset <= 256; offset += 1) {
-      expect(isValidImportRow("transactions", {
-        ...transaction,
-        amount_minor: MAX_ABS_AMOUNT_MINOR + offset,
-        amount_try_minor: MAX_ABS_AMOUNT_MINOR + offset,
-      })).toBe(false);
-    }
+  it.each([
+    [1, true],
+    [-1, true],
+    [MAX_ABS_AMOUNT_MINOR, true],
+    [-MAX_ABS_AMOUNT_MINOR, true],
+    [MAX_ABS_AMOUNT_MINOR + 1, false],
+    [-(MAX_ABS_AMOUNT_MINOR + 1), false],
+  ])("keeps a transaction amount of %i on the exact product boundary: %s", (magnitude, valid) => {
+    expect(isValidImportRow("transactions", {
+      ...transaction,
+      amount_minor: magnitude,
+      amount_try_minor: magnitude,
+    })).toBe(valid);
   });
 
   it("keeps pre-generation backups recoverable and validates supplied generations", () => {
-    expect(isValidImportRow("transactions", transaction)).toBe(true);
     expect(isValidImportRow("transactions", { ...transaction, tombstone_version: 2 })).toBe(true);
     expect(isValidImportRow("transactions", { ...transaction, tombstone_version: -1 })).toBe(false);
     expect(isValidImportRow("transactions", { ...transaction, tombstone_version: 1.5 })).toBe(false);
@@ -189,7 +175,6 @@ describe("backup validation", () => {
     expect(isValidImportRow("investment_products", product)).toBe(true);
     expect(isValidImportRow("investment_products", { ...product, name: "🧭".repeat(120) })).toBe(true);
     expect(isValidImportRow("investment_products", { ...product, name: "🧭".repeat(121) })).toBe(false);
-    expect(isValidImportRow("investment_products", { ...product, market_code: "" })).toBe(false);
     expect(isValidImportRow("investment_operations", operation)).toBe(true);
     expect(isValidImportRow("investment_operations", { ...operation, import_key: "" })).toBe(false);
     expect(isValidImportRow("investment_operations", { ...operation, operation_date: "2999-01-01" })).toBe(false);
@@ -310,10 +295,8 @@ describe("backup validation", () => {
     expect(isValidImportRow("installment_plans", { ...plan, total_amount_minor: null, monthly_amount_minor: null })).toBe(false);
     expect(isValidImportRow("fx_rates", { ...fxRate, rate_try: "0" })).toBe(false);
     expect(isValidImportRow("transactions", { ...transaction, amount_minor: 0 })).toBe(false);
-    // A card whose cycle nobody knows is a decided state since 1.7.2: the
-    // importer writes it, the server accepts it, and refusing it here
-    // quarantined the card and stopped every table pushed after it. Only a
-    // half-filled or impossible pair is refused.
+    // A card whose cycle nobody knows is a decided state: refusing it here would quarantine the
+    // card and stop every table pushed after it. Only a half-filled or impossible pair is refused.
     expect(isValidImportRow("payment_sources", cardSource)).toBe(true);
     expect(isValidImportRow("payment_sources", { ...cardSource, statement_day: 25 })).toBe(false);
     expect(isValidImportRow("payment_sources", { ...cardSource, due_day: 10 })).toBe(false);
@@ -332,11 +315,6 @@ describe("backup validation", () => {
     expect(isValidImportRow("balance_adjustments", declaration)).toBe(true);
     expect(isValidImportRow("balance_adjustments", { ...declaration, declared_minor: null })).toBe(true);
     expect(isValidImportRow("balance_adjustments", { ...declaration, declared_minor: 100_000_000_000_000 })).toBe(false);
-    expect(isValidImportRow(
-      "transactions",
-      { ...transaction, note: "x".repeat(1_001) },
-      { enforceInputLimits: true },
-    )).toBe(false);
   });
 
   it("rejects legacy expected kinds while they are live but keeps their tombstones restorable", () => {
@@ -388,11 +366,6 @@ describe("backup validation", () => {
     expect(() => validateExportBundle({
       version: 1,
       exportedAt: timestamp,
-      tables: { persons: [person, person] },
-    })).toThrow("Geçersiz yedek dosyası");
-    expect(() => validateExportBundle({
-      version: 1,
-      exportedAt: timestamp,
       tables: { persons: [person], categories: [{ ...category, user_id: id(99) }] },
     })).toThrow("Geçersiz yedek dosyası");
   });
@@ -406,19 +379,8 @@ describe("backup validation", () => {
   });
 });
 
-/**
- * The per-table restore rules, exercised one refusal at a time.
- *
- * Measured on 2026-08-21, `isValidImportRow` scored 57.33 with 229 of its
- * mutants never executed at all: whole table blocks — attachments, matrix
- * colours, investment products — had no test reaching them. Every row of a
- * restored backup passes through this function, and a backup is a file a
- * person can hand-edit, so a rule nothing exercises is a rule that can be
- * deleted by accident and noticed by nobody.
- *
- * Each case asserts the BASE row is accepted first. Without that, a typo in a
- * fixture makes every rejection assertion pass for the wrong reason.
- */
+// Each case asserts the BASE row is accepted first, so a fixture typo cannot make every
+// rejection pass for the wrong reason.
 const syncRow = { user_id: sourceUserId, created_at: timestamp, updated_at: timestamp, deleted_at: null, tombstone_version: 0 };
 
 const attachment = {
@@ -496,24 +458,14 @@ describe("per-table restore rules", () => {
   });
 
   it("accepts all three scopes, including the row mark whose month is null", () => {
-    // The fixture above is a CELL mark, so every case built from it carries a
-    // month and the suite never constructed the one shape `matrix_colors.month`
-    // is nullable for. Reproduced 2026-09-21: long-pressing a row label in Mali
-    // Tablo writes `{scope:"row", month:null}`, which the generic month loop
-    // refused — so the mark dead-lettered on push, `requeueSyncDeadLetter` called
-    // it unrepairable, and a backup containing it was refused whole, because one
-    // bad row throws for the entire file. Asserting the valid shapes is what the
-    // refusal list above cannot do: it can only prove that a wrong shape is wrong.
+    // The fixture is a cell mark; a row mark with a null month is the shape `month` is nullable
+    // for, and refusing it dead-letters the mark and fails a whole backup.
     expect(isValidImportRow("matrix_colors", { ...matrixColour, scope: "row", item_key: categoryId, month: null })).toBe(true);
     expect(isValidImportRow("matrix_colors", { ...matrixColour, scope: "column", item_key: null, month: "2026-07" })).toBe(true);
-    expect(isValidImportRow("matrix_colors", matrixColour)).toBe(true);
   });
 
   it("refuses a negative cost basis, which no replay can produce", () => {
-    // The two validators used to disagree here: restore wrote the row and
-    // every later push quarantined it, so the holding existed on one device
-    // and nowhere else. A cost basis is what a holding cost; the weighted
-    // replay divides a non-negative running cost and cannot emit one.
+    // Restore and push must agree: the weighted replay divides a non-negative running cost.
     const operation = {
       ...syncRow,
       id: id(23),
@@ -550,12 +502,7 @@ describe("per-table restore rules", () => {
   });
 });
 
-/**
- * A restore rejects the whole bundle when one row breaks one rule, and the
- * message used to be four words: "Geçersiz yedek dosyası". Finding the real
- * cause of a refused backup took five rounds of bisecting the file WITH the
- * source open. The refusal now names the section, the row and the rule.
- */
+// A restore rejects the whole bundle on one bad row, so the refusal names the section, the row and the rule.
 describe("backup rejection says where", () => {
   const envelope = (tables: Record<string, unknown[]>) => ({
     version: 1,

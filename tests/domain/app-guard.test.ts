@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { classifyRootRoute, resolveRootGuard, drawsWithoutDatabase } from "../../src/domain/app-guard";
+import { classifyBootFailure, classifyRootRoute, resolveRootGuard, drawsWithoutDatabase } from "../../src/domain/app-guard";
 import {
   completeLiveQuery,
   initialLiveSnapshot,
@@ -17,14 +17,15 @@ const base = {
 } as const;
 
 describe("root guard state machine", () => {
-  it("classifies recovery and onboarding helpers before generic protected routes", () => {
-    expect(classifyRootRoute(["(auth)", "reset-password"])).toBe("recovery");
-    expect(classifyRootRoute(["import-wizard"])).toBe("setup-helper");
-    expect(classifyRootRoute(["(tabs)"])).toBe("protected");
-  });
-
   it("never mounts protected hooks for an anonymous workspace", () => {
     expect(resolveRootGuard({ ...base, userId: null, onboarded: null, route: "protected" })).toEqual({
+      view: "wait",
+      redirect: "/(auth)/sign-in",
+    });
+  });
+
+  it("sends a signed-out visitor to sign-in from onboarding too", () => {
+    expect(resolveRootGuard({ ...base, userId: null, onboarded: null, route: "onboarding" })).toEqual({
       view: "wait",
       redirect: "/(auth)/sign-in",
     });
@@ -54,22 +55,10 @@ describe("root guard state machine", () => {
     expect(resolveRootGuard({ ...base, route: "auth" }).redirect).toBe("/(tabs)");
   });
 
-  /**
-   * The KVKK notice opens in every state, and this is a regression test.
-   *
-   * It classified as `protected` until 2026-09-03, so the guard sent a
-   * signed-out reader back to sign-in: the "Aydınlatma Metnini Oku" link on
-   * that very screen did nothing. The disclosure is required BEFORE an account
-   * exists — that is the moment an e-mail address starts being processed — so
-   * the one state it has to work in was the one state it did not.
-   *
-   * Each case below is a state someone can actually be in while wanting to
-   * read it: never signed in, signed in but not through onboarding, and signed
-   * in with the freeze flag still unresolved.
-   */
+  /** The KVKK notice must open in every session state: the disclosure is required before an account exists. */
   it("opens the legal notice in every session state", () => {
     expect(classifyRootRoute(["privacy"])).toBe("public");
-    // Sign-in sends a failure to the feedback form, which needs no account (migration 45).
+    // Sign-in sends a failure to the feedback form, which needs no account.
     expect(classifyRootRoute(["feedback"])).toBe("public");
     for (const state of [
       { userId: null, onboarded: null, frozen: null },
@@ -93,20 +82,85 @@ describe("root guard state machine", () => {
   });
 });
 
+describe("root guard boundary decisions", () => {
+  it("classifies every route area that changes guard behavior", () => {
+    expect(classifyRootRoute([])).toBe("root");
+    expect(classifyRootRoute(["(auth)", "sign-in"])).toBe("auth");
+    expect(classifyRootRoute(["(auth)", "reset-password"])).toBe("recovery");
+    expect(classifyRootRoute(["(onboarding)", "setup"])).toBe("onboarding");
+    expect(classifyRootRoute(["import-wizard"])).toBe("setup-helper");
+    expect(classifyRootRoute(["bulk-entry"])).toBe("setup-helper");
+    expect(classifyRootRoute(["(tabs)", "dashboard"])).toBe("protected");
+  });
+
+  it("waits until both bootstrap and the lock state are resolved", () => {
+    expect(resolveRootGuard({ ...base, ready: false, route: "protected" }))
+      .toEqual({ view: "wait", redirect: null });
+    expect(resolveRootGuard({ ...base, locked: null, route: "protected" }))
+      .toEqual({ view: "wait", redirect: null });
+    expect(resolveRootGuard({ ...base, locked: true, route: "protected" }))
+      .toEqual({ view: "wait", redirect: null });
+  });
+
+  it("keeps anonymous auth routes mounted and incomplete setup routes reachable", () => {
+    expect(resolveRootGuard({ ...base, userId: null, onboarded: null, route: "auth" }))
+      .toEqual({ view: "stack", redirect: null });
+    expect(resolveRootGuard({ ...base, onboarded: false, route: "onboarding" }))
+      .toEqual({ view: "stack", redirect: null });
+  });
+
+  it("keeps credential recovery reachable for a signed-in frozen account", () => {
+    expect(resolveRootGuard({ ...base, frozen: true, route: "recovery" }))
+      .toEqual({ view: "stack", redirect: null });
+  });
+
+  it("pins the route guard's protected/setup-helper distinction and redirects", () => {
+    expect(classifyRootRoute(["(auth)", "other"])).toBe("auth");
+    expect(classifyRootRoute(["other", "reset-password"])).toBe("protected");
+    expect(resolveRootGuard({ ...base, route: "protected" })).toEqual({ view: "stack", redirect: null });
+    expect(resolveRootGuard({ ...base, route: "setup-helper" })).toEqual({ view: "stack", redirect: null });
+    expect(resolveRootGuard({ ...base, route: "root" })).toEqual({ view: "wait", redirect: "/(tabs)" });
+  });
+});
+
 /**
- * Logout → login, render by render.
+ * Which ending the boot screen shows.
  *
- * The flash was never a slow pull: it was one render. `useLive` drops a
- * snapshot whose parameters changed inside an effect, and effects run after the
- * render that changed them, so the guard read the signed-out query's resolved
- * empty result as this account's answer — "not onboarded" — and redirected to
- * Quick Start before the first-pull grace effect had even started. Once that
- * redirect lands, the onboarding route legitimately renders until the pull
- * arrives, which is the second or two the user sees.
- *
- * This replays the exact sequence through the real snapshot rules and the real
- * guard. Every step must decide "wait", never the onboarding redirect.
+ * The two are not cosmetic variants of one message. "Another tab has it" ends
+ * by closing that tab and needs no action here; anything else is a retry. Get
+ * it backwards and the screen tells someone to retry a thing that provably
+ * cannot succeed in this document, or tells someone whose database is actually
+ * damaged to go looking for a second tab that does not exist.
  */
+describe("boot failure classification", () => {
+  it("recognises the app already holding the database elsewhere", () => {
+    // The four shapes this arrives in: wa-sqlite's own VFS message, the OPFS
+    // DOMException underneath it, and SQLite's own lock errors on native.
+    expect(classifyBootFailure(new Error("Error: Invalid VFS state"))).toBe("busy");
+    expect(classifyBootFailure(new Error("NoModificationAllowedError: could not create handle"))).toBe("busy");
+    expect(classifyBootFailure(new Error("failed to create sync access handle"))).toBe("busy");
+    expect(classifyBootFailure(new Error("database is locked"))).toBe("busy");
+  });
+
+  it("reads a DOMException by its name as well as its text", () => {
+    expect(classifyBootFailure(Object.assign(new Error("boom"), { name: "NoModificationAllowedError" }))).toBe("busy");
+  });
+
+  it("sends everything else to the ending that offers a retry", () => {
+    expect(classifyBootFailure(new Error("file is not a database"))).toBe("unknown");
+    expect(classifyBootFailure(new Error("disk I/O error"))).toBe("unknown");
+    expect(classifyBootFailure("migration 0007 failed")).toBe("unknown");
+    expect(classifyBootFailure(null)).toBe("unknown");
+    expect(classifyBootFailure(undefined)).toBe("unknown");
+  });
+
+  it("reads the stringified error the boot screen actually holds", () => {
+    // `_layout.tsx` stores `String(error)`, not the Error itself.
+    expect(classifyBootFailure(String(new Error("Invalid VFS state")))).toBe("busy");
+  });
+});
+
+/** Logout → login, render by render: `useLive` drops a changed-params snapshot only after the render, so every step here must decide "wait", never the onboarding redirect. */
 describe("returning to an account that is already set up", () => {
   const resolvedEmpty = completeLiveQuery<{ value: string }[]>([], new Date("2026-07-25T10:00:00.000Z"));
   const pending = initialLiveSnapshot<{ value: string }[]>([]);

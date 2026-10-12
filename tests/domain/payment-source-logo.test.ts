@@ -1,26 +1,11 @@
-/**
- * A payment source is marked the same way a subscription is.
- *
- * The owner's rule is that every logo in this product resolves and is drawn by
- * one mechanism. Payment sources used to get a generic type glyph — a card
- * outline for Yapı Kredi, Garanti and İş Bankası alike — while subscriptions
- * next to them showed the real mark. Both now go through `ui/logo.tsx`.
- *
- * The catalogue itself is read from source rather than imported: `logo.tsx`
- * pulls in react-native and expo-image, which this suite cannot load. What
- * matters is that the names the owner listed actually resolve, and that the
- * domains they resolve to are ones `normalizeLogoDomain` will accept — both of
- * which the text answers exactly.
- */
+/** Payment sources resolve their mark through `ui/logo.tsx` like subscriptions; the catalogue is read as text because logo.tsx imports react-native. */
 
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
-  MIN_PREFIX_MATCH,
+  catalogueKey,
   foldForMatch,
-  nameMentions,
-  nameStartsWord,
   normalizeLogoDomain,
   remoteFaviconUrl,
 } from "../../src/domain/logo-domain";
@@ -39,28 +24,14 @@ const brands = tableBetween("const BRAND_DOMAIN", "/**\n * Turkish banks, card p
 /** Both tables as one, exactly as `CATALOGUE_DOMAIN` composes them. */
 const catalogue = new Map([...brands, ...banks]);
 
-/** The same four steps `catalogueKey` takes, so the test resolves as the app does. */
-function resolve(name: string, table: Map<string, string> = catalogue): string | null {
-  const key = foldForMatch(name);
-  if (table.has(key)) return table.get(key)!;
-  const firstWord = key.split(/\s+/)[0];
-  if (firstWord && table.has(firstWord)) return table.get(firstWord)!;
-  const keys = [...table.keys()];
-  const longestFirst = (a: string, b: string) => b.length - a.length;
-  const mentioned = keys
-    .filter((entry) => entry.length >= 3 && nameMentions(name, entry))
-    .sort(longestFirst)[0];
-  if (mentioned) return table.get(mentioned)!;
-  const prefixed = keys
-    .filter((entry) => entry.length >= MIN_PREFIX_MATCH && nameStartsWord(name, entry))
-    .sort(longestFirst)[0];
-  return prefixed ? table.get(prefixed)! : null;
+/** The domain a name resolves to through the merged catalogue, as the app resolves it. */
+function resolve(name: string): string | null {
+  return catalogueKey(name, Object.fromEntries(catalogue));
 }
 
 describe("the bank and card catalogue", () => {
   it("parses two real tables, so a passing run means something", () => {
-    // See `tests/brand-domains.test.ts` for the rule every domain here obeys
-    // and `src/domain/brand-marks.ts` for what each one actually returns.
+    // `src/domain/brand-marks.ts` records what each domain returns.
     expect(banks.size).toBeGreaterThanOrEqual(75);
     expect(brands.size).toBeGreaterThanOrEqual(100);
   });
@@ -80,19 +51,7 @@ describe("the bank and card catalogue", () => {
     }
   });
 
-  /**
-   * Nays is İş Bankası's app, and `naysapp.com.tr` answers the favicon service
-   * with İş Bankası's own file — the same 921 bytes, byte for byte. Drawing it
-   * meant a person who picked Nays saw the bank's logo, which is a different
-   * institution's mark on their card. Neither service publishes a Nays mark
-   * (Google returns its grey globe for `nays.com.tr`, DuckDuckGo its grey
-   * letter tile), so the honest answer is initials rather than someone else's
-   * logo.
-   *
-   * Advantage is the case that looks the same and is not: it shares HSBC's
-   * file because it IS HSBC's card programme, the way BluTV shares Max's. A
-   * shared mark between one owner's two names is correct and stays.
-   */
+  /** Nays serves İş Bankası's file byte for byte, so it gets initials; Advantage shares HSBC's because it is HSBC's programme. */
   it("never lends one institution's mark to another", () => {
     expect(resolve("Nays")).toBeNull();
     expect(resolve("Nays kart")).not.toBe("isbank.com.tr");
@@ -239,22 +198,44 @@ describe("mark resolution", () => {
   });
 });
 
-describe("word-prefix matching", () => {
-  it("matches a word's own beginning and never mid-word", () => {
-    expect(nameStartsWord("Worldeko", "world")).toBe(true);
-    expect(nameStartsWord("eko world", "world")).toBe(true);
-    expect(nameStartsWord("Yapıkredi", "kredi")).toBe(false);
-    expect(nameStartsWord("", "world")).toBe(false);
-    expect(nameStartsWord("Worldeko", "")).toBe(false);
+describe("catalogueKey", () => {
+  const table = {
+    "netflix": "N",
+    "youtube": "Y",
+    "youtube music": "YM",
+    "max": "MAX",
+    "abc": "ABC",
+    "ab": "AB",
+    "world": "W",
+    "worldcard": "WC",
+    "bonus": "B",
+    "bonu": "BONU",
+  };
+
+  it("matches the whole folded name first, then its first word", () => {
+    expect(catalogueKey("  YouTube Music ", table)).toBe("YM");
+    expect(catalogueKey("Netflix aile", table)).toBe("N");
+    expect(catalogueKey("Youtube premium", table)).toBe("Y");
   });
 
-  it("keeps looking past a mid-word hit rather than giving up on it", () => {
-    // "kredi" appears inside "yapikredi" first and as its own word second.
-    expect(nameStartsWord("Yapıkredi kredi kartı", "kredi")).toBe(true);
+  it("then a key mentioned as a whole word, the longest one, at three characters or more", () => {
+    expect(catalogueKey("Ailem için Netflix", table)).toBe("N");
+    expect(catalogueKey("Aile youtube music", table)).toBe("YM");
+    expect(catalogueKey("Kart abc", table)).toBe("ABC");
+    expect(catalogueKey("Kart ab", table)).toBeNull();
+    expect(catalogueKey("Maximum", table)).toBeNull();
   });
 
-  it("folds Turkish letters on both sides, as every other match here does", () => {
-    expect(nameStartsWord("İŞBANKASI kartım", "isbank")).toBe(true);
-    expect(nameStartsWord("Bonusflaş", "BONUS")).toBe(true);
+  it("then a key of at least MIN_PREFIX_MATCH characters that begins a word, the longest one", () => {
+    expect(catalogueKey("Worldeko", table)).toBe("W");
+    expect(catalogueKey("Kart worldcardplus", table)).toBe("WC");
+    expect(catalogueKey("Bonusplatinium", table)).toBe("B");
+    expect(catalogueKey("Bonuxyz", table)).toBeNull();
+    expect(catalogueKey("Kart xworldeko", table)).toBeNull();
+  });
+
+  it("finds nothing in an empty catalogue or for an empty name", () => {
+    expect(catalogueKey("Netflix", {})).toBeNull();
+    expect(catalogueKey("", table)).toBeNull();
   });
 });

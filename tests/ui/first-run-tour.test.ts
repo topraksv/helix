@@ -11,7 +11,7 @@
  *
  * A source check rather than a render one, deliberately: the component is a
  * `Modal` over a mounted dashboard, and the rule is which SIGNAL it reads.
- * `tests/session-store` already proves when `isNewSignup` is true — only for
+ * `tests/auth/session.test.ts` already proves when `isNewSignup` is true — only for
  * the session that created the account, cleared by both bootstrap and sign-in
  * — so holding the tour to that signal is the whole of this rule.
  */

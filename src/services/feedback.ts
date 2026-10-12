@@ -6,7 +6,7 @@
  * What this module owns is the part neither of those can — turning the two
  * failure modes a person can act on into distinct answers.
  *
- * There are three, and they are not the same problem:
+ * There are four, and they are not the same problem:
  *
  *   - `unconfigured` — this build has no Supabase, so there is nothing to post
  *     to. Local-only installs are a supported way to run Helix, and the form
@@ -37,7 +37,7 @@ import {
 import { isEmail } from "../domain/input";
 import { devError } from "./logger";
 
-export type FeedbackResult = "sent" | "unconfigured" | "unauthenticated" | "rateLimited" | "failed";
+type FeedbackResult = "sent" | "unconfigured" | "unauthenticated" | "rateLimited" | "failed";
 
 export interface FeedbackImage {
   mimeType: string;
@@ -45,7 +45,7 @@ export interface FeedbackImage {
   bytes: Uint8Array;
 }
 
-export interface FeedbackSubmission {
+interface FeedbackSubmission {
   category: FeedbackCategory;
   message: string;
   images: readonly FeedbackImage[];
@@ -66,7 +66,7 @@ function appVersion(): string {
  * address reads as "undefined", which no address pattern takes.
  */
 function mayGoSignedOut({ replyTo, images }: FeedbackSubmission): boolean {
-  return isEmail(String(replyTo)) && images.length === 0;
+  return replyTo != null && isEmail(replyTo) && images.length === 0;
 }
 
 export async function sendFeedback(submission: FeedbackSubmission): Promise<FeedbackResult> {
@@ -75,16 +75,16 @@ export async function sendFeedback(submission: FeedbackSubmission): Promise<Feed
   // Re-checked here rather than trusted from the form: this is the last point
   // that can refuse without spending a round trip, and the form is not the
   // only thing that could ever call it.
-  if (!isFeedbackCategory(submission.category)) return "failed";
-  if (feedbackMessageRejection(submission.message) !== null) return "failed";
   const images = submission.images;
-  if (images.length > MAX_FEEDBACK_IMAGES) return "failed";
-  if (images.some((image) => feedbackImageRejection(image.mimeType, image.bytes.byteLength) !== null)) {
-    return "failed";
-  }
-  // The whole batch, not each file: four images that each clear the per-image
-  // cap can still be an email no mail host will take.
-  if (feedbackImagesBytes(images.map((image) => ({ byteLength: image.bytes.byteLength }))) > MAX_FEEDBACK_TOTAL_IMAGE_BYTES) {
+  if (
+    !isFeedbackCategory(submission.category) ||
+    feedbackMessageRejection(submission.message) !== null ||
+    images.length > MAX_FEEDBACK_IMAGES ||
+    images.some((image) => feedbackImageRejection(image.mimeType, image.bytes.byteLength) !== null) ||
+    // The whole batch, not each file: four images that each clear the per-image
+    // cap can still be an email no mail host will take.
+    feedbackImagesBytes(images.map((image) => ({ byteLength: image.bytes.byteLength }))) > MAX_FEEDBACK_TOTAL_IMAGE_BYTES
+  ) {
     return "failed";
   }
 

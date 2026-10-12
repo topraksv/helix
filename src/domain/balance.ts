@@ -12,7 +12,7 @@
 
 import { groupBy } from "./card-statements";
 import { addMonthsToKey, lastDayOf, makeMonthKey, monthKeyOf, monthRange, yearOf, type ISODate, type MonthKey } from "./dates";
-import type { PlannedExpectation } from "./expected";
+import { expectationEffect, type PlannedExpectation } from "./expected";
 import type { Minor } from "./money";
 import type { AdjustmentLike, SettlementFlow, TxLike } from "./types";
 import { financialFlow, signedBalanceEffect } from "./transactions";
@@ -147,45 +147,23 @@ interface LedgerInput {
   plannedExpectations?: readonly PlannedExpectation[];
 }
 
-/**
- * The earliest month carrying anything, never later than `seed`.
- *
- * One scan serving two questions that used to own a copy each: where an
- * anchored ledger has to reach back to, and where an unanchored one begins.
- */
+/** The earliest month carrying anything, never later than `seed`. */
 function earliestRecordedMonth(
   seed: MonthKey,
   transactions: TxLike[],
   adjustments: AdjustmentLike[],
 ): MonthKey {
-  let earliest = seed;
-  for (const tx of transactions) {
-    const month = monthKeyOf(tx.effectiveDate);
-    if (month < earliest) earliest = month;
-  }
-  for (const adjustment of adjustments) {
-    const month = monthKeyOf(adjustment.date);
-    if (month < earliest) earliest = month;
-  }
-  return earliest;
+  const first = firstRecordedMonth(transactions, adjustments);
+  return first != null && first < seed ? first : seed;
 }
 
-/**
- * The earliest month carrying a record, or null when nothing does.
- *
- * `earliestRecordedMonth` answers a different question — it is bounded by a
- * seed it may never exceed — and that bound is exactly what a caller asking
- * "where does the data start" must not inherit.
- */
+/** The earliest month carrying a record, or null when nothing does; unbounded, unlike `earliestRecordedMonth`. */
 function firstRecordedMonth(
   transactions: TxLike[],
   adjustments: AdjustmentLike[],
 ): MonthKey | null {
-  // Sorted rather than compared in a running-minimum loop. A month key is a
-  // sortable string, so the loop's `month < earliest` had a twin — `<=` — that
-  // assigns an equal value and produces the same answer for every input there
-  // is. A test cannot tell those apart, which makes the comparison a thing the
-  // suite is permanently unable to guard.
+  // Sorted, not a running minimum: `<` and `<=` there give the same answer for
+  // every input, so no test could guard the comparison.
   return [
     ...transactions.map((tx) => monthKeyOf(tx.effectiveDate)),
     ...adjustments.map((adjustment) => monthKeyOf(adjustment.date)),
@@ -423,53 +401,29 @@ export function buildLedger(input: LedgerInput): MonthLedger[] {
   return ledger;
 }
 
-export interface LedgerBundle {
-  ledger: MonthLedger[];
-  yearMonths: MonthLedger[];
-  startMonth: MonthKey;
-  /**
-   * The earliest month that actually HOLDS something, or null when nothing does.
-   *
-   * Distinct from `startMonth`, which is where the balance chain has to begin.
-   * An anchor can sit years before the first record — an import writes one, a
-   * setup screen writes one — and the chain then carries the opening figure
-   * across every empty month in between. That is right for the arithmetic and
-   * wrong for navigation: the Mali Tablo offered six years of blank rows with
-   * a balance column filled in, which reads as data that went missing rather
-   * than as months that never had any.
-   */
-  firstRecordedMonth: MonthKey | null;
-  actualBalanceMinor: Minor;
-  txLike: TxLike[];
-  /** See `LedgerChain.plannedExpectations`. */
-  plannedExpectations: readonly PlannedExpectation[];
-  /** See `LedgerChain.declarationDeltaById`. */
-  declarationDeltaById: ReadonlyMap<string, Minor>;
-}
+export type LedgerBundle = LedgerChain & { yearMonths: MonthLedger[] };
 
 /**
- * The chain itself, which does not depend on which year is being looked at.
- *
- * Splitting this out is the difference between a year switch costing a full
- * rebuild and costing an array filter. `buildLedger` walks every transaction
- * the account has and chains every month from the anchor forward; for any year
- * at or before the current one the result is byte-identical whichever year the
- * screen is showing, because only the SLICE differs. Measured at 6x CPU
- * throttle on a five-year, 3.000-row workspace, moving between years blocked
- * the main thread for 208ms doing arithmetic it had already done.
- *
- * `endYear` is the one thing a requested year can change: looking at 2028 has
- * to extend the chain that far. It is therefore part of the cache key rather
- * than the year itself, so browsing backwards through history never rebuilds.
+ * The year the chain must reach. Looking at a later year has to extend it, so
+ * this, not the requested year, is the cache key: browsing backwards through
+ * history never rebuilds.
  */
 export function ledgerChainEndYear(year: number, today: ISODate): number {
   return Math.max(year, yearOf(today));
 }
 
+/**
+ * The chain itself, which does not depend on which year is being looked at:
+ * a year switch is an array filter (`sliceLedgerYear`), not a rebuild.
+ */
 export interface LedgerChain {
   ledger: MonthLedger[];
   startMonth: MonthKey;
-  /** See `LedgerBundle.firstRecordedMonth`. */
+  /**
+   * The earliest month that actually HOLDS something, or null. Distinct from
+   * `startMonth`: an anchor can sit years before the first record, and
+   * navigation must not offer blank rows with a balance filled in.
+   */
   firstRecordedMonth: MonthKey | null;
   actualBalanceMinor: Minor;
   txLike: TxLike[];
@@ -482,23 +436,10 @@ export interface LedgerChain {
 /**
  * The whole chain, anchored or not.
  *
- * An unset `start_month` is NOT a missing ledger, and modelling it as one is
- * the defect this signature used to carry: it returned `null`, and each of the
- * seven screens reading it invented its own meaning for that. The dashboard
- * held a loading skeleton that never resolved, Mali Tablo announced the month
- * was empty, and the opening-balance editor — the one screen that can SET the
- * anchor — refused to open because there was no anchor to read, which is a
- * deadlock a person cannot leave without reinstalling.
- *
- * It is reached by clearing the whole ledger, which the reset does on purpose,
- * so "no anchor" is an ordinary state rather than a corrupt one. Worse, every
- * row entered AFTERWARDS was invisible too: the chain refused before it ever
- * looked at the transactions.
- *
- * Unanchored therefore means what a person would assume it means — the table
- * opens at zero, in the earliest month that carries anything, or in this month
- * when nothing does. `null` no longer travels from here, so a screen holding
- * one is holding exactly one fact: the queries have not answered yet.
+ * An unset `start_month` is an ordinary state (the reset clears it on purpose),
+ * not a missing ledger: returning null there deadlocked the opening-balance
+ * editor, the one screen that can set the anchor. Unanchored means the table
+ * opens at zero, in the earliest month that carries anything, or in this month.
  */
 export function buildLedgerChain(input: {
   configuredStart: MonthKey | null;
@@ -562,16 +503,7 @@ export function buildLedgerChain(input: {
 
 /** One year's view of a chain that has already been built. */
 export function sliceLedgerYear(chain: LedgerChain, year: number): LedgerBundle {
-  return {
-    ledger: chain.ledger,
-    yearMonths: chain.ledger.filter((month) => yearOf(month.month) === year),
-    startMonth: chain.startMonth,
-    firstRecordedMonth: chain.firstRecordedMonth,
-    actualBalanceMinor: chain.actualBalanceMinor,
-    txLike: chain.txLike,
-    plannedExpectations: chain.plannedExpectations,
-    declarationDeltaById: chain.declarationDeltaById,
-  };
+  return { ...chain, yearMonths: chain.ledger.filter((month) => yearOf(month.month) === year) };
 }
 
 export interface UpcomingFlow {
@@ -585,14 +517,13 @@ export interface UpcomingFlow {
  * every known future flow (pending transactions and unpaid expected
  * payments) due on or before the horizon. It sums what it is given and does
  * not look for identity between flows: two entries for one obligation are
- * collapsed by `buildDashboardModel` before they get here, because only the
- * dashboard holds the rule references that establish the match.
+ * collapsed by `plannedExpectations` before they get here.
  */
 export function projectedBalance(actualMinor: Minor, flows: UpcomingFlow[], horizon: ISODate): Minor {
   let projected = actualMinor;
   for (const flow of flows) {
     if (flow.date > horizon) continue;
-    projected += flow.direction === "in" ? flow.amountTryMinor : -flow.amountTryMinor;
+    projected += expectationEffect(flow);
   }
   return projected;
 }

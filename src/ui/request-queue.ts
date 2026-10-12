@@ -4,8 +4,7 @@
  * `appAlert`/`appConfirm`/`appPrompt` hand a `resolve` to a store and await it,
  * so a store that keeps a SINGLE slot loses a promise as soon as two requests
  * overlap: the second overwrites `current`, the first `resolve` is dropped, and
- * its `await` never settles. Both re-auth call sites (`account-security.tsx`,
- * `settings/index.tsx`) sit on different screens, so overlap is reachable.
+ * its `await` never settles.
  *
  * The reducer lives here, outside the component file, for one reason: `dialog.tsx`
  * imports react-native and cannot be loaded by vitest, so the logic could only be

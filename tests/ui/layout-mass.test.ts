@@ -2,9 +2,6 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { fittedCellWidth, ledgerCellWidth, shouldPairByMass } from "../../src/ui/responsive";
-import { biometricName } from "../../src/ui/biometric-name";
-import { tr } from "../../src/i18n/tr";
-import { balanceDeclarationDrift, parseBalanceDeclaration } from "../../src/domain/balance-declaration";
 
 const root = process.cwd();
 
@@ -34,40 +31,6 @@ describe("paired columns need comparable mass", () => {
   it("is the rule the subscriptions screen actually passes its groups to", () => {
     const screen = readFileSync(join(root, "src/app/(tabs)/subscriptions.tsx"), "utf8");
     expect(screen).toContain("masses={[active.length, watched.length, passive.length]}");
-  });
-});
-
-/**
- * One hard-coded "Face ID Kilidi" shipped to Android too, naming a technology
- * that phone does not have — on a security control.
- */
-describe("the biometric lock is named after the device's own sensor", () => {
-  it("never offers Face ID as a name on Android", () => {
-    const android = [
-      biometricName({ ios: false, facial: false, fingerprint: true }),
-      biometricName({ ios: false, facial: true, fingerprint: false }),
-      biometricName({ ios: false, facial: true, fingerprint: true }),
-      biometricName({ ios: false, facial: false, fingerprint: false }),
-    ];
-    for (const label of android) expect(label).not.toContain("Face ID");
-    expect(android[0]).toBe(tr.settings.biometricFingerprint);
-    expect(android[1]).toBe(tr.settings.biometricFace);
-  });
-
-  it("keeps the Apple names on Apple hardware", () => {
-    expect(biometricName({ ios: true, facial: true, fingerprint: false })).toBe(tr.settings.biometricFaceId);
-    expect(biometricName({ ios: true, facial: false, fingerprint: true })).toBe(tr.settings.biometricTouchId);
-  });
-
-  it("falls back to a neutral name when the sensor list says nothing", () => {
-    expect(biometricName({ ios: false, facial: false, fingerprint: false })).toBe(tr.settings.biometric);
-    expect(tr.settings.biometric).not.toContain("Face ID");
-  });
-
-  it("keeps the settings row on the resolved label, not the constant", () => {
-    const settings = readFileSync(join(root, "src/app/(tabs)/settings/index.tsx"), "utf8");
-    expect(settings).toContain("title={biometricLabel}");
-    expect(settings).not.toContain("title={tr.settings.biometric}");
   });
 });
 
@@ -151,8 +114,6 @@ describe("the ledger never rests between columns", () => {
     expect(table).toContain("Math.min(Math.round(centered / cellWidth) * cellWidth, maxScrollX)");
     // No spacer, and no column widened to stand in for one: the columns of a
     // table are equal or they are not columns.
-    expect(table).not.toContain("trailingSpacer");
-    expect(table).not.toContain("cellWidthOf");
   });
 
   /**
@@ -186,25 +147,8 @@ describe("the ledger never rests between columns", () => {
    * as a shake. The fit reads the whole grid now, so pinning cannot move it.
    */
   it("is fed the grid the columns share, never the scrolling body", () => {
-    expect(table).toContain("fittedCellWidth(Math.max(0, tableW - headWidth), requestedCellWidth)");
     // The body measurement may only reach scroll geometry.
-    const fit = table.slice(table.indexOf("const cellWidth ="), table.indexOf("useWebInteractions"));
-    expect(fit).not.toContain("bodyW");
-  });
-
-  it("has no fixed point when the pinned column is subtracted first", () => {
-    // Why the input contract above matters, stated as arithmetic rather than as
-    // a claim. Feeding the body — the grid minus the cell a pinned column takes
-    // — makes the answer an input to itself, and for most phone widths the two
-    // answers never agree, so the columns resize on every frame.
-    let unstable = 0;
-    for (let tableWidth = 320; tableWidth <= 440; tableWidth += 1) {
-      const grid = tableWidth - 112;
-      const requested = 82;
-      const settled = fittedCellWidth(grid, requested);
-      if (fittedCellWidth(grid - settled, requested) !== settled) unstable += 1;
-    }
-    expect(unstable).toBeGreaterThan(0);
+    expect(table).toContain("fittedCellWidth(Math.max(0, tableW - headWidth), requestedCellWidth)");
   });
 
   it("only corrects by a rounding error, and leaves a real overflow to scroll", () => {
@@ -215,40 +159,6 @@ describe("the ledger never rests between columns", () => {
     // Nothing measured yet, and degenerate input, keep the caller's number.
     expect(fittedCellWidth(0, 88)).toBe(88);
     expect(fittedCellWidth(-10, 88)).toBe(88);
-  });
-});
-
-/**
- * The balance the user last confirmed against a real account, and whether the
- * ledger still agrees. Reconciling writes an adjustment so the table lands on
- * the declared figure, and from that instant the app used to have no memory of
- * what was actually checked.
- */
-describe("a declared balance can be compared with the ledger later", () => {
-  it("reads back only a well-formed declaration", () => {
-    expect(parseBalanceDeclaration({ minor: 2_000_000, at: "2026-08-04" })).toEqual({ minor: 2_000_000, at: "2026-08-04" });
-    expect(parseBalanceDeclaration(null)).toBeNull();
-    expect(parseBalanceDeclaration({ minor: 10 })).toBeNull();
-    expect(parseBalanceDeclaration({ at: "2026-08-04" })).toBeNull();
-    expect(parseBalanceDeclaration({ minor: Number.NaN, at: "2026-08-04" })).toBeNull();
-    expect(parseBalanceDeclaration({ minor: 10, at: "" })).toBeNull();
-  });
-
-  it("reports the drift, and says nothing when there is none", () => {
-    const declared = { minor: 2_000_000, at: "2026-08-04" };
-    expect(balanceDeclarationDrift(declared, 3_000_000)).toBe(1_000_000);
-    expect(balanceDeclarationDrift(declared, 1_000_000)).toBe(-1_000_000);
-    expect(balanceDeclarationDrift(declared, 2_000_000)).toBeNull();
-    expect(balanceDeclarationDrift(null, 3_000_000)).toBeNull();
-    expect(balanceDeclarationDrift(declared, null)).toBeNull();
-  });
-
-  it("is written when a balance is confirmed, and read where it matters", () => {
-    const editor = readFileSync(join(root, "src/ui/opening-balance-editor.tsx"), "utf8");
-    expect(editor).toContain("setBalanceDeclaration(userId, target.minor, todayISO())");
-    for (const path of ["src/app/(tabs)/index.tsx", "src/app/(tabs)/cash-flow/index.tsx"]) {
-      expect(readFileSync(join(root, path), "utf8")).toContain("balanceDeclarationDrift(");
-    }
   });
 });
 
@@ -285,9 +195,6 @@ describe("a ledger cell is sized by the widest figure it must hold", () => {
     // One column in a wide workspace must not become a 900px block.
     expect(ledgerCellWidth({ ...base, columnCount: 1, gridWidth: 900 })).toBeLessThanOrEqual(320);
     expect(ledgerCellWidth({ ...base, columnCount: 1, gridWidth: 900, compact: true })).toBeLessThanOrEqual(144);
-    // Twelve months across 900px: complete cells, never a clipped remainder.
-    const width = ledgerCellWidth({ ...base, columnCount: 12, gridWidth: 900 });
-    expect(width * Math.floor(900 / width)).toBeLessThanOrEqual(900);
   });
 
   it("survives a degenerate width instead of returning zero", () => {

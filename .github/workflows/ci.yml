@@ -1,6 +1,5 @@
-# Risk-tiered verification and automatic delivery from main. Helix and Gital
-# run the same job graph; what differs is data — the client keys, the
-# environment's name, the browsers and the browser suite's shard count.
+# Risk-tiered verification and automatic delivery from main. The job graph is
+# shared; only the client keys and the Chromium shard count are per-repo data.
 #
 # Every push proves types, the lint ratchet and the unit suite. A push that can
 # change what a browser renders runs the whole browser suite, sharded. A change
@@ -12,9 +11,7 @@
 # "Changed" is measured from the last push run that finished green, never from
 # the previous push alone. A run that fails or is cancelled publishes nothing,
 # and measuring from `github.event.before` handed its unpublished changes to a
-# follow-up that could not see them. Replayed over the 100 runs before this was
-# written: eight windows per surface in which a green `main` was ahead of
-# production, the longest 2.6 days, five of them closed by a manual dispatch.
+# follow-up that could not see them.
 #
 # The EXPO_PUBLIC_* values are client-side keys: they ship inside the JS bundle
 # by design (same values as .env), so they are safe here. The service role key
@@ -79,9 +76,9 @@ jobs:
       # push's own `before` is the fallback when there is none to find — the
       # first run, an unanswered API call — and a dispatch keeps no base at
       # all, because its fail-open full gate is the point of dispatching. Its
-      # mutation still measures from that green run: with no base it mutated
-      # the sentinels alone, and a dispatch may publish a commit whose push
-      # run failed (devil round 2026-10-09-2).
+      # mutation still measures from that green run: with no base it would
+      # mutate the sentinels alone, and a dispatch may publish a commit whose
+      # push run failed.
       - id: base
         name: Measure from the last run that published
         env:
@@ -177,9 +174,8 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-          # The unit suite reads this repository's history: Helix's asserts the
-          # mutation selector from a fixed commit, which a depth-one checkout
-          # does not contain, and the first docs-only push found that.
+          # The unit suite reads this repository's history: it asserts the
+          # mutation selector from a fixed commit a depth-one checkout lacks.
           fetch-depth: 0
       # `.nvmrc` is the version, here and locally. Node 24/26 native TypeScript
       # stripping breaks this SDK's toolchain (it chokes on expo-modules-core's
@@ -209,13 +205,9 @@ jobs:
     if: needs.classify.outputs.full_gate == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 90
-    # Divided across runners rather than given a longer limit. One runner
-    # stopped being enough on 2026-09-15: Helix's 1.8.0 release changed 28
-    # files in scope, 9,832 mutants, which ran past this job's 90 minutes on a
-    # GitHub runner. `stryker.ci.config.mjs` deals each shard its part.
-    # Five, not three (2026-10-08): a release scope's largest files no longer
-    # share a runner, and the free plan's twenty concurrent jobs still hold
-    # both repositories' runs at once.
+    # Divided across runners rather than given a longer limit: a release scope
+    # outruns one runner's 90 minutes. `stryker.ci.config.mjs` deals each shard
+    # its part; five keep a scope's largest files off one runner.
     strategy:
       fail-fast: false
       matrix:
@@ -305,11 +297,10 @@ jobs:
 
   # The Expo Go bundles, built beside the checks. `eas update` exported them
   # inside `deploy-mobile`, behind the gate: about three minutes of Metro, most
-  # of it a web and a server export nobody publishes, because eas-cli 24.8.0
-  # cannot see the Expo CLI nested under `expo/` and falls back to
-  # `--platform=all`. This is the export it makes when it can, with the `.env`
-  # it ignores under `--environment` ignored here too; measured on both apps on
-  # 2026-10-02, it reproduces the published bundles' content hashes.
+  # of it a web and a server export nobody publishes, because eas-cli cannot
+  # see the Expo CLI nested under `expo/` and falls back to `--platform=all`.
+  # This is the export it makes when it can, with the `.env` it ignores under
+  # `--environment` ignored here too, so it reproduces the published hashes.
   mobile-build:
     needs: classify
     if: needs.classify.outputs.deploy_mobile == 'true'
@@ -371,10 +362,7 @@ jobs:
     strategy:
       fail-fast: false
       # One row per runner. Firefox runs the `@cross-browser` tests on a runner
-      # of its own: dealt with the rest, a project's tests go to the shards in
-      # order, so every Firefox test landed on the last one — measured on
-      # Helix, 184 s of tests there against 76 s on the others. Helix and Gital
-      # differ only in how many Chromium rows the suite's size earns.
+      # of its own: dealt with the rest, they all landed on the last shard.
       matrix:
         include:
           - { project: chromium, browser: chromium, shard: 1/5 }
@@ -392,11 +380,9 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci
-      # The browsers are ~180 MB, and every shard fetched them: measured on
-      # 2026-08-19, that step hung past 25 minutes on all three shards while
-      # the whole job normally finishes in four to six. Keyed on the resolved
-      # Playwright version and the one browser this row drives, so a bump
-      # misses the cache exactly once and no row downloads a browser it skips.
+      # The browsers are ~180 MB and fetching them on every shard hung. Keyed
+      # on the Playwright version and the one browser this row drives, so a bump
+      # misses once and no row downloads a browser it skips.
       - id: playwright-version
         run: echo "value=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
       - id: playwright-cache
@@ -404,10 +390,9 @@ jobs:
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ steps.playwright-version.outputs.value }}-${{ matrix.browser }}
-      # Only on a miss. The `--with-deps` half is an `apt-get install`, the
-      # step that hung (11+ minutes on two shards, 2026-08-19); on a hit the
-      # system libraries are already in the runner image, and a missing one
-      # fails loudly at browser launch.
+      # Only on a miss: `--with-deps` is an `apt-get install`, the step that
+      # hung. On a hit the system libraries are in the runner image, and a
+      # missing one fails loudly at browser launch.
       - run: npx playwright install "$BROWSER" --with-deps
         if: steps.playwright-cache.outputs.cache-hit != 'true'
         env:
@@ -434,9 +419,8 @@ jobs:
             playwright-report
           retention-days: 7
       # A flaky pass is a failure its retry hid, and the shard still goes green
-      # and deploys: measured on Helix, 5 in 30 runs, none with anything to
-      # read. The failed attempt's trace and screenshot are in test-results
-      # either way; a clean run leaves none there, so this uploads nothing then.
+      # and deploys. The failed attempt's trace and screenshot are in
+      # test-results; a clean run leaves none, so this uploads nothing then.
       - if: success()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -493,7 +477,7 @@ jobs:
       pages: write
       id-token: write
     environment:
-      name: helix
+      name: ${{ github.event.repository.name }}
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       # A re-run replays its own commit, and publishing that after `main` has
@@ -521,19 +505,16 @@ jobs:
       - id: deployment
         uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5
         with:
-          # Ten minutes is the most this action accepts: a higher value is
-          # clamped to 600000 with a warning on the run, measured on 949f19d
-          # and 5d2556c. On `8ac62ab` the backend sat in
-          # `deployment_in_progress` past the limit, the action went red and
-          # Pages published the artifact anyway: a false failure, which the
-          # next push repairs by measuring from the last green run.
+          # Ten minutes is the most this action accepts; a higher value is
+          # clamped. Past it the action goes red while Pages still publishes
+          # the artifact: a false failure the next push repairs by measuring
+          # from the last green run.
           timeout: "600000"
       # Not a 200: Pages answers 200 with the PREVIOUS deploy while the new one
       # propagates. The shell must reference the entry bundle `web-build` named,
       # the site must serve it, and it must declare the version `app.json`
-      # names. The shell is cached for ten minutes (`cache-control:
-      # max-age=600`, measured), so a stale one is asked again for that long
-      # before it counts as a failed publication.
+      # names. The shell is cached for ten minutes (`max-age=600`), so a stale
+      # one is asked again for that long before it counts as a failure.
       - name: Verify production serves this build
         env:
           BASE: ${{ steps.deployment.outputs.page_url }}
@@ -548,7 +529,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     environment:
-      name: helix
+      name: ${{ github.event.repository.name }}
     steps:
       # The same guard as `deploy-web`, for the same reason.
       - name: Refuse to publish a commit main has moved past
@@ -578,17 +559,13 @@ jobs:
       # Apple credential path.
       #
       # The CLI is not in the lockfile — `tests/repo/release-config.test.ts`
-      # records why — so npx resolves its whole tree, 525 packages, at publish
-      # time. Two things keep that tree from choosing what runs beside
-      # EXPO_TOKEN:
+      # records why — so npx resolves its whole tree at publish time. Two
+      # things keep that tree from choosing what runs beside EXPO_TOKEN:
       # - It is installed HERE, in a step without the token, and the publish
       #   step runs `npx --yes=false`, which refuses to install anything. Not
-      #   `--no`: npm does not know that flag, takes the package name as its
-      #   value and hands the command's own flags to npm — measured, `--version`
-      #   printed npm's version, not the CLI's. With `--ignore-scripts` neither
-      #   of the tree's install hooks runs — dtrace-provider compiles a native
-      #   addon, protobufjs runs a postinstall — and 24.8.0 starts without
-      #   either, measured.
+      #   `--no`: npm does not know that flag and hands the command's own flags
+      #   to npm. `--ignore-scripts` skips the tree's install hooks (native
+      #   addon, postinstall), which the CLI does not need to start.
       # - `npm_config_before` resolves every transitive range as it stood on a
       #   fixed day, so nothing published after that day can enter, however it
       #   was published. `.npmrc`'s `min-release-age` would do this on a rolling

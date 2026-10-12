@@ -1,36 +1,24 @@
 /**
- * One keyboard contract for every form surface.
- *
- * Native uses Expo's keyboard controller rather than a stack of
- * per-screen `KeyboardAvoidingView`s: it follows the keyboard frame and keeps
- * the focused input inside its own scroll view. Mobile web has no equivalent
- * native event, so its visual viewport re-centres the active DOM input after
- * the browser has made room for the software keyboard.
+ * One keyboard contract for every form surface. Native follows the keyboard with keyboard-controller (the `.native` sibling, which keeps its
+ * worklets out of the web bundle); a mobile browser has no such event, so the focused input is re-centred here.
  */
 
 import React, { useEffect } from "react";
-import { Platform, ScrollView, type ScrollViewProps } from "react-native";
+import { ScrollView, type ScrollViewProps } from "react-native";
+import { isReducedMotion } from "./motion";
 import { isMobileViewportWidth } from "./responsive";
 
 export interface KeyboardSafeScrollViewProps extends ScrollViewProps {
+  ref?: React.Ref<ScrollView>;
   /** Breathing room above the native keyboard, measured from the caret. */
   bottomOffset: number;
   /** Extra scrollable room for the tab bar or safe area below the form. */
   extraKeyboardSpace: number;
 }
 
-/**
- * This is the web/default implementation. The `.native` sibling owns the
- * controller import so Metro never pulls its Reanimated worklets into web's
- * entry bundle; mobile web instead centres the actual DOM input below.
- */
-export const KeyboardSafeScrollView = React.forwardRef<ScrollView, KeyboardSafeScrollViewProps>(
-  ({ bottomOffset: _bottomOffset, extraKeyboardSpace: _extraKeyboardSpace, ...props }, ref) => (
-    <ScrollView ref={ref} {...props} />
-  ),
-);
-
-KeyboardSafeScrollView.displayName = "KeyboardSafeScrollView";
+export function KeyboardSafeScrollView({ bottomOffset: _bottomOffset, extraKeyboardSpace: _extraKeyboardSpace, ...props }: KeyboardSafeScrollViewProps) {
+  return <ScrollView {...props} />;
+}
 
 /**
  * FlatList invokes `renderScrollComponent` itself, outside React's component
@@ -42,7 +30,7 @@ export function renderKeyboardSafeListScroll(props: ScrollViewProps) {
   return (
     <ScrollView
       {...props}
-      keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
+      keyboardDismissMode="on-drag"
       keyboardShouldPersistTaps="handled"
       automaticallyAdjustContentInsets={false}
     />
@@ -61,7 +49,7 @@ function activeEditableElement(): HTMLElement | null {
 
 function MobileWebKeyboardFocus() {
   useEffect(() => {
-    if (Platform.OS !== "web" || typeof window === "undefined") return;
+    if (typeof window === "undefined") return;
     // A desktop keyboard never shrinks the visual viewport. Coarse pointers
     // include phones and tablets; the width fallback also covers mobile web
     // emulation where pointer capability is not faithfully exposed.
@@ -81,7 +69,7 @@ function MobileWebKeyboardFocus() {
       target.scrollIntoView({
         block: "center",
         inline: "nearest",
-        behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
+        behavior: isReducedMotion() ? "auto" : "smooth",
       });
     };
     const scheduleReveal = (event?: FocusEvent) => {
@@ -117,7 +105,6 @@ function MobileWebKeyboardFocus() {
 
 /** Mount once above Router, dialogs and all form routes. */
 export function KeyboardSafeRoot({ children }: { children: React.ReactNode }) {
-  if (Platform.OS !== "web") return <>{children}</>;
   return (
     <>
       <MobileWebKeyboardFocus />

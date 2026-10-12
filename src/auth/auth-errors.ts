@@ -1,4 +1,4 @@
-/** Supabase auth/RPC errors arrive in English; map them to the Turkish UI. */
+/** Supabase auth errors arrive in English; map them to the Turkish UI. */
 
 import { tr } from "../i18n/tr";
 

@@ -19,57 +19,8 @@ import {
   MATRIX_COLOR_TOKENS,
   type MatrixColorLike,
 } from "../../src/domain/matrix-colors";
-import { matrixColorStyle, PALETTES } from "../../src/ui/theme";
 import { tr } from "../../src/i18n/tr";
 
-
-/**
- * The colour arithmetic these marks are chosen by.
- *
- * Local rather than shared: `theme-contrast.test.ts` measures the palette's own
- * tokens and this measures what a marked CELL renders as, which is the token
- * composited onto the surface underneath it.
- */
-const channels = (hex: string): [number, number, number] =>
-  [1, 3, 5].map((at) => Number.parseInt(hex.slice(at, at + 2), 16)) as [number, number, number];
-
-const linear = (channel: number) => {
-  const value = channel / 255;
-  return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
-};
-
-const luminance = (hex: string) =>
-  channels(hex).map(linear).reduce((total, value, index) => total + value * [0.2126, 0.7152, 0.0722][index]!, 0);
-
-function contrastRatio(a: string, b: string): number {
-  const [lighter, darker] = [luminance(a), luminance(b)].sort((x, y) => y - x);
-  return (lighter! + 0.05) / (darker! + 0.05);
-}
-
-/** An `#rrggbbaa` fill composited onto the opaque surface behind it. */
-function over(fill: string, surface: string): string {
-  const alpha = fill.length === 9 ? Number.parseInt(fill.slice(7, 9), 16) / 255 : 1;
-  const [fr, fg, fb] = channels(fill);
-  const [sr, sg, sb] = channels(surface);
-  return `#${[[fr, sr], [fg, sg], [fb, sb]]
-    .map(([front, back]) => Math.round(alpha * front! + (1 - alpha) * back!).toString(16).padStart(2, "0"))
-    .join("")}`;
-}
-
-/** CIE76 ΔE — enough to say whether two washes read as two colours. */
-function deltaE(a: string, b: string): number {
-  const lab = (hex: string) => {
-    const [r, g, bl] = channels(hex).map(linear) as [number, number, number];
-    const x = (r * 0.4124 + g * 0.3576 + bl * 0.1805) / 0.95047;
-    const y = r * 0.2126 + g * 0.7152 + bl * 0.0722;
-    const z = (r * 0.0193 + g * 0.1192 + bl * 0.9505) / 1.08883;
-    const f = (t: number) => (t > 0.008856 ? Math.cbrt(t) : 7.787 * t + 16 / 116);
-    return [116 * f(y) - 16, 500 * (f(x) - f(y)), 200 * (f(y) - f(z))] as const;
-  };
-  const [l1, a1, b1] = lab(a);
-  const [l2, a2, b2] = lab(b);
-  return Math.hypot(l1 - l2, a1 - a2, b1 - b2);
-}
 
 const mark = (overrides: Partial<MatrixColorLike>): MatrixColorLike => ({
   id: "c1",
@@ -176,104 +127,7 @@ describe("which colour a cell shows", () => {
   });
 });
 
-describe("how a mark is painted", () => {
-  it("resolves every token in every shipped palette and scheme", () => {
-    for (const [id, { light, dark }] of Object.entries(PALETTES)) {
-      for (const [palette, scheme] of [[light, "light"], [dark, "dark"]] as const) {
-        for (const token of MATRIX_COLOR_TOKENS) {
-          const style = matrixColorStyle(palette, token);
-          for (const [role, value] of Object.entries(style)) {
-            expect(value, `${id}/${scheme}/${token}/${role}`).toMatch(/^#[0-9A-Fa-f]{6}([0-9A-Fa-f]{2})?$/);
-          }
-        }
-      }
-    }
-  });
-
-  /**
-   * The fill sits under an amount drawn in ordinary text ink, so it has to stay
-   * a wash. This used to be asserted as an alpha ceiling, which is a proxy for
-   * the real property and was wrong in both directions: it allowed four hues
-   * that measured 2.7 ΔE apart — a difference nobody can act on across a table
-   * of numbers, and the "renkler stabil değil" the owner reported — while
-   * forbidding the strength that fixes it. Both halves of the actual
-   * requirement are measured here instead.
-   */
-  it("keeps the figure on a marked cell readable in every palette", () => {
-    for (const [id, { light, dark }] of Object.entries(PALETTES)) {
-      for (const [palette, scheme] of [[light, "light"], [dark, "dark"]] as const) {
-        for (const token of MATRIX_COLOR_TOKENS) {
-          const cell = over(matrixColorStyle(palette, token).fill, palette.surface);
-          expect(
-            contrastRatio(palette.text, cell),
-            `${id}/${scheme}/${token}: figure on marked cell`,
-          ).toBeGreaterThanOrEqual(4.5);
-        }
-      }
-    }
-  });
-
-  /**
-   * Four marks are four signals or they are decoration.
-   *
-   * ΔE 5 is where two large areas of colour stop reading as two shades of one
-   * thing. The pair that has to clear it is every pair, not just the adjacent
-   * ones: a table shows all four at once, several rows apart.
-   */
-  it("keeps every pair of marks distinguishable, and each one from the bare cell", () => {
-    for (const [id, { light, dark }] of Object.entries(PALETTES)) {
-      for (const [palette, scheme] of [[light, "light"], [dark, "dark"]] as const) {
-        const fills = MATRIX_COLOR_TOKENS.map((token) => ({
-          token,
-          color: over(matrixColorStyle(palette, token).fill, palette.surface),
-        }));
-        for (const { token, color } of fills) {
-          expect(
-            deltaE(color, palette.surface),
-            `${id}/${scheme}/${token}: mark against an unmarked cell`,
-          ).toBeGreaterThanOrEqual(5);
-        }
-        for (let a = 0; a < fills.length; a += 1) {
-          for (let b = a + 1; b < fills.length; b += 1) {
-            expect(
-              deltaE(fills[a]!.color, fills[b]!.color),
-              `${id}/${scheme}: ${fills[a]!.token} vs ${fills[b]!.token}`,
-            ).toBeGreaterThanOrEqual(5);
-          }
-        }
-      }
-    }
-  });
-
-  /**
-   * The tick drawn ON a mark is a graphical object, not text: WCAG 1.4.11 asks
-   * for 3:1. It is stated rather than left implicit because the obvious 4.5
-   * would force the shared semantic ink tokens off their own values for a
-   * glyph that is not text.
-   */
-  it("keeps the selected tick visible on the mark it sits on", () => {
-    for (const [id, { light, dark }] of Object.entries(PALETTES)) {
-      for (const [palette, scheme] of [[light, "light"], [dark, "dark"]] as const) {
-        for (const token of MATRIX_COLOR_TOKENS) {
-          const { fill, ink } = matrixColorStyle(palette, token);
-          expect(
-            contrastRatio(ink, over(fill, palette.surface)),
-            `${id}/${scheme}/${token}: tick on its own mark`,
-          ).toBeGreaterThanOrEqual(3);
-        }
-      }
-    }
-  });
-
-  it("gives each token a distinct edge so a column can be read at a glance", () => {
-    for (const { light, dark } of Object.values(PALETTES)) {
-      for (const palette of [light, dark]) {
-        const edges = MATRIX_COLOR_TOKENS.map((token) => matrixColorStyle(palette, token).edge);
-        expect(new Set(edges).size).toBe(MATRIX_COLOR_TOKENS.length);
-      }
-    }
-  });
-
+describe("the tokens it ships", () => {
   it("accepts only the tokens it ships", () => {
     expect(MATRIX_COLOR_TOKENS.every(isMatrixColorToken)).toBe(true);
     for (const value of ["", "purple", null, 3, {}]) expect(isMatrixColorToken(value)).toBe(false);

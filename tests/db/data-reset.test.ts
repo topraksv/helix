@@ -3,51 +3,31 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const harness = vi.hoisted(() => ({ db: null as DatabaseSync | null, failMaintenance: false }));
 
-vi.mock("../../src/db/client", () => ({
-  getSqliteAsync: async () => ({
-    getFirstAsync: async (sql: string, args: unknown[] = []) =>
-      harness.db!.prepare(sql).get(...(args as never[])) ?? null,
-    getAllAsync: async (sql: string, args: unknown[] = []) =>
-      harness.db!.prepare(sql).all(...(args as never[])),
-    runAsync: async (sql: string, args: unknown[] = []) => {
-      // A tidy-up that fails after the delete has committed, injected where a
-      // failure actually happens: the maintenance pass's own bookkeeping write.
-      //
-      // NOT by mocking `./maintenance`. Every assertion in this file about
-      // what a reset leaves behind runs the REAL pass over the real database,
-      // and replacing that module — even with a spread of the original — costs
-      // Stryker the per-test coverage it attributes through it. Measured
-      // 2026-09-09: the file fell from 48.02 to 43.03 with nothing about it
-      // changed except this mock.
-      if (harness.failMaintenance && args.includes("cc_column_removed")) {
-        throw new Error("injected maintenance failure");
-      }
-      return { changes: Number(harness.db!.prepare(sql).run(...(args as never[])).changes) };
+// Injected here, not by mocking ./maintenance: the assertions run the real pass, and mocking it costs Stryker its per-test coverage.
+vi.mock("../../src/db/client", async () => {
+  const { sqliteClientMock } = await import("../helpers");
+  const base = sqliteClientMock(() => harness.db!);
+  return {
+    ...base,
+    getSqliteAsync: async () => {
+      const sqlite = await base.getSqliteAsync();
+      return {
+        ...sqlite,
+        // A tidy-up that fails after the delete has committed: the maintenance pass's own bookkeeping write.
+        runAsync: async (sql: string, args: unknown[] = []) => {
+          if (harness.failMaintenance && args.includes("cc_column_removed")) {
+            throw new Error("injected maintenance failure");
+          }
+          return sqlite.runAsync(sql, args);
+        },
+      };
     },
-  }),
-  withTransaction: async (task: () => Promise<void>) => {
-    harness.db!.exec("BEGIN");
-    try {
-      await task();
-      harness.db!.exec("COMMIT");
-    } catch (error) {
-      harness.db!.exec("ROLLBACK");
-      throw error;
-    }
-  },
-}));
+  };
+});
 
-vi.mock("../../src/db/ids", () => ({
+vi.mock("../../src/db/ids", async () => ({
   deterministicId: async (key: string) => `det:${key}`,
-  naturalKeys: new Proxy(
-    {},
-    {
-      get:
-        (_target, property) =>
-        (...parts: unknown[]) =>
-          `${String(property)}|${parts.join("|")}`,
-    },
-  ),
+  naturalKeys: (await import("../helpers")).naturalKeysProxy(),
 }));
 
 vi.mock("../../src/sync/engine", () => ({ scheduleSync: vi.fn() }));

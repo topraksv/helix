@@ -5,9 +5,8 @@
  */
 
 import { DatabaseSync } from "node:sqlite";
-import { readFileSync, readdirSync } from "node:fs";
-import { join } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { migrationStatements } from "../helpers";
 
 const harness = vi.hoisted(() => ({ db: null as DatabaseSync | null }));
 
@@ -23,24 +22,10 @@ vi.mock("../../src/db/ids", () => ({
 
 const { discardSyncDeadLetter, requeueSyncDeadLetter } = await import("../../src/db/mutations");
 
-const migrationsDir = join(process.cwd(), "src/db/migrations");
-const migrations = readdirSync(migrationsDir)
-  .filter((name) => /^\d{4}_.+\.sql$/.test(name))
-  .sort()
-  .flatMap((name) => readFileSync(join(migrationsDir, name), "utf8").split("--> statement-breakpoint"))
-  .map((statement) => statement.trim())
-  .filter(Boolean);
-
 const USER = "10000000-0000-4000-8000-000000000001";
 const OTHER = "20000000-0000-4000-8000-000000000002";
 
-/**
- * Real uuids, because the retry now runs the push's own validator and that
- * validator checks the id. The fixture used to say "tx-1", which no row this
- * app writes has ever looked like — `uuidv7` and `deterministicId` both produce
- * uuids — so a synthetic id was the one thing standing between this suite and
- * the check it exists to exercise.
- */
+/** Real uuids: the retry runs the push validator, which checks the id. */
 const TX = {
   one: "30000000-0000-4000-8000-000000000001",
   bad: "30000000-0000-4000-8000-000000000002",
@@ -71,7 +56,7 @@ function insertTransaction(userId: string, id: string, amountMinor: unknown = 10
 
 beforeEach(() => {
   harness.db = new DatabaseSync(":memory:");
-  for (const migration of migrations) harness.db.exec(migration);
+  for (const migration of migrationStatements) harness.db.exec(migration);
 });
 
 describe("dead-letter recovery", () => {
@@ -130,23 +115,18 @@ describe("dead-letter recovery", () => {
     expect(harness.db!.prepare("SELECT COUNT(*) AS n FROM sync_dead_letters").get()).toEqual({ n: 1 });
   });
 
-  /**
-   * The loop the owner reported.
-   *
-   * A quarantine means the server refused the row. Queueing the SAME row again
-   * meant the next push refused it for the same reason and quarantined it
-   * again, so "Yeniden Dene" could only ever produce another error. The retry
-   * now runs the push's own validator first and says the row itself is the
-   * problem, without spending an outbox event on it.
-   */
+  /** A quarantine means the server refused the row; requeueing it unchanged only quarantines it again. */
   it("does not requeue a row the push would refuse again", async () => {
     // A text amount is exactly what `convertOutboundRow` refuses, and exactly
     // what a corrupt row carries.
     insertTransaction(USER, TX.bad, "not-a-number");
     insertDeadLetter(1, "transactions", TX.bad);
+    const before = harness.db!.prepare("SELECT * FROM transactions WHERE id = ?").get(TX.bad);
 
     await expect(requeueSyncDeadLetter(USER, 1)).resolves.toBe("unrepairable");
     expect(harness.db!.prepare("SELECT COUNT(*) AS n FROM outbox").get()).toEqual({ n: 0 });
+    // A refusal leaves the row exactly as it was: no write, no stamp.
+    expect(harness.db!.prepare("SELECT * FROM transactions WHERE id = ?").get(TX.bad)).toEqual(before);
     // The clue stays: it is the only local record that this happened.
     expect(harness.db!.prepare("SELECT COUNT(*) AS n FROM sync_dead_letters").get()).toEqual({ n: 1 });
   });
@@ -159,19 +139,6 @@ describe("dead-letter recovery", () => {
     harness.db!.prepare("UPDATE transactions SET amount_minor = 2500 WHERE id = ?").run(TX.fixed);
     await expect(requeueSyncDeadLetter(USER, 1)).resolves.toBe("requeued");
     expect(harness.db!.prepare("SELECT COUNT(*) AS n FROM outbox WHERE row_id = ?").get(TX.fixed)).toEqual({ n: 1 });
-  });
-
-  it("writes nothing at all when the answer is that the row cannot be sent", async () => {
-    // `convertOutboundRow` COERCES the row it is handed — booleans especially —
-    // so it is given a copy. A refusal must leave the database exactly as it
-    // was: no write, no stamp, no outbox event.
-    insertTransaction(USER, TX.bad, "not-a-number");
-    insertDeadLetter(1, "transactions", TX.bad);
-    const before = harness.db!.prepare("SELECT * FROM transactions WHERE id = ?").get(TX.bad);
-
-    await expect(requeueSyncDeadLetter(USER, 1)).resolves.toBe("unrepairable");
-    expect(harness.db!.prepare("SELECT * FROM transactions WHERE id = ?").get(TX.bad)).toEqual(before);
-    expect(harness.db!.prepare("SELECT COUNT(*) AS n FROM outbox").get()).toEqual({ n: 0 });
   });
 
   it("changes only the timestamp on the row it does requeue", async () => {

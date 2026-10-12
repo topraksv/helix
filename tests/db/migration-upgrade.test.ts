@@ -1,18 +1,4 @@
-/**
- * An existing install must reach the same schema a fresh one does.
- *
- * `migrateDb` runs on every boot and is the only thing standing between a
- * user's ledger and the current schema, and nothing tested it. The suite built
- * databases by replaying every migration from nothing, which proves a CLEAN
- * INSTALL works — the case that is never in danger. What is in danger is the
- * phone that stopped at migration 4: it takes a different path through the
- * same SQL, and a statement that only works against a fresh table (a `CREATE
- * TABLE` without `IF NOT EXISTS`, a column added twice) fails there and
- * nowhere else. A failed boot migration is the user's whole history.
- *
- * These run the REAL runner — its journal ordering, its `created_at`
- * bookkeeping and its resume rule — against a real SQLite database.
- */
+/** Upgrades a database built by an older migration set, and one interrupted mid-migration, to the current schema. */
 
 import { DatabaseSync } from "node:sqlite";
 import { existsSync, readFileSync } from "node:fs";
@@ -34,14 +20,7 @@ const RETIREMENT_TAG = "0010_retire_legacy_expected_payments";
 /** The migration whose token rewrite the mark test exercises. */
 const MARK_SLOTS_TAG = "0012_matrix_color_slots";
 
-/**
- * How many statements the runner will execute for one migration.
- *
- * Derived, never written down: the interruption test has to fail inside the
- * LAST migration, and a hard-coded count silently stops interrupting anything
- * the moment a one-statement migration is added after it — which is exactly
- * how this suite quietly stopped exercising 0010.
- */
+// Derived, not hard-coded: the interruption must land inside the last migration whatever its size.
 const statementCount = (tag: string): number => sqlFor(tag).split("--> statement-breakpoint").length;
 
 let database: DatabaseSync;
@@ -107,6 +86,13 @@ function schemaOf(db: DatabaseSync): string[] {
 const appliedCount = (db: DatabaseSync): number =>
   (db.prepare("SELECT COUNT(*) AS count FROM __drizzle_migrations").get() as { count: number }).count;
 
+const insertExpense = (id: string, amount: number, date: string): void => {
+  database.prepare(
+    `INSERT INTO transactions (id, user_id, type, amount_minor, currency, amount_try_minor, entry_date, effective_date, status, person_id, created_at, updated_at)
+     VALUES (?, 'user-1', 'expense', ?, 'TRY', ?, ?, ?, 'realized', 'person-1', ?, ?)`,
+  ).run(id, amount, amount, date, date, `${date}T00:00:00.000Z`, `${date}T00:00:00.000Z`);
+};
+
 describe("boot migration", () => {
   beforeEach(() => {
     database = new DatabaseSync(":memory:");
@@ -114,11 +100,7 @@ describe("boot migration", () => {
     failAfterStatements = null;
   });
 
-  it("has a migration file behind every journal entry", () => {
-    // The runner throws "Missing migration" at boot for a journal entry with no
-    // bundle — a failure the user meets as a dead app, not as a build error.
-    expect(journal.entries.length).toBeGreaterThanOrEqual(9);
-    for (const entry of journal.entries) expect(sqlFor(entry.tag).trim().length, entry.tag).toBeGreaterThan(0);
+  it("lists migrations in the order the resume rule compares", () => {
     // Applied in `when` order, which is what the resume rule compares against.
     const times = journal.entries.map((entry) => entry.when);
     expect([...times].sort((a, b) => a - b)).toEqual(times);
@@ -138,15 +120,6 @@ describe("boot migration", () => {
       const movesSchema = /^\s*(CREATE|ALTER|DROP)\b/im.test(sqlFor(entry.tag));
       const snapshot = join(MIGRATIONS_DIR, "meta", `${String(entry.idx).padStart(4, "0")}_snapshot.json`);
       expect(existsSync(snapshot), `${entry.tag} ${movesSchema ? "moves" : "does not move"} the schema`).toBe(movesSchema);
-    }
-  });
-
-  it("brings a fresh install to the full schema", async () => {
-    await migrateDb();
-    const schema = schemaOf(database);
-    expect(appliedCount(database)).toBe(journal.entries.length);
-    for (const table of ["transactions", "categories", "persons", "settings", "outbox", "sync_dead_letters", "investment_operations"]) {
-      expect(schema.some((entry) => entry.startsWith(`table ${table} ::`)), table).toBe(true);
     }
   });
 
@@ -179,10 +152,7 @@ describe("boot migration", () => {
     // one that fails loudly.
     visibleEntries = 1;
     await migrateDb();
-    database.prepare(
-      `INSERT INTO transactions (id, user_id, type, amount_minor, currency, amount_try_minor, entry_date, effective_date, status, person_id, created_at, updated_at)
-       VALUES (?, ?, 'expense', 12345, 'TRY', 12345, '2026-01-15', '2026-01-15', 'realized', 'person-1', '2026-01-15T00:00:00.000Z', '2026-01-15T00:00:00.000Z')`,
-    ).run("tx-1", "user-1");
+    insertExpense("tx-1", 12345, "2026-01-15");
 
     visibleEntries = journal.entries.length;
     await migrateDb();
@@ -192,9 +162,7 @@ describe("boot migration", () => {
   });
 
   it("pulls a table again when an update gives it a column, and names the column until then", async () => {
-    // A row pulled before its column existed holds the migration's empty value
-    // with the cursor past it; sent whole, the next edit wrote that over the
-    // value another device had set (Gital's devil round 2026-10-07-2).
+    // A row pulled before its column existed holds the migration's empty value; sent whole, its next edit overwrote the other device's value.
     const added = journal.entries.findIndex((entry) => entry.tag.startsWith("0014_"));
     visibleEntries = added;
     await migrateDb();
@@ -215,9 +183,7 @@ describe("boot migration", () => {
   });
 
   it("retires a legacy installment expected row without deleting its tombstone", async () => {
-    // Pinned to the migration under test rather than to "the last one": with
-    // `length - 1` this silently stopped exercising 0010 the moment 0011 was
-    // added, and still passed everything except its own assertion.
+    // Pinned to the migration under test, not to "the last one".
     const retirement = journal.entries.findIndex((entry) => entry.tag === RETIREMENT_TAG);
     expect(retirement, `${RETIREMENT_TAG} is missing from the journal`).toBeGreaterThan(-1);
     visibleEntries = retirement;
@@ -249,10 +215,7 @@ describe("boot migration", () => {
   it("rolls back an interrupted migration and resumes it without losing the ledger", async () => {
     visibleEntries = journal.entries.length - 1;
     await migrateDb();
-    database.prepare(
-      `INSERT INTO transactions (id, user_id, type, amount_minor, currency, amount_try_minor, entry_date, effective_date, status, person_id, created_at, updated_at)
-       VALUES (?, ?, 'expense', 54321, 'TRY', 54321, '2026-02-15', '2026-02-15', 'realized', 'person-1', '2026-02-15T00:00:00.000Z', '2026-02-15T00:00:00.000Z')`,
-    ).run("tx-interrupted", "user-1");
+    insertExpense("tx-interrupted", 54321, "2026-02-15");
     const before = schemaOf(database);
 
     visibleEntries = journal.entries.length;
@@ -313,5 +276,50 @@ describe("boot migration", () => {
     await migrateDb();
     expect(appliedCount(database)).toBe(journal.entries.length);
     expect(schemaOf(database)).toEqual(before);
+    for (const table of ["transactions", "categories", "persons", "settings", "outbox", "sync_dead_letters", "investment_operations"]) {
+      expect(before.some((entry) => entry.startsWith(`table ${table} ::`)), table).toBe(true);
+    }
+  });
+});
+
+describe("outbox lookup indexes", () => {
+  function indexedOutbox(): DatabaseSync {
+    const db = new DatabaseSync(":memory:");
+    db.exec(`CREATE TABLE outbox (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      table_name TEXT NOT NULL,
+      row_id TEXT NOT NULL,
+      op TEXT NOT NULL DEFAULT 'upsert',
+      payload TEXT NOT NULL,
+      idempotency_key TEXT NOT NULL UNIQUE,
+      created_at TEXT NOT NULL
+    )`);
+    for (const statement of sqlFor("0006_odd_darwin").split("--> statement-breakpoint")) {
+      if (statement.trim()) db.exec(statement);
+    }
+    return db;
+  }
+
+  const indexColumns = (db: DatabaseSync, name: string): string[] =>
+    (db.prepare(`PRAGMA index_info(${name})`).all() as { name: string }[]).map((column) => column.name);
+
+  it("ships indexes matching both sync-engine lookup patterns", () => {
+    const db = indexedOutbox();
+
+    expect(indexColumns(db, "idx_outbox_table_id")).toEqual(["table_name", "id"]);
+    expect(indexColumns(db, "idx_outbox_table_row_id_id")).toEqual(["table_name", "row_id", "id"]);
+  });
+
+  it("uses the indexes for batch selection and acknowledgement checks", () => {
+    const db = indexedOutbox();
+    const batchPlan = db
+      .prepare("EXPLAIN QUERY PLAN SELECT id, payload, row_id FROM outbox WHERE table_name = ? ORDER BY id ASC LIMIT 200")
+      .all("transactions") as { detail: string }[];
+    const acknowledgementPlan = db
+      .prepare("EXPLAIN QUERY PLAN SELECT id FROM outbox WHERE table_name = ? AND row_id = ? ORDER BY id DESC LIMIT 1")
+      .all("transactions", "row-1") as { detail: string }[];
+
+    expect(batchPlan.map((step) => step.detail).join("\n")).toContain("idx_outbox_table_id");
+    expect(acknowledgementPlan.map((step) => step.detail).join("\n")).toContain("idx_outbox_table_row_id_id");
   });
 });

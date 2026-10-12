@@ -1,14 +1,4 @@
-/**
- * Reconcile the balance to reality. The primary tool is "set current balance":
- * the user types the real total in their account and the difference is stored
- * as one adjustment dated today — the month-by-month chain and every prior
- * month stay exactly as they were. Editing the START MONTH + opening balance
- * (which recomputes the WHOLE table) is demoted to a historical, collapsed
- * section, since doing that was what silently "blew up" the Mali Tablo values.
- *
- * Shared body used by the Settings sub-screen and a top-level modal opened from
- * Mali Tablo, so it always has a working back/close regardless of launch point.
- */
+/** Reconcile the balance by stating the real total (one dated adjustment); editing the start month and opening, which recomputes the whole table, is demoted to a collapsed section. Shared by the settings page and the Mali Tablo modal. */
 
 import { useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
@@ -25,12 +15,11 @@ import { settingValue, useAdjustmentsState, useLedgerState, useSettingsMapState,
 import { combineLiveStates } from "../data/live-state";
 import { scheduleSync } from "../sync/engine";
 import { addMonthsToKey, isCurrentOrFutureMonth, monthKeyOf, todayISO, yearOf, type MonthKey } from "../domain/dates";
-import { balanceDeclarationDrift, driftCandidates, parseBalanceDeclaration } from "../domain/balance-declaration";
+import { balanceDeclarationDrift, declarationAdjustmentMinor, declaredMonthOf, driftCandidates, parseBalanceDeclaration } from "../domain/balance-declaration";
 import { formatMinorCompact, formatMinorInput } from "../domain/money";
 import { dateLabel, monthLabel, tr } from "../i18n/tr";
 import { Amount, Badge, Body, Button, Card, CardList, DataStateNotice, EmptyState, FadeIn, IconButton, ListRow, MoneyField, MonthStepper, PanelHeader, Row, Screen, SectionHeader, Spread } from "./components";
 import { appAlert } from "./dialog";
-import { successNotice } from "./haptics";
 import { userMessage } from "../domain/user-error";
 import { devError } from "../services/logger";
 import { circle, radius, spacing, type, useTheme } from "./theme";
@@ -131,7 +120,6 @@ function useCurrentBalanceForm(computed: number | null) {
       // is the only way a later screen can say "you told me this on that day".
       await setBalanceDeclaration(userId, target.minor, todayISO());
       scheduleSync(userId);
-      successNotice();
       // Stays put: correcting a balance is usually followed by looking at what
       // it did to the history right below. The field re-derives from the new
       // computed balance once the draft is dropped.
@@ -162,11 +150,9 @@ function useDeclarationForm(bundle: Bundle | null, adjustments: Adjustment[]) {
     setSaving(true);
     try {
       const existing = adjustments.find((row) => row.declaredMinor != null && declaredMonthOf(row.date) === month);
-      // What the month opened with before any declaration of its own, which is
-      // what the stored difference is measured from.
-      const undeclared = opening - (existing ? bundle.declarationDeltaById.get(existing.id) ?? 0 : 0);
       const before = existing ? { declaredMinor: existing.declaredMinor!, amountMinor: existing.amountMinor } : null;
-      const id = await declareMonthOpeningBalance(userId, month, amount.minor, amount.minor - undeclared);
+      const delta = declarationAdjustmentMinor(amount.minor, opening, existing ? bundle.declarationDeltaById.get(existing.id) ?? 0 : 0);
+      const id = await declareMonthOpeningBalance(userId, month, amount.minor, delta);
       scheduleSync(userId);
       amount.reset();
       undo.show(tr.settings.declarationSaved, () => (before
@@ -220,8 +206,6 @@ function useOpeningForm(settings: ReturnType<typeof useSettingsMapState>["data"]
   };
   return { startMonth, setStartChoice, opening, saving, save, dirty: opening.minor !== currentOpening || startMonth !== currentStart };
 }
-
-const declaredMonthOf = (date: string) => addMonthsToKey(monthKeyOf(date), 1);
 
 function CurrentBalanceCard({ form, bundle, settings }: { form: ReturnType<typeof useCurrentBalanceForm>; bundle: Bundle; settings: ReturnType<typeof useSettingsMapState>["data"] }) {
   const { palette } = useTheme();
@@ -414,13 +398,7 @@ export function OpeningBalanceEditor() {
     (current.target.changed || opening.dirty || declaration.amount.touched) && !current.saving && !opening.saving && !declaration.saving,
   );
 
-  // Never let the async ledger's pre-load fallback masquerade as a real zero
-  // balance; the editor becomes actionable only after its accounting inputs load.
-  //
-  // What is NOT a reason to withhold it: an unset opening balance. This branch
-  // used to synthesise an "error" status from a null computed balance and tell
-  // the owner their finance data could not be read — on the one screen that can
-  // set the anchor whose absence produced the null.
+  // Wait for the ledger: its pre-load fallback must not read as a zero balance. An unset opening is not a reason to withhold this screen — it is where it gets set.
   if (!ready || bundle == null) {
     return (
       <Screen>

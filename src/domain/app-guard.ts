@@ -20,13 +20,9 @@ interface RootGuardDecision {
 
 /**
  * Whether a route may be drawn although this document could not open the
- * database.
- *
- * Only the reset screen, and only while another tab holds the database. A
- * reset e-mail opens its link in a new tab beside the one already running
- * Helix, and that screen reads nothing local — it talks to Auth on a client of
- * its own. Any other failure is a real one, and drawing the reset screen over
- * it would hide it.
+ * database: only the reset screen, and only while another tab holds it. A reset
+ * e-mail opens in a new tab beside the running app, and that screen reads
+ * nothing local. Any other failure is real and must not be hidden.
  */
 export function drawsWithoutDatabase(failure: BootFailure | null, route: RootRouteArea): boolean {
   return failure === "busy" && route === "recovery";
@@ -38,13 +34,9 @@ export function classifyRootRoute(segments: readonly string[]): RootRouteArea {
   if (!first) return "root";
   if (first === "(auth)" && second === "reset-password") return "recovery";
   if (first === "(auth)") return "auth";
-  // The KVKK notice is the one screen whose whole job is to be readable BEFORE
-  // an account exists. Left in the fall-through below it classified as
-  // `protected`, so the guard bounced a signed-out reader straight back to
-  // sign-in and the link on that screen did nothing at all.
+  // The KVKK notice must be readable BEFORE an account exists; as `protected` it would bounce to sign-in.
   if (first === "privacy") return "public";
-  // So is the feedback form: sign-in sends a failure there, and a report needs
-  // no account (migration 45). Signed in, it sends as the account.
+  // The feedback form needs no account: sign-in sends a failure there.
   if (first === "feedback") return "public";
   if (first === "(onboarding)") return "onboarding";
   if (first === "import-wizard" || first === "bulk-entry") return "setup-helper";
@@ -54,10 +46,8 @@ export function classifyRootRoute(segments: readonly string[]): RootRouteArea {
 export function resolveRootGuard(input: RootGuardInput): RootGuardDecision {
   if (!input.ready || input.locked !== false) return { view: "wait", redirect: null };
 
-  // A disclosure nobody can open discloses nothing, so this route answers
-  // before the session is even considered. It carries no account data — it is
-  // the same static text for every reader — which is what makes granting it
-  // unconditionally safe rather than merely convenient.
+  // A disclosure nobody can open discloses nothing, so this answers before the
+  // session is considered; it is static text, so granting it is safe.
   if (input.route === "public") return { view: "stack", redirect: null };
 
   if (!input.userId) {
@@ -89,23 +79,13 @@ export function resolveRootGuard(input: RootGuardInput): RootGuardDecision {
 }
 
 /**
- * Why the workspace would not open.
+ * Why the workspace would not open; the two endings need opposite advice.
  *
- * There are two endings a person can act on and they need opposite advice, so
- * the boot screen has to tell them apart rather than saying "database error"
- * and leaving the guessing to whoever is holding the phone.
- *
- * `busy` is the app already being open somewhere else. On web the SQLite file
- * lives in OPFS behind an exclusive sync access handle: a second tab cannot
- * take it, and wa-sqlite's VFS then stays broken FOR THAT DOCUMENT, so no
- * amount of retrying in the page recovers — only a reload, once the other tab
- * is gone. Native hits the same shape when a second process holds the file.
- * Nothing is wrong with the data, which is the first thing to say.
- *
- * The strings are matched rather than a code because none of the layers
- * involved — OPFS, wa-sqlite, expo-sqlite — surfaces one. They are matched
- * loosely and on purpose: a miss falls through to `unknown`, whose screen is
- * correct for every failure including this one, just less specific.
+ * `busy` is the app already open elsewhere. On web the SQLite file lives in
+ * OPFS behind an exclusive handle and wa-sqlite's VFS then stays broken FOR
+ * THAT DOCUMENT, so only a reload recovers; nothing is wrong with the data.
+ * Matched on message text because no layer surfaces a code, and loosely: a
+ * miss falls through to `unknown`, whose screen is right if less specific.
  */
 export type BootFailure = "busy" | "unknown";
 

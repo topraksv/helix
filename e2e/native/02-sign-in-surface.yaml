@@ -1,24 +1,15 @@
-# The native sign-in surface renders its controls.
-#
-# This is the first screen a phone shows, and it is one the browser suite never
-# sees: the E2E web build deliberately empties the Supabase configuration to
-# reach the local-only path, so nothing has ever exercised the cloud entry on
-# native. Fields, buttons and the offline promise all render through UIKit here.
+# The native sign-in surface renders its controls. The web E2E build empties the Supabase
+# configuration, so the cloud entry has only ever been exercised here.
 appId: com.toprak.helix
 ---
 - launchApp:
     clearState: true
-# A dev-client build downloads its JavaScript from Metro on every launch, so
-# the first assertion has to wait for the bundle rather than race it. A release
-# build with an embedded bundle is up in a fraction of this.
 - extendedWaitUntil:
     visible: "Hesabına giriş yap"
     timeout: 90000
 - assertVisible: "E-posta"
 - assertVisible: "Şifre"
-# At Dynamic Type sizes the form is intentionally taller than the phone. The
-# control remains operable in the ScrollView; bring it into the viewport before
-# asserting it rather than treating a valid reflow as a missing control.
+# At Dynamic Type sizes the form is taller than the phone: scroll to a control before asserting it.
 - scrollUntilVisible:
     element:
       text: "Giriş yap"
@@ -26,14 +17,8 @@ appId: com.toprak.helix
     timeout: 10000
 - assertVisible: "Giriş yap"
 - assertVisible: "Şifremi unuttum"
-# The promise the product makes on its own front door.
 - assertVisible: "Verilerin cihazında saklanır, internet yokken de çalışır."
-# The mode switch is part of the mobile auth surface too. Keep both directions
-# exercised so the link cannot drift away from the form after a layout change.
-#
-# Each quiet action says what it does on its own — it used to be a muted
-# question with a link finishing it, laid side by side, which read as one
-# run-on line and put the link's touch target under the text beside it.
+# Both directions of the mode switch are exercised so the link cannot drift from the form.
 - scrollUntilVisible:
     element:
       text: "Yeni hesap oluştur"
@@ -41,52 +26,34 @@ appId: com.toprak.helix
     timeout: 10000
 - tapOn: "Yeni hesap oluştur"
 - assertVisible: "Hesap oluştur"
-# Consent is a condition of creating the account, so the account screen has to
-# carry it and the notice has to be readable from here without leaving the
-# form. Until 2026-09-03 neither was true: there was no consent control, and
-# the link went to a route the root guard bounced signed-out readers away from,
-# so the one audience the notice is written for could not open it at all.
+# Consent is a condition of creating the account, and the notice must open from the form (the root
+# guard once bounced signed-out readers away from it).
 - assertVisible: "Aydınlatma Metni'ni oku ve onayla"
 - tapOn: "Aydınlatma Metni'ni oku ve onayla"
 - extendedWaitUntil:
     visible: "Aydınlatma Metni"
     timeout: 20000
-# It opens over the form rather than replacing it — a push here would cost
-# whatever had been typed.
+# It opens over the form: a push would cost whatever had been typed.
 - tapOn: "Kapat"
 - assertVisible: "Hesap oluştur"
-# Closing without reading leaves consent ungiven: the button is still the way
-# in, not a record that anything was accepted.
+# Closing without reading leaves consent ungiven.
 - assertVisible: "Aydınlatma Metni'ni oku ve onayla"
-# The notice SCROLLS, and this asserts it by scrolling the whole way. It is
-# worth its own step: the sheet shipped once with its ScrollView nested inside
-# a Pressable, which swallowed the drag — so the text could not be read past
-# its first screen and the acceptance at the bottom could not be reached at
-# all, while every static assertion above still passed.
+# The notice must scroll: it once nested its ScrollView in a Pressable, which swallowed the drag.
 - tapOn: "Aydınlatma Metni'ni oku ve onayla"
 - extendedWaitUntil:
     visible: "Aydınlatma Metni"
     timeout: 20000
-# 60 seconds, and the number is a measurement rather than a round-up. The
-# notice grew 18% in 1.4.2 — four transfer recipients became eight, because the
-# app talks to eight — and at this scroll speed the flow reached the consent
-# control just as a 30-second budget expired. The failure screenshot showed the
-# control on screen and fully rendered, so what ran out was the clock and not
-# the page. Consent sits at the END of the notice on purpose (reaching it IS
-# the reading), which means every honest addition to the disclosure costs
-# scrolling here; the budget has to be set from the document's real length.
+# Sized from the notice's real length: consent sits at the END on purpose, so every addition to the
+# disclosure costs scrolling (a 30s budget expired with the control already rendered).
 - scrollUntilVisible:
     element:
       text: ".*Okudum, anladım.*"
     direction: DOWN
     timeout: 60000
-# Consent is given at the END of the notice, so reaching it is the reading.
 - tapOn: ".*Okudum, anladım.*"
 - extendedWaitUntil:
     visible: "Aydınlatma Metni onaylandı"
     timeout: 20000
-# Below the consent control on a phone, so it is scrolled to like every other
-# control this flow reaches rather than asserted where it used to sit.
 - scrollUntilVisible:
     element:
       text: "Zaten hesabım var, giriş yap"

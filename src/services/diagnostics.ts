@@ -1,29 +1,23 @@
-/**
- * PII-free incident breadcrumbs: recorded on the device, and — once there is an
- * account and a network — uploaded to the owner's own project.
- *
- * The ring stayed device-local for a long time, which meant a crash on the
- * owner's phone produced exactly one signal: the owner noticing. A failure that
- * only happens on iOS, or only offline, or only after a migration, left nothing
- * anyone could read. `uploadDiagnostics` closes that, into a table whose CHECK
- * constraints refuse anything wider than the shape `src/domain/diagnostics.ts`
- * builds (`supabase/migrations/…_diagnostic_events`, extended by migration 33
- * with the error name, the message fingerprint and the redacted frames).
- *
- * Nothing here may record a diagnostic of its own. A failing upload that logged
- * its own failure would grow the ring on every attempt and then try to upload
- * that too.
- */
+// A bounded ring of scrubbed events, uploaded only when the user sends it.
 
 import { kv } from "./kv";
-import { createDiagnosticEvent, type SafeDiagnosticEvent } from "../domain/diagnostics";
+import { createDiagnosticEvent, type SafeDiagnosticEvent as DiagnosticEvent } from "../domain/diagnostics";
 
 const EVENTS_KEY = "helix.diagnostic_events.v1";
 const MAX_EVENTS = 12;
 /** The high-water mark of what has already been uploaded. */
 const UPLOADED_KEY = "helix.diagnostic_events.uploaded.v1";
 
-type DiagnosticEvent = SafeDiagnosticEvent;
+/** A corrupt ring is replaceable; finance data is untouched. */
+async function readRing(): Promise<DiagnosticEvent[]> {
+  try {
+    const raw = await kv.get(EVENTS_KEY);
+    const parsed: unknown = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed.filter(isDiagnosticEvent) : [];
+  } catch {
+    return [];
+  }
+}
 
 let eventWrite = Promise.resolve();
 
@@ -32,14 +26,7 @@ export function recordDiagnostic(scope: string, severity: DiagnosticEvent["sever
   const event = createDiagnosticEvent(scope, severity, error);
   eventWrite = eventWrite
     .then(async () => {
-      let previous: DiagnosticEvent[] = [];
-      try {
-        const raw = await kv.get(EVENTS_KEY);
-        const parsed = raw ? JSON.parse(raw) : [];
-        if (Array.isArray(parsed)) previous = parsed.filter(isDiagnosticEvent);
-      } catch {
-        // A corrupt diagnostic ring is replaceable; finance data is untouched.
-      }
+      const previous = await readRing();
       await kv.set(EVENTS_KEY, JSON.stringify([...previous, event].slice(-MAX_EVENTS)));
     })
     .catch(() => {});
@@ -57,35 +44,6 @@ export interface DiagnosticUpload {
   error_name: string | null;
   fingerprint: string | null;
   frames: string | null;
-}
-
-/** The three columns migration 33 adds. Split out because a client can reach a
- *  project that has not taken that migration yet, and then has to send the row
- *  without them rather than lose the incident. */
-const EXTENDED_COLUMNS = ["error_name", "fingerprint", "frames"] as const;
-
-/**
- * Whether PostgREST refused the row because a column is not there.
- *
- * `PGRST204` is "column not found in the schema cache". It is the one refusal
- * worth retrying, and it is worth retrying because the alternative is silent:
- * `uploadDiagnostics` swallows its failures by design, so a client that shipped
- * ahead of migration 33 would simply stop recording incidents anywhere, which
- * is the exact failure this table exists to prevent.
- */
-function isUnknownColumnError(error: unknown): boolean {
-  const code = (error as { code?: unknown } | null)?.code;
-  if (code === "PGRST204") return true;
-  const message = error instanceof Error ? error.message : String(error ?? "");
-  return EXTENDED_COLUMNS.some((column) => message.includes(column)) && /column|schema cache/i.test(message);
-}
-
-function withoutExtendedColumns(rows: DiagnosticUpload[]): DiagnosticUpload[] {
-  return rows.map((row) => {
-    const narrowed = { ...row };
-    for (const column of EXTENDED_COLUMNS) delete (narrowed as Record<string, unknown>)[column];
-    return narrowed;
-  });
 }
 
 export interface DiagnosticUploadPort {
@@ -118,9 +76,7 @@ export async function uploadDiagnostics(
   appVersion: string,
 ): Promise<number> {
   try {
-    const raw = await kv.get(EVENTS_KEY);
-    const parsed: unknown = raw ? JSON.parse(raw) : [];
-    const events = Array.isArray(parsed) ? parsed.filter(isDiagnosticEvent) : [];
+    const events = await readRing();
     const pending = pendingDiagnostics(events, await kv.get(UPLOADED_KEY));
     if (pending.length === 0) return 0;
     const rows = pending.map((event) => ({
@@ -138,12 +94,7 @@ export async function uploadDiagnostics(
       fingerprint: event.fingerprint ?? null,
       frames: event.frames ?? null,
     }));
-    try {
-      await port.upload(rows);
-    } catch (error) {
-      if (!isUnknownColumnError(error)) throw error;
-      await port.upload(withoutExtendedColumns(rows));
-    }
+    await port.upload(rows);
     await kv.set(UPLOADED_KEY, pending[pending.length - 1]!.at);
     return pending.length;
   } catch {

@@ -1,41 +1,30 @@
 /**
  * Wiring assertions: that a call really is where the privacy rules need it.
  *
- * Split out of `privacy.test.ts` on 2026-09-09, and the split is the point.
+ * Behaviour lives in tests/domain/privacy.test.ts; this file pins wiring.
  * These read SOURCE TEXT, which no behavioural test can do and which no mutant
- * can survive — the string either appears or it does not. Under Stryker they
- * read an INSTRUMENTED copy, so the snippets never match and the whole run
- * dies in its dry run, which is why `vitest.mutation.config.mts` excludes them.
- *
- * That exclusion used to take the behavioural half with it, because both lived
- * in one file. `src/domain/privacy.ts` therefore scored 0 in the mutation gate
- * — guarded in name only — while its tests sat right there, passing, in the
- * normal gate. One file was doing two jobs and the exclusion could only be
- * all-or-nothing.
- *
- * These stay mandatory in the normal gate. They kill no mutants and never did.
+ * can survive. Under Stryker they read an INSTRUMENTED copy, so the snippets
+ * never match and the dry run dies, which is why `vitest.mutation.config.mts`
+ * excludes this file. They stay mandatory in the normal gate.
  */
 import { describe, expect, it } from "vitest";
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { sourceFiles } from "../source-corpus";
+
+const read = (path: string): string => readFileSync(join(process.cwd(), path), "utf8");
+const session = read("src/auth/session.ts");
 
 describe("account-scoped state and redaction wiring", () => {
-
   // On web the device-local store is `localStorage`, readable by any script on
   // the origin. Nothing secret may reach it. Static analysis flags the writer
   // because a value derived from `signInWithPassword` lands there — that value
   // is the user's id and e-mail, never session material — so the boundary is
   // asserted here instead of being re-argued by hand each time.
   it("keeps only non-secret device-local values in the key-value store", () => {
-    const discover = (directory: string): string[] => readdirSync(directory).flatMap((name) => {
-      const path = join(directory, name);
-      if (statSync(path).isDirectory()) return discover(path);
-      return /\.tsx?$/.test(path) ? [path] : [];
-    });
-    const sources = discover(join(process.cwd(), "src"));
     const writes: string[] = [];
-    for (const file of sources) {
-      const text = readFileSync(file, "utf8");
+    for (const file of sourceFiles("src", { atLeast: 150 })) {
+      const text = read(file);
       for (const match of text.matchAll(/kv\.set\(\s*([^,]+),/g)) writes.push(match[1]!.trim());
     }
     // Guards the sweep itself: an empty result would pass every assertion below.
@@ -46,10 +35,36 @@ describe("account-scoped state and redaction wiring", () => {
     }
     // Every write is either a `helix.`-namespaced literal or one of the named
     // constants declared beside it; nothing dynamic and unreviewed gets in.
-    const allowed = /^("helix\.[\w.-]+"|`helix\.[\w.${}]+`|[A-Z][A-Z0-9_]*_KEY|SNAPSHOT_KEY|EVENTS_KEY|TOUR_KEY)$/;
+    const allowed = /^("helix\.[\w.-]+"|`helix\.[\w.${}]+`|[A-Z][A-Z0-9_]*_KEY)$/;
     for (const key of writes) {
       expect(key, `kv.set key expression: ${key}`).toMatch(allowed);
     }
+  });
+
+  /**
+   * The same rule, for the key family that survived the entry-default fix.
+   *
+   * The cash-flow matrix remembers which column is pinned. That reads as a
+   * layout preference and is not one: `src/domain/cash-flow-matrix.ts` builds
+   * every non-system column key from `category.id` or `column.id`, so the
+   * stored value is a row id out of one account's workspace. Asserted against
+   * the WRITER's own constants so a renamed key breaks here rather than
+   * quietly stopping being cleared.
+   */
+  it("clears the matrix pin's account-scoped ids with the account", () => {
+    const matrix = read("src/app/(tabs)/cash-flow/index.tsx");
+    const declared = session.match(/const MATRIX_PIN_KEYS = \[([^\]]+)\]/)?.[1] ?? "";
+    // Every pin key the screen writes, taken from the screen, not retyped here.
+    const written = [...matrix.matchAll(/const (?:LEGACY_PIN_KEY|ROW_PIN_KEY|COLUMN_PIN_KEY) = "([^"]+)"/g)]
+      .map((match) => match[1]!);
+    expect(written).toHaveLength(3);
+    for (const key of written) {
+      expect(declared, `${key} must be cleared on sign-out`).toContain(`"${key}"`);
+    }
+    // The pin is only account-scoped because the key IS a row id; if that ever
+    // stops being true this test is measuring nothing.
+    const domain = read("src/domain/cash-flow-matrix.ts");
+    expect(domain).toContain("key: category.id");
   });
 
   /**
@@ -63,36 +78,8 @@ describe("account-scoped state and redaction wiring", () => {
    * were never displayed to the next account; they were still that account's
    * data sitting in a store the session no longer owned.
    */
-  /**
-   * The same rule, for the key family that survived the entry-default fix.
-   *
-   * The cash-flow matrix remembers which column is pinned. That reads as a
-   * layout preference and is not one: `src/domain/cash-flow-matrix.ts` builds
-   * every non-system column key from `category.id` or `column.id`, so the
-   * stored value is a row id out of one account's workspace. Asserted against
-   * the WRITER's own constants so a renamed key breaks here rather than
-   * quietly stopping being cleared.
-   */
-  it("clears the matrix pin's account-scoped ids with the account", () => {
-    const session = readFileSync(join(process.cwd(), "src/auth/session.ts"), "utf8");
-    const matrix = readFileSync(join(process.cwd(), "src/app/(tabs)/cash-flow/index.tsx"), "utf8");
-    const declared = session.match(/const MATRIX_PIN_KEYS = \[([^\]]+)\]/)?.[1] ?? "";
-    // Every pin key the screen writes, taken from the screen, not retyped here.
-    const written = [...matrix.matchAll(/const (?:LEGACY_PIN_KEY|ROW_PIN_KEY|COLUMN_PIN_KEY) = "([^"]+)"/g)]
-      .map((match) => match[1]!);
-    expect(written).toHaveLength(3);
-    for (const key of written) {
-      expect(declared, `${key} must be cleared on sign-out`).toContain(`"${key}"`);
-    }
-    // The pin is only account-scoped because the key IS a row id; if that ever
-    // stops being true this test is measuring nothing.
-    const domain = readFileSync(join(process.cwd(), "src/domain/cash-flow-matrix.ts"), "utf8");
-    expect(domain).toContain("key: category.id");
-  });
-
   it("clears the entry form's account-scoped defaults with the account", () => {
-    const session = readFileSync(join(process.cwd(), "src/auth/session.ts"), "utf8");
-    const form = readFileSync(join(process.cwd(), "src/app/transaction.tsx"), "utf8");
+    const form = read("src/app/transaction.tsx");
     // The writer's key shape, resolved for every financial type the form emits.
     expect(form).toContain("kv.set(`helix.last.${entry.entryType}`");
     const declared = session.match(/const ENTRY_DEFAULT_KEYS = \[([^\]]+)\]/)?.[1] ?? "";
@@ -108,7 +95,7 @@ describe("account-scoped state and redaction wiring", () => {
     // has to be named in the reset. Pinning the exact string made this break on
     // an unrelated but correct change, and — worse — it would have stayed green
     // if a new account-scoped field had been added and left behind.
-    const status = readFileSync(join(process.cwd(), "src/sync/status.ts"), "utf8");
+    const status = read("src/sync/status.ts");
     const storeFields = [
       ...(status.match(/create<SyncStatusStore>\(\(set\) => \(\{([\s\S]*?)\}\)\)/)?.[1] ?? "")
         .matchAll(/^\s{2}(\w+):/gm),
@@ -128,7 +115,7 @@ describe("account-scoped state and redaction wiring", () => {
    * into the next account's freshly wiped workspace.
    */
   it("drops the undo bar when the session it belongs to ends", () => {
-    const layout = readFileSync(join(process.cwd(), "src/app/_layout.tsx"), "utf8");
+    const layout = read("src/app/_layout.tsx");
     expect(layout).toContain("useUndo");
     expect(layout).toMatch(/useEffect\(\(\) => \{\s*useUndo\.getState\(\)\.clear\(\);\s*\}, \[userId\]\)/);
   });
@@ -140,15 +127,14 @@ describe("account-scoped state and redaction wiring", () => {
    * server would accept as someone else's.
    */
   it("re-owns imported rows instead of trusting the file's user ids", () => {
-    const importer = readFileSync(join(process.cwd(), "src/services/export-import.ts"), "utf8");
+    const importer = read("src/services/export-import.ts");
     expect(importer).toContain("...fromDbShape(table, raw as Record<string, unknown>), userId");
     // Export is scoped the same way, by the authenticated owner and nothing else.
     expect(importer).toContain("`SELECT * FROM ${table} WHERE user_id = ?`");
   });
 
   it("keeps account cleanup and notification redaction wired to real boundaries", () => {
-    const session = readFileSync(join(process.cwd(), "src/auth/session.ts"), "utf8");
-    const notifications = readFileSync(join(process.cwd(), "src/services/notifications.ts"), "utf8");
+    const notifications = read("src/services/notifications.ts");
     // Account switch, explicit sign-out, account deletion and remote session
     // invalidation must each clear stale scheduled previews.
     expect(session.match(/clearAccountNotifications\(true\)/g)).toHaveLength(4);
@@ -165,7 +151,7 @@ describe("account-scoped state and redaction wiring", () => {
    * in the body, which `privateNotificationContent` already neutralizes.
    */
   it("keeps the notification tap payload to identity, never financial detail", () => {
-    const notifications = readFileSync(join(process.cwd(), "src/services/notifications.ts"), "utf8");
+    const notifications = read("src/services/notifications.ts");
     expect(notifications).toContain("data: notificationTargetPayload(n.target)");
     expect(notifications).toContain("privateNotificationTarget(detailsEnabled, notification.target)");
     // No planned target may be built from a name or an amount.
@@ -180,8 +166,8 @@ describe("account-scoped state and redaction wiring", () => {
 });
 
 /**
- * Structural guard, not a behaviour test: `session.ts` imports react-native and
- * cannot be loaded by vitest, which is why this file inspects it as text.
+ * Source text, not behaviour: this file is excluded from the mutation run,
+ * where instrumented session.ts never matches.
  *
  * Every authenticated background task must be session-scoped so
  * `stopSyncSession` can await it. The sign-out FAILURE path restarted the
@@ -191,8 +177,6 @@ describe("account-scoped state and redaction wiring", () => {
  * land and schedule its notifications under the new one.
  */
 describe("session background work ownership", () => {
-  const session = readFileSync(join(process.cwd(), "src/auth/session.ts"), "utf8");
-
   it("restarts background work through runSyncSessionTask", () => {
     expect(session).toContain("runSyncSessionTask");
     expect(session).toMatch(/void runSyncSessionTask\(userId, async \(\) => \{/);
@@ -212,4 +196,51 @@ describe("session background work ownership", () => {
     expect(session).toMatch(/catch \{[\s\S]*LOCAL_WIPE_PENDING_OWNER/);
     expect(session).toContain("await kv.remove(LAST_USER_KEY)");
   });
+});
+
+/**
+ * The route guard reads the session's user id and the local `onboarded`
+ * setting. Wiping the workspace while a user id is still set looks like an
+ * unfinished setup, so a user who just signed out would land on the welcome
+ * screen instead of sign-in. Every cleanup path therefore ends the session in
+ * the same turn as the wipe, before any further await.
+ */
+describe("session cleanup order", () => {
+  /** Body of a top-level cleanup path, from its name to the start of the next one. */
+  function body(start: string, end: string): string {
+    const from = session.indexOf(start);
+    const to = session.indexOf(end, from);
+    expect(from, `${start} not found — rename the anchor, do not delete the check`).toBeGreaterThan(-1);
+    expect(to, `${end} not found after ${start}`).toBeGreaterThan(from);
+    return session.slice(from, to);
+  }
+
+  const paths = [
+    { name: "signOut", source: body("signOut: async (options) => {", "deleteAccount: async (options) => {") },
+    { name: "deleteAccount", source: body("deleteAccount: async (options) => {", "verifyPassword: async (password)") },
+    { name: "clearInvalidatedSession", source: body("async function clearInvalidatedSession", "function ensureAuthLifecycleSubscription") },
+  ];
+
+  it("endLocalSession clears the user id before it awaits anything", () => {
+    const helper = body("async function endLocalSession", "\n}\n");
+    expect(helper.indexOf("userId: null")).toBeGreaterThan(-1);
+    expect(helper.indexOf("userId: null")).toBeLessThan(helper.indexOf("await "));
+  });
+
+  for (const path of paths) {
+    it(`${path.name} ends the session before it awaits anything else`, () => {
+      const wipe = path.source.indexOf("resetLocalWorkspace()");
+      const clear = path.source.indexOf("endLocalSession()");
+      expect(wipe, "path no longer wipes the workspace").toBeGreaterThan(-1);
+      expect(clear, "path no longer ends the session").toBeGreaterThan(-1);
+      expect(clear, "the session must be ended after the wipe succeeds").toBeGreaterThan(wipe);
+
+      // Nothing may await between the wipe and the end of the session: each of
+      // these was a frame in which the guard could route to Quick Start.
+      const between = path.source.slice(wipe, clear);
+      for (const call of ["kv.remove(", "signOutWithLocalFallback(", "supabase.auth.signOut("]) {
+        expect(between, `${call} must run after the session ends, not before`).not.toContain(call);
+      }
+    });
+  }
 });

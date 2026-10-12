@@ -21,7 +21,8 @@ import { font, radius, spacing, type, useTheme } from "../../../ui/theme";
 import { useOperationGuard } from "../../../ui/operation-guard";
 import { useDirtyExitGuard } from "../../../ui/dirty-exit";
 import { WorkspaceSplit } from "../../../ui/workspace-layout";
-import { addDaysISO, addMonthsToKey, clampDayToMonth, daysBetweenISO, isISODate, isMonthDay, monthKeyOf, monthOf, todayISO, yearOf, type ISODate } from "../../../domain/dates";
+import { addDaysISO, addMonthsToKey, dayOf, daysBetweenISO, isISODate, isMonthDay, monthKeyOf, todayISO, type ISODate } from "../../../domain/dates";
+import { dueDateInMonth } from "../../../domain/recurrence";
 import { formatMinorInput } from "../../../domain/money";
 import { DateField } from "../../../ui/calendar";
 import { MonthDayField } from "../../../ui/month-day-field";
@@ -40,6 +41,9 @@ function firstIntervalDate(anchorDate: ISODate, intervalDays: number, today: ISO
   return addDaysISO(safeAnchor, Math.ceil(elapsedDays / intervalDays) * intervalDays);
 }
 
+const cadenceLabel = (recurrence: IncomeRecurrence, payDay: number) =>
+  recurrence === "monthly" ? tr.incomes.everyMonth(payDay) : tr.incomes.everyInterval(recurrence);
+
 function IncomeCadence({
   recurrence,
   payDay,
@@ -51,17 +55,15 @@ function IncomeCadence({
 }) {
   const { palette } = useTheme();
   const today = todayISO();
-  const description = recurrence === "monthly"
-    ? tr.incomes.everyMonth(payDay)
-    : tr.incomes.everyInterval(recurrence);
+  const description = cadenceLabel(recurrence, payDay);
   const dates = recurrence === "monthly"
     ? (() => {
         const thisMonth = monthKeyOf(today);
-        const thisMonthDate = clampDayToMonth(yearOf(thisMonth), monthOf(thisMonth), payDay);
+        const thisMonthDate = dueDateInMonth(thisMonth, payDay);
         const firstMonth = thisMonthDate >= today ? thisMonth : addMonthsToKey(thisMonth, 1);
         return Array.from({ length: 4 }, (_, index) => {
           const month = addMonthsToKey(firstMonth, index);
-          return clampDayToMonth(yearOf(month), monthOf(month), payDay);
+          return dueDateInMonth(month, payDay);
         });
       })()
     : (() => {
@@ -191,7 +193,7 @@ function useIncomeForm(incomes: Income[]) {
         kind: draft.kind,
         defaultAmountMinor: draft.amountMinor!,
         currency: "TRY",
-        payDay: monthly ? Number(draft.payDayStr) : Number(draft.anchorDate.slice(8, 10)),
+        payDay: monthly ? Number(draft.payDayStr) : dayOf(draft.anchorDate),
         recurrence: draft.recurrence,
         anchorDate: monthly ? null : draft.anchorDate,
         personId: personId!,
@@ -310,7 +312,7 @@ export default function IncomeRulesScreen() {
                   <RuleRow
                     title={r.name}
                     meta={tr.incomeKinds[r.kind]}
-                    badges={[{ text: r.recurrence === "monthly" ? tr.incomes.everyMonth(r.payDay) : tr.incomes.everyInterval(r.recurrence) }]}
+                    badges={[{ text: cadenceLabel(r.recurrence, r.payDay) }]}
                     amountMinor={r.defaultAmountMinor}
                     currency={r.currency}
                     onPress={() => form.startEdit(r)}

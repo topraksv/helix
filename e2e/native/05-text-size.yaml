@@ -1,35 +1,16 @@
-# The app survives the user's own text size.
-#
-# WCAG 1.4.4 asks for 200%; iOS accessibility sizes go past it, to roughly 3.1x.
-# React Native scales every `Text` by that setting for free, which is why the
-# risk is not the text — it is the geometry beside it. Three surfaces here are
-# measured in points and cannot grow with it: the ledger's 116pt label column,
-# its fitted cell widths, and the 56pt floating tab bar.
-#
-# The browser suite cannot ask this question at all. `react-native-web` emits
-# `px` font sizes, so a browser's own text-size setting moves nothing, and
-# `useWindowDimensions().fontScale` is a constant 1 there — on iOS too, where it
-# follows Display Zoom rather than Dynamic Type. Only a device has a real
-# answer, which is why the tab bar decides from a MEASURED label instead.
-#
-# Run it at the size it is about, and put the simulator back afterwards:
+# The app survives the user's own text size. React Native scales every `Text` for free; the risk is
+# geometry measured in points (the 116pt label column, fitted cell widths, the 56pt tab bar). The
+# browser cannot ask this (`fontScale` is a constant 1 there), so run it at the size it is about:
 #   xcrun simctl ui booted content_size accessibility-large   # ~200%, the WCAG bar
 #   npm run test:native
 #   xcrun simctl ui booted content_size large
-#
-# What this flow deliberately does NOT assert: the welcome screen's three-step
-# strip. "Kaydet / Anla / Takip et" is one merged accessibility node carrying a
-# hand-written label, so its individual words are not queryable and that label
-# would read correctly even if the glyphs did not. At 3.1x iOS broke every one
-# of them mid-word — "Kay / det", "Anl / a", "Taki / p et" — and that was found
-# by looking at the screen. It is held from coming back by the
-# `maxFontSizeMultiplier` contract in `tests/accessibility-contract.test.ts`.
+# Deliberately NOT asserted: the welcome screen's three-step strip, one merged accessibility node whose
+# words are not queryable; `tests/accessibility-contract.test.ts` holds its `maxFontSizeMultiplier`.
 appId: com.toprak.helix
 ---
 - launchApp:
     clearState: true
-# iOS's own "save this password?" sheet outlives `clearState` — it belongs to
-# the keychain, not the app — and it covers the whole screen.
+# iOS's "save this password?" sheet belongs to the keychain, outlives `clearState`, and covers the screen.
 - runFlow:
     when:
       visible: "Parola Kaydedilsin mi?"
@@ -38,31 +19,15 @@ appId: com.toprak.helix
 - extendedWaitUntil:
     visible: "Helix"
     timeout: 90000
-# At this size the app still renders its Turkish copy rather than collapsing or
-# clipping it away. Which surface that is depends on whether an account exists
-# on this simulator, so both are accepted: the assertion is about the TEXT
-# surviving, not about the route.
-#
-# It WAITS rather than asserting outright, because "Helix" is the brand mark and
-# a dev-client paints that before the routed screen has rendered — so the two
-# are not the same moment, and the gap between them is set by how busy the
-# machine is. Measured 2026-09-03: this line failed once, in a suite run that
-# happened to share the machine with a Stryker run, and passed alone twelve
-# seconds later on the same build. `.claude/rules/e2e.md` names that failure
-# mode for the browser suite; it is the same machine and the same rule here.
-# A bounded wait costs nothing when the screen is already up.
+# Which surface renders depends on whether this simulator has an account, so both greetings are accepted:
+# the assertion is the TEXT surviving. It waits because a dev-client paints the "Helix" mark before the
+# routed screen, and the gap grows when the machine is busy (`.claude/rules/e2e.md`).
 - extendedWaitUntil:
-    visible: "Helix'e hoş geldin|Günaydın|İyi akşamlar|Tünaydın|İyi geceler"
+    visible: "Helix'e hoş geldin|Günaydın|İyi günler|İyi akşamlar|İyi geceler"
     timeout: 30000
-# The tab bar is the tightest box in the app: five equal columns in a bounded
-# 56pt bar. Once a label no longer clears its column the bar drops to icons,
-# rather than drawing "Durum | Mali Ta | Abone | Yatırım | Ayarlar" on top of
-# each other — which is what it did at exactly the 200% WCAG asks for. The
-# names must still be ANNOUNCED, so this asserts the accessibility label, which
-# is present whether or not the text is drawn.
-#
-# Only reachable when this simulator already has a workspace; a fresh device
-# lands on the entry surface, which has no navigation to check.
+# The tab bar (five columns in a 56pt bar) drops to icons once a label no longer clears its column, so
+# assert the accessibility label, present whether or not the text is drawn. Needs an existing workspace;
+# a fresh device lands on the entry surface, which has no navigation.
 - runFlow:
     when:
       notVisible: "Helix'e hoş geldin"

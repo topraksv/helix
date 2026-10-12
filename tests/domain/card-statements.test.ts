@@ -14,7 +14,9 @@ import {
   settleCardStatements,
   statementForDueDate,
   statementForPurchase,
+  statementAmounts,
   statementPeriod,
+  statementTotals,
 } from "../../src/domain/card-statements";
 
 describe("credit-card statement periods", () => {
@@ -84,16 +86,7 @@ describe("a card cycle needs two different days", () => {
   });
 });
 
-/**
- * The gap between the two days is the whole rule.
- *
- * `statementPeriod` resolves the due date into the NEXT month whenever the due
- * day is not past the closing day, so no pair is ever "backwards" and equality
- * was the only thing the forms refused. That let a card be created whose due
- * date lands a day before its next statement closes — and, on two of the three
- * screens that create cards, let both days be "ayın sonu" with no complaint at
- * all.
- */
+/** The gap between the two days is the rule: equality was not the only invalid cycle. */
 describe("how far apart a card's two days may sit", () => {
   it("counts the gap forward, wrapping into the next month", () => {
     expect(cardCycleGraceDays(25, 5)).toBe(10);
@@ -173,20 +166,6 @@ describe("how far apart a card's two days may sit", () => {
 });
 
 /**
- * How far through the current statement today is.
- *
- * The two days a card carries are printed as numbers and a person still has to
- * work out what they mean today: whether a purchase now lands on the statement
- * about to close or the next one, and how long the money has before it leaves.
- * One fraction answers that without arithmetic, and it is the only thing a ring
- * needs.
- *
- * The window is close-to-close, because that is the span a purchase chooses
- * between. The due date is not on it: it falls AFTER the close, so putting it
- * on the same ring would either run past the end or squash the part that
- * matters.
- */
-/**
  * The number the card row actually prints, so it is measured rather than
  * derived at a glance from the ring beside it.
  */
@@ -222,6 +201,7 @@ describe("days until a card's statement closes", () => {
   });
 });
 
+/** Close-to-close position in the current cycle; the due date falls after the close and is not on the ring. */
 describe("where today sits in a card's cycle", () => {
   const cycle = { statementDay: 15, dueDay: 5 };
 
@@ -269,7 +249,7 @@ describe("firstInstallmentMonth", () => {
 });
 
 /**
- * Recorded statement payments (owner decision, 2026-09-13: "ödediğin ay").
+ * Recorded statement payments.
  * Paid in full, the charges land on the day they were paid; paid in part, the
  * balance loses only what was paid and the rest is owed.
  */
@@ -369,5 +349,65 @@ describe("settleCardStatements", () => {
     // Marked realized by a device whose day had already turned.
     expect(owedIsPlanned(charge("a", 500_00, { effectiveDate: "2026-09-21", status: "realized" }))).toBe(true);
     expect(owedIsPlanned(charge("a", 500_00, { effectiveDate: "2026-09-20", status: "realized" }))).toBe(false);
+  });
+});
+
+describe("card-cycle day bounds and statement boundaries", () => {
+  it("accepts exact day bounds and rejects fractional or missing fields", () => {
+    expect(isValidCardCycle({ statementDay: 1, dueDay: 31 })).toBe(true);
+    expect(isValidCardCycle({ statementDay: 31, dueDay: 1 })).toBe(true);
+    expect(isValidCardCycle({ statementDay: 1.5, dueDay: 2 })).toBe(false);
+    expect(isValidCardCycle({ statementDay: 2, dueDay: undefined })).toBe(false);
+    expect(isValidCardCycle({ statementDay: 2, dueDay: 32 })).toBe(false);
+    expect(() => statementPeriod("2026-07", { statementDay: 0, dueDay: 1 })).toThrow("Invalid credit-card cycle");
+  });
+
+  it("pins equal-day, later-day, purchase, and due-date boundaries", () => {
+    expect(statementPeriod("2026-07", { statementDay: 15, dueDay: 15 })).toEqual({
+      periodMonth: "2026-07", statementDate: "2026-07-15", dueDate: "2026-08-15",
+    });
+    expect(statementPeriod("2026-07", { statementDay: 15, dueDay: 16 }).dueDate).toBe("2026-07-16");
+    expect(statementForPurchase("2026-07-15", { statementDay: 15, dueDay: 16 }).periodMonth).toBe("2026-07");
+    expect(statementForPurchase("2026-07-16", { statementDay: 15, dueDay: 16 }).periodMonth).toBe("2026-08");
+    expect(statementForDueDate("2026-07-16", { statementDay: 15, dueDay: 16 }).periodMonth).toBe("2026-07");
+    expect(statementForDueDate("2026-07-15", { statementDay: 15, dueDay: 15 }).periodMonth).toBe("2026-06");
+    expect(isCardCycleDayConflict(null, null)).toBe(false);
+    expect(isCardCycleDayConflict(null, 1)).toBe(false);
+    expect(isCardCycleDayConflict(1, null)).toBe(false);
+    expect(isCardCycleDayConflict(1, 1)).toBe(true);
+  });
+});
+
+describe("one statement's charges, payments and what is owed", () => {
+  const charges = [
+    tx({ type: "expense", amountTryMinor: 1_000, effectiveDate: "2026-08-05" }),
+    tx({ type: "expense", amountTryMinor: -300, effectiveDate: "2026-08-05" }),
+  ];
+
+  it("nets refunds out of the charges and owes the rest", () => {
+    expect(statementTotals(charges, [])).toEqual({ chargesMinor: 700, paidMinor: 0, remainingMinor: 700 });
+    expect(statementTotals(charges, [{ amountMinor: 200 }, { amountMinor: 1 }])).toEqual({ chargesMinor: 700, paidMinor: 201, remainingMinor: 499 });
+  });
+
+  it("owes nothing once paid exactly, and never less than nothing", () => {
+    expect(statementTotals(charges, [{ amountMinor: 699 }]).remainingMinor).toBe(1);
+    expect(statementTotals(charges, [{ amountMinor: 700 }]).remainingMinor).toBe(0);
+    expect(statementTotals(charges, [{ amountMinor: 701 }])).toEqual({ chargesMinor: 700, paidMinor: 701, remainingMinor: 0 });
+    expect(statementTotals([], [])).toEqual({ chargesMinor: 0, paidMinor: 0, remainingMinor: 0 });
+  });
+});
+
+describe("every statement's signed total", () => {
+  it("sums only rows billed on the statements asked for", () => {
+    const amounts = statementAmounts([
+      { cardStatementId: "s1", amountTryMinor: 500 },
+      { cardStatementId: "s1", amountTryMinor: -200 },
+      { cardStatementId: "s2", amountTryMinor: 0 },
+      { cardStatementId: "s3", amountTryMinor: 900 },
+      { cardStatementId: null, amountTryMinor: 900 },
+      { cardStatementId: "", amountTryMinor: 900 },
+      { amountTryMinor: 900 },
+    ], new Set(["s1", "s2", "", "s4"]));
+    expect(amounts).toEqual(new Map([["s1", 300], ["s2", 0]]));
   });
 });

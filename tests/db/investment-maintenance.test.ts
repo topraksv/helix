@@ -72,15 +72,7 @@ describe("investment-aware maintenance", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     dependencies.committedIds.length = 0;
-    // THE IDS ARE LOAD-BEARING. Realization is ordered by a priority function —
-    // money in, then everything else, then money out — with the id only as a
-    // tiebreak between equals. The previous fixture called these rows
-    // `deposit`, `ordinary` and `refund`, which the tiebreak alone already puts
-    // in exactly the order the priority function wants, so every mutant of that
-    // function passed: measured 2026-09-21, fifteen of them survived on those
-    // three lines. These names sort the OPPOSITE way, so only the priority can
-    // produce the expected sequence, and the two `m-`/`n-` peers still pin the
-    // tiebreak.
+    // The ids sort opposite to the priority order, so only the priority function — not the id tiebreak — can produce the expected sequence.
     const due = [
       dueTransaction("a-refund", "transfer", -8_000),
       dueTransaction("n-ordinary-later", "expense", 300),
@@ -117,14 +109,7 @@ describe("investment-aware maintenance", () => {
   });
 });
 
-/**
- * The repairs `runMaintenance` performs before anything else.
- *
- * These fix data that a historical bug or an older client wrote. They run on
- * every start, they rewrite rows the owner never touched, and none of them had
- * a test -- so a repair that stopped repairing, or started rewriting the wrong
- * rows, would have been invisible.
- */
+/** Repairs the maintenance pass makes to rows an older build wrote. */
 describe("maintenance repairs", () => {
   beforeEach(() => {
     vi.clearAllMocks();

@@ -4,13 +4,10 @@
  * level with the template ones. Kind-based fallback guarantees an icon.
  */
 
-
 const RULES: [RegExp, string][] = [
   [/kira/i, "🏠"],
   [/market|gıda|mutfak/i, "🛒"],
-  // Fuel and the vehicle it goes into are their own category in most Turkish
-  // workbooks; matched before transit so "Araç & Yakıt" stops falling through
-  // to a deterministic shopping bag.
+  // Fuel and vehicle match before transit so "Araç & Yakıt" does not fall through to a fallback.
   [/araç|araba|otomobil|yakıt|benzin|akaryakıt|otopark/i, "⛽"],
   [/ulaşım|otobüs|metro|taksi/i, "🚌"],
   [/fatura|abonelik/i, "🧾"],
@@ -51,15 +48,10 @@ function hashString(s: string): number {
 }
 
 /**
- * Which rule above a piece of text falls under, or null.
- *
- * The rules are a small Turkish vocabulary of what money is spent ON, and they
- * were doing one job: choosing an emoji. They answer a second question just as
- * well — whether two strings are about the SAME thing — and that is what lets a
- * statement line find the owner's own column: "MIGROS MARKET" and a column
- * called "Gıda" share rule 1 without sharing a word. Exported as an index
- * rather than a name so there is still exactly one vocabulary; naming the
- * concepts would be a second list to keep in step with this one.
+ * Which rule above a piece of text falls under, or null. The same vocabulary
+ * also says whether two strings are about the SAME thing: "MIGROS MARKET" and a
+ * column called "Gıda" share rule 1 without sharing a word. An index, not a
+ * name, so there is one list.
  */
 export function conceptOf(text: string): number | null {
   const index = RULES.findIndex(([pattern]) => pattern.test(text));
@@ -69,9 +61,6 @@ export function conceptOf(text: string): number | null {
 export function suggestCategoryIcon(name: string, kind: "expense" | "income"): string {
   for (const [pattern, icon] of RULES) if (pattern.test(name)) return icon;
   const pool = kind === "income" ? INCOME_FALLBACKS : EXPENSE_FALLBACKS;
-  // A remainder of a non-empty tuple's length is always in range, so the `??`
-  // that stood here was a branch no input could take — and an untakeable branch
-  // is what kept this file out of the coverage gate.
   return pool[hashString(name.trim().toLocaleLowerCase("tr-TR")) % pool.length]!;
 }
 

@@ -8,7 +8,7 @@ import { Modal, Pressable, StyleSheet, Text, View } from "react-native";
 import CalendarDays from "lucide-react-native/icons/calendar-days";
 import ChevronLeft from "lucide-react-native/icons/chevron-left";
 import ChevronRight from "lucide-react-native/icons/chevron-right";
-import { addMonthsToKey, monthKeyOf, monthOf, todayISO, yearOf, type ISODate, type MonthKey } from "../domain/dates";
+import { addMonthsToKey, daysInMonth, monthKeyOf, monthOf, todayISO, yearOf, type ISODate, type MonthKey } from "../domain/dates";
 import { dateLabel, monthLabel, tr } from "../i18n/tr";
 import { interactionSurface } from "./interaction";
 import { circle, controlSize, radius, spacing, themeShadow, type, useTheme } from "./theme";
@@ -17,10 +17,6 @@ import { useModalAccessibility } from "./accessibility";
 import { useReducedMotion } from "./motion";
 import { modalAnimationType } from "./modal-motion";
 import { selectionTapIfChanged } from "./haptics";
-
-function daysInMonth(month: MonthKey): number {
-  return new Date(yearOf(month), monthOf(month), 0).getDate();
-}
 
 /** Monday-based weekday index of the month's first day. */
 function firstWeekday(month: MonthKey): number {
@@ -49,12 +45,12 @@ export function CalendarSheet({
   const titleRef = useModalAccessibility(true, returnFocusRef);
   const today = todayISO();
   const [month, setMonth] = useState<MonthKey>(value ? monthKeyOf(value) : monthKeyOf(today));
-  const total = daysInMonth(month);
+  const total = daysInMonth(yearOf(month), monthOf(month));
   const lead = firstWeekday(month);
   const cells: (number | null)[] = [...Array<null>(lead).fill(null), ...Array.from({ length: total }, (_, i) => i + 1)];
 
   return (
-    <Modal transparent animationType={modalAnimationType(reducedMotion)} visible onRequestClose={onClose}>
+    <Modal transparent animationType={modalAnimationType(reducedMotion)} visible onRequestClose={onClose} aria-label={tr.a11y.datePicker}>
       <Pressable
         accessible={false}
         tabIndex={-1}
@@ -174,24 +170,16 @@ export function DateField({
         aria-expanded={open}
         accessibilityState={{ expanded: open }}
         onPress={() => setOpen(true)}
-        style={(state) => [
-          {
-            // The same fill and border every other field uses, from the same
-            // function — a date is a value being entered, not a read-only chip.
-            ...controlStateStyle(palette, open),
-            borderRadius: radius.sm,
-            paddingHorizontal: spacing.md,
-            minHeight: controlSize.regular,
-            flexDirection: "row",
-            alignItems: "center",
-            justifyContent: "space-between",
-            // The same fill the Select trigger answers a pointer with, from the
-            // same function. A hand-rolled pressed opacity answered a press and
-            // nothing else, so the date field sat inert beside a Select that lit
-            // on hover — `docs/UI.md` §3 asks for this fill, not for an opacity.
-            ...interactionSurface(palette, state, {}),
-          },
-        ]}
+        style={(state) => ({
+          ...controlStateStyle(palette, open),
+          borderRadius: radius.sm,
+          paddingHorizontal: spacing.md,
+          minHeight: controlSize.regular,
+          flexDirection: "row",
+          alignItems: "center",
+          justifyContent: "space-between",
+          ...interactionSurface(palette, state, {}),
+        })}
       >
         <Text style={[type.body, { color: value ? palette.text : palette.textSecondary }]}>
           {value ? dateLabel(value) : (placeholder ?? tr.common.pickDate)}

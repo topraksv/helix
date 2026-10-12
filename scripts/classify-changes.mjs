@@ -1,14 +1,9 @@
-#!/usr/bin/env node
 /**
  * Decide what a main-branch push has to prove and which surfaces it can ship.
- * Helix and Gital run this same file, `CI_EXECUTED_SCRIPTS` included since
- * 2026-10-09: each repository's own `ci.yml` reaches the same scripts, and a
- * test in each walks that workflow to hold the list to it.
  *
  * The safe error is a slow run: every unrecognised path receives the full
  * gate, while a missing base receives the full gate and both deploy targets.
- * An empty diff is not a missing one: measured from the last run that
- * published, it means production already holds this tree.
+ * An empty diff means production already holds this tree.
  *
  * Usage: node scripts/classify-changes.mjs <base-ref> <head-ref>
  *        node scripts/classify-changes.mjs --files a.ts b.ts
@@ -16,8 +11,6 @@
  */
 import { execFileSync } from "node:child_process";
 import { appendFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
-import { resolve } from "node:path";
 
 /**
  * The scripts THIS repository's `ci.yml` executes, matched by equality: an
@@ -62,12 +55,11 @@ const HIGH_RISK = [
   /^\.nvmrc$/,
   /^app\.json$/,
   /^eas\.json$/,
-  /^\.eas\//,
   /^plugins\//,
   /^drizzle\.config\.ts$/,
   /^(babel|metro|eslint)\.config\.js$/,
   /^tsconfig\.json$/,
-  /^vitest(?:\.coverage|\.mutation)?\.config\.mts$/,
+  /^vitest(?:\.mutation)?\.config\.mts$/,
   /^stryker(?:\.[^.]+)?\.config\.mjs$/,
   /^(lint|mutation)-baseline\.json$/,
   /^playwright\.config\.ts$/,
@@ -87,7 +79,6 @@ const NO_APP_IMPACT = [
   /^LICENSE$/,
   /^\.gitignore$/,
   /^\.env\.example$/,
-  /^\.editorconfig$/,
   /^\.mcp\.json$/,
   // Release notes: `release.yml` reads them on a tag, and neither app does.
   /^CHANGELOG\.md$/,
@@ -253,4 +244,4 @@ function main() {
   if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, `${lines.join("\n")}\n`);
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main();
+if (import.meta.main) main();

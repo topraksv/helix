@@ -1,22 +1,7 @@
 /**
- * The documents kept beside one transaction (spec §2.6).
- *
- * Metadata is a synced row; the bytes are this device's. That split is stated
- * on the panel and shown per row: a document added on the phone appears on the
- * desktop as a record with no file behind it, and says so, rather than
- * offering an open button that cannot work.
- *
- * Laid out as the FEEDBACK screen lays out the pictures a reporter attaches,
- * because it is the same act: pick files, see what you picked, drop one, add
- * another. Two screens that do one thing must not draw it two ways, and these
- * did — a card of full-width rows here, a grid of thumbnails there. The grid
- * won because it shows the document instead of naming it: a person checking
- * they attached the right receipt should not have to read "IMG_4821.PNG".
- *
- * What differs is only what a tile can honestly contain. A PDF has no
- * thumbnail and gets its type mark; a document added on another device has no
- * bytes here at all and says so on the tile rather than offering an open
- * button that cannot work.
+ * The documents kept beside one transaction (spec §2.6). Metadata syncs; bytes
+ * stay on the device that added them, so a tile without bytes says so instead
+ * of offering an open that cannot work. Same grid as the feedback screen.
  */
 
 import { useEffect, useState } from "react";
@@ -28,7 +13,7 @@ import ImageIcon from "lucide-react-native/icons/image";
 import Paperclip from "lucide-react-native/icons/paperclip";
 import X from "lucide-react-native/icons/x";
 import { addAttachment, AttachmentRejectedError, deleteAttachment, restoreAttachment, type AttachmentRow } from "../data/repo";
-import { ATTACHMENT_MIME_TYPES, type AttachmentRejection } from "../domain/attachments";
+import { ATTACHMENT_MIME_TYPES } from "../domain/attachments";
 import { attachmentThumbnail, attachmentsSupported, openAttachment, presentAttachments, storeAttachmentBytes } from "../services/attachment-store";
 import { devError } from "../services/logger";
 import { fetchAttachment } from "../sync/attachment-mirror";
@@ -41,6 +26,8 @@ import { appAlert } from "./dialog";
 import { useUndo } from "./undo";
 import { radius, spacing, type, useTheme } from "./theme";
 
+const kib = (bytes: number) => Math.max(1, Math.round(bytes / 1024));
+
 function rejectionMessage(reason: string): string {
   const known = tr.attachments.rejected as Record<string, string | undefined>;
   return known[reason] ?? tr.errors.saveFailed;
@@ -51,14 +38,7 @@ function attachmentIcon(mimeType: string) {
   return mimeType.startsWith("image/") ? ImageIcon : FileText;
 }
 
-/**
- * The tile's edge, in points — the same 84 the feedback screen uses.
- *
- * The number is duplicated rather than shared because the two screens are
- * agreeing on a look, not depending on each other; a change to one is a
- * decision about that screen, and `tests/ui/design-system-contract.test.ts` is
- * what keeps them from drifting apart by accident.
- */
+/** The tile's edge, in points — the same 84 the feedback screen uses. */
 const THUMBNAIL = 84;
 
 /**
@@ -169,7 +149,7 @@ export function AttachmentPanel({
       scheduleSync(userId);
     } catch (error) {
       if (error instanceof AttachmentRejectedError) {
-        void appAlert(rejectionMessage(error.reason as AttachmentRejection), tr.errors.title);
+        void appAlert(rejectionMessage(error.reason), tr.errors.title);
         return;
       }
       devError("attachment.add", error);
@@ -226,16 +206,12 @@ export function AttachmentPanel({
               const uri = thumbnails[attachment.id];
               return (
                 <View key={attachment.id} style={{ width: THUMBNAIL }}>
-                  {/* The tile IS the open control when there is something to
-                      open. A separate "Aç" button beside a picture of the
-                      thing it opens is one control too many, and on a device
-                      that does not hold the file it was a button that could
-                      only fail. */}
+                  {/* The tile is the open control when the file is here. */}
                   <Pressable
                     accessibilityRole={held ? "button" : undefined}
                     accessibilityLabel={[
                       held ? `${tr.attachments.open} · ${attachment.fileName}` : attachment.fileName,
-                      tr.attachments.sizeLabel(Math.max(1, Math.round(attachment.byteSize / 1024))),
+                      tr.attachments.sizeLabel(kib(attachment.byteSize)),
                       held ? null : missingLabel,
                     ].filter(Boolean).join(" · ")}
                     disabled={!held}
@@ -256,17 +232,13 @@ export function AttachmentPanel({
                     ) : (
                       <TypeIcon accessible={false} size={24} color={palette.textSecondary} strokeWidth={1.8} />
                     )}
-                    {/* A document added on another device: said on the tile,
-                        where the picture would otherwise be, rather than in a
-                        badge under a tile that looks the same as the ones
-                        that work. */}
                     {held ? null : (
                       <Badge testID={`attachment-missing-${attachment.id}`} text={missingLabel} tone="warning" />
                     )}
                   </Pressable>
                   <Row style={{ alignItems: "center", justifyContent: "space-between", marginTop: 2 }}>
                     <Body muted style={{ fontSize: type.small.fontSize, flex: 1, minWidth: 0 }}>
-                      {tr.attachments.sizeLabel(Math.max(1, Math.round(attachment.byteSize / 1024)))}
+                      {tr.attachments.sizeLabel(kib(attachment.byteSize))}
                     </Body>
                     <IconButton
                       icon={X}
@@ -276,15 +248,7 @@ export function AttachmentPanel({
                       onPress={() => void remove(attachment)}
                     />
                   </Row>
-                  {/* The name, on its own line under the row the feedback
-                      screen ends at. The one thing this list needs that that
-                      one does not: a screenshot identifies itself from its own
-                      thumbnail, and a PDF cannot — two invoices are two
-                      identical page marks. It cannot share the line above,
-                      because next to the remove button the column is about
-                      40px and "fatura-agustos.pdf" broke one letter per line.
-                      Full tile width, wrapping at word boundaries; this app
-                      does not truncate a name. */}
+                  {/* Own line: a PDF has no thumbnail to identify it, and beside the remove button the column is ~40px. */}
                   <Body muted style={{ fontSize: type.small.fontSize }}>
                     {attachment.fileName}
                   </Body>
@@ -308,7 +272,7 @@ export function AttachmentPanel({
         )}
         {attachments.length > 0 ? (
           <Body muted style={{ marginTop: spacing.xs, fontSize: type.small.fontSize }}>
-            {tr.attachments.count(attachments.length, Math.max(1, Math.round(totalBytes / 1024)))}
+            {tr.attachments.count(attachments.length, kib(totalBytes))}
           </Body>
         ) : null}
       </Card>

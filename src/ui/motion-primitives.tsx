@@ -1,47 +1,18 @@
 /**
- * The app's motion vocabulary, in one place.
- *
- * Helix had five animated behaviours across forty-five screens — a screen
- * fade, the toggle's thumb, the loading dots, the waiting medallion and the
- * drag handle — so almost everything appeared, changed and disappeared without
- * saying that it had. These primitives cover the cases that were missing, and
- * they all obey the same three rules:
- *
- * 1. Every family short-circuits on Reduce Motion. The end state is applied
- *    immediately; nothing is left half-drawn and no meaning lives in movement.
- * 2. Only `transform` and `opacity` are driven natively. A width, a height or
- *    a colour cannot be, so those animations say `useNativeDriver: false`
- *    rather than silently falling back.
- * 3. Duration comes from `motion`, never from a screen's private taste.
- *
- * React Native's own `Animated` is the driver. Skia and Gesture Handler would
- * each be a new native dependency and none of what is here needs one;
- * Reanimated stopped being one on the day `react-native-keyboard-controller`
- * brought it in as a peer, so it is already in the tree (`package.json`). What
- * keeps it out of THIS file is the web bundle rather than the install: every
- * hook here runs on both surfaces, and the `.native` split is where a
- * Reanimated-only path belongs. Corrected 2026-09-20; the previous wording
- * argued from an install that had already happened.
- *
- * Every `Animated.Value` here is held by `useState(() => new Animated.Value(x))`
- * and not by React Native's own `useRef(new Animated.Value(x)).current`. Two
- * reasons, and the second is the one a reader will not guess: the documented
- * idiom reads `.current` during render, which `react-hooks/refs` refuses and
- * which taints every render-time use of the value it returns; and its argument
- * is evaluated on every render, so each one constructs an `Animated.Value` that
- * the ref then discards. A lazy initialiser runs once and is read as a value,
- * not as a ref. Do not restore the idiom from the React Native docs — seven
- * other files in `src/ui` still carry it, and they are the next sweep's, not a
- * precedent for this one.
+ * Shared motion. Every family short-circuits on Reduce Motion; only transform
+ * and opacity run on the native driver; durations come from `motion`.
+ * Animated values are held by `useState(() => new Animated.Value(x))`, not
+ * `useRef(…).current`: that idiom reads a ref during render, which
+ * `react-hooks/refs` rejects, and allocates on every render.
  */
 
 import React, { useContext, useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { Animated, Easing, Platform, View, type StyleProp, type ViewStyle } from "react-native";
+import { Animated, Easing, Platform, StyleSheet, View, type StyleProp, type ViewStyle } from "react-native";
 import { NavigationContext } from "expo-router/react-navigation";
 import { useReducedMotion } from "./motion";
 import { createScreenVisitStore, type ScreenVisitStore } from "./screen-visit";
 import { motion, spacing, useTheme } from "./theme";
-import { crossFadesNatively, peekThemeTransitionBackground, takeThemeTransitionBackground } from "./theme-transition";
+import { crossFadesNatively } from "./theme-transition";
 
 /**
  * A value that runs 0 → 1 when `active` becomes true, and again whenever
@@ -228,25 +199,13 @@ const ARRIVAL_APPROACH = 0.92;
  *
  * The first sight of a figure counts from zero. A real change counts from the
  * old value, so the movement is the change. A return with nothing new counts
- * from `ARRIVAL_APPROACH` of the settled figure — it moves, but only across
- * the last stretch.
- *
- * That third case was once a full climb from zero, and it was reported three
- * times as "girip çıkınca yenileniyor": returning to Durum put ₺18.971,07 on
- * screen and spent 1.6 s reaching the ₺81.580,95 that had never changed, which
- * reads as the app reloading. Removing the motion outright fixed that and cost
- * the owner the thing they liked — money climbing. The short approach keeps
- * both: at 92% the figure is legibly the right order of magnitude the whole
- * way, so nothing ever looks like a stale balance, and the digits still move.
- *
- * Tuning it is a one-line decision. Lower reads as a reload again; 1 is no
- * motion at all.
+ * from `ARRIVAL_APPROACH` of the settled figure, so it moves without reading as a reload.
  *
  * The animation is on a plain number, not on a native driver, because the text
  * content itself changes; `format` is called on every frame, so it must stay
  * cheap. Reduce Motion shows the value outright.
  */
-export function useCountUp(value: number, duration = motion.figure): number {
+export function useCountUp(value: number): number {
   const reducedMotion = useReducedMotion();
   const visit = useScreenVisit();
   const [shown, setShown] = useState(value);
@@ -272,7 +231,7 @@ export function useCountUp(value: number, duration = motion.figure): number {
     });
     const animation = Animated.timing(driver, {
       toValue: 1,
-      duration,
+      duration: motion.figure,
       easing: Easing.out(Easing.cubic),
       useNativeDriver: false,
     });
@@ -284,7 +243,7 @@ export function useCountUp(value: number, duration = motion.figure): number {
       driver.removeListener(listener);
       setShown(value);
     };
-  }, [value, duration, reducedMotion, visit]);
+  }, [value, reducedMotion, visit]);
   return shown;
 }
 
@@ -318,26 +277,22 @@ export function useShake(): { style: { transform: { translateX: Animated.Value }
 export function Collapse({
   open,
   children,
-  style,
 }: {
   open: boolean;
   children: React.ReactNode;
-  style?: StyleProp<ViewStyle>;
 }) {
   return Platform.OS === "web"
-    ? <MeasuredCollapse open={open} style={style}>{children}</MeasuredCollapse>
-    : <NativeCollapse open={open} style={style}>{children}</NativeCollapse>;
+    ? <MeasuredCollapse open={open}>{children}</MeasuredCollapse>
+    : <NativeCollapse open={open}>{children}</NativeCollapse>;
 }
 
 /** Web needs a measured height because CSS cannot animate the native driver. */
 function MeasuredCollapse({
   open,
   children,
-  style,
 }: {
   open: boolean;
   children: React.ReactNode;
-  style?: StyleProp<ViewStyle>;
 }) {
   const reducedMotion = useReducedMotion();
   const [contentHeight, setContentHeight] = useState<number | null>(null);
@@ -393,7 +348,6 @@ function MeasuredCollapse({
             : progress.interpolate({ inputRange: [0, 1], outputRange: [0, contentHeight] }),
           opacity: progress,
         },
-        style,
       ]}
     >
       <View onLayout={(event) => setContentHeight(event.nativeEvent.layout.height)}>{children}</View>
@@ -401,13 +355,7 @@ function MeasuredCollapse({
   );
 }
 
-/**
- * 0 → 1 on the shared entrance spring, or straight to 1 under Reduce Motion.
- *
- * `SuccessPop`, `SlideUp` and `ScreenEntrance` differ only in the transform they
- * map it onto and held a byte-identical copy each, so the spring, the driver
- * choice and the Reduce Motion short-circuit could drift apart. One copy cannot.
- */
+/** 0 → 1 on the shared entrance spring, or 1 at once under Reduce Motion. */
 export function useEntranceProgress(): Animated.Value {
   const reducedMotion = useReducedMotion();
   // Starts where it will be drawn, so the first painted frame is already
@@ -441,11 +389,9 @@ export function useEntranceProgress(): Animated.Value {
 function NativeCollapse({
   open,
   children,
-  style,
 }: {
   open: boolean;
   children: React.ReactNode;
-  style?: StyleProp<ViewStyle>;
 }) {
   const reducedMotion = useReducedMotion();
   const [mounted, setMounted] = useState(open);
@@ -496,7 +442,6 @@ function NativeCollapse({
           opacity: progress,
           transform: [{ translateY: progress.interpolate({ inputRange: [0, 1], outputRange: [-spacing.xs, 0] }) }],
         },
-        style,
       ]}
     >
       {children}
@@ -509,7 +454,7 @@ function NativeCollapse({
  * spring the rest of the app enters with. Used where an action has succeeded
  * and the only other feedback would have been the screen changing.
  */
-export function SuccessPop({ children, style }: { children: React.ReactNode; style?: StyleProp<ViewStyle> }) {
+export function SuccessPop({ children }: { children: React.ReactNode }) {
   const progress = useEntranceProgress();
   return (
     <Animated.View
@@ -518,7 +463,6 @@ export function SuccessPop({ children, style }: { children: React.ReactNode; sty
           opacity: progress,
           transform: [{ scale: progress.interpolate({ inputRange: [0, 1], outputRange: [0.86, 1] }) }],
         },
-        style,
       ]}
     >
       {children}
@@ -565,30 +509,9 @@ export function SlideUp({
 }
 
 /**
- * The window changing colour, as a wash rather than a snap.
- *
- * Every colour in the app comes from one palette object, so switching theme
- * repaints the entire window in a single frame — the one change big enough to
- * read as a glitch. Animating the colours themselves would mean an animated
- * value behind every token in every component; this lays one veil over the top
- * and fades it out, which costs one view and one opacity.
- *
- * A browser with View Transitions can cross-fade the rendered pixels itself —
- * the old interface literally dissolving into the new one — so
- * `theme-transition.ts` hands that change to `startViewTransition` and this
- * stays out of the way. Browsers without it use the same small veil through a
- * compositor-owned CSS opacity transition; native platforms use the animated
- * value below. No palette token is animated per component.
- *
- * What is left for iOS, Android and browsers without View Transitions is a
- * measured crossfade of the previous root background over the freshly-painted
- * theme. The previous colour matters: a destination-colour veil over a new
- * light screen cannot soften the dark-to-light edge, while the old dark colour
- * can. It is light enough to keep the interface legible through the change.
- *
- * The effect must land before the browser paints, or the new theme appears
- * un-veiled for a frame first — hence the layout effect, chosen once at module
- * scope so the hook order never changes and a static web render never calls it.
+ * Native and View-Transition-less browsers: veil the old root background
+ * over the new theme and fade it. A layout effect, so the veil lands before
+ * the first paint of the new palette.
  */
 const VEIL_STRENGTH = 0.42;
 
@@ -604,11 +527,9 @@ export function ThemeDissolve() {
   const [progress] = useState(() => new Animated.Value(0));
   const [transitionFrom, setTransitionFrom] = useState<string | null>(null);
   const [webFade, setWebFade] = useState<"visible" | "fading">("fading");
-  const preparedFrom = peekThemeTransitionBackground();
-  const activeTransitionFrom = transitionFrom ?? preparedFrom;
   useThemeChangeEffect(() => {
     const before = previous.current;
-    const from = takeThemeTransitionBackground() ?? previousPalette.current;
+    const from = previousPalette.current;
     previous.current = identity;
     previousPalette.current = palette.background;
     if (before === identity || reducedMotion || browserCrossFades) {
@@ -646,7 +567,7 @@ export function ThemeDissolve() {
       setTransitionFrom(null);
     };
   }, [identity, palette.background, progress, reducedMotion, browserCrossFades]);
-  if (!activeTransitionFrom) return null;
+  if (!transitionFrom) return null;
   return (
     <Animated.View
       testID="theme-dissolve"
@@ -655,26 +576,18 @@ export function ThemeDissolve() {
       accessibilityElementsHidden
       importantForAccessibility="no-hide-descendants"
       style={[
-        {
-          position: "absolute",
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          backgroundColor: activeTransitionFrom,
-        },
+        StyleSheet.absoluteFill,
+        { backgroundColor: transitionFrom },
         Platform.OS === "web"
           ? ({
-              opacity: webFade === "visible" || Boolean(preparedFrom) ? VEIL_STRENGTH : 0,
+              opacity: webFade === "visible" ? VEIL_STRENGTH : 0,
               transitionProperty: "opacity",
               transitionDuration: `${motion.theme}ms`,
-              transitionTimingFunction: "cubic-bezier(0.22, 1, 0.36, 1)",
+              transitionTimingFunction: motion.webEase,
               willChange: "opacity",
             } as unknown as ViewStyle)
           : {
-              opacity: preparedFrom
-                ? VEIL_STRENGTH
-                : progress.interpolate({ inputRange: [0, 1], outputRange: [VEIL_STRENGTH, 0] }),
+              opacity: progress.interpolate({ inputRange: [0, 1], outputRange: [VEIL_STRENGTH, 0] }),
             },
       ]}
     />

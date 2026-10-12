@@ -14,35 +14,32 @@ const harness = vi.hoisted(() => ({
   personWrites: 0,
 }));
 
-vi.mock("../../src/db/client", () => ({
-  getSqliteAsync: async () => ({
-    getFirstAsync: async (sql: string, args: unknown[]) => harness.db!.prepare(sql).get(...args as never[]),
-    getAllAsync: async (sql: string, args: unknown[]) => harness.db!.prepare(sql).all(...args as never[]),
-    runAsync: async (sql: string, args: unknown[]) => {
-      if (sql.trimStart().startsWith("INSERT INTO persons")) {
-        harness.personWrites += 1;
-        if (harness.personWrites === harness.failOnPersonWrite) {
-          throw Object.assign(new Error("database or disk is full"), { code: "SQLITE_FULL" });
-        }
-      }
-      return { changes: Number(harness.db!.prepare(sql).run(...args as never[]).changes) };
+vi.mock("../../src/db/client", async () => {
+  const { sqliteClientMock } = await import("../helpers");
+  const base = sqliteClientMock(() => harness.db!);
+  return {
+    ...base,
+    getSqliteAsync: async () => {
+      const sqlite = await base.getSqliteAsync();
+      return {
+        ...sqlite,
+        runAsync: async (sql: string, args: unknown[] = []) => {
+          if (sql.trimStart().startsWith("INSERT INTO persons")) {
+            harness.personWrites += 1;
+            if (harness.personWrites === harness.failOnPersonWrite) {
+              throw Object.assign(new Error("database or disk is full"), { code: "SQLITE_FULL" });
+            }
+          }
+          return sqlite.runAsync(sql, args);
+        },
+      };
     },
-  }),
-  withTransaction: async (task: () => Promise<void>) => {
-    harness.db!.exec("BEGIN");
-    try {
-      await task();
-      harness.db!.exec("COMMIT");
-    } catch (error) {
-      harness.db!.exec("ROLLBACK");
-      throw error;
-    }
-  },
-}));
+  };
+});
 
-vi.mock("../../src/db/ids", () => ({
+vi.mock("../../src/db/ids", async () => ({
   deterministicId: async (key: string) => `id:${key}`,
-  naturalKeys: new Proxy({}, { get: (_target, property) => (...parts: unknown[]) => `${String(property)}|${parts.join("|")}` }),
+  naturalKeys: (await import("../helpers")).naturalKeysProxy(),
 }));
 
 import { restoreRow, restoreRows, writeRowBatchesAtomically } from "../../src/db/mutations";
@@ -84,6 +81,14 @@ function createSchema(db: DatabaseSync): void {
   `);
 }
 
+function insertPerson(row: ReturnType<typeof person>, fields: Partial<ReturnType<typeof person>> = {}): void {
+  const r = { ...row, ...fields };
+  harness.db!.prepare(`
+    INSERT INTO persons (id, user_id, created_at, updated_at, deleted_at, tombstone_version, name, is_self)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(r.id, r.user_id, r.created_at, r.updated_at, r.deleted_at, r.tombstone_version, r.name, r.is_self);
+}
+
 function person(id: string, userId: string, deletedAt: string | null) {
   return {
     id,
@@ -107,10 +112,7 @@ describe("restore ownership and tombstone boundary", () => {
 
   it("restores an existing tombstone owned by the current account", async () => {
     const snapshot = person("person-1", "user-1", DELETED);
-    harness.db!.prepare(`
-      INSERT INTO persons (id, user_id, created_at, updated_at, deleted_at, tombstone_version, name, is_self)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(snapshot.id, snapshot.user_id, snapshot.created_at, snapshot.updated_at, snapshot.deleted_at, snapshot.tombstone_version, snapshot.name, snapshot.is_self);
+    insertPerson(snapshot);
 
     await restoreRow("user-1", "persons", snapshot);
 
@@ -134,10 +136,7 @@ describe("restore ownership and tombstone boundary", () => {
 
   it("does not overwrite a later live row with an older delete snapshot", async () => {
     const live = person("person-1", "user-1", null);
-    harness.db!.prepare(`
-      INSERT INTO persons (id, user_id, created_at, updated_at, deleted_at, tombstone_version, name, is_self)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(live.id, live.user_id, live.created_at, live.updated_at, live.deleted_at, live.tombstone_version, "Yeni kişi", live.is_self);
+    insertPerson(live, { name: "Yeni kişi" });
 
     await expect(restoreRow("user-1", "persons", { ...live, deleted_at: DELETED, name: "Eski kişi" }))
       .rejects.toThrow(/restore.*tombstone/i);
@@ -147,10 +146,7 @@ describe("restore ownership and tombstone boundary", () => {
 
   it("validates every row before a composite restore writes any of them", async () => {
     const valid = person("person-1", "user-1", DELETED);
-    harness.db!.prepare(`
-      INSERT INTO persons (id, user_id, created_at, updated_at, deleted_at, tombstone_version, name, is_self)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(valid.id, valid.user_id, valid.created_at, valid.updated_at, valid.deleted_at, valid.tombstone_version, valid.name, valid.is_self);
+    insertPerson(valid);
 
     await expect(restoreRows("user-1", [
       { table: "persons", row: { ...valid, deletedAt: null, userId: valid.user_id } },
@@ -164,10 +160,7 @@ describe("restore ownership and tombstone boundary", () => {
 
   it("rolls back every row and outbox event when SQLite reports a full disk mid-batch", async () => {
     const anchor = person("anchor", "user-1", null);
-    harness.db!.prepare(`
-      INSERT INTO persons (id, user_id, created_at, updated_at, deleted_at, tombstone_version, name, is_self)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(anchor.id, anchor.user_id, anchor.created_at, anchor.updated_at, anchor.deleted_at, 0, anchor.name, anchor.is_self);
+    insertPerson(anchor, { tombstone_version: 0 });
     harness.failOnPersonWrite = 2;
     const row = (id: string) => ({
       id,

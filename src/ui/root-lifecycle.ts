@@ -16,6 +16,7 @@ import { devWarning } from "../services/logger";
 import { runSyncSessionTask, syncNow } from "../sync/engine";
 import { useSyncStatus } from "../sync/status";
 import { tr } from "../i18n/tr";
+import { BIOMETRIC_KEY } from "./biometric-name";
 
 /**
  * How long a resumed app settles before the authentication sheet is presented.
@@ -54,52 +55,14 @@ function canPresentPrompt(): boolean {
   return state !== "background" && state !== "inactive";
 }
 
-/**
- * The lock, and the two ways the app used to get stuck behind it.
- *
- * Backgrounding the app flips the lock on, and the effect watching that flag
- * called the system prompt IMMEDIATELY — from a process with no foreground
- * window. iOS cannot present its sheet there and the promise it hands back may
- * never settle, so the "one prompt at a time" guard stayed armed for the life
- * of the process: the lock screen's own button returned at its first line, on
- * every tap, until the app was force-quit. And nothing ever asked again by
- * itself, because `locked` does not change across the background transition, so
- * no effect depending on it re-runs.
- *
- * So: a prompt is only ever asked of a foregrounded app, the resume is what
- * asks, and the guard is an identity rather than a flag — one that can be
- * abandoned without a promise settling.
- */
+/** Prompt only from the foreground: a backgrounded iOS prompt may never settle, and an identity (not a flag) lets an abandoned prompt be replaced. */
 export function useBiometricLock(ready: boolean, userId: string | null) {
   const [locked, setLocked] = useState<boolean | null>(null);
-  /**
-   * The lock state the lifecycle listener reads.
-   *
-   * The listener is registered once per session, so one that closed over
-   * `locked` would answer a resume with whatever the value was when the app
-   * left — and leaving is exactly when it changes. Written with the state,
-   * never behind it in an effect.
-   */
+  /** Read by the once-registered AppState listener, so written with the state, not in an effect. */
   const lockedRef = useRef<boolean | null>(null);
-  /**
-   * Which prompt is awaiting an answer, or null when none is.
-   *
-   * An identity rather than a flag, so a prompt this hook has given up on
-   * cannot answer for the one that replaced it — and, more to the point, so
-   * giving up is possible at all. The flag this replaced could only be cleared
-   * by a promise settling, which is precisely what a prompt the system never
-   * presented does not do.
-   */
   const prompt = useRef<number | null>(null);
   const promptSeq = useRef(0);
-  /**
-   * The last preference this session actually managed to read.
-   *
-   * iOS seals app storage under `NSFileProtectionComplete`, so the SecureStore
-   * read issued as the app leaves — the worst possible moment for it — can
-   * reject. Without this the failure left the app OPEN behind an owner who had
-   * asked for it to be locked.
-   */
+  /** Last preference read: the SecureStore read on leaving can reject under iOS file protection. */
   const preference = useRef<boolean | null>(null);
 
   const applyLocked = useCallback((value: boolean) => {
@@ -108,20 +71,9 @@ export function useBiometricLock(ready: boolean, userId: string | null) {
   }, []);
 
   /**
-   * Resolve the lock preference, and NEVER leave it unresolved.
-   *
-   * The root renders a bare background while `locked` is null, so a read that
-   * neither resolves nor rejects visibly is the whole app going blank. It used
-   * to run in an async IIFE with no `catch`, and because the effect's deps do
-   * not change afterwards nothing ever retried — the app stayed blank on every
-   * screen until it was force-quit.
-   *
-   * On failure it keeps a value it already had, and locks if it had none.
-   * **That default is only safe because `unlock` keeps the device passcode as a
-   * fallback.** Locking on an unreadable preference plus a biometrics-only
-   * prompt is how the owner got shut out of their own app: Face ID was the only
-   * key, and nothing was left to try when it did not open. Do not tighten one
-   * of these without re-reading the other.
+   * Always resolves: a null `locked` is a blank app. On failure keep the last
+   * value, else lock — safe ONLY because `unlock` keeps the passcode fallback.
+   * Change one of these and re-read the other.
    */
   const resolveLock = useCallback(async () => {
     if (!userId) {
@@ -129,7 +81,7 @@ export function useBiometricLock(ready: boolean, userId: string | null) {
       return;
     }
     try {
-      const enabled = (await kv.get("helix.biometric")) === "true";
+      const enabled = (await kv.get(BIOMETRIC_KEY)) === "true";
       preference.current = enabled;
       applyLocked(enabled && Platform.OS !== "web");
     } catch (error) {
@@ -152,14 +104,7 @@ export function useBiometricLock(ready: boolean, userId: string | null) {
     const id = (promptSeq.current += 1);
     prompt.current = id;
     try {
-      // Plain iOS behaviour: the face first, the device passcode when the face
-      // does not open it, and it keeps asking until one of them does.
-      //
-      // This was briefly biometrics-only, to stop a passcode appearing under a
-      // button that says "Face ID ile Aç". That reasoning was right about the
-      // label and catastrophic about the lock — it removed the only way back in
-      // when the face fails, and the owner was shut out of the app. A lock on
-      // one's own data must always have a second key.
+      // Face first, passcode as fallback. Never biometrics-only: a lock on one's own data needs a second key.
       const result = await LocalAuthentication.authenticateAsync({
         promptMessage: tr.lock.prompt,
       });
@@ -211,7 +156,7 @@ export function useBiometricLock(ready: boolean, userId: string | null) {
       if (state !== "background") return;
       cancelResume();
       const prompting = prompt.current !== null;
-      void kv.get("helix.biometric")
+      void kv.get(BIOMETRIC_KEY)
         .then((value) => {
           preference.current = value === "true";
         })
@@ -238,23 +183,10 @@ export function useBiometricLock(ready: boolean, userId: string | null) {
 }
 
 /**
- * Put the owner back where the lock found them.
- *
- * The lock screen replaces the navigator instead of covering it, and it has to:
- * the app's sheets are native modals, so a cover drawn in the tree would sit
- * UNDER any sheet left open when the app went away. A navigator that unmounts
- * forgets its stack, though, so every unlock rebuilt navigation from the
- * initial route — on an iPhone the owner came back to a screen whose Back did
- * not lead to Mali Tablo, and only restarting the app got them there.
- *
- * So the last stack the container reported is kept while the lock is up and
- * handed back once a navigator is mounted again for the same account. The
- * saved root key belongs to the navigator that unmounted; a reset aimed at it
- * would be dropped as unhandled, so the new navigator's key replaces it.
- *
- * Call this BEFORE `useNotificationTapRouting`: effects run in call order, and
- * a reminder tapped while locked must be pushed on top of the restored stack,
- * not wiped by it.
+ * Restore the stack after unlock: the lock screen replaces the navigator
+ * (native sheets would sit above a drawn cover), and a remount forgets the
+ * stack. Call BEFORE `useNotificationTapRouting` so a tapped reminder lands on
+ * top of the restored stack.
  */
 export function useNavigationAcrossLock(locked: boolean | null, navigatorShown: boolean, userId: string | null): void {
   const navigation = useNavigationContainerRef();
@@ -486,36 +418,11 @@ export function useNotificationTapRouting(
 }
 
 /**
- * The second tab, and how it stops being a dead end.
- *
- * Web keeps the SQLite file in OPFS behind an exclusive sync access handle, so
- * only one document can hold it. A second tab therefore boots into
- * `classifyBootFailure` returning "busy", and — because wa-sqlite's VFS stays
- * broken for that document once it has failed — nothing but a reload can
- * recover it. The person was left to work that out and press refresh.
- *
- * So the waiting tab asks, on a slow interval, who has the database; the tab
- * that has it answers; and silence means it is gone, so this one reloads
- * itself. Close the other tab and this one opens on its own.
- *
- * Two designs were tried first and both were wrong, which is worth keeping.
- *
- * The holder announcing its own departure on `pagehide` looks obviously right.
- * It fires on ordinary same-tab navigation too, so the owning tab following a
- * link handed the database to a blocked tab, which took the OPFS handle before
- * the owner's next document could — leaving the tab the person was actually
- * using on the failure screen. The browser suite caught exactly that.
- *
- * Asking only on `focus` and `visibilitychange` avoids polling and is the
- * behaviour a person would describe. Neither event is dependable: a background
- * page can keep `visibilityState: "visible"`, and bringing a tab forward when
- * it is already the only one raises no focus. The recovery then never happened,
- * and the browser suite caught that too.
- *
- * So: an interval, and a hard ceiling on how many times it may reload. The
- * ceiling is what makes the interval safe — a holder that has been FROZEN by
- * the browser cannot answer, and without a bound this would reload for ever in
- * front of someone whose app already would not start.
+ * A second web tab cannot open the OPFS database and only a reload recovers
+ * it, so the waiting tab polls who holds it and reloads when nobody answers.
+ * Not `pagehide` (it fires on same-tab navigation and steals the handle) and
+ * not focus/visibility (unreliable). The reload ceiling makes the poll safe
+ * against a frozen holder.
  */
 const DATABASE_HOLDER_CHANNEL = "helix.database.holder";
 /** Long enough for a live holder in another tab to answer, short enough that a
@@ -523,15 +430,6 @@ const DATABASE_HOLDER_CHANNEL = "helix.database.holder";
 const HOLDER_REPLY_GRACE_MS = 500;
 /** Slow enough to be invisible next to a person reaching for the other tab. */
 const HOLDER_PROBE_MS = 2000;
-/**
- * A hard ceiling on reloading ourselves, per tab.
- *
- * The reasoning above says a loop cannot form, because a reload produces no
- * focus or visibility event of its own. That is an argument, and this is the
- * screen where being wrong about it means a tab reloading for ever in front of
- * someone whose app already would not start. The counter costs five lines and
- * makes the argument unnecessary.
- */
 const MAX_AUTO_RELOADS = 2;
 const AUTO_RELOAD_KEY = "helix.database.autoreload";
 
@@ -553,10 +451,7 @@ function spendAutoReload(): void {
 }
 
 export function useDatabaseHandoff(dbReady: boolean, blocked: boolean): { heldElsewhere: boolean } {
-  // Whether another tab answered the last time this one asked. It is what the
-  // screen needs in order to stop offering an action that cannot work: while
-  // somebody else holds the database, reloading lands on this same screen, and
-  // a button that does that is the button this whole mechanism replaced.
+  // While another tab answers, reloading cannot help, so the screen stops offering it.
   const [heldElsewhere, setHeldElsewhere] = useState(false);
 
   useEffect(() => {
@@ -565,6 +460,12 @@ export function useDatabaseHandoff(dbReady: boolean, blocked: boolean): { heldEl
     const channel = new BroadcastChannel(DATABASE_HOLDER_CHANNEL);
 
     if (dbReady) {
+      // Opened, so the ceiling is for the next wait, not spent by this one.
+      try {
+        sessionStorage.removeItem(AUTO_RELOAD_KEY);
+      } catch {
+        // Nothing was spent where nothing could be stored.
+      }
       channel.onmessage = (event) => {
         if (event.data === "who-has-it") channel.postMessage("i-do");
       };
@@ -592,16 +493,11 @@ export function useDatabaseHandoff(dbReady: boolean, blocked: boolean): { heldEl
       grace = setTimeout(() => {
         grace = null;
         // Nobody answered, so the holder is gone and a reload will now work.
-        setHeldElsewhere(false);
         spendAutoReload();
         window.location.reload();
       }, HOLDER_REPLY_GRACE_MS);
     };
-    // The first ask only wants an answer, and deliberately arms no reload. Its
-    // job is to tell the screen straight away that another tab has the
-    // database, so the control stops offering to reload. Letting it reload
-    // would mean a holder that is merely slow to answer — a background tab
-    // under throttling — costs a page load before anything is even on screen.
+    // The first ask only updates the screen; arming a reload here would cost a page load to a slow, throttled holder.
     askWhoHasIt(false);
     const probe = setInterval(() => askWhoHasIt(true), HOLDER_PROBE_MS);
     return () => {

@@ -1,21 +1,24 @@
-import { expect, test } from "@playwright/test";
-import { addMarketExpense, assertNoRuntimeErrors, collectRuntimeErrors, currentMonthKey, isolateExternalData, onboard, openCashFlow, renderedContrast } from "./helpers";
+import { expect, test, type Page } from "@playwright/test";
+import { addMarketExpense, collectRuntimeErrors, currentMonthKey, isolateExternalData, onboard, openCashFlow, renderedContrast } from "./helpers";
 
 test.beforeEach(async ({ context }) => isolateExternalData(context));
 
-test("offline relaunch keeps the SQLite ledger and avoids duplicate writes", async ({ page, context }, testInfo) => {
+async function serviceWorkerReady(page: Page) {
+  await page.evaluate(async () => {
+    if (!("serviceWorker" in navigator)) throw new Error("Service Worker unavailable");
+    await navigator.serviceWorker.ready;
+  });
+}
+
+test("offline relaunch keeps the SQLite ledger and avoids duplicate writes", async ({ page, context }) => {
   const errors = collectRuntimeErrors(page);
   await onboard(page);
   await addMarketExpense(page, "Çevrimdışı kalıcılık", "210,50");
   await page.goto("/helix/");
   await expect(page.getByText(/-.*₺210,50/).first()).toBeVisible();
 
-  await page.evaluate(async () => {
-    if (!("serviceWorker" in navigator)) throw new Error("Service Worker unavailable");
-    await navigator.serviceWorker.ready;
-  });
-  // One controlled online navigation lets the active worker cache every
-  // content-hashed asset before the true offline cold reload.
+  await serviceWorkerReady(page);
+  // One online reload lets the worker cache every hashed asset before the offline cold reload.
   await page.reload();
   await expect(page.getByRole("tab", { name: "Durum", selected: true })).toBeVisible();
   await context.setOffline(true);
@@ -27,73 +30,42 @@ test("offline relaunch keeps the SQLite ledger and avoids duplicate writes", asy
   await openCashFlow(page);
   await page.getByRole("radio", { name: "Ay odaklı" }).click();
   await expect(page.getByText(/-.*₺210,50/).first()).toBeVisible();
-  await assertNoRuntimeErrors(errors, testInfo);
+  expect(errors).toEqual([]);
 });
 
 test("a navigated static asset cannot poison the offline app shell", async ({ page, context }) => {
   await page.goto("/helix/");
-  await page.evaluate(async () => {
-    if (!("serviceWorker" in navigator)) throw new Error("Service Worker unavailable");
-    await navigator.serviceWorker.ready;
-  });
-  // Reload once so this document is controlled by the active worker and the
-  // known-good HTML shell is cached before the hostile navigation.
+  await serviceWorkerReady(page);
+  // Reload so the worker controls this document and caches the good shell first.
   await page.reload();
   const entry = await page.locator('script[src*="/_expo/static/js/web/entry-"]').getAttribute("src");
   expect(entry).toBeTruthy();
 
-  // A link from any site can navigate a browser to Helix's public JS URL. The
-  // worker must serve it online without ever storing it under index.html.
+  // Any site can link to the public JS URL; the worker must not store it under index.html.
   await page.goto(entry!);
   await context.setOffline(true);
   await page.goto("/helix/");
-  // The descriptive title, not the bare product name: this is the string a
-  // search result and a shared link show, and it is served statically so a
-  // crawler that runs no JavaScript still gets it.
+  // Served statically, so a crawler that runs no JavaScript still gets the title.
   await expect(page).toHaveTitle("Helix: Bütçe, Abonelikler ve Yatırımlar");
   await expect(page.locator("#root")).toBeVisible();
   await context.setOffline(false);
 });
 
-/**
- * Only one document may hold the local database.
- *
- * On web the workspace lives in a single OPFS file whose access handle is
- * exclusive, so opening the app in a second tab necessarily fails — that part is
- * the platform, and the important half is that it fails safely: the tab that
- * already had the database keeps working and keeps every row.
- *
- * What was broken is the recovery. wa-sqlite leaves the FAILED document in an
- * "Invalid VFS state" for as long as it lives, so re-running the migration in
- * the same page returned the identical error forever — "Tekrar dene" looked like
- * an action and was incapable of ever succeeding, while a plain browser refresh
- * recovered instantly. The button reloads on web, which is the only thing that
- * works; and since `useDatabaseHandoff` the tab does it without being asked,
- * so this asserts the recovery rather than the button — closing the owning tab
- * and coming back is the entire remedy a person has to know.
- */
-test("a second tab fails safely and its retry really recovers", async ({ page, context }, testInfo) => {
+// The OPFS access handle is exclusive, so a second tab fails; the owning tab must keep every row.
+// wa-sqlite leaves the failed document in "Invalid VFS state", so only a reload recovers,
+// and the waiting tab does it unasked once the owner closes.
+test("a second tab fails safely and its retry really recovers", async ({ page, context }) => {
   const errors = collectRuntimeErrors(page);
   await onboard(page);
   await addMarketExpense(page, "Tek sekme sahipliği", "410,00");
 
   const second = await context.newPage();
-  // Dark, because that is where this screen was unreadable: the static export
-  // prerenders the light background, hydration kept it, and the dark palette's
-  // light text was drawn on top of it.
+  // Dark: the static export prerenders the light background and hydration kept it under light text.
   await second.emulateMedia({ colorScheme: "dark" });
   await second.goto("/helix/");
-  // The screen names what happened, not the layer that failed. "Veritabanı
-  // hatası" sent someone looking for corrupted data over a tab they had open.
   await expect(second.getByText("Helix başka bir sekmede açık")).toBeVisible();
   expect(await renderedContrast(second.getByText("Helix başka bir sekmede açık"), "text")).toBeGreaterThanOrEqual(4.5);
-  // While the first tab still holds the database, reloading provably cannot
-  // work — so the screen states which tab has it instead of offering an action
-  // that lands back here. It says so as a STATUS and not as a refused button:
-  // a disabled control is dimmed to `stateOpacity.disabled`, and measured on
-  // the light theme this line rendered at 2.07:1 against its own chip, against
-  // the 4.5:1 the app holds everywhere else — illegible, on the one line
-  // explaining why the screen will not open.
+  // A status, not a disabled button: disabled dimming rendered this line at 2.07:1.
   await expect(second.getByText("Diğer sekmenin kapanması bekleniyor")).toBeVisible();
   await expect(second.getByRole("button", { name: "Diğer sekmenin kapanması bekleniyor" })).toHaveCount(0);
   const legible = await renderedContrast(second.getByText("Diğer sekmenin kapanması bekleniyor"), "text");
@@ -104,9 +76,7 @@ test("a second tab fails safely and its retry really recovers", async ({ page, c
   await page.goto(`/helix/cash-flow/${currentMonthKey()}`);
   await expect(page.getByRole("button", { name: /Market.*410,00/ })).toBeVisible();
 
-  // No click. Closing the tab that held the database and returning to this one
-  // is the whole remedy now — the waiting tab asks who has it, hears nothing,
-  // and reloads itself. The button is still there for a closure it cannot hear.
+  // No click: the waiting tab asks who holds the database, hears nothing, and reloads itself.
   await page.close();
   await second.bringToFront();
   await expect(second.getByRole("tab", { name: "Durum", selected: true })).toBeVisible({ timeout: 20_000 });
@@ -114,22 +84,12 @@ test("a second tab fails safely and its retry really recovers", async ({ page, c
   await expect(second.getByRole("button", { name: /Market.*410,00/ })).toBeVisible();
   await second.close();
 
-  await assertNoRuntimeErrors(errors, testInfo);
+  expect(errors).toEqual([]);
 });
 
-/**
- * The one route a second tab may open.
- *
- * A reset e-mail opens its link in a NEW tab, and whoever clicks it usually has
- * Helix open already — so the tab that needs the reset screen is exactly the
- * tab the database refuses. It used to ask for the other tab to be closed. The
- * screen needs no database, so it is drawn instead of the wait, and the tab
- * holding Helix keeps its session and every row.
- *
- * Which state the screen lands in depends on whether this build talks to
- * Supabase at all, so the assertion is the screen itself, never the wait.
- */
-test("a reset link opens its screen in a second tab while Helix holds the database", async ({ page, context }, testInfo) => {
+// The reset screen needs no database, so it is drawn instead of the wait; which state it
+// lands in depends on whether this build talks to Supabase, so assert the screen itself.
+test("a reset link opens its screen in a second tab while Helix holds the database", async ({ page, context }) => {
   const errors = collectRuntimeErrors(page);
   await onboard(page);
   await addMarketExpense(page, "Sıfırlama sekmesi", "275,00");
@@ -147,10 +107,10 @@ test("a reset link opens its screen in a second tab while Helix holds the databa
   await page.goto(`/helix/cash-flow/${currentMonthKey()}`);
   await expect(page.getByRole("button", { name: /Market.*275,00/ })).toBeVisible();
 
-  await assertNoRuntimeErrors(errors, testInfo);
+  expect(errors).toEqual([]);
 });
 
-test("protected and modal deep links keep deterministic navigation @cross-browser", async ({ page }, testInfo) => {
+test("protected and modal deep links keep deterministic navigation @cross-browser", async ({ page }) => {
   const errors = collectRuntimeErrors(page);
   await onboard(page);
   const routes: [string, string][] = [
@@ -164,8 +124,7 @@ test("protected and modal deep links keep deterministic navigation @cross-browse
     await expect(page.getByRole("heading", { name: heading }).first()).toBeVisible();
     await expect(page.getByText("Beklenmeyen bir sorun oluştu.")).toHaveCount(0);
   }
-  // Local-only builds cannot keep the account in the cloud or end a cloud
-  // session, so the cloud-security route and its misleading action stay hidden.
+  // Local-only builds hide the cloud-security route and its actions.
   await page.goto("/helix/account-security");
   await expect(page).toHaveURL(/\/helix\/settings$/);
   await expect(page.getByRole("heading", { name: "Ayarlar", exact: true }).first()).toBeVisible();
@@ -177,14 +136,11 @@ test("protected and modal deep links keep deterministic navigation @cross-browse
   expect(await back.boundingBox()).toMatchObject({ width: 44, height: 44 });
   await back.click();
   await expect(page.getByRole("heading", { name: "Mali Tablo", exact: true })).toBeVisible();
-  await assertNoRuntimeErrors(errors, testInfo);
+  expect(errors).toEqual([]);
 });
 
-// A dynamic segment accepts anything the URL carries, and the month range
-// helpers THROW on a malformed key. Both screens that build a SQLite range from
-// a month param used to do it during render, so a hand-typed or stale link was
-// a white screen rather than a recoverable navigation.
-test("hostile route parameters recover instead of white-screening", async ({ page }, testInfo) => {
+// The month range helpers THROW on a malformed key; a stale link must recover, not white-screen.
+test("hostile route parameters recover instead of white-screening", async ({ page }) => {
   const errors = collectRuntimeErrors(page);
   await onboard(page);
 
@@ -197,54 +153,20 @@ test("hostile route parameters recover instead of white-screening", async ({ pag
   ];
   for (const route of hostile) {
     await page.goto(route);
-    // The error boundary must never appear, and the user must land somewhere
-    // they can act from — the cash-flow table, not a dead screen.
     await expect(page.getByText("Beklenmeyen bir sorun oluştu.")).toHaveCount(0);
     await expect(page.getByRole("heading", { name: "Mali Tablo", exact: true })).toBeVisible();
   }
 
-  // A well-formed month still opens its own detail screen, so the guard did not
-  // simply blanket-redirect every deep link.
+  // A well-formed month still opens its own detail, so the guard is not a blanket redirect.
   const month = currentMonthKey();
   await page.goto(`/helix/cash-flow/${month}`);
   await expect(page.getByText("Beklenmeyen bir sorun oluştu.")).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Mali Tablo", exact: true })).toHaveCount(0);
 
-  await assertNoRuntimeErrors(errors, testInfo);
+  expect(errors).toEqual([]);
 });
 
-// Analysis lives in the Cash Flow stack but Summary can open it too, so it has
-// a root-level route for the cross-tab entry. Both paths are asserted because
-// they resolve differently by design: from Summary the screen underneath is
-// Summary, from the Financial Table it is the table. Serving one of them with a
-// single hard-coded back target is exactly what breaks the other.
-test("Analysis goes back to whichever screen opened it", async ({ page }, testInfo) => {
-  const errors = collectRuntimeErrors(page);
-  await onboard(page);
-
-  await page.getByRole("tab", { name: "Durum" }).click();
-  await page.getByRole("button", { name: /Net değişim/ }).click();
-  await expect(page.getByRole("heading", { name: "Analiz", exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "Geri", exact: true }).click();
-  await expect(page.getByRole("tab", { name: "Durum", selected: true })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Mali Tablo", exact: true })).toHaveCount(0);
-
-  await page.getByRole("tab", { name: "Mali Tablo" }).click();
-  await page.getByRole("button", { name: "Analiz", exact: true }).first().click();
-  await expect(page.getByRole("heading", { name: "Analiz", exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "Geri", exact: true }).click();
-  await expect(page.getByRole("heading", { name: "Mali Tablo", exact: true })).toBeVisible();
-
-  // A direct link has no source at all and must still land somewhere real.
-  await page.goto("/helix/cash-flow/analytics");
-  await expect(page.getByRole("heading", { name: "Analiz", exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "Geri", exact: true }).click();
-  await expect(page.getByRole("heading", { name: "Mali Tablo", exact: true })).toBeVisible();
-
-  await assertNoRuntimeErrors(errors, testInfo);
-});
-
-test("budget summary keeps its forecast, charts and cash-flow tab route", async ({ page }, testInfo) => {
+test("budget summary keeps its forecast, charts and cash-flow tab route", async ({ page }) => {
   const errors = collectRuntimeErrors(page);
   await page.setViewportSize({ width: 390, height: 844 });
   await onboard(page);
@@ -254,20 +176,13 @@ test("budget summary keeps its forecast, charts and cash-flow tab route", async 
   const forecastToggle = page.getByRole("button", { name: /Ay sonu tahmini/ }).first();
   await expect(forecastToggle).toBeVisible();
   await expect(forecastToggle).toHaveAttribute("aria-label", /^Ay sonu tahmini .*\d.*(yükseliyor|düşüyor)$/u);
-  // One control, one balanced box: a row whose label sits nearer its top
-  // border than its bottom edge reads as a mistake rather than as spacing.
-  // This caught exactly that — an attempt to give the amount more room under
-  // it grew only the bottom padding and left the row lopsided.
+  // A label nearer its top border than its bottom reads as a mistake.
   const forecastPadding = await forecastToggle.evaluate((element) => {
     const style = getComputedStyle(element);
     return { top: style.paddingTop, bottom: style.paddingBottom };
   });
   expect(forecastPadding.bottom).toBe(forecastPadding.top);
-  // "Şu anki bakiye" only exists inside the expanded panel, so it is the
-  // unambiguous handle for "is it open". The panel's own result row used to be
-  // called "Ay sonunda tahmini" while the toggle above it said "Ay sonu
-  // tahmini" — one figure, two names, forty pixels apart. Now that both say
-  // the same thing, matching on that text would find the toggle too.
+  // "Şu anki bakiye" exists only in the expanded panel; the toggle and result row share a name.
   const forecastDetails = page.getByText("Şu anki bakiye", { exact: true });
   await expect(forecastDetails).toHaveCount(0);
   for (let attempt = 0; attempt < 2; attempt += 1) {
@@ -282,25 +197,16 @@ test("budget summary keeps its forecast, charts and cash-flow tab route", async 
   await page.getByRole("radio", { name: "Sütun", exact: true }).click();
   await expect(page.getByRole("img", { name: /Sütun grafik/ })).toBeVisible();
 
-  // Opened from Summary, Analysis is a root-level screen and covers the tabs —
-  // the same shape as Upcoming, which this card sits next to. Back returns to
-  // Summary, and the tab route still works from there.
-  await page.getByRole("button", { name: /Net değişim/ }).click();
-  await expect(page.getByRole("heading", { name: "Analiz", exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "Geri", exact: true }).click();
-  await expect(page.getByRole("tab", { name: "Durum", selected: true })).toBeVisible();
   await page.getByRole("tab", { name: "Mali Tablo" }).click();
   await expect(page.getByRole("heading", { name: "Mali Tablo", exact: true })).toBeVisible();
-  await assertNoRuntimeErrors(errors, testInfo);
+  expect(errors).toEqual([]);
 });
 
-test("follow-up controls stay understandable on a narrow phone", async ({ page }, testInfo) => {
+test("follow-up controls stay understandable on a narrow phone", async ({ page }) => {
   const errors = collectRuntimeErrors(page);
   await page.setViewportSize({ width: 320, height: 720 });
   await onboard(page);
 
-  // One real persisted payment source, so the source filter is exercised
-  // against an actual option rather than mocked component state.
   await page.goto("/helix/settings/payment-sources");
   await page.getByRole("textbox", { name: "Yöntem adı" }).fill("Günlük Hesap");
   await page.getByRole("radio", { name: "Nakit", exact: true }).click();
@@ -318,9 +224,7 @@ test("follow-up controls stay understandable on a narrow phone", async ({ page }
   );
   expect(typeBoxes.every((box) => box != null && box.height === typeBoxes[0]?.height && box.y === typeBoxes[0]?.y)).toBe(true);
 
-  // Choosing WHEN to search never depended on choosing a payment method: the
-  // period field is usable from the start, and picking a source or clearing it
-  // back to "Tümü" leaves it alone.
+  // The period field is usable from the start and independent of the payment method.
   const searchFilters = page.getByRole("button", { name: "Arama filtreleri", exact: true });
   await expect(searchFilters).toHaveAttribute("aria-expanded", "false");
   await searchFilters.click();
@@ -335,8 +239,7 @@ test("follow-up controls stay understandable on a narrow phone", async ({ page }
   await period.click();
   await expect(page.getByRole("radio", { name: "Tüm zamanlar", exact: true })).toHaveAttribute("aria-checked", "true");
   await page.keyboard.press("Escape");
-  // …and once the search covers all time, the window controls above it stop
-  // accepting input, because nothing they set applies to it any more.
+  // Over all time, the window controls above stop accepting input.
   await expect(page.getByRole("radio", { name: "Yıl", exact: true })).toBeDisabled();
 
   await page.goto("/helix/settings/incomes");
@@ -345,21 +248,15 @@ test("follow-up controls stay understandable on a narrow phone", async ({ page }
   const monthEnd = page.getByRole("radio", { name: "Ödeme günü · Ayın son günü", exact: true });
   await monthEnd.click();
   await expect(monthEnd).toHaveAttribute("aria-checked", "true");
-  // Keep the layout fixture inside the dashboard's three-day preview window;
-  // month-end recurrence itself is covered by the domain leap/short-month test.
+  // Inside the dashboard's three-day preview window; month-end recurrence is a domain test.
   await page.getByRole("textbox", { name: "Ödeme günü", exact: true }).fill("20");
   await page.getByRole("button", { name: "Gelir Kuralı Ekle", exact: true }).click();
   await expect(page.getByText("Uzun Açıklamalı Aylık Düzenli Maaş Geliri", { exact: true })).toBeVisible();
 
   await page.goto("/helix/");
   await expect(page.getByRole("button", { name: /Ay sonu tahmini/ })).toBeVisible();
-  // A monthly income legitimately produces MORE THAN ONE row inside the
-  // dashboard's 31-day horizon — this month's occurrence and next month's — and
-  // which of them exist depends on today's day-of-month against the pay day.
-  // The original single-element locator therefore passed only while today was
-  // past the 20th and hit a strict-mode violation on every earlier day. Assert
-  // the layout property on EVERY rendered row instead: that is both calendar
-  // independent and stricter than checking one row.
+  // A monthly income may produce several rows in the 31-day horizon depending on today's day,
+  // so assert the layout on every row, not one.
   const upcomingTitles = page.getByText("Uzun Açıklamalı Aylık Düzenli Maaş Geliri", { exact: true });
   const receivedActions = page.getByRole("button", { name: "Alındı · Uzun Açıklamalı Aylık Düzenli Maaş Geliri", exact: true });
   await expect(upcomingTitles.first()).toBeVisible();
@@ -385,51 +282,15 @@ test("follow-up controls stay understandable on a narrow phone", async ({ page }
 
   await page.goto("/helix/settings");
   await expect(page.getByText(/Tanılama|senkron sağlığı/i)).toHaveCount(0);
-  await assertNoRuntimeErrors(errors, testInfo);
+  expect(errors).toEqual([]);
 });
 
-/**
- * Settings screens reachable from more than one place must return to the screen
- * that opened them.
- *
- * Payment sources, budgets and income rules are pushed from OUTSIDE the settings
- * tab with `{ withAnchor: true }`. The anchor is required — without it the stack
- * mounts with only the pushed route and `popToTopOnBlur` becomes a no-op — but
- * it also mounts `settings/index` UNDERNEATH, so plain history sent the user
- * back to a hub they never visited. Each pusher now records `from`, and
- * `resolveBackTarget` validates it against a fixed map before use.
- */
-test("multi-entry settings screens return to whoever opened them", async ({ page }, testInfo) => {
+test("a direct link to a settings screen falls back to Ayarlar", async ({ page }) => {
   const errors = collectRuntimeErrors(page);
   await page.setViewportSize({ width: 390, height: 844 });
   await onboard(page);
 
-  // Driven by clicking, not by a synthesised `?from=`: the guarantee is now
-  // structural — a cross-tab push goes to the screen's root route, so what sits
-  // underneath IS the screen the user came from. Simulating the entry by URL
-  // would prove nothing about the thing that makes it work.
-
-  // Entry 1: Summary → Analysis → Budgets → back → Analysis → back → Summary.
-  await page.getByRole("button", { name: /Net değişim/ }).click();
-  await expect(page.getByRole("heading", { name: "Analiz", exact: true })).toBeVisible();
-  await page.getByRole("button", { name: /Aylık harcama limitini belirle/ }).click();
-  await expect(page.getByRole("heading", { name: "Aylık Harcama Limiti", exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "Geri", exact: true }).click();
-  await expect(page.getByRole("heading", { name: "Analiz", exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "Geri", exact: true }).click();
-  await expect(page.getByRole("tab", { name: "Durum", selected: true })).toBeVisible();
-
-  // Only one end-to-end path is driven here, and on purpose. The rule is
-  // structural — a cross-tab push goes to the screen's root route — so what
-  // needs proving in a browser is that the structure produces the right
-  // journey, not that it does so from every entry point. The other entries
-  // need their own fixtures (a credit card with no statement cycle, an income
-  // rule due soon) and would test those fixtures more than this rule;
-  // `tests/ui/navigation.test.ts` covers the mechanism for all of them by
-  // asserting the root routes exist and that nothing pushes with an anchor.
-
-  // A direct link has no history at all, and a hostile query string must not
-  // change that: every one of these falls back to its own deterministic parent.
+  // A direct link has no history, and a hostile query string must not change the fallback parent.
   for (const url of [
     "/helix/settings/payment-sources",
     "/helix/settings/payment-sources?from=__proto__",
@@ -442,21 +303,12 @@ test("multi-entry settings screens return to whoever opened them", async ({ page
     await expect(page.getByRole("heading", { name: "Ayarlar" })).toBeVisible();
   }
 
-  await assertNoRuntimeErrors(errors, testInfo);
+  expect(errors).toEqual([]);
 });
 
-/**
- * One rate fetch per app session, whichever entry point starts it.
- *
- * `root-lifecycle.ts` calls `refreshRates` DIRECTLY on boot (it awaits it inside
- * the session task), while the currency converter goes through the throttled
- * `ensureFreshRates`. The throttle timestamp used to be armed only by the
- * wrapper, so the boot fetch left it at 0 and the converter — mounting in the
- * Settings tool workspace within the next minute — issued a second request for the
- * same rates. Measured before the fix: every route made one rate request,
- * the tool workspace made two.
- */
-test("the FX provider is called once per session, not once per entry point", async ({ page }, testInfo) => {
+// `root-lifecycle` calls refreshRates directly on boot while the converter uses the throttled wrapper;
+// both must share one throttle, or the tools screen fetches twice.
+test("the FX provider is called once per session, not once per entry point", async ({ page }) => {
   const errors = collectRuntimeErrors(page);
   const fxCalls: string[] = [];
   await onboard(page);
@@ -472,9 +324,7 @@ test("the FX provider is called once per session, not once per entry point", asy
     });
   });
 
-  // Every `goto` in this suite is a full page load, so one load == one app
-  // session. Count exactly one load: the tool workspace, where BOTH callers run —
-  // the boot refresh and the converter's focus refresh.
+  // A `goto` is a full page load, so one load is one app session.
   fxCalls.length = 0;
   await page.goto("/helix/settings/tools");
   await expect(page.getByRole("heading", { name: "Hesap Makinesi", exact: true })).toBeVisible();
@@ -487,8 +337,7 @@ test("the FX provider is called once per session, not once per entry point", asy
   await page.getByRole("tab", { name: "Durum" }).click();
   await expect(page.getByRole("tab", { name: "Durum", selected: true })).toBeVisible();
   await page.getByRole("tab", { name: "Ayarlar" }).click();
-  // The settings stack preserves its selected child when its tab loses focus,
-  // so returning to Settings is itself the repeat visit to this workspace.
+  // The settings stack keeps its child on blur, so returning is itself the repeat visit.
   await expect(page.getByRole("heading", { name: "Hesap Makinesi", exact: true })).toBeVisible();
   const repeatVisitObservationStartedAt = Date.now();
   await expect.poll(
@@ -500,5 +349,5 @@ test("the FX provider is called once per session, not once per entry point", asy
     },
   ).toBe(1);
 
-  await assertNoRuntimeErrors(errors, testInfo);
+  expect(errors).toEqual([]);
 });

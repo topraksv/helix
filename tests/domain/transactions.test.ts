@@ -9,8 +9,12 @@ import {
   financialFlow,
   isWorkbookRemainderRow,
   projectedTransactionFlow,
+  refundLeftMinor,
+  signedBalanceEffectOf,
 } from "../../src/domain/transactions";
 import { required, tx } from "../helpers";
+import { PAYMENT_SOURCE_TYPES } from "../../src/domain/types";
+import { LOCAL_ONLY_USER_ID } from "../../src/domain/user-id";
 
 const TODAY = "2026-07-31";
 
@@ -27,6 +31,7 @@ describe("canonical transaction classification", () => {
     expect(categoryTableEntryType({ kind: "expense", isTransfer: true })).toBe("transfer");
     expect(categoryTableEntryType({ kind: "expense", isTransfer: false })).toBe("expense");
     expect(categoryTableEntryType({ kind: "income", isTransfer: false })).toBe("income");
+    expect(categoryTableEntryType({ kind: "income", isTransfer: true })).toBe("income");
   });
 
   it("normalizes a legacy mismatched refund without changing its cash effect", () => {
@@ -88,6 +93,20 @@ describe("canonical transaction classification", () => {
     expect(split).toEqual({ fixedMinor: 90_00, variableMinor: 30_00 });
     expect(split.fixedMinor + split.variableMinor).toBe(distribution.expenseTotalMinor);
   });
+
+  it("preserves signed cash effect across income, expense, transfer, and legacy category mismatches", () => {
+    expect(signedBalanceEffectOf("income", 500, "income")).toBe(500);
+    expect(signedBalanceEffectOf("expense", 500, "expense")).toBe(-500);
+    expect(signedBalanceEffectOf("transfer", 500, "expense")).toBe(-500);
+    expect(signedBalanceEffectOf("income", 500, "expense")).toBe(500);
+    expect(signedBalanceEffectOf("expense", 500, "income")).toBe(-500);
+    expect(signedBalanceEffectOf("income", -500, "expense")).toBe(-500);
+  });
+
+  it("classifies zero projected effects as incoming with an explicit direction", () => {
+    expect(projectedTransactionFlow(tx({ type: "income", amountTryMinor: 0, effectiveDate: "2026-07-18", categoryKind: "income" })))
+      .toEqual({ direction: "in", amountTryMinor: 0 });
+  });
 });
 
 /**
@@ -140,5 +159,45 @@ describe("workbook column remainders", () => {
     });
     expect(july?.byCategory.get("kk")).toBe(150_00);
     expect(july?.closingMinor).toBe(-150_00);
+  });
+});
+
+describe("persisted identity constants", () => {
+  it("pins persistence identity constants", () => {
+    expect(PAYMENT_SOURCE_TYPES).toEqual([
+      "credit_card", "debit_card", "virtual_card", "e_wallet", "cash", "direct_debit", "bank_transfer",
+    ]);
+    expect(LOCAL_ONLY_USER_ID).toBe("00000000-0000-0000-0000-000000000001");
+  });
+});
+
+describe("what is left to refund on an expense", () => {
+  const expense = { id: "e1", amountMinor: 10_000 };
+
+  it("subtracts only the refunds linked to that expense", () => {
+    expect(refundLeftMinor(expense, [])).toBe(10_000);
+    expect(refundLeftMinor(expense, [
+      { id: "r1", refundOfTransactionId: "e1", amountMinor: -3_000 },
+      { id: "r2", refundOfTransactionId: "e2", amountMinor: -1_000 },
+      { id: "r3", refundOfTransactionId: null, amountMinor: -500 },
+      { id: "r4", amountMinor: -250 },
+    ])).toBe(7_000);
+  });
+
+  it("reaches zero when fully refunded and goes negative past it", () => {
+    expect(refundLeftMinor(expense, [{ id: "r1", refundOfTransactionId: "e1", amountMinor: -10_000 }])).toBe(0);
+    expect(refundLeftMinor(expense, [
+      { id: "r1", refundOfTransactionId: "e1", amountMinor: -10_000 },
+      { id: "r2", refundOfTransactionId: "e1", amountMinor: -1 },
+    ])).toBe(-1);
+  });
+
+  it("leaves out the refund being edited", () => {
+    const rows = [
+      { id: "r1", refundOfTransactionId: "e1", amountMinor: -3_000 },
+      { id: "r2", refundOfTransactionId: "e1", amountMinor: -2_000 },
+    ];
+    expect(refundLeftMinor(expense, rows, "r1")).toBe(8_000);
+    expect(refundLeftMinor(expense, rows, "e1")).toBe(5_000);
   });
 });

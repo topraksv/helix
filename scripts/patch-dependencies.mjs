@@ -1,12 +1,10 @@
-// Upstream fixes applied to installed dependencies until their release ships.
-// Runs on every install. A dependency whose text no longer matches fails the
-// install: check whether the fix shipped, then drop or redo the patch.
+// Upstream fixes applied to installed dependencies on every install. A dependency whose text no longer matches
+// fails the install: check whether it is still needed, then drop or redo the patch.
 import { readFileSync, writeFileSync } from "node:fs";
 
 const PATCHES = [
   {
-    // expo/expo#49778: a tab switch that interrupts a fade left the new tab
-    // detached at opacity 0 (measured 2026-09-15, iOS Release, 5 runs of 6).
+    // expo/expo#49778: a tab switch that interrupts a fade left the new tab detached at opacity 0 on iOS Release.
     file: "node_modules/expo-router/build/react-navigation/bottom-tabs/views/BottomTabView.js",
     edits: [
       [
@@ -54,7 +52,7 @@ for (const { file, edits } of PATCHES) {
   let text = readFileSync(file, "utf8");
   if (edits.every(([, after]) => text.includes(after))) continue;
   for (const [before, after] of edits) {
-    if (text.split(before).length !== 2) throw new Error(`${file} no longer matches its patch; check whether the upstream fix shipped.`);
+    if (text.split(before).length !== 2) throw new Error(`${file} no longer matches its patch; check whether it is still needed.`);
     text = text.replace(before, after);
   }
   writeFileSync(file, text);

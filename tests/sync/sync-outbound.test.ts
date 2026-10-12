@@ -45,6 +45,24 @@ const transaction = {
   note: null,
 };
 
+const transactionPolicy = {
+  allowedColumns: new Set(Object.keys(transaction)),
+  booleanColumns: new Set(["is_aggregate"]),
+};
+const investmentRow = {
+  ...common,
+  product_id: "0198b3f5-0e39-7b76-8f95-f7679d6b72b5",
+  kind: "buy",
+  operation_date: "2026-07-03",
+  quantity: "2",
+  unit_price_minor: 10_000,
+  total_minor: 20_000,
+  cost_basis_minor: 0,
+  realized_profit_loss_minor: 0,
+  note: null,
+  import_key: null,
+};
+
 describe("outbound row conversion", () => {
   it("parses and validates computed-column JSON", () => {
     expect(convertOutboundRow("computed_columns", base, policy)).toEqual({
@@ -75,66 +93,36 @@ describe("outbound row conversion", () => {
   });
 
   it("rejects non-finite numeric payloads before PostgREST", () => {
-    const numericPolicy = {
-      allowedColumns: new Set(Object.keys(transaction)),
-      booleanColumns: new Set(["is_aggregate"]),
-    };
-    expect(convertOutboundRow("transactions", { ...transaction, fx_rate: "NaN" }, numericPolicy)).toEqual({ ok: false, reason: "invalid_row" });
-    expect(convertOutboundRow("transactions", { ...transaction, fx_rate: "32.5" }, numericPolicy)).toEqual({
+    expect(convertOutboundRow("transactions", { ...transaction, fx_rate: "NaN" }, transactionPolicy)).toEqual({ ok: false, reason: "invalid_row" });
+    expect(convertOutboundRow("transactions", { ...transaction, fx_rate: "32.5" }, transactionPolicy)).toEqual({
       ok: true,
       row: { ...transaction, fx_rate: 32.5 },
     });
   });
 
-  /**
-   * The boolean handling here COERCES, it no longer re-rejects.
-   *
-   * `booleanColumnsOf` in `sync/engine.ts` and `matchesDeclaredColumns` in
-   * `services/backup-validation.ts` both derive from the same source — the
-   * `SQLiteBoolean` columns of `getTableColumns(SYNCED_TABLES[table])` — and
-   * `isValidImportRow` runs first and refuses any value there that is not
-   * `0`, `1` or a boolean. A row reaching the coercion loop can therefore only
-   * carry those, which is why the old rejection branch was unreachable and no
-   * test could cover it.
-   *
-   * These two tests pin the property that made removing it safe. If the
-   * upstream guard ever stops refusing a non-boolean, the first one fails here
-   * instead of a whole sync batch failing against Postgres.
-   */
+  // Boolean columns are coerced, not re-rejected: `isValidImportRow` already refuses anything but 0, 1 or a boolean upstream.
   it("refuses a non-boolean in a boolean column upstream, before the coercion loop", () => {
-    const booleanPolicy = {
-      allowedColumns: new Set(Object.keys(transaction)),
-      booleanColumns: new Set(["is_aggregate"]),
-    };
     for (const bad of ["true", 2, -1, {}, []]) {
       expect(
-        convertOutboundRow("transactions", { ...transaction, is_aggregate: bad }, booleanPolicy),
+        convertOutboundRow("transactions", { ...transaction, is_aggregate: bad }, transactionPolicy),
         `is_aggregate=${JSON.stringify(bad)}`,
       ).toEqual({ ok: false, reason: "invalid_row" });
     }
   });
 
   it("coerces SQLite's 0 and 1 into the booleans PostgREST expects", () => {
-    const booleanPolicy = {
-      allowedColumns: new Set(Object.keys(transaction)),
-      booleanColumns: new Set(["is_aggregate"]),
-    };
-    expect(convertOutboundRow("transactions", { ...transaction, is_aggregate: 1 }, booleanPolicy)).toEqual({
+    expect(convertOutboundRow("transactions", { ...transaction, is_aggregate: 1 }, transactionPolicy)).toEqual({
       ok: true,
       row: { ...transaction, is_aggregate: true },
     });
-    expect(convertOutboundRow("transactions", { ...transaction, is_aggregate: 0 }, booleanPolicy)).toEqual({
+    expect(convertOutboundRow("transactions", { ...transaction, is_aggregate: 0 }, transactionPolicy)).toEqual({
       ok: true,
       row: { ...transaction, is_aggregate: false },
     });
   });
 
   it("pushes each colour scope, including the row mark whose month is null", () => {
-    // Every scope nulls a different column, and the push gate runs the same
-    // `isValidImportRow` the restore does. A row mark used to fail here, so it
-    // was written to `sync_dead_letters` and came back "unrepairable" — the
-    // mark lived on one device and nowhere else, with the sync status showing
-    // attention and no way for the owner to act on it.
+    // Every scope nulls a different column, and the push gate runs the same `isValidImportRow` the restore does.
     const mark = { ...common, scope: "row", item_key: common.user_id, month: null as string | null, token: "red" };
     const markPolicy = { allowedColumns: new Set(Object.keys(mark)), booleanColumns: new Set<string>() };
     expect(convertOutboundRow("matrix_colors", mark, markPolicy)).toEqual({ ok: true, row: mark });
@@ -148,41 +136,24 @@ describe("outbound row conversion", () => {
   });
 
   it("quarantines unsupported currencies before PostgREST", () => {
-    const currencyPolicy = {
-      allowedColumns: new Set(Object.keys(transaction)),
-      booleanColumns: new Set(["is_aggregate"]),
-    };
-    expect(convertOutboundRow("transactions", { ...transaction, currency: "NOT-A-CURRENCY" }, currencyPolicy))
+    expect(convertOutboundRow("transactions", { ...transaction, currency: "NOT-A-CURRENCY" }, transactionPolicy))
       .toEqual({ ok: false, reason: "invalid_row" });
-    expect(convertOutboundRow("transactions", { ...transaction, currency: "USD" }, currencyPolicy))
+    expect(convertOutboundRow("transactions", { ...transaction, currency: "USD" }, transactionPolicy))
       .toEqual({ ok: true, row: { ...transaction, currency: "USD" } });
   });
 
   it("quarantines contradictory investment quotes before PostgREST", () => {
-    const investment = {
-      ...common,
-      product_id: "0198b3f5-0e39-7b76-8f95-f7679d6b72b5",
-      kind: "buy",
-      operation_date: "2026-07-03",
-      quantity: "2",
-      unit_price_minor: 10_000,
-      total_minor: 20_000,
-      cost_basis_minor: 0,
-      realized_profit_loss_minor: 0,
-      note: null,
-      import_key: null,
-    };
     const investmentPolicy = {
-      allowedColumns: new Set(Object.keys(investment)),
+      allowedColumns: new Set(Object.keys(investmentRow)),
       booleanColumns: new Set<string>(),
     };
-    expect(convertOutboundRow("investment_operations", investment, investmentPolicy)).toEqual({
+    expect(convertOutboundRow("investment_operations", investmentRow, investmentPolicy)).toEqual({
       ok: true,
-      row: investment,
+      row: investmentRow,
     });
     expect(convertOutboundRow(
       "investment_operations",
-      { ...investment, total_minor: 90_000 },
+      { ...investmentRow, total_minor: 90_000 },
       investmentPolicy,
     )).toEqual({ ok: false, reason: "invalid_row" });
   });
@@ -202,26 +173,13 @@ describe("outbound row conversion", () => {
     expect(convertOutboundRow("investment_profiles", { ...profile, started_on: "2099-01-01" }, profilePolicy))
       .toEqual({ ok: false, reason: "invalid_row" });
 
-    const operation = {
-      ...common,
-      product_id: "0198b3f5-0e39-7b76-8f95-f7679d6b72b5",
-      kind: "buy",
-      operation_date: "2026-07-03",
-      quantity: "2",
-      unit_price_minor: 10_000,
-      total_minor: 20_000,
-      cost_basis_minor: 0,
-      realized_profit_loss_minor: 0,
-      note: null,
-      import_key: null,
-    };
     const operationPolicy = {
-      allowedColumns: new Set(Object.keys(operation)),
+      allowedColumns: new Set(Object.keys(investmentRow)),
       booleanColumns: new Set<string>(),
     };
-    expect(convertOutboundRow("investment_operations", { ...operation, operation_date: "2026-02-31" }, operationPolicy))
+    expect(convertOutboundRow("investment_operations", { ...investmentRow, operation_date: "2026-02-31" }, operationPolicy))
       .toEqual({ ok: false, reason: "invalid_row" });
-    expect(convertOutboundRow("investment_operations", { ...operation, operation_date: "2099-01-01" }, operationPolicy))
+    expect(convertOutboundRow("investment_operations", { ...investmentRow, operation_date: "2099-01-01" }, operationPolicy))
       .toEqual({ ok: false, reason: "invalid_row" });
   });
 

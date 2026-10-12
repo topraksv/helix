@@ -24,22 +24,7 @@ export function nextAmountFontSize(scale: AmountScale, current: number): number 
   return steps.find((step) => step < current) ?? last;
 }
 
-/**
- * The longest regular-scale amount that is safe to render without measuring.
- *
- * `Figure` skips its overflow probe for short amounts, because the probe is a
- * layout read and the ledger paints 240 of these at once. The bound was
- * `length > 10`, and 10 is exactly the length of "₺90.500,00" — which is what
- * the dashboard's three-up month strip shows. At 320px each of those three
- * columns is about 88px, a 10-character amount at the regular scale's opening
- * 15px measures a little over 90, and the figure never shrank because it was
- * never measured: measured on the real build, Gelir and Çıkış overlapped by
- * 2px and read as one run of digits.
- *
- * Nine characters ("₺9.500,00") is ~75px at the same size, which clears the
- * narrowest column the app lays out with room to spare. Ten is inside the
- * margin of error, so ten gets measured.
- */
+/** Up to nine characters is safe unmeasured at the regular scale; ten can overflow the narrowest column, so it is measured. */
 const SAFE_UNMEASURED_LENGTH = 9;
 
 /**
@@ -54,14 +39,7 @@ export function shouldMeasureAmountFit(
   formatted: string,
   callerFixedFontSize = false,
 ): boolean {
-  // A caller that names its own font size has already decided what fits. The
-  // ledger does exactly that: it derives one size per column from
-  // `ledgerCellWidth` and the widest amount in it, then hands that size to
-  // every cell. Measuring each of them again asks the browser for a synchronous
-  // layout per cell — 504 of them on a five-year workspace, in an effect that
-  // re-runs on every grid re-render. Measured at 6x CPU throttle, that was
-  // 532ms to pin a column and 750ms to switch orientation: a visible freeze on
-  // a phone, for an answer the caller already had.
+  // A caller that fixes its own size (the ledger) has already decided what fits; measuring each cell again is a forced layout per cell.
   if (callerFixedFontSize) return false;
   return scale !== "regular" || formatted.length > SAFE_UNMEASURED_LENGTH;
 }

@@ -11,18 +11,23 @@ import {
   formatTRInputLive,
   majorToMinor,
   parseAmountExpression,
-  parseTRAmountToMinor,
   readAmountExpression,
   readTRAmount,
+  splitIntoInstallments,
   usesCompactMoneyScale,
 } from "../../src/domain/money";
-import { convertToTryMinor, pickRate } from "../../src/domain/fx";
+import { converterRate, convertToTryMinor, crossConvertMinor, pickRate } from "../../src/domain/fx";
 import {
   evaluateComputedColumn,
   MAX_COMPUTED_CATEGORY_IDS,
   parseDefinition,
   type MonthAggregates,
 } from "../../src/domain/computed-columns";
+
+function parseTR(input: string): number | null {
+  const read = readTRAmount(input);
+  return read.ok ? read.minor : null;
+}
 
 describe("TR money formatting/parsing", () => {
   it("formats minor units in Turkish locale", () => {
@@ -40,8 +45,8 @@ describe("TR money formatting/parsing", () => {
   });
 
   it("parses Turkish-formatted input", () => {
-    expect(parseTRAmountToMinor("18.822,92")).toBe(1882292);
-    expect(parseTRAmountToMinor("1234,5")).toBe(123450);
+    expect(parseTR("18.822,92")).toBe(1882292);
+    expect(parseTR("1234,5")).toBe(123450);
   });
 
   it("parses spreadsheet-style sum expressions", () => {
@@ -52,20 +57,12 @@ describe("TR money formatting/parsing", () => {
     expect(parseAmountExpression("300++400")).toBeNull();
     expect(parseAmountExpression("abc+3")).toBeNull();
     expect(parseAmountExpression("")).toBeNull();
-    expect(parseTRAmountToMinor("1234")).toBe(123400);
-    expect(parseTRAmountToMinor("-2.024,99")).toBe(-202499);
-    expect(parseTRAmountToMinor("₺ 500")).toBe(50000);
+    expect(parseTR("1234")).toBe(123400);
+    expect(parseTR("-2.024,99")).toBe(-202499);
+    expect(parseTR("₺ 500")).toBe(50000);
   });
 
-  /**
-   * The amount field can only be as truthful as what the parser hands it.
-   * While a refusal was a bare `null` the field had one message for two
-   * different problems and chose the limit, so typing a lone comma — or
-   * pausing halfway through "1+2" — was answered with "this amount exceeds
-   * the supported limit", about a figure nowhere near it. These cases are the
-   * distinction itself, not the wording: an unreadable amount and an amount
-   * too large to store must never report the same reason.
-   */
+  /** An unreadable amount and an over-limit amount must never report the same reason. */
   describe("says WHY an amount was refused", () => {
     it("calls unfinished and unreadable input malformed, never over the limit", () => {
       for (const input of ["0,", ",", "1+", "1-", "abc", "12.34", "1,234.56", "12,345", "300++400", "abc+3", "1,2,"]) {
@@ -106,30 +103,26 @@ describe("TR money formatting/parsing", () => {
         const read = readAmountExpression(input);
         expect(parseAmountExpression(input), input).toBe(read.ok ? read.minor : null);
       }
-      for (const input of ["", "₺", "12.34", "1234", "1000000000000", "-2.024,99"]) {
-        const read = readTRAmount(input);
-        expect(parseTRAmountToMinor(input), input).toBe(read.ok ? read.minor : null);
-      }
     });
   });
 
   it("rejects malformed input instead of guessing", () => {
-    expect(parseTRAmountToMinor("")).toBeNull();
-    expect(parseTRAmountToMinor("12.34")).toBeNull(); // dot is a thousands separator in TR
-    expect(parseTRAmountToMinor("1,234.56")).toBeNull();
-    expect(parseTRAmountToMinor("abc")).toBeNull();
-    expect(parseTRAmountToMinor("12,345")).toBeNull(); // 3 decimal digits
+    expect(parseTR("")).toBeNull();
+    expect(parseTR("12.34")).toBeNull(); // dot is a thousands separator in TR
+    expect(parseTR("1,234.56")).toBeNull();
+    expect(parseTR("abc")).toBeNull();
+    expect(parseTR("12,345")).toBeNull(); // 3 decimal digits
   });
 
   it("rejects amounts beyond the product limit before they can break layouts", () => {
-    expect(parseTRAmountToMinor("99999999999999999999")).toBeNull();
+    expect(parseTR("99999999999999999999")).toBeNull();
     expect(parseAmountExpression("99999999999999999999+1")).toBeNull();
     // Just past the ~1 trillion ceiling → refused.
-    expect(parseTRAmountToMinor("1000000000000")).toBeNull();
+    expect(parseTR("1000000000000")).toBeNull();
     expect(parseAmountExpression("600000000000+600000000000")).toBeNull();
     // Exactly the ceiling parses to MAX; a billion is now comfortably inside it.
-    expect(parseTRAmountToMinor("999999999999,99")).toBe(MAX_ABS_AMOUNT_MINOR);
-    expect(parseTRAmountToMinor("1000000000")).toBe(100_000_000_000); // 1 milyar TL kabul edilir
+    expect(parseTR("999999999999,99")).toBe(MAX_ABS_AMOUNT_MINOR);
+    expect(parseTR("1000000000")).toBe(100_000_000_000); // 1 milyar TL kabul edilir
     expect(majorToMinor(999_999_999_999.99)).toBe(MAX_ABS_AMOUNT_MINOR);
     expect(majorToMinor(1_000_000_000_000)).toBeNull();
     expect(majorToMinor(Number.NaN)).toBeNull();
@@ -138,7 +131,7 @@ describe("TR money formatting/parsing", () => {
   it("keeps an over-limit typed value visible but refuses to parse it", () => {
     const formatted = formatTRInputLive("1234567890123");
     expect(formatted).toBe("1.234.567.890.123");
-    expect(parseTRAmountToMinor(formatted)).toBeNull();
+    expect(parseTR(formatted)).toBeNull();
   });
 
   it("abbreviates only very large values for fixed-width table cells", () => {
@@ -175,18 +168,17 @@ describe("TR money formatting/parsing", () => {
     expect(formatTRInputLive("-2024,99")).toBe("-2.024,99");
     expect(formatTRInputLive("007")).toBe("7"); // drop leading zeros
     expect(formatTRInputLive("0,5")).toBe("0,5"); // keep a lone zero
+    expect(formatTRInputLive("45.")).toBe("45,"); // a dot-only keypad's decimal key
+    expect(formatTRInputLive("45,9.")).toBe("45,9");
+    expect(formatTRInputLive("1.234")).toBe("1.234");
     expect(formatTRInputLive(",5")).toBe("0,5");
     expect(formatTRInputLive("₺ 1.250,50")).toBe("1.250,50"); // idempotent on formatted
-    // A sign that follows the currency symbol is still a sign. The live
-    // formatter read it from the RAW string, which "₺-5" does not begin with,
-    // and the strip below then removed it — so a pasted refund came back as a
-    // charge for the same amount while the parser, given the same text, read
-    // it correctly. The two must agree.
+    // A sign after the currency symbol is still a sign; the live formatter and the parser must agree.
     expect(formatTRInputLive("₺-5")).toBe("-5");
     expect(formatTRInputLive("₺ -1.250,50")).toBe("-1.250,50");
     expect(formatTRInputLive("-₺5")).toBe("-5");
     expect(parseAmountExpression(formatMoneyInputLive("₺-5"))).toBe(-500);
-    expect(parseAmountExpression(formatMoneyInputLive("₺-5"))).toBe(parseTRAmountToMinor("₺-5"));
+    expect(parseAmountExpression(formatMoneyInputLive("₺-5"))).toBe(parseTR("₺-5"));
     // An operator is not a leading sign, and the expression path still owns it.
     expect(formatMoneyInputLive("5-3")).toBe("5-3");
     // A second comma is what a person produces by correcting a typo without
@@ -206,7 +198,7 @@ describe("TR money formatting/parsing", () => {
   it("live-format output is always parseable back to minor units", () => {
     for (const raw of ["15000", "1234,5", "1.250,50", "9999999", "42,9"]) {
       const formatted = formatTRInputLive(raw);
-      expect(parseTRAmountToMinor(formatted)).not.toBeNull();
+      expect(parseTR(formatted)).not.toBeNull();
     }
   });
 
@@ -223,15 +215,7 @@ describe("TR money formatting/parsing", () => {
   });
 });
 
-/**
- * The edges the ordinary cases never reach.
- *
- * Each of these was a mutant nobody killed, which is the same statement as
- * "no test distinguishes this line from a wrong one". They are grouped
- * separately from the readable examples above because that is what they are:
- * the exact value at a boundary, the empty half of a branch, the character a
- * formatter is supposed to insert.
- */
+/** The exact boundary values, the empty branch halves and the inserted characters. */
 describe("money edges", () => {
   it("refuses a value that is not a finite number rather than storing NaN", () => {
     // `>= <=` comparisons against NaN are all false, so an unguarded path
@@ -253,6 +237,13 @@ describe("money edges", () => {
     // Mid-range, where nothing is promoted: the plain answer for each unit.
     expect(compactMoneyScale(150_000_000)).toBe("Mn");
     expect(compactMoneyScale(150_000_000_000)).toBe("Mr");
+    // Each entry point refuses a figure that is not a whole kuruş, rather than formatting it.
+    for (const call of [
+      () => compactMoneyScale(1.5),
+      () => usesCompactMoneyScale(1.5),
+      () => formatMinorCompactAtScale(1.5, "Mn"),
+      () => formatMinorInput(1.5),
+    ]) expect(call).toThrow();
     expect(compactMoneyScale(150_000_000_000_000)).toBe("Tr");
   });
 
@@ -334,11 +325,22 @@ describe("FX", () => {
   it("returns null when no rate is cached", () => {
     expect(pickRate(rates, "GBP", "2026-07-05")).toBeNull();
   });
+
+  it("pins FX failure messages and stable tie selection", () => {
+    expect(() => convertToTryMinor(100, 0)).toThrow("Invalid FX rate: 0");
+    expect(() => convertToTryMinor(Number.MAX_SAFE_INTEGER, 2))
+      .toThrow("Converted amount exceeds safe minor-unit range");
+    const first = { currency: "USD", rateDate: "2026-07-18", rateTry: 40 };
+    const duplicate = { currency: "USD", rateDate: "2026-07-18", rateTry: 41 };
+    expect(pickRate([first, duplicate], "USD", "2026-07-18")?.rate).toBe(first);
+    expect(pickRate([
+      { currency: "USD", rateDate: "2026-07-17", rateTry: 39 }, first,
+    ], "USD", "2026-07-18")?.rate).toBe(first);
+  });
 });
 
 describe("computed columns", () => {
   const data: MonthAggregates = {
-    month: "2026-07",
     byCategory: new Map([
       ["fatura", 4424_03],
       ["abonelik", 1200_00],
@@ -382,10 +384,7 @@ describe("computed columns", () => {
     })).toThrow();
   });
 
-  // The shapes a schema library used to refuse on this file's behalf. They are
-  // pinned here because the validator is hand-written now: every one of these
-  // reaches it from `JSON.parse` of a synced or restored row, so "not an
-  // object" and "not a string" are inputs, not hypotheticals.
+  // The validator is hand-written and reached from JSON.parse of synced rows, so these shapes are real inputs.
   it("refuses definitions that are not an object of the declared shape", () => {
     for (const raw of [null, undefined, 42, "sum", true, [], [{ op: "sum" }]]) {
       expect(() => parseDefinition(raw)).toThrow();
@@ -416,6 +415,106 @@ describe("computed columns", () => {
       .toEqual({ op: "cc_split", part: "installment" });
     expect(Object.keys(parseDefinition({ op: "income_minus_expense" }))).toEqual(["op"]);
   });
+
+  it("accepts multi-category definitions and rejects duplicates across difference sides", () => {
+    expect(parseDefinition({ op: "sum", categoryIds: ["a", "b"] }))
+      .toEqual({ op: "sum", categoryIds: ["a", "b"] });
+    expect(parseDefinition({ op: "difference", plusCategoryIds: ["a", "b"], minusCategoryIds: ["c", "d"] }))
+      .toEqual({ op: "difference", plusCategoryIds: ["a", "b"], minusCategoryIds: ["c", "d"] });
+    expect(() => parseDefinition({ op: "difference", plusCategoryIds: ["a"], minusCategoryIds: ["a"] }))
+      .toThrow(expect.objectContaining({ message: expect.stringContaining("Computed categories must be unique"), issues: [expect.objectContaining({ code: "custom" })] }));
+    expect(() => parseDefinition({
+      op: "difference",
+      plusCategoryIds: Array.from({ length: MAX_COMPUTED_CATEGORY_IDS + 1 }, (_, index) => String(index)),
+      minusCategoryIds: ["other"],
+    })).toThrow();
+  });
+
+  it("treats a missing computed category as zero in both arithmetic operations", () => {
+    const sparse: MonthAggregates = {
+      byCategory: new Map([["known", 500]]),
+      incomeMinor: 0,
+      expenseMinor: 0,
+      ccSingleMinor: 0,
+      ccInstallmentMinor: 0,
+    };
+
+    expect(evaluateComputedColumn(parseDefinition({ op: "sum", categoryIds: ["missing"] }), sparse)).toBe(0);
+    expect(evaluateComputedColumn(parseDefinition({
+      op: "difference",
+      plusCategoryIds: ["missing-plus"],
+      minusCategoryIds: ["missing-minus"],
+    }), sparse)).toBe(0);
+  });
 });
 
-// (spreadsheet import parsing moved to tests/spreadsheet-import.test.ts)
+describe("compact scale and live-input edge contracts", () => {
+  it("pins compact-scale promotion on both sides of each boundary", () => {
+    expect(compactMoneyScale(1)).toBe("Mn");
+    expect(compactMoneyScale(100_000_000)).toBe("Mn");
+    expect(compactMoneyScale(100_000_000_000)).toBe("Mr");
+    expect(compactMoneyScale(999_999_499_99)).toBe("Mn");
+    expect(compactMoneyScale(999_999_500_00)).toBe("Mr");
+    expect(compactMoneyScale(999_999_499_999_00)).toBe("Mr");
+    expect(compactMoneyScale(999_999_500_000_00)).toBe("Tr");
+    expect(compactMoneyScale(100_000_000_000_000)).toBe("Tr");
+  });
+
+  it("pins parser and live-format empty/operator behavior", () => {
+    expect(splitIntoInstallments(1, 1)).toEqual([1]);
+    expect(parseTR("  ₺  ")).toBeNull();
+    expect(formatTRInputLive("-")).toBe("-");
+    expect(formatTRInputLive("+")).toBe("");
+    expect(formatMoneyInputLive("-400")).toBe("-400");
+    expect(formatMoneyInputLive("400-200+50")).toBe("400-200+50");
+    expect(parseAmountExpression("+")).toBeNull();
+    expect(parseAmountExpression("400-200+50")).toBe(250_00);
+    expect(parseTR("  ₺ 1.250,50 ")).toBe(125_050);
+    expect(formatTRInputLive(" - 400")).toBe("-400");
+    expect(formatTRInputLive("abc,5")).toBe("0,5");
+    expect(formatMoneyInputLive(" ₺ 400 + 500 ")).toBe("400+500");
+    expect(parseAmountExpression(" 1 + 2 ")).toBe(300);
+    expect(formatMinorCompactAtScale(100_000_000, "Mn", "USD")).toBe("USD 1 Mn");
+    expect(formatMinorCompactAtScale(123_456_789, "Mn")).toBe("₺1.235 Mn");
+    expect(() => splitIntoInstallments(100, 0)).toThrow("Invalid installment count: 0");
+    expect(() => splitIntoInstallments(100.5, 2)).toThrow("Amount must be an integer of minor units, got: 100.5");
+  });
+});
+
+describe("the converter's rate and cross-conversion", () => {
+  const noonOf = (year: number, month: number, day: number) => new Date(year, month - 1, day, 12).getTime();
+  const cached = (rateDate: string, isStale: boolean) => ({ rate: { currency: "USD", rateDate, rateTry: 40 }, isStale });
+
+  it("uses a live quote silently, even over a newer cache", () => {
+    expect(converterRate({ rateTry: 41, receivedAt: noonOf(2026, 4, 1), live: true }, cached("2026-04-10", true)))
+      .toEqual({ rateTry: 41, badge: null });
+  });
+
+  it("uses the last-known quote with its receipt time unless the cache is strictly newer", () => {
+    const market = { rateTry: 41, receivedAt: noonOf(2026, 4, 10), live: false };
+    expect(converterRate(market, null)).toEqual({ rateTry: 41, badge: { kind: "market", receivedAt: market.receivedAt } });
+    expect(converterRate(market, cached("2026-04-10", false))).toEqual({ rateTry: 41, badge: { kind: "market", receivedAt: market.receivedAt } });
+    expect(converterRate(market, cached("2026-04-09", true))).toEqual({ rateTry: 41, badge: { kind: "market", receivedAt: market.receivedAt } });
+    expect(converterRate(market, cached("2026-04-11", false))).toEqual({ rateTry: 40, badge: null });
+  });
+
+  it("dates a stale cached rate and has nothing without either source", () => {
+    expect(converterRate(null, cached("2026-04-09", true))).toEqual({ rateTry: 40, badge: { kind: "fx", rateDate: "2026-04-09" } });
+    expect(converterRate(null, cached("2026-04-09", false))).toEqual({ rateTry: 40, badge: null });
+    expect(converterRate(null, null)).toBeNull();
+  });
+
+  it("cross-rates through TRY, rounding half away from zero", () => {
+    expect(crossConvertMinor(10_000, 40, 1)).toBe(400_000);
+    expect(crossConvertMinor(400_000, 1, 40)).toBe(10_000);
+    expect(crossConvertMinor(1, 3, 2)).toBe(2);
+    expect(crossConvertMinor(-1, 3, 2)).toBe(-2);
+    expect(crossConvertMinor(1, 1, 3)).toBe(0);
+    expect(crossConvertMinor(0, 40, 50)).toBe(0);
+  });
+
+  it("has no result outside the safe minor-unit range", () => {
+    expect(crossConvertMinor(Number.MAX_SAFE_INTEGER, 1, 1)).toBe(Number.MAX_SAFE_INTEGER);
+    expect(crossConvertMinor(Number.MAX_SAFE_INTEGER, 2, 1)).toBeNull();
+  });
+});

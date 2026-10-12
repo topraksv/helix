@@ -3,9 +3,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Platform } from "react-native";
 import { useIsFocused, useNavigation } from "expo-router";
-// `usePreventRemove` and `NavigationContext` have no root export yet, so the
-// compat subpath stays for them; the two hooks upstream marks deprecated there
-// are imported from the package root instead.
 import { usePreventRemove } from "expo-router/react-navigation";
 import { tr } from "../i18n/tr";
 import { appConfirm } from "./dialog";
@@ -36,10 +33,7 @@ export function useDirtyExitGuard(dirty: boolean): DirtyExitGuard {
     setExitAllowed(true);
   };
 
-  // React Navigation's native-stack integration translates this registration
-  // to `preventNativeDismiss` on iOS. The sheet's pull-down gesture therefore
-  // remains available, but a dirty dismissal is cancelled natively before the
-  // shared confirmation decides whether to replay the original action.
+  // The native gesture is disabled while dirty; see the setOptions call below.
   usePreventRemove(shouldBlockDirtyExit(dirty, exitAllowed), ({ data }) => {
     // Re-dispatch the exact prevented action from this event. React Navigation
     // marks it as already visited, so it can leave without disabling the guard
@@ -118,24 +112,7 @@ export function useDirtyExitGuard(dirty: boolean): DirtyExitGuard {
   };
 }
 
-/**
- * The one rule for "has this form changed?".
- *
- * Every screen used to answer it differently: some compared a snapshot, some
- * asked "is any field non-empty", some tracked whether a control had ever been
- * touched. So the same gesture produced three behaviours — a discard prompt on
- * a form nothing had been typed into, no prompt on one that had, and on a
- * couple of screens a guard that refused to leave with nothing to answer.
- *
- * Dirty means the draft differs from what it held when the screen settled.
- * Typing 150 over 100 and then typing 100 back is not a change, because the
- * user is leaving with exactly what they arrived with.
- *
- * `ready` exists because a form's initial values arrive asynchronously: taking
- * the baseline on the first render would compare a filled form against an empty
- * one and call every screen dirty. The baseline is captured on the first render
- * where the data has settled, and never again.
- */
+/** Dirty means the draft differs from what it held when the screen settled; `ready` defers the baseline until async initial values arrive. */
 export function useDraftDirty(snapshot: string, ready = true): boolean {
   const baseline = useRef<string | null>(null);
   if (baseline.current === null && ready) baseline.current = snapshot;

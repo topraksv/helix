@@ -17,7 +17,7 @@ import { Body, Button, Card, DataStateNotice, MoneyField, PanelHeader, Screen } 
 import { appAlert } from "../../../ui/dialog";
 import { navigateBack } from "../../../ui/navigation";
 import { useDirtyExitGuard, useDraftDirty } from "../../../ui/dirty-exit";
-import { placeholderPools, useRotatingPlaceholder } from "../../../ui/placeholders";
+import { useRotatingPlaceholder } from "../../../ui/placeholders";
 import { circle, radius, spacing, type, useTheme } from "../../../ui/theme";
 
 export default function InvestmentSetupScreen() {
@@ -31,17 +31,16 @@ export default function InvestmentSetupScreen() {
   const [cashMinor, setCashMinor] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const { allowExit } = useDirtyExitGuard(useDraftDirty(JSON.stringify({ date, cashRaw }), true) && !busy);
-  const amountPlaceholder = useRotatingPlaceholder(placeholderPools.amount, { prefix: false });
+  const amountPlaceholder = useRotatingPlaceholder(tr.placeholders.amount, { prefix: false });
 
+  const canSave = cashMinor != null && !(cashMinor < 0);
   const save = async () => {
-    if (busy || cashMinor == null || cashMinor < 0) return;
+    if (busy || !canSave) return;
     setBusy(true);
     try {
       await setupInvestments(userId, { startedOn: date, openingCashMinor: cashMinor });
       scheduleSync(userId);
-      // One way out, to the wallet, where "Yeni Ürün Tanımla" is the first
-      // thing on the screen. A second button that only skipped that one tap
-      // read as a second, different action and was not one.
+      // One way out, to the wallet, whose first action is defining a product.
       allowExit(() => navigateBack(router, "/(tabs)/investments"));
     } catch (error) {
       void appAlert(userMessage(error, tr.errors.saveFailed), tr.errors.title);
@@ -120,15 +119,13 @@ export default function InvestmentSetupScreen() {
         <ShieldCheck accessible={false} size={20} color={palette.positiveText} />
         <Body style={{ flex: 1 }}>{tr.investments.setupWithExistingHint}</Body>
       </View>
-      <View style={{ gap: spacing.sm }}>
-        <Button
-          icon={cashMinor != null ? Check : Banknote}
-          label={tr.investments.setupAction}
-          loading={busy}
-          disabled={cashMinor == null || cashMinor < 0 || busy}
-          onPress={() => void save()}
-        />
-      </View>
+      <Button
+        icon={cashMinor != null ? Check : Banknote}
+        label={tr.investments.setupAction}
+        loading={busy}
+        disabled={!canSave || busy}
+        onPress={() => void save()}
+      />
     </Screen>
   );
 }

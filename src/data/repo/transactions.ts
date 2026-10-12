@@ -23,10 +23,6 @@ import { isValidCardCycle, statementForPurchase, statementPeriod, type CardState
 import { CreditCardCycleRequiredError, RefundExceedsExpenseError, StatementPaymentTooLargeError } from "./errors";
 import { assertInvestmentWrites } from "./investment-validation";
 
-// ---------------------------------------------------------------------------
-// Transactions
-// ---------------------------------------------------------------------------
-
 export interface NewTransaction {
   type: TransactionType;
   amountMinor: Minor;
@@ -42,10 +38,7 @@ export interface NewTransaction {
   note: string | null;
   isAggregate?: boolean;
   subscriptionId?: string | null;
-  /**
-   * Where this row came from. Defaults to `manual`, because this is the entry
-   * point the forms use; every automated writer states its own origin.
-   */
+  /** Defaults to `manual`, the forms' entry point; every automated writer states its own origin. */
   origin?: TransactionOrigin;
   /** The source line this row was created from, for a repeatable import. */
   importKey?: string | null;
@@ -70,13 +63,16 @@ export async function livePaymentSource(userId: string, sourceId: string | null)
   );
 }
 
-export async function assertLiveTransactionPerson(userId: string, personId: string): Promise<void> {
+export async function livePerson(userId: string, personId: string): Promise<{ id: string; is_self: number } | null> {
   const sqlite = await getSqliteAsync();
-  const person = await sqlite.getFirstAsync<{ id: string }>(
-    `SELECT id FROM persons WHERE id = ? AND user_id = ? AND deleted_at IS NULL`,
+  return sqlite.getFirstAsync<{ id: string; is_self: number }>(
+    `SELECT id, is_self FROM persons WHERE id = ? AND user_id = ? AND deleted_at IS NULL`,
     [personId, userId],
   );
-  if (!person) throw new Error("Transaction person does not exist");
+}
+
+export async function assertLiveTransactionPerson(userId: string, personId: string): Promise<void> {
+  if (!(await livePerson(userId, personId))) throw new Error("Transaction person does not exist");
 }
 
 export async function cardStatementWrite(
@@ -85,11 +81,6 @@ export async function cardStatementWrite(
   period: CardStatementPeriod,
 ): Promise<RowWrite> {
   const id = await deterministicId(naturalKeys.cardStatement(userId, paymentSourceId, period.periodMonth));
-  const sqlite = await getSqliteAsync();
-  const existing = await sqlite.getFirstAsync<{ created_at: string }>(
-    `SELECT created_at FROM credit_card_statements WHERE id = ? AND user_id = ?`,
-    [id, userId],
-  );
   return {
     table: "credit_card_statements",
     row: {
@@ -98,7 +89,6 @@ export async function cardStatementWrite(
       periodMonth: period.periodMonth,
       statementDate: period.statementDate,
       dueDate: period.dueDate,
-      createdAt: existing?.created_at,
       deletedAt: null,
     },
   };
@@ -120,9 +110,7 @@ async function resolveSingleTransactionDates(
   }
   const cycle = { statementDay: source.statement_day, dueDay: source.due_day };
   if (!isValidCardCycle(cycle)) throw new CreditCardCycleRequiredError();
-  // A month-only card charge has no day of its own, so it sits on the last day
-  // that still joins that month's statement: the closing date. It is billed with
-  // that statement and reaches the balance on its due date, like any purchase.
+  // A month-only card charge sits on the closing date, the last day that still joins that month's statement.
   const period = input.isAggregate
     ? statementPeriod(monthKeyOf(input.effectiveDate), cycle)
     : statementForPurchase(input.effectiveDate, cycle);
@@ -186,12 +174,9 @@ async function writeTransactionRows(
 }
 
 /**
- * A refund may be linked only to a live, positive, single expense in its own
- * currency, and may not take more than is left of it.
- *
- * Instalment rows are refunded against their plan instead (`addInstallmentRefund`),
- * and a refund of a refund is not a thing a statement prints. `excludeId` is the
- * refund being edited, which must not count against itself.
+ * A refund may be linked only to a live, positive, single expense in its own currency, and may not
+ * take more than is left of it. Instalment rows are refunded against their plan instead
+ * (`addInstallmentRefund`). `excludeId` is the refund being edited, which must not count against itself.
  */
 async function assertRefundOf(
   userId: string,
@@ -282,13 +267,8 @@ export interface TransactionPatch {
 }
 
 /**
- * Update an existing transaction in place; status is re-derived from the date.
- *
- * `existing` is the row in APPLICATION shape (camelCase), which is what the
- * live queries hand a screen — not the snake_case row a raw `SELECT` returns.
- * Both used to be typed `Record<string, unknown>`, so the two shapes were
- * interchangeable to the compiler while spreading the wrong one here would
- * have written a row of undefined columns.
+ * Update an existing transaction in place; status is re-derived from the date. `existing` is the
+ * row in application shape (camelCase) from the live queries, not a raw snake_case `SELECT` row.
  */
 export async function updateTransaction(
   userId: string,
@@ -361,15 +341,10 @@ export function restoreBalanceAdjustment(userId: string, snapshot: Record<string
 }
 
 /**
- * Reconcile to a real-world balance WITHOUT rewriting history. Stores the
- * difference between the target and the currently-computed balance as one
- * balance adjustment dated today, so every prior month's chain (and the opening
- * balance) is untouched — only today onward shifts by the delta.
- *
- * `computedNowMinor` is the balance the caller currently shows (it already
- * includes any earlier same-day adjustment). The adjustment row is keyed by day
- * so repeated corrections converge on the target instead of stacking: we back
- * out today's existing adjustment before computing the new delta.
+ * Reconcile to a real-world balance WITHOUT rewriting history: one balance adjustment dated today
+ * holds the difference, so only today onward shifts. `computedNowMinor` already includes any
+ * earlier same-day adjustment; the row is keyed by day and today's is backed out before the new
+ * delta, so repeated corrections converge instead of stacking.
  */
 export async function setCurrentBalance(
   userId: string,
@@ -382,13 +357,12 @@ export async function setCurrentBalance(
   const today = todayISO();
   const id = await deterministicId(naturalKeys.balanceAdjustment(userId, today));
   const sqlite = await getSqliteAsync();
-  const prev = await sqlite.getFirstAsync<{ amount_minor: number; created_at: string }>(
-    `SELECT amount_minor, created_at FROM balance_adjustments WHERE id = ? AND user_id = ? AND deleted_at IS NULL`,
+  const prev = await sqlite.getFirstAsync<{ amount_minor: number }>(
+    `SELECT amount_minor FROM balance_adjustments WHERE id = ? AND user_id = ? AND deleted_at IS NULL`,
     [id, userId],
   );
   const prevAmount = prev?.amount_minor ?? 0;
-  // computedNow already contains prevAmount; the new adjustment must make the
-  // total land on target: (computedNow - prevAmount) + delta = target.
+  // (computedNow - prevAmount) + delta = target
   const delta = reconciliationDelta(targetMinor, computedNowMinor, prevAmount);
   assertSupportedMinorAmount(delta);
   await writeRows(userId, [
@@ -399,21 +373,12 @@ export async function setCurrentBalance(
         date: today,
         amountMinor: delta,
         note,
-        createdAt: prev?.created_at,
-        // Returning exactly to the unadjusted balance removes the reconciliation
-        // from the live ledger instead of leaving a meaningless zero row.
+        // Returning exactly to the unadjusted balance tombstones the row rather than keeping a zero one.
         deletedAt: delta === 0 ? nowIso() : null,
       },
     },
   ]);
 }
-
-// ---------------------------------------------------------------------------
-
-
-// ---------------------------------------------------------------------------
-// Bulk history entry (approved feature)
-// ---------------------------------------------------------------------------
 
 export async function bulkMonthEntry(
   userId: string,
@@ -431,46 +396,36 @@ export async function bulkMonthEntry(
     ),
   );
   const today = todayISO();
-  // A month total belongs to the month, not to a day in it. It is stored on the
-  // first like every other dateless row — the workbook import and the entry
-  // form's "Sadece ay" both do — because the fifteenth this used to write put
-  // the same kind of row on two different days of one month.
+  // A month total is stored on the first of the month, like every other dateless row.
   const effectiveDate = firstDayOf(month);
-  const status = "realized" as const;
-  const writes: RowWrite[] = await Promise.all(
-    entries.map(async (entry) => ({
-      table: "transactions" as const,
-      row: {
-        id: newId(),
-        type: entry.type,
-        amountMinor: entry.amountMinor,
-        currency: "TRY",
-        fxRate: null,
-        amountTryMinor: entry.amountMinor,
-        entryDate: today,
-        effectiveDate,
-        status,
-        categoryId: entry.categoryId,
-        paymentSourceId: null,
-        personId,
-        installmentPlanId: null,
-        installmentNo: null,
-        subscriptionId: null,
-        isAggregate: true,
-        note: null,
-        origin: "manual",
-        deletedAt: null,
-      },
-    })),
-  );
+  const writes: RowWrite[] = entries.map((entry) => ({
+    table: "transactions" as const,
+    row: {
+      id: newId(),
+      type: entry.type,
+      amountMinor: entry.amountMinor,
+      currency: "TRY",
+      fxRate: null,
+      amountTryMinor: entry.amountMinor,
+      entryDate: today,
+      effectiveDate,
+      status: "realized",
+      categoryId: entry.categoryId,
+      paymentSourceId: null,
+      personId,
+      installmentPlanId: null,
+      installmentNo: null,
+      subscriptionId: null,
+      isAggregate: true,
+      note: null,
+      origin: "manual",
+      deletedAt: null,
+    },
+  }));
   await writeTransactionRows(userId, writes);
 }
 
-// ---------------------------------------------------------------------------
-// Statement payments and declared opening balances
-// ---------------------------------------------------------------------------
-
-export interface NewStatementPayment {
+interface NewStatementPayment {
   statementId: string;
   paidOn: ISODate;
   amountMinor: Minor;
@@ -499,14 +454,10 @@ async function statementRemainingMinor(
 }
 
 /**
- * Record a payment the owner made against one card statement (spec §3.7).
- *
- * From the first one on, the statement is no longer paid in full on its due
- * date: `settleCardStatements` counts what was paid, on the day it was paid.
- * Only the owner's own card takes one — a watched card's charges never reach
- * this balance, so neither can a payment of them — and never for more than is
- * still owed. That limit is checked inside the write, so two devices cannot
- * each pay the same remainder.
+ * Record a payment the owner made against one card statement (spec §3.7). From the first one on,
+ * `settleCardStatements` counts what was paid, on the day it was paid. Only the owner's own card
+ * takes one, never for more than is still owed; the limit is checked inside the write, so two
+ * devices cannot each pay the same remainder.
  */
 export async function addStatementPayment(userId: string, input: NewStatementPayment): Promise<string> {
   if (!isISODate(input.paidOn) || input.paidOn > todayISO()) throw new Error("Invalid statement payment date");
@@ -545,14 +496,9 @@ export function restoreStatementPayment(userId: string, snapshot: Record<string,
 }
 
 /**
- * Declare the balance a month opened with (spec §2.2): a declaration dated the
- * last day of the month before, which the ledger then holds whatever is later
- * entered on or before that day.
- *
- * `differenceMinor` is what the declaration changes as the ledger stands now,
- * read off the chain by the caller. The ledger recomputes it; it is stored for
- * a client that predates declarations and reads the row as a plain adjustment.
- * One declaration per month, so declaring a month again replaces it.
+ * Declare the balance a month opened with (spec §2.2): dated the last day of the month before,
+ * which the ledger then holds. `differenceMinor` is read off the chain by the caller and stored
+ * only for a client that reads the row as a plain adjustment. One per month; declaring again replaces it.
  */
 export async function declareMonthOpeningBalance(
   userId: string,
@@ -577,11 +523,6 @@ export async function monthOpeningDeclarationWrite(
   assertSupportedMinorAmount(declaredMinor);
   assertSupportedMinorAmount(differenceMinor);
   const id = await deterministicId(naturalKeys.monthOpeningDeclaration(userId, month));
-  const sqlite = await getSqliteAsync();
-  const previous = await sqlite.getFirstAsync<{ created_at: string }>(
-    `SELECT created_at FROM balance_adjustments WHERE id = ? AND user_id = ?`,
-    [id, userId],
-  );
   return {
     table: "balance_adjustments",
     row: {
@@ -590,7 +531,6 @@ export async function monthOpeningDeclarationWrite(
       amountMinor: differenceMinor,
       declaredMinor,
       note,
-      createdAt: previous?.created_at,
       deletedAt: null,
     },
   };

@@ -4,13 +4,16 @@ import { yearOf, type MonthKey } from "../../domain/dates";
 import type { Minor } from "../../domain/money";
 import type { TransactionType } from "../../domain/types";
 import {
+  isColumnExcluded,
   planImportCell,
   type CellData,
   type ParsedSheet,
 } from "../../services/spreadsheet-import";
 
+export const normalizedName = (name: string) => name.trim().toLocaleLowerCase("tr-TR");
+
 export function importCategoryKey(name: string, kind: "expense" | "income"): string {
-  return `${name.trim().toLocaleLowerCase("tr-TR")}|${kind}`;
+  return `${normalizedName(name)}|${kind}`;
 }
 
 interface PlannedSpreadsheetCell {
@@ -64,6 +67,7 @@ function plannedCell(
 export function buildSpreadsheetImportPlan(input: {
   sheets: ParsedSheet[];
   excludedLabels: ReadonlySet<string>;
+  includedLabels?: ReadonlySet<string>;
   selectedYears: ReadonlySet<number> | null;
   categoryIds: ReadonlyMap<string, string>;
   today: string;
@@ -87,7 +91,7 @@ export function buildSpreadsheetImportPlan(input: {
         index,
         categoryId: input.categoryIds.get(importCategoryKey(column.label, column.kindGuess)) ?? null,
       }))
-      .filter((column) => !input.excludedLabels.has(column.label));
+      .filter((column) => !isColumnExcluded(column, input.excludedLabels, input.includedLabels ?? new Set()));
     if (columns.some((column) => !column.categoryId)) {
       throw new Error("Spreadsheet import category plan is incomplete");
     }

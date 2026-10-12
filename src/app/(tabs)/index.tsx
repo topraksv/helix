@@ -3,7 +3,7 @@
 
 import React, { useMemo } from "react";
 import { Animated, Pressable, StyleSheet, Text, View } from "react-native";
-import { useRouter, type Href } from "expo-router";
+import { useRouter } from "expo-router";
 import ArrowDownLeft from "lucide-react-native/icons/arrow-down-left";
 import ArrowUpRight from "lucide-react-native/icons/arrow-up-right";
 import CalendarClock from "lucide-react-native/icons/calendar-clock";
@@ -143,20 +143,7 @@ function MarketInstrumentArt({ code, size = 44 }: { code: string; size?: number 
   );
 }
 
-/**
- * One live quote.
- *
- * Its own component because each tile owns a flash of its own: a feed tick is
- * the one thing in this app that changes without the user doing anything, and
- * the only sign it had happened was a number being different from the one
- * nobody was looking at. The tint is an opacity over a resting tile, so it
- * stays on the native driver, and it is armed only while the screen is the one
- * on show — a background tab must not animate.
- *
- * The provider re-sends a symbol only when its price moves, and the store
- * throttles to one apply every three seconds, so this is a punctuation mark
- * rather than a pulse.
- */
+/** One live quote; flashes on a tick only while this screen is focused, on the native driver. */
 function QuoteTile({
   code,
   label,
@@ -198,9 +185,7 @@ function QuoteTile({
         borderWidth: StyleSheet.hairlineWidth,
         borderColor: palette.border + "70",
         overflow: "hidden",
-        // The two other tappable cards in this file already answer a pointer
-        // through the shared fill; this one dimmed on press and did nothing
-        // under a cursor, which is the dead surface `docs/UI.md` §3 names.
+        // Answers a pointer through the shared fill; dimming on press alone is the dead surface docs/UI.md §3 names.
         ...interactionSurface(palette, state, { base: palette.surfaceAlt }),
       })}
     >
@@ -208,27 +193,20 @@ function QuoteTile({
         <Animated.View
           pointerEvents="none"
           accessible={false}
-          style={{
-            position: "absolute",
-            top: 0,
-            right: 0,
-            bottom: 0,
-            left: 0,
-            opacity: flash,
-            backgroundColor: (price.direction === "up" ? palette.positive : palette.negative) + "24",
-          }}
+          style={[
+            StyleSheet.absoluteFill,
+            { opacity: flash, backgroundColor: (price.direction === "up" ? palette.positive : palette.negative) + "24" },
+          ]}
         />
       ) : null}
       <Row gap={spacing.xs} style={{ alignItems: "center" }}>
         <View style={{ width: size, height: size, flexShrink: 0 }}>
           <MarketInstrumentArt code={code} size={size} />
-          {price.direction === "up" ? (
+          {price.direction === "up" || price.direction === "down" ? (
             <View style={{ position: "absolute", right: -2, top: -2, borderRadius: radius.sm, padding: 2, backgroundColor: palette.surface }}>
-              <TrendingUp accessible={false} size={12} color={palette.positive} />
-            </View>
-          ) : price.direction === "down" ? (
-            <View style={{ position: "absolute", right: -2, top: -2, borderRadius: radius.sm, padding: 2, backgroundColor: palette.surface }}>
-              <TrendingDown accessible={false} size={12} color={palette.negative} />
+              {price.direction === "up"
+                ? <TrendingUp accessible={false} size={12} color={palette.positive} />
+                : <TrendingDown accessible={false} size={12} color={palette.negative} />}
             </View>
           ) : null}
         </View>
@@ -263,9 +241,7 @@ function QuoteTile({
 
 function MarketsCard({ fill = false, desktopColumns = 2 }: { fill?: boolean; desktopColumns?: 2 | 3 }) {
   const { palette } = useTheme();
-  // How many quote tiles fit is a question about this card, not about the
-  // window: the same card is a full-width strip on a phone and one column of a
-  // desktop pair, and only the card knows which.
+  // Tile count is the card's question, not the window's: the same card is a full-width strip on a phone and half a desktop row.
   const [cardWidth, onCardLayout] = useMeasuredWidth(320);
   const userId = useUserId();
   const { prices, status, lastEventAt } = useMarkets();
@@ -291,9 +267,7 @@ function MarketsCard({ fill = false, desktopColumns = 2 }: { fill?: boolean; des
         ? tr.markets.connecting
         : tr.markets.offline;
   const marketColumns = marketTileColumns(cardWidth, desktopColumns);
-  // A tile is cramped by how much of the card it actually gets, not by the
-  // window: two columns of a 358px phone card and two columns of a 500px
-  // desktop column are different tiles.
+  // Cramped by the card's share, not the window: a 358px phone card and a 500px desktop column differ.
   const crampedTile = cardWidth / marketColumns < 215;
 
   return (
@@ -346,17 +320,12 @@ function MarketsCard({ fill = false, desktopColumns = 2 }: { fill?: boolean; des
             <Body muted style={{ marginTop: spacing.sm, fontSize: type.small.fontSize }}>{tr.markets.offlineHint}</Body>
           </>
         ) : (
-          // The card is stretched to its neighbour's height when the two share
-          // a desktop row, so a single sentence pinned to the top left leaves
-          // the column looking abandoned. One line of copy centres in the space
-          // it was given instead.
+          // Stretched to its neighbour's height on a desktop row, so one line of copy centres instead of pinning top-left.
           <View style={fill ? { flex: 1, justifyContent: "center", paddingVertical: spacing.lg } : undefined}>
             <Body muted style={{ textAlign: fill ? "center" : "left", maxWidth: 380, alignSelf: fill ? "center" : "auto" }}>
               {tr.markets.noData}
             </Body>
-            {/* Something to do, and the truth about what is already happening.
-                An empty card the height of the payment list beside it offered
-                neither. */}
+            {/* Something to do, beside the truth about what is already happening. */}
             {status !== "connecting" ? (
               <View style={{ marginTop: spacing.md, alignItems: fill ? "center" : "flex-start" }}>
                 <Button
@@ -377,16 +346,7 @@ function MarketsCard({ fill = false, desktopColumns = 2 }: { fill?: boolean; des
   );
 }
 
-/**
- * Re-render when the wall clock crosses an hour.
- *
- * The greeting and the date under it are both read from `new Date()` at render
- * time and nothing asked for another render, so a session left open said "İyi
- * günler" at 19:00 and was still saying "İyi akşamlar" — over yesterday's date
- * — at three in the morning. The timer is armed to the next hour boundary
- * rather than to a fixed interval, so it fires once an hour on the hour and
- * costs one render.
- */
+/** Re-render on the hour so the greeting and date never go stale in a long session. */
 function useHourTick(): number {
   const [tick, setTick] = React.useState(0);
   React.useEffect(() => {
@@ -483,6 +443,8 @@ function useDashboardData() {
 
   return {
     userId, today, month, bundle, expected, model, upcoming, categoryById, subscriptionById, incomeById, live,
+    incomeMinor: model.distribution.incomeTotalMinor,
+    outflowMinor: model.distribution.expenseTotalMinor + model.distribution.transferTotalMinor,
     selfPersonId: personsState.data.find((p) => p.isSelf)?.id,
     nameOf: (e: Expected) => subscriptionById.get(e.refId)?.name ?? incomeById.get(e.refId)?.name ?? tr.common.paymentFallback,
     // "You told me X; the table says Y" — the ledger has moved away from the last
@@ -517,7 +479,7 @@ function useExpectedActions(data: DashboardData) {
         paidOn,
       });
       scheduleSync(userId);
-      undo.show(`${data.nameOf(e)} ✓`, () => revertExpected(userId, e.id));
+      undo.show(`${data.nameOf(e)} ✓`, () => revertExpected(userId, e.id).then(() => scheduleSync(userId)));
     } catch (err) {
       if (err instanceof FxRateUnavailableError) void appAlert(tr.errors.fxUnavailable, undefined, { tone: "error" });
       else {
@@ -567,9 +529,7 @@ function BalanceDriftPill() {
   const router = useRouter();
   const { palette } = useTheme();
   return (
-    // The painted pill stays compact beside a label in a hero, but the PRESSABLE
-    // is the platform minimum: an 18pt pill navigated, and react-native-web does
-    // not implement `hitSlop` to rescue it.
+    // Pressable is the platform minimum; react-native-web ignores hitSlop.
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={tr.settings.balanceDriftTitle}
@@ -618,15 +578,12 @@ function ForecastToggle({ projected, actual, open, onToggle, wide }: { projected
         marginTop: spacing.md,
         borderTopWidth: StyleSheet.hairlineWidth,
         borderTopColor: palette.border,
-        // The row reaches the rule below it with its own PADDING, symmetric as
-        // `resilience.spec.ts` requires: a cancelled margin put the rule through
-        // the lit band. The wide layout draws that rule beside this column instead.
+        // Symmetric padding, not margin: resilience.spec.ts asserts the rule stays outside the lit band.
         ...(wide ? { paddingVertical: spacing.md, marginBottom: -spacing.md } : { paddingVertical: spacing.lg }),
         ...interactionSurface(palette, state),
       })}
     >
-      {/* Direction is carried by the glyph, never by colour: a forecast that fell
-          but stayed positive once showed a red arrow beside a green number. */}
+      {/* Direction by glyph, never by colour alone. */}
       {rising
         ? <TrendingUp accessible={false} size={iconSize.accessory} color={palette.textSecondary} />
         : <TrendingDown accessible={false} size={iconSize.accessory} color={palette.textSecondary} />}
@@ -643,7 +600,7 @@ function BalanceHero({ data, wide, showForecast, onToggleForecast }: { data: Das
   const router = useRouter();
   const { palette, scheme } = useTheme();
   const heroInk = heroSurface(palette, scheme).ink;
-  const { bundle, model, month } = data;
+  const { bundle, model, month, incomeMinor, outflowMinor } = data;
   if (!bundle) {
     return (
       <HeroCard>
@@ -655,8 +612,6 @@ function BalanceHero({ data, wide, showForecast, onToggleForecast }: { data: Das
     );
   }
   const projected = model.projectedMinor;
-  const incomeMinor = model.distribution.incomeTotalMinor;
-  const outflowMinor = model.distribution.expenseTotalMinor + model.distribution.transferTotalMinor;
   return (
     <HeroCard>
       <View style={wide ? { flexDirection: "row", alignItems: "stretch" } : undefined}>
@@ -771,8 +726,7 @@ function MonthInsightCard({ data }: { data: DashboardData }) {
     });
   }, []);
   const { distribution } = data.model;
-  const incomeMinor = distribution.incomeTotalMinor;
-  const outflowMinor = distribution.expenseTotalMinor + distribution.transferTotalMinor;
+  const { incomeMinor, outflowMinor } = data;
   const donut = distributionDonutData(distribution, chartColors, (id) => data.categoryById.get(id)?.name ?? tr.common.none);
   const hasFlow = incomeMinor !== 0 || donut.slices.length > 0 || donut.supplementalSlices.length > 0;
   return (
@@ -906,7 +860,7 @@ function UpcomingEmpty({ fill }: { fill: boolean }) {
         <Body muted style={{ textAlign: "center" }}>{tr.dashboard.noUpcoming}</Body>
       </View>
       <View style={{ marginTop: spacing.xs }}>
-        <Button label={tr.dashboard.allUpcoming} variant="ghost" size="sm" onPress={() => router.push("/upcoming" as Href)} />
+        <Button label={tr.dashboard.allUpcoming} variant="ghost" size="sm" onPress={() => router.push("/upcoming")} />
       </View>
     </Card>
   );
@@ -965,35 +919,36 @@ function UpcomingPanel({ data, actions, fill }: { data: DashboardData; actions: 
   return (
     <Card rows style={fill ? { flex: 1 } : undefined}>
       <View style={fill ? { flexGrow: 1 } : undefined}>
-        {late.map((e) => (
-          <ListRow
-            key={e.id}
-            icon={e.direction === "in" ? ArrowDownLeft : ArrowUpRight}
-            iconColor={palette.error}
-            title={data.nameOf(e)}
-            subtitle={`${tr.dashboard.late} · ${dateLabel(e.dueDate)} · ${amountFragment(e)}`}
-            right={payButton(e.id, data.nameOf(e), e.direction, actions.needsAmountEntry(e), () => actions.open(e))}
-          />
-        ))}
+        {late.map((e) => {
+          const name = data.nameOf(e);
+          return (
+            <ListRow
+              key={e.id}
+              icon={e.direction === "in" ? ArrowDownLeft : ArrowUpRight}
+              iconColor={palette.error}
+              title={name}
+              subtitle={`${tr.dashboard.late} · ${dateLabel(e.dueDate)} · ${amountFragment(e)}`}
+              right={payButton(e.id, name, e.direction, actions.needsAmountEntry(e), () => actions.open(e))}
+            />
+          );
+        })}
         {coming.map((u) => {
           const expectedItem = u.kind === "expected" ? expected.find((item) => item.id === u.expectedId) : undefined;
+          const name = u.name ?? u.categoryName ?? tr.common.paymentFallback;
           return (
             <ListRow
               key={u.key}
               icon={u.direction === "in" ? ArrowDownLeft : CalendarClock}
               iconColor={u.direction === "in" ? palette.positive : undefined}
-              title={u.name ?? u.categoryName ?? tr.common.paymentFallback}
+              title={name}
               subtitle={`${TIMELINE_TYPE_LABELS[u.sourceType]()} · ${tr.dashboard.inDays(daysBetweenISO(today, u.date))} · ${amountFragment(u)}${u.paidMinor ? ` · ${tr.dashboard.cardStatementPaid(formatMinorCompact(u.paidMinor))}` : ""}`}
-              // A card statement is a due date derived from the card's charges, not
-              // a payment to confirm, so it opens that statement — at a ROOT-level
-              // route, since a screen pushed into the Mali Tablo tab's stack stayed
-              // there until restart (see `src/app/installments.tsx`).
+              // Statements open at a root route; a push into the Mali Tablo stack stayed there until restart.
               onPress={u.kind === "card_statement"
                 ? () => router.push({ pathname: "/card-statement", params: { card: u.refId, ...(u.statementId ? { statement: u.statementId } : {}) } })
                 : undefined}
               chevron={u.kind === "card_statement"}
               right={u.kind === "expected" && u.expectedId
-                ? payButton(u.expectedId, u.name ?? u.categoryName ?? tr.common.paymentFallback, u.direction, Boolean(u.amountIsEstimated), () => {
+                ? payButton(u.expectedId, name, u.direction, Boolean(u.amountIsEstimated), () => {
                     if (expectedItem) actions.open(expectedItem);
                   })
                 : undefined}
@@ -1005,11 +960,11 @@ function UpcomingPanel({ data, actions, fill }: { data: DashboardData; actions: 
           button's height left the card's top and bottom gaps uneven. */}
       <Row gap={spacing.sm}>
         <View style={{ flex: 1 }}>
-          <Button label={tr.dashboard.allUpcoming} variant="ghost" size="sm" onPress={() => router.push("/upcoming" as Href)} />
+          <Button label={tr.dashboard.allUpcoming} variant="ghost" size="sm" onPress={() => router.push("/upcoming")} />
         </View>
         {/* The inbox is the actionable half of the same data: what waits for a decision. */}
         <View style={{ flex: 1 }}>
-          <Button testID="dashboard-attention-link" label={tr.attention.title} variant="ghost" size="sm" onPress={() => router.push("/attention" as Href)} />
+          <Button testID="dashboard-attention-link" label={tr.attention.title} variant="ghost" size="sm" onPress={() => router.push("/attention")} />
         </View>
       </Row>
     </Card>
@@ -1017,9 +972,7 @@ function UpcomingPanel({ data, actions, fill }: { data: DashboardData; actions: 
 }
 
 export default function DashboardScreen() {
-  // The ledger is the tab this app exists for and the most expensive one to
-  // create. Built while the navigator is fading between two scenes it drops
-  // frames once, on the first arrival; built here, in idle, it drops none.
+  // The ledger tab is the most expensive to create; built in idle it drops no frames, built mid-fade it drops one.
   useWarmRoute("cash-flow");
   useHourTick();
   const previousLoginAt = useSession((state) => state.previousLoginAt);
@@ -1036,7 +989,7 @@ export default function DashboardScreen() {
       title={greeting()}
       subtitle={dateLabel(data.today)}
       // The rail carries the mark at desktop widths; phones have no rail, so the greeting keeps it.
-      leading={<BrandMark size={40} />}
+      leading={<BrandMark height={40} />}
       width="workspace"
     >
       <FirstRunTour />

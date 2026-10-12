@@ -11,20 +11,7 @@ import {
 import { composeWorkbook } from "../../src/services/workbook-export";
 import { UserFacingError } from "../../src/domain/user-error";
 
-/**
- * The export's cell boundary, which moved but did not go away.
- *
- * This replaces `csv-export-safety`. The CSV export is gone and with it hazard
- * 1 — structure forgery, where a `;` or a newline inside a cell forged an extra
- * column. An `.xlsx` cell carries its own bounds, so RFC 4180 quoting has
- * nothing left to protect and writing it would put literal quote marks in the
- * file.
- *
- * Hazard 2 survives the format change unchanged: the workbook is opened in the
- * same spreadsheet the CSV was, and category, person and note text can arrive
- * from a synced device. Every formula-injection case that file tested is kept
- * below, including the whitespace bypasses a plain `^` test missed.
- */
+/** Formula injection survives the move to .xlsx (synced text reaches the cell); structure forgery does not, so no RFC 4180 quoting. */
 describe("workbook cell safety", () => {
   it("neutralizes a formula in the first character", () => {
     expect(neutralizeFormula("=1+1")).toBe("'=1+1");
@@ -39,14 +26,7 @@ describe("workbook cell safety", () => {
     }
   });
 
-  /**
-   * The anchor is the guard.
-   *
-   * Without `^` the test matches anywhere, and then every amount with a minus
-   * inside it, every note with an equals sign mid-sentence and every "Ali - Su
-   * payı" would collect an apostrophe it never needed. Mutation testing found
-   * this: dropping the anchor survived every case above.
-   */
+  /** The `^` anchor is the guard: unanchored, every mid-text sign would gain an apostrophe. */
   it("guards only the FIRST character, never a sign in the middle", () => {
     for (const value of ["Market -5 iade", "toplam = 900", "Ali - Su payı", "a+b", "x@y.com"]) {
       expect(neutralizeFormula(value), value).toBe(value);

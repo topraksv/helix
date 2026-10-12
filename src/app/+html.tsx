@@ -1,5 +1,5 @@
 import { ScrollViewStyleReset } from "expo-router/html";
-import { type PropsWithChildren } from "react";
+import type { PropsWithChildren } from "react";
 import { tr } from "../i18n/tr";
 import { darkPalette, lightPalette } from "../ui/theme";
 import { MARKET_DATA_HOST } from "../domain/market";
@@ -11,15 +11,7 @@ const supabaseOrigin = trustedSupabaseOrigin(process.env.EXPO_PUBLIC_SUPABASE_UR
  *  absolute asset URL below is this plus a path, and the deployed base is
  *  `/helix/` — the same base the service worker registration checks for. */
 const SITE_URL = "https://topraksv.github.io/helix/";
-/** Relative to `SITE_URL`. Expo copies `assets/` into the export under its own
- *  hashed path, so the card image is served from `public/` instead, where the
- *  name it is published under is the name written here.
- *
- *  JPEG rather than PNG: the card is a wordmark on one flat colour, which PNG
- *  stores at 99 kB and JPEG at 37 kB with nothing visible between them. Those
- *  bytes are deployed and counted by the release budget even though no user of
- *  the app ever downloads them — only a crawler does — so the cheapest honest
- *  encoding is the right one. */
+/** Relative to `SITE_URL`. Served from `public/` because Expo hashes `assets/` names; JPEG because the flat card costs fewer deployed bytes. */
 const OG_IMAGE = "og-cover.jpg";
 
 /** The splash colours in `app.json`: the default palette's ground, which the
@@ -68,19 +60,10 @@ export default function Root({ children }: PropsWithChildren) {
             "default-src 'self'",
             "script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'",
             "style-src 'self' 'unsafe-inline'",
-            // Brand marks: google.com/s2 301-redirects to t*.gstatic.com, so
-            // the redirect target must be allowed too or every logo silently
-            // falls back to the local chip. icons.duckduckgo.com and
-            // icon.horse serve the domains they measured better than Google
-            // (see `src/domain/brand-marks.ts`); both answer directly, with no
-            // redirect to a fourth host.
+            // google.com/s2 redirects to *.gstatic.com, so both are allowed or every logo falls back to the local chip.
             "img-src 'self' data: blob: https://www.google.com https://*.gstatic.com https://icons.duckduckgo.com https://icon.horse",
             "font-src 'self' data:",
-            // The market host is READ from the feed's own module, never spelled
-            // again here. It was a literal until the feed moved: the app then
-            // asked a host the policy did not allow, the browser refused every
-            // request, and the card went permanently empty in the web build
-            // with the reason only visible in a console nobody had open.
+            // Read from the feed's module so the policy cannot drift from the host the app asks.
             `connect-src 'self'${supabaseOrigin ? ` ${supabaseOrigin}` : ""} https://open.er-api.com https://${MARKET_DATA_HOST}`,
             "worker-src 'self' blob:",
             "frame-src 'none'",
@@ -96,11 +79,7 @@ export default function Root({ children }: PropsWithChildren) {
           name="viewport"
           content="width=device-width, initial-scale=1, shrink-to-fit=no, viewport-fit=cover"
         />
-        {/* The title is set here AND by expo-router's <Head> in `_layout.tsx`,
-            which replaces it on hydration with the same string. It is here as
-            well because the export ships one static document, and a crawler
-            that does not run JavaScript — which is most link-preview bots —
-            saw a page with no title at all. */}
+        {/* Also set by `_layout.tsx`'s Head; crawlers that do not run JavaScript read only this static document. */}
         <title>{tr.meta.title}</title>
         {/* Installing to the home screen: the brand kit's icons, with the
             maskable one drawn inside the safe zone a launcher never cuts. */}
@@ -111,17 +90,7 @@ export default function Root({ children }: PropsWithChildren) {
           content={tr.meta.description}
         />
 
-        {/* Everything below describes the page to something that is not a
-            browser: a search index, and the card a link turns into when it is
-            pasted into a message. None of it changes what the app does, and all
-            of it is static — the export is one document, so there is no route
-            whose values would differ.
-
-            `SITE_URL` is written once here and asserted against the link in
-            `README.md` by `tests/repo/release-config.test.ts`, because a canonical
-            URL that has quietly stopped matching where the app lives is worse
-            than none: it tells an index to attribute this page to somewhere
-            else. */}
+        {/* Static metadata for indexes and link previews; `SITE_URL` is asserted against README by tests/repo/release-config.test.ts. */}
         <link rel="canonical" href={SITE_URL} />
         <meta property="og:type" content="website" />
         <meta property="og:site_name" content={tr.app.name} />
@@ -142,47 +111,14 @@ export default function Root({ children }: PropsWithChildren) {
         <meta name="twitter:description" content={tr.meta.social} />
         <meta name="twitter:image" content={`${SITE_URL}${OG_IMAGE}`} />
 
-        {/* Two, one per scheme, so the browser chrome is already the right
-            colour on the first paint instead of after hydration. The app
-            overwrites both through `syncThemeColorMeta` once it knows whether
-            the owner has chosen a theme explicitly — it has to overwrite rather
-            than add, because the HTML spec takes the FIRST matching
-            `theme-color` and a tag appended later would never be read. */}
+        {/* One per scheme so the first paint is right; `_layout.tsx` overwrites them because the first matching tag wins. */}
         <meta name="theme-color" media="(prefers-color-scheme: light)" content={LIGHT_BACKGROUND} />
         <meta name="theme-color" media="(prefers-color-scheme: dark)" content={DARK_BACKGROUND} />
-        {/* Declared twice, deliberately: the meta tag is the documented signal
-            and the CSS rule below is the one `getComputedStyle` can actually
-            confirm — Chromium's own DevTools do not surface the meta tag's
-            effect on the CSSOM, so a future check on this has something to
-            read.
-
-            Without either, a browser whose OS-level dark mode is on and that
-            has "adapt pages that don't declare their own dark mode" enabled
-            (a real, commonly-on Edge/Chrome setting) will repaint an
-            unrelated page's colours with its own heuristic — and it treats an
-            UNDECLARED `color-scheme` as exactly that kind of page.
-            `RootLayoutInner` already sets a precise single value once it
-            knows the signed-in owner's stored preference
-            (`document.documentElement.style.colorScheme`, which — being an
-            inline style on the element itself — always wins over this
-            document-level default once it runs); this is what covers the
-            frames BEFORE that effect can run at all: the multi-tab lock
-            screen, the boot-failure retry screen, and the database-recovery
-            notice, none of which can read a stored preference because the
-            database that holds it is exactly what they are waiting on.
-            `light dark` matches what those screens already render —
-            `bootTheme` in `_layout.tsx` picks its palette from the OS scheme
-            for the same reason — so this is a statement of fact about the
-            markup already being sent, not a second, competing default. */}
+        {/* Meta and CSS both: Chromium's computed style reflects only the CSS rule. Covers the boot screens before `RootLayoutInner` sets the stored scheme. */}
         <meta name="color-scheme" content="light dark" />
         <style dangerouslySetInnerHTML={{ __html: ":root{color-scheme:light dark}" }} />
 
-        {/* One SoftwareApplication, in the category that says what it is for.
-            Serialised from an object rather than written as a string so a typo
-            cannot produce JSON that parses as nothing — an invalid block is
-            skipped in silence, which is the failure mode structured data is
-            famous for. `JSON.stringify` also escapes the content, so no value
-            here can close the script element. */}
+        {/* Serialised from an object: an invalid JSON-LD block is skipped silently, and JSON.stringify escapes the content. */}
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: JSON.stringify(STRUCTURED_DATA) }}
@@ -197,33 +133,10 @@ export default function Root({ children }: PropsWithChildren) {
               "html,body,#root{height:100%;width:100%;max-width:100%;overflow:hidden;overscroll-behavior:none;}" +
               "body{position:fixed;top:0;left:0;right:0;bottom:0;margin:0;}" +
               "*{box-sizing:border-box;}" +
-              // Chrome is not selectable. Dragging to scroll a table or a list
-              // painted a selection across every label it crossed, which reads
-              // as a web page rather than an app and, on mobile web, pops the
-              // copy menu over the thing being dragged. Fields keep their caret;
-              // if a value ever needs to be copyable, it opts back in there and
-              // not by loosening this.
-              // Descendants, not just the container: react-native-web puts its
-              // own `user-select:text` class on every Text it renders, and a
-              // class beats inheritance — so `#root` alone changed nothing that
-              // was actually selectable. `#root *` outranks that class, and
-              // `#root input` outranks `#root *` so fields keep their caret.
+              // Chrome is not selectable; `#root *` outranks react-native-web's per-Text user-select class, and fields opt back in.
               "#root,#root *{-webkit-user-select:none;user-select:none;}" +
               "#root input,#root textarea{-webkit-user-select:text;user-select:text;}" +
-              // Keyboard focus, drawn by the app rather than left to the UA.
-              //
-              // `palette.focus` existed and reached exactly one control — a
-              // text field's active border — so every button, row, card, tab
-              // and table cell fell back to the browser's own ring: a colour
-              // from no palette here, and one that `Card`'s `overflow:hidden`
-              // clipped on the first and last row of every card.
-              //
-              // `:focus-visible` and not `:focus`, so a mouse press never
-              // draws it; the browser is the only party that knows which
-              // device moved focus. The offset is NEGATIVE so the ring is
-              // painted inside its own box and cannot be clipped by an
-              // ancestor that hides overflow. Reduced-transparency and
-              // high-contrast users get the same ring; it is not decorative.
+              // `:focus-visible` so mouse presses draw no ring; negative offset so overflow:hidden ancestors cannot clip it.
               "#root :focus-visible{outline:2px solid var(--helix-focus,#3C6F96);outline-offset:-2px;}" +
               // react-native-web sets `outline:none` on its own pressables in
               // some paths; this restores the ring for the elements that
@@ -231,12 +144,7 @@ export default function Root({ children }: PropsWithChildren) {
               "#root [tabindex]:focus-visible,#root [role=button]:focus-visible,#root [role=tab]:focus-visible," +
               "#root a:focus-visible,#root input:focus-visible,#root textarea:focus-visible," +
               "#root select:focus-visible{outline:2px solid var(--helix-focus,#3C6F96);outline-offset:-2px;}" +
-              // Theme and palette changes cross-fade the real pixels through
-              // the View Transitions API (see `ui/theme-transition.ts`). The
-              // browser default is a 250ms fade; half a second reads as a
-              // deliberate change of light rather than a repaint. Both layers
-              // are drawn at once — the default `-old` on top would darken the
-              // midpoint on a light-to-dark change.
+              // Both layers drawn: the default `-old` on top darkens the midpoint of a light-to-dark change.
               "::view-transition-old(root),::view-transition-new(root){animation-duration:520ms;animation-timing-function:cubic-bezier(0.4,0,0.2,1);mix-blend-mode:normal;}" +
               "@media (prefers-reduced-motion:reduce){::view-transition-old(root),::view-transition-new(root){animation-duration:1ms;}}",
           }}

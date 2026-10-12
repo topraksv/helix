@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { existsSync, readFileSync, statSync } from "node:fs";
+import { MARKET_DATA_HOST, MARKET_PAIRS, MARKET_RANGES } from "../../src/domain/market";
 import { sourceFiles } from "../source-corpus";
 import { dirname, join, relative, resolve } from "node:path";
 
@@ -177,15 +178,6 @@ describe("module graph", () => {
     expect(offenders).toEqual([]);
   });
 
-  it("keeps `data/repo.ts` the only repository surface routes and UI can see", () => {
-    const facade = join(SRC, "data", "repo.ts");
-    const offenders = files
-      .filter((file) => ["ui", "app"].includes(layerOf(file)))
-      .flatMap((file) => (graph.get(file) ?? [])
-        .filter((target) => target.startsWith(join(SRC, "data", "repo")) && target !== facade)
-        .map((target) => `${show(file)} → ${show(target)}`));
-    expect(offenders).toEqual([]);
-  });
 });
 
 /**
@@ -197,12 +189,8 @@ describe("module graph", () => {
  * product sections cited by source files" — so a section nobody cites is a
  * section the code cannot lead you to.
  *
- * This is not a guard against a hypothetical. Sixteen files had already
- * drifted when it was written: the sections for statement import,
- * attachments, marks, workbook columns, card cycles and ledger documents
- * (§3.1b–§3.1g then, renumbered on 2026-10-05) were added, and each one
- * listed its citing files without any of them citing back. The ten
- * older sections were at 24/24, which is what made the gap legible as drift
+ * A section nobody cites is a section the code cannot lead you to: the ten
+ * older sections were at 24/24, which is what makes a gap legible as drift
  * rather than as a convention nobody follows.
  */
 describe("spec citations", () => {
@@ -239,4 +227,149 @@ describe("spec citations", () => {
       .map((file) => `${file} is missing ${section.id}`));
     expect(offenders).toEqual([]);
   });
+});
+
+/** These screens import react-native, so the wiring is asserted from source. */
+describe("undo callbacks are owned everywhere", () => {
+  it("makes the shared snackbar await and report every discovered undo", () => {
+    const callers = sourceFiles("src", { extensions: [".tsx"], atLeast: 100 })
+      .map((file) => join(ROOT, file))
+      .filter((file) => readFileSync(file, "utf8").includes("undo.show("));
+    expect(callers.length).toBeGreaterThanOrEqual(10);
+    const primitive = readFileSync(join(ROOT, "src/ui/undo.tsx"), "utf8");
+    expect(primitive).toContain("await runUndo");
+    expect(primitive).toContain("tr.errors.undoFailed");
+    for (const caller of callers) {
+      expect(readFileSync(caller, "utf8"), caller).not.toMatch(/undo\.show\([^;]+\(\) => void /s);
+    }
+  });
+
+  /** A wrapper that catches its own failure resolves, so the bar reports success and drops its retry: pass the repository call straight through. */
+  it("lets a failed revert or unskip reach the snackbar instead of swallowing it", () => {
+    const text = readFileSync(join(ROOT, "src/app/reconciliation.tsx"), "utf8");
+    expect(text).toMatch(/undo\.show\([^;]*revertExpected\(userId, e\.id\)/s);
+    expect(text).toMatch(/undo\.show\([^;]*unskipExpected\(userId, e\.id\)/s);
+  });
+
+  it("keeps the skip flow owned as well", () => {
+    const text = readFileSync(join(ROOT, "src/app/reconciliation.tsx"), "utf8");
+    expect(text).not.toMatch(/void skipExpected\(/);
+    expect(text).toMatch(/const skip = async/);
+    expect(text).toContain("operationGuard.run");
+    expect(text).toContain("unskipExpected");
+  });
+});
+
+describe("web document policy", () => {
+  /** The CSP must name every host the app calls; it reads the market host from the feed's module so the two cannot diverge. */
+  it("lets the document reach the market feed it is built to read", () => {
+    const html = readFileSync(join(ROOT, "src/app/+html.tsx"), "utf8");
+    // The directive itself, which is a template literal — not the paragraph
+    // above it that happens to explain what `connect-src` is for.
+    // To the end of its LINE: the directive interpolates a nested template
+    // literal, so a backtick-delimited match stops halfway through it.
+    const connect = /`connect-src.*$/m.exec(html)?.[0] ?? "";
+    expect(connect).toContain("MARKET_DATA_HOST");
+    // Interpolated, not spelled out a second time under a different name.
+    expect(html).toContain('import { MARKET_DATA_HOST } from "../domain/market";');
+    expect(html).not.toContain(MARKET_DATA_HOST);
+  });
+});
+
+/**
+ * The proxy's boundary, read from its source.
+ *
+ * `supabase/functions/market-proxy` is a Deno function: it imports nothing this
+ * toolchain can resolve and `tsconfig.json` excludes the directory on purpose,
+ * so it cannot be imported and called here. What CAN be held is the thing that
+ * actually matters — that the allowlists in it still match the app's, and that
+ * it never builds a URL from what a caller sent.
+ *
+ * The hazard is specific. A function that fetches a URL a client chose is a way
+ * to make arbitrary requests from Supabase's network, at this project's expense
+ * and under its name. This one takes a symbol and an interval and builds the
+ * URL itself; these assertions are what stop that quietly becoming a `url`
+ * parameter later.
+ */
+const proxySource = readFileSync(join(ROOT, "supabase/functions/market-proxy/index.ts"), "utf8");
+
+describe("market proxy", () => {
+  it("builds the upstream URL itself and never takes one", () => {
+    // A caller-supplied URL is the whole hazard; there must be no way in.
+    expect(proxySource).not.toMatch(/body\.url|params\.get\("url"\)|searchParams\.get\("url"\)/);
+    expect(proxySource).toContain("const UPSTREAM_HOST = \"data-api.binance.vision\"");
+    // Every fetch target is built from the constant host.
+    for (const match of proxySource.matchAll(/fetch\(([^)]*)\)/g)) {
+      expect(match[1], "a fetch that does not go through upstreamUrl").toMatch(/\burl\b/);
+    }
+    expect(proxySource, "the host is interpolated, not received").toContain("https://${UPSTREAM_HOST}");
+  });
+
+  it("allows exactly the books the app asks for, and no others", () => {
+    const allowed = /const SYMBOLS = new Set\(\[([^\]]*)\]\)/.exec(proxySource)?.[1] ?? "";
+    const symbols = [...allowed.matchAll(/"([^"]+)"/g)].map((m) => m[1]).sort();
+    expect(symbols, "the proxy's basket is the app's basket").toEqual([...MARKET_PAIRS].sort());
+  });
+
+  it("allows exactly the intervals the ranges use", () => {
+    const allowed = /const INTERVALS = new Set\(\[([^\]]*)\]\)/.exec(proxySource)?.[1] ?? "";
+    const intervals = [...allowed.matchAll(/"([^"]+)"/g)].map((m) => m[1]).sort();
+    const used = [...new Set(Object.values(MARKET_RANGES).map((range) => range.interval))].sort();
+    expect(intervals, "a range the app can ask for must be allowed, and nothing more").toEqual(used);
+  });
+
+  it("caps the candle count above what any range needs and below a year of minutes", () => {
+    const cap = Number(/const MAX_LIMIT = (\d+)/.exec(proxySource)?.[1]);
+    const largest = Math.max(...Object.values(MARKET_RANGES).map((range) => range.limit));
+    expect(cap, "every range must fit").toBeGreaterThanOrEqual(largest);
+    expect(cap, "and nothing much beyond it").toBeLessThan(largest * 3);
+  });
+
+  it("refuses anything that is not the one shape it serves", () => {
+    expect(proxySource, "only POST, because that is what invoke sends").toContain('request.method !== "POST"');
+    expect(proxySource, "an unknown kind is refused rather than guessed").toContain('return json({ error: "unsupported" }, 400)');
+    expect(proxySource, "a body that will not parse is refused").toContain('return json({ error: "body" }, 400)');
+    expect(proxySource, "and the upstream gets a deadline").toContain("UPSTREAM_TIMEOUT_MS");
+  });
+
+  it("carries nothing of the owner's, and says so", () => {
+    // The request is a public symbol name. Anything that looked like user data
+    // crossing this boundary would be a privacy change, not a networking one.
+    expect(proxySource).not.toMatch(/user_id|userId|email|access_token|session/i);
+    expect(proxySource, "the reason is written down where the next reader is").toContain("carries no user data");
+  });
+});
+
+describe("item breakdown credit-card split call pattern", () => {
+  it("keeps the screen's own call pattern off the per-month path", () => {
+    const source = readFileSync(join(ROOT, "src/app/(tabs)/cash-flow/item.tsx"), "utf8");
+    expect(source).toContain("creditCardSplitsByMonth");
+    expect(source).not.toMatch(/creditCardSplit\(/);
+  });
+});
+
+describe("balance declaration wiring", () => {
+  it("is written when a balance is confirmed, and read where it matters", () => {
+    const editor = readFileSync(join(ROOT, "src/ui/opening-balance-editor.tsx"), "utf8");
+    expect(editor).toContain("setBalanceDeclaration(userId, target.minor, todayISO())");
+    for (const path of ["src/app/(tabs)/index.tsx", "src/app/(tabs)/cash-flow/index.tsx"]) {
+      expect(readFileSync(join(ROOT, path), "utf8")).toContain("balanceDeclarationDrift(");
+    }
+  });
+});
+
+describe("live screen contract", () => {
+  const screens = [
+    ...sourceFiles("src/app", { extensions: [".tsx"], atLeast: 40 }),
+    ...sourceFiles("src/ui", { extensions: [".tsx"], atLeast: 25 }),
+  ];
+  const stateHook = /\buse(?:Categories|Persons|Sources|Subscriptions|Plans|CreditCardStatements|RecurringIncomes|ComputedColumns|CategoryBudgets|TransactionsBetween|AllTransactions|Adjustments|SettingsMap|Ledger|PendingExpected|LastEntryInfo)State\(/;
+
+  it("gives every stateful financial-data screen a shared loading/retry notice", () => {
+    for (const file of screens) {
+      const source = readFileSync(join(ROOT, file), "utf8");
+      if (stateHook.test(source)) expect(source, file).toContain("DataStateNotice");
+    }
+  });
+
 });

@@ -123,10 +123,6 @@ function TourArtwork({ step, icon: IconCmp }: { step: number; icon: LucideIcon }
           </View>
         </View>
       ) : step === 5 ? (
-        // Investments: holdings of different sizes and a total that moved.
-        // This used to fall through to the two-device frame below, so the
-        // portfolio slide and the sync slide were the same drawing with a
-        // different badge on it.
         <View style={{ flexDirection: "row", alignItems: "flex-end", gap: 9 }}>
           {[{ h: 30, tone: palette.secondary }, { h: 52, tone: palette.primary }, { h: 40, tone: palette.tertiary }, { h: 66, tone: palette.primary }].map(({ h, tone }, index) => (
             <View key={index} style={{ alignItems: "center", gap: 5 }}>
@@ -165,49 +161,9 @@ function TourArtwork({ step, icon: IconCmp }: { step: number; icon: LucideIcon }
   );
 }
 
-/** Mounts on the dashboard; shows itself only on the first visit. */
-/**
- * The welcome tour.
- *
- * It opens once, straight after onboarding, and the timing was questioned in
- * an audit: every figure on the screen behind it is ₺0,00 at that moment, so
- * it appears to explain a balance nobody has yet.
- *
- * Holding it until the first entry was built and REVERTED, and the reason is
- * worth keeping. The tour is a centred modal with its own illustrations — it
- * never pointed at the screen behind it, which is dimmed and irrelevant to
- * what it says. So the empty account costs it nothing. What delaying it DID
- * cost was real: a React Native `Modal` is app-global, the tab navigator keeps
- * the dashboard mounted, and the tour therefore appeared over Mali Tablo the
- * instant someone saved their first transaction there — interrupting the task
- * that had just earned it. Gating on `useScreenFocus` fixed that and left a
- * subtler version of the same trade: a tour that arrives after a task instead
- * of before one.
- *
- * Straight after onboarding is the one moment the reader is not in the middle
- * of anything. The real defect the audit found — seven steps with no way back
- * — is fixed in `TourModal`.
- */
+/** Opens once, straight after onboarding, the one moment the reader is not mid-task. */
 export function FirstRunTour() {
-  /**
-   * Whose first run this is.
-   *
-   * The gate used to be a device-local flag alone, and a flag on the device
-   * cannot answer a question about the ACCOUNT: a workspace that already has
-   * years of records in it still looks brand new to a browser profile that has
-   * never held the key — a second browser, a private window, cleared site
-   * data, a new phone. Someone who has been using Helix for months was being
-   * introduced to it again, which is the report this fixes.
-   *
-   * `isNewSignup` is true only for the session that CREATED the account, and
-   * bootstrap and sign-in both clear it, so signing in to an existing account
-   * can never satisfy it however empty this device happens to be. A workspace
-   * with no cloud account behind it has no sign-up to key on and its first run
-   * is genuinely the device's first run, so there the flag still decides.
-   *
-   * The flag stays as the "already seen" half, so dismissing it is
-   * remembered. What it no longer does is decide on its own.
-   */
+  // Whose first run: `isNewSignup` for a cloud account, the device flag only without a cloud; the flag remembers dismissal.
   const isNewSignup = useSession((state) => state.isNewSignup);
   const firstRunOfAnAccount = isNewSignup || !isSupabaseConfigured;
   const [visible, setVisible] = useState(false);
@@ -232,7 +188,7 @@ export function TourModal({ onClose }: { onClose: () => void }) {
   const last = step === SLIDES.length - 1;
 
   return (
-    <Modal transparent animationType={modalAnimationType(reducedMotion)} visible onRequestClose={onClose}>
+    <Modal transparent animationType={modalAnimationType(reducedMotion)} visible onRequestClose={onClose} aria-label={tr.a11y.tourStep(step + 1, SLIDES.length, slide.title)}>
       <ScrollView
         style={{ flex: 1, backgroundColor: palette.scrim }}
         contentContainerStyle={{ flexGrow: 1, alignItems: "center", justifyContent: "center", padding: spacing.lg }}
@@ -268,9 +224,9 @@ export function TourModal({ onClose }: { onClose: () => void }) {
                 accessibilityLabel={tr.a11y.tourStep(step + 1, SLIDES.length, slide.title)}
                 tabIndex={-1}
               >
-                <Text style={[type.heading, { color: palette.text, textAlign: "left", fontSize: type.heading.fontSize }]}>{slide.title}</Text>
+                <Text style={[type.heading, { color: palette.text, textAlign: "left" }]}>{slide.title}</Text>
               </View>
-              <Text style={[type.body, { color: palette.textSecondary, textAlign: "left", marginTop: spacing.sm, lineHeight: 21 }]}>
+              <Text style={[type.body, { color: palette.textSecondary, textAlign: "left", marginTop: spacing.sm }]}>
                 {slide.body}
               </Text>
             </View>
@@ -294,10 +250,7 @@ export function TourModal({ onClose }: { onClose: () => void }) {
               </Row>
             </Row>
 
-            {/* Seven steps and no way back. Skimming one and wanting to
-                re-read it meant closing the tour and starting again from the
-                first slide, and the dots that show the position are not
-                pressable. "Geri" appears only where it can do something. */}
+            {/* "Geri" appears only where it can do something. */}
             <Row gap={spacing.sm}>
               {step > 0 ? (
                 <View style={{ flex: 0.42 }}>
@@ -312,10 +265,7 @@ export function TourModal({ onClose }: { onClose: () => void }) {
               <View style={{ flex: 1 }}>
                 <Button
                   label={last ? tr.tour.start : tr.tour.next}
-                  onPress={() => {
-                    if (step >= SLIDES.length - 1) onClose();
-                    else setStep((s) => Math.min(s + 1, SLIDES.length - 1));
-                  }}
+                  onPress={() => (last ? onClose() : setStep((s) => Math.min(s + 1, SLIDES.length - 1)))}
                 />
               </View>
             </Row>

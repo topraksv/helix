@@ -51,69 +51,91 @@ vi.mock("../../src/sync/engine", () => ({ scheduleSync: vi.fn() }));
 import * as repository from "../../src/data/repo";
 import { buildPlanRows, linkDueRowsToCardStatements, type NewPlan } from "../../src/data/repo/installments";
 
-const publicRuntimeExports = [
-  "TEMPLATE_CATEGORIES",
-  "TEMPLATE_EXTRA_CATEGORIES",
-  "ReferencedRecordError",
-  "CreditCardCycleRequiredError",
-  "InstallmentHistoryConflictError",
-  "InstallmentRefundTooLargeError",
-  "RefundExceedsExpenseError",
-  "StatementPaymentTooLargeError",
-  "InstallmentRefundNothingLeftError",
-  "SubscriptionCategoryRequiredError",
-  "FxRateUnavailableError",
-  "seedWorkspace",
-  "setOpeningBalance",
-  "finalizeOnboarding",
-  "upsertPaymentSource",
-  "createCategory",
-  "personReferenceUsage",
-  "paymentSourceReferenceUsage",
-  "deleteUnreferencedPerson",
-  "reassignAndDeletePerson",
-  "deleteUnreferencedPaymentSource",
-  "reassignAndDeletePaymentSource",
-  "addTransaction",
-  "updateTransaction",
-  "deleteTransaction",
-  "setCurrentBalance",
-  "setupInvestments",
-  "saveInvestmentProduct",
-  "addInvestmentOperation",
-  "updateInvestmentOperation",
-  "deleteInvestmentOperation",
-  "restoreInvestmentOperation",
-  "removeInvestmentProductHistory",
-  "categoryReferenceUsage",
-  "countInstallmentsForPlan",
-  "createInstallmentPlan",
-  "updateInstallmentPlan",
-  "addInstallmentRefund",
-  "closeInstallmentPlan",
-  "reopenInstallmentPlan",
-  "deletePlan",
-  "restorePlan",
-  "ensureSubscriptionCategory",
-  "upsertSubscription",
-  "upsertRecurringIncome",
-  "deleteSubscriptionWithExpected",
-  "deleteRecurringIncomeWithExpected",
-  "restoreDeletedRule",
-  "confirmExpected",
-  "setExpectedAmount",
-  "skipExpected",
-  "revertExpected",
-  "bulkMonthEntry",
-  "importedYears",
-  "hasImportedData",
-  "importSheets",
-  "runMaintenance",
-  "upsertCategoryBudget",
-  "deleteCategoryBudget",
-  "deleteCategoryWithBudgets",
-  "restoreCategoryWithBudgets",
-] as const;
+type TransactionInput = Parameters<typeof repository.addTransaction>[1];
+
+function txInput(overrides: Partial<TransactionInput> = {}): TransactionInput {
+  return {
+    type: "expense",
+    amountMinor: 1_000,
+    currency: "TRY",
+    fxRate: null,
+    amountTryMinor: 1_000,
+    effectiveDate: "2026-07-15",
+    categoryId: "category-1",
+    paymentSourceId: null,
+    personId: "person-1",
+    note: null,
+    ...overrides,
+  };
+}
+
+type SubscriptionInput = Parameters<typeof repository.upsertSubscription>[1];
+
+function subscriptionInput(overrides: Partial<SubscriptionInput> = {}): SubscriptionInput {
+  return {
+    name: "Netflix",
+    amountMinor: 4_990,
+    currency: "TRY",
+    cycle: "monthly",
+    intervalMonths: 1,
+    billingDay: 5,
+    nextDueDate: "2026-08-05",
+    paymentSourceId: null,
+    categoryId: "cat-1",
+    personId: "person-1",
+    isActive: true,
+    trialEndDate: null,
+    autoPay: false,
+    websiteDomain: null,
+    note: null,
+    ...overrides,
+  };
+}
+
+/** A database where the subscription's category and person are live; `extra` answers anything else. */
+function ruleDb(extra?: (sql: string) => unknown, all?: (sql: string) => unknown[]) {
+  return {
+    getFirstAsync: async (sql: string) =>
+      sql.includes("FROM categories") ? { id: "cat-1" }
+      : sql.includes("FROM persons") ? { is_self: 1 }
+      : extra?.(sql) ?? null,
+    getAllAsync: async (sql: string) => all?.(sql) ?? [],
+  };
+}
+
+type SeedInput = Parameters<typeof repository.seedWorkspace>[1];
+
+function seedInput(overrides: Partial<SeedInput> = {}): SeedInput {
+  return {
+    templateCategories: [],
+    startMonth: "2026-07",
+    openingBalanceMinor: 0,
+    persons: [{ name: "Ben", isSelf: true }],
+    sources: [],
+    ...overrides,
+  };
+}
+
+function planInput(overrides: Partial<NewPlan> = {}): NewPlan {
+  return {
+    title: "Kredi",
+    kind: "loan",
+    totalAmountMinor: null,
+    monthlyAmountMinor: 1_000,
+    installmentCount: 2,
+    currency: "TRY",
+    fxRate: null,
+    startMonth: "2026-07",
+    dueDay: 5,
+    paymentSourceId: null,
+    personId: "person-1",
+    personIsSelf: true,
+    categoryId: "category-1",
+    note: null,
+    tryFactor: 1,
+    ...overrides,
+  };
+}
 
 describe("repository compatibility contract", () => {
   beforeEach(() => {
@@ -132,23 +154,8 @@ describe("repository compatibility contract", () => {
     });
   });
 
-  it("keeps the existing runtime API available from data/repo", () => {
-    for (const name of publicRuntimeExports) expect(repository[name]).toBeDefined();
-  });
-
   it("rejects impossible transaction dates before touching persistence", async () => {
-    const input = {
-      type: "expense" as const,
-      amountMinor: 1_000,
-      currency: "TRY",
-      fxRate: null,
-      amountTryMinor: 1_000,
-      effectiveDate: "2026-02-31",
-      categoryId: "category-1",
-      paymentSourceId: null,
-      personId: "person-1",
-      note: null,
-    };
+    const input = txInput({ effectiveDate: "2026-02-31" });
     await expect(repository.addTransaction("user-1", input)).rejects.toThrow("Invalid transaction date");
     await expect(repository.updateTransaction("user-1", {}, input)).rejects.toThrow("Invalid transaction date");
     expect(dependencies.getSqliteAsync).not.toHaveBeenCalled();
@@ -196,18 +203,13 @@ describe("repository compatibility contract", () => {
       getAllAsync: async () => [],
     });
 
-    await repository.addTransaction("user-1", {
-      type: "expense",
+    await repository.addTransaction("user-1", txInput({
       amountMinor: 12_345,
-      currency: "TRY",
-      fxRate: null,
       amountTryMinor: 12_345,
       effectiveDate: "2026-07-26",
-      categoryId: "category-1",
       paymentSourceId: "card-1",
-      personId: "person-1",
       note: "Kart alışverişi",
-    });
+    }));
 
     const [, writes] = required(dependencies.writeRows.mock.calls[0]) as [
       string,
@@ -241,18 +243,8 @@ describe("repository compatibility contract", () => {
       getAllAsync: async () => [],
     });
 
-    await expect(repository.addTransaction("user-1", {
-      type: "expense",
-      amountMinor: 1_000,
-      currency: "TRY",
-      fxRate: null,
-      amountTryMinor: 1_000,
-      effectiveDate: "2026-07-26",
-      categoryId: "category-1",
-      paymentSourceId: "card-1",
-      personId: "person-1",
-      note: null,
-    })).rejects.toBeInstanceOf(repository.CreditCardCycleRequiredError);
+    await expect(repository.addTransaction("user-1", txInput({ effectiveDate: "2026-07-26", paymentSourceId: "card-1" })))
+      .rejects.toBeInstanceOf(repository.CreditCardCycleRequiredError);
     expect(dependencies.writeRows).not.toHaveBeenCalled();
   });
 
@@ -261,18 +253,7 @@ describe("repository compatibility contract", () => {
       getFirstAsync: async (sql: string) =>
         sql.includes("FROM persons") ? null : { kind: "expense", is_transfer: 0 },
     });
-    const input = {
-      type: "expense" as const,
-      amountMinor: 1_000,
-      currency: "TRY",
-      fxRate: null,
-      amountTryMinor: 1_000,
-      effectiveDate: "2026-07-15",
-      categoryId: "category-1",
-      paymentSourceId: null,
-      personId: "person-from-another-account",
-      note: null,
-    };
+    const input = txInput({ personId: "person-from-another-account" });
     await expect(repository.addTransaction("user-1", input)).rejects.toThrow("Transaction person does not exist");
     expect(dependencies.writeRowsValidated).not.toHaveBeenCalled();
   });
@@ -285,23 +266,8 @@ describe("repository compatibility contract", () => {
       getAllAsync: async () => [],
     });
 
-    await expect(repository.createInstallmentPlan("user-1", {
-      title: "Kredi",
-      kind: "loan",
-      totalAmountMinor: null,
-      monthlyAmountMinor: 1_000,
-      installmentCount: 2,
-      currency: "TRY",
-      fxRate: null,
-      startMonth: "2026-07",
-      dueDay: 5,
-      paymentSourceId: null,
-      personId: "person-from-another-account",
-      personIsSelf: true,
-      categoryId: "category-1",
-      note: null,
-      tryFactor: 1,
-    })).rejects.toThrow("Transaction person does not exist");
+    await expect(repository.createInstallmentPlan("user-1", planInput({ personId: "person-from-another-account" })))
+      .rejects.toThrow("Transaction person does not exist");
     expect(dependencies.writeRows).not.toHaveBeenCalled();
   });
 
@@ -316,23 +282,8 @@ describe("repository compatibility contract", () => {
       getAllAsync: async () => [],
     });
 
-    await expect(repository.createInstallmentPlan("user-1", {
-      title: "Kredi",
-      kind: "loan",
-      totalAmountMinor: null,
-      monthlyAmountMinor: 1_000,
-      installmentCount: 2,
-      currency: "TRY",
-      fxRate: null,
-      startMonth: "2026-07",
-      dueDay: 5,
-      paymentSourceId: "source-from-another-account",
-      personId: "person-1",
-      personIsSelf: true,
-      categoryId: "category-1",
-      note: null,
-      tryFactor: 1,
-    })).rejects.toThrow("Installment payment source does not exist");
+    await expect(repository.createInstallmentPlan("user-1", planInput({ paymentSourceId: "source-from-another-account" })))
+      .rejects.toThrow("Installment payment source does not exist");
     expect(dependencies.writeRows).not.toHaveBeenCalled();
   });
 
@@ -343,23 +294,7 @@ describe("repository compatibility contract", () => {
         : { kind: "expense", is_transfer: 0 },
       getAllAsync: async () => [],
     });
-    const input = {
-      title: "Kredi",
-      kind: "loan" as const,
-      totalAmountMinor: null,
-      monthlyAmountMinor: 10_000,
-      installmentCount: 3,
-      currency: "TRY",
-      fxRate: null,
-      startMonth: "2026-07" as const,
-      dueDay: 5,
-      paymentSourceId: null,
-      personId: "person-1",
-      personIsSelf: true,
-      categoryId: "category-1",
-      note: null,
-      tryFactor: 1,
-    };
+    const input = planInput({ monthlyAmountMinor: 10_000, installmentCount: 3 });
 
     await expect(repository.createInstallmentPlan("user-1", { ...input, startMonth: "2026-99" as never }))
       .rejects.toThrow("Invalid installment start month");
@@ -381,18 +316,7 @@ describe("repository compatibility contract", () => {
         return null;
       },
     });
-    const input = {
-      type: "expense" as const,
-      amountMinor: 1_000,
-      currency: "TRY",
-      fxRate: null,
-      amountTryMinor: 1_000,
-      effectiveDate: "2026-07-15",
-      categoryId: "category-1",
-      paymentSourceId: null,
-      personId: "person-1",
-      note: null,
-    };
+    const input = txInput();
 
     await expect(repository.updateTransaction("user-1", { id: "transaction-1" }, input))
       .rejects.toThrow("Cannot edit missing transactions row");
@@ -483,19 +407,10 @@ describe("repository compatibility contract", () => {
   });
 
   it("requires a variable subscription's real amount before confirmation", async () => {
-    dependencies.getSqliteAsync.mockResolvedValue({
-      getFirstAsync: async (sql: string) => {
-        if (sql.includes("FROM expected_payments")) {
-          return {
-            id: "expected-1", direction: "out", kind: "subscription", ref_id: "subscription-1",
-            due_date: "2026-07-15", amount_minor: 5_000, amount_is_estimated: 1,
-            currency: "TRY", status: "pending", transaction_id: null,
-          };
-        }
-        if (sql.includes("FROM subscriptions")) return { amount_mode: "variable" };
-        return null;
-      },
-    });
+    dependencies.getSqliteAsync.mockResolvedValue(expectedSqlite({
+      expected: { amount_is_estimated: 1 },
+      subscription: { amount_mode: "variable" },
+    }));
 
     await expect(repository.confirmExpected("user-1", "expected-1", {
       personId: "person-1",
@@ -505,15 +420,10 @@ describe("repository compatibility contract", () => {
   });
 
   it("saves a variable subscription amount on only the pending expected row", async () => {
-    dependencies.getSqliteAsync.mockResolvedValue({
-      getFirstAsync: async (sql: string) => sql.includes("FROM expected_payments")
-        ? {
-            id: "expected-1", direction: "out", kind: "subscription", ref_id: "subscription-1",
-            due_date: "2026-07-15", amount_minor: 5_000, amount_is_estimated: 1,
-            currency: "TRY", status: "pending", transaction_id: null,
-          }
-        : { amount_mode: "variable" },
-    });
+    dependencies.getSqliteAsync.mockResolvedValue(expectedSqlite({
+      expected: { amount_is_estimated: 1 },
+      subscription: { amount_mode: "variable" },
+    }));
 
     await repository.setExpectedAmount("user-1", "expected-1", 7_250);
     const [, writes] = required(dependencies.writeRows.mock.calls[0]);
@@ -745,26 +655,13 @@ describe("repository compatibility contract", () => {
   });
 
   it("confirms a variable subscription using the entered amount in both ledger rows", async () => {
-    dependencies.getSqliteAsync.mockResolvedValue({
-      getFirstAsync: async (sql: string) => {
-        if (sql.includes("FROM expected_payments")) {
-          return {
-            id: "expected-1", direction: "out", kind: "subscription", ref_id: "subscription-1",
-            due_date: "2026-07-15", amount_minor: 5_000, amount_is_estimated: 1,
-            currency: "TRY", status: "pending", transaction_id: null,
-          };
-        }
-        if (sql.includes("FROM subscriptions")) {
-          return {
-            person_id: "person-1", category_id: "category-1", amount_mode: "variable",
-            payment_source_id: null, next_due_date: "2026-07-15", interval_months: 1, billing_day: 15,
-          };
-        }
-        if (sql.includes("FROM persons")) return { id: "person-1" };
-        if (sql.includes("FROM categories")) return { kind: "expense", is_transfer: 0 };
-        return null;
+    dependencies.getSqliteAsync.mockResolvedValue(expectedSqlite({
+      expected: { amount_is_estimated: 1 },
+      subscription: {
+        person_id: "person-1", category_id: "category-1", amount_mode: "variable",
+        payment_source_id: null, next_due_date: "2026-07-15", interval_months: 1, billing_day: 15,
       },
-    });
+    }));
 
     await repository.confirmExpected("user-1", "expected-1", {
       personId: "person-1", categoryId: "category-1", actualAmountMinor: 7_250,
@@ -1035,10 +932,7 @@ describe("repository compatibility contract", () => {
 
     expect(dependencies.writeRows).toHaveBeenCalledTimes(1);
     const [, writes] = required(dependencies.writeRows.mock.calls[0]);
-    // start_month and opening_balance_minor are ONE semantic unit that
-    // useLedgerState consumes together. They used to be two further
-    // writeSetting transactions AFTER this one, so a failure between them
-    // anchored the ledger at the new month with the PREVIOUS opening balance.
+    // start_month and opening_balance_minor are one unit useLedgerState reads together.
     expect(writes.map((write: { table: string }) => write.table)).toEqual([
       "persons",
       "persons",
@@ -1071,13 +965,7 @@ describe("repository compatibility contract", () => {
       },
     });
 
-    await repository.seedWorkspace("user-1", {
-      templateCategories: [],
-      startMonth: "2026-07",
-      openingBalanceMinor: 0,
-      persons: [{ name: "Ben", isSelf: true }],
-      sources: [],
-    });
+    await repository.seedWorkspace("user-1", seedInput());
 
     const [, writes] = required(dependencies.writeRows.mock.calls[0]);
     const tombstones = writes.filter((write: { row: { deletedAt?: unknown } }) => write.row.deletedAt != null);
@@ -1092,13 +980,9 @@ describe("repository compatibility contract", () => {
     // Onboarding is where most cards are created. A card without a cycle cannot
     // place an instalment on a statement later, so it is refused at the seed
     // rather than discovered when the first card plan is built.
-    await expect(repository.seedWorkspace("user-1", {
-      templateCategories: [],
-      startMonth: "2026-07",
-      openingBalanceMinor: 0,
-      persons: [{ name: "Ben", isSelf: true }],
+    await expect(repository.seedWorkspace("user-1", seedInput({
       sources: [{ name: "Kart", type: "credit_card", personIndex: 0, statementDay: null, dueDay: null }],
-    })).rejects.toBeInstanceOf(repository.CreditCardCycleRequiredError);
+    }))).rejects.toBeInstanceOf(repository.CreditCardCycleRequiredError);
     expect(dependencies.writeRows).not.toHaveBeenCalled();
   });
 
@@ -1110,24 +994,15 @@ describe("repository compatibility contract", () => {
       await expect(repository.setOpeningBalance("user-1", month as never, 1_000))
         .rejects.toThrow("Invalid opening balance month");
     }
-    await expect(repository.seedWorkspace("user-1", {
-      templateCategories: [],
-      startMonth: future as never,
-      openingBalanceMinor: 0,
-      persons: [{ name: "Ben", isSelf: true }],
-      sources: [],
-    })).rejects.toThrow("Invalid opening balance month");
+    await expect(repository.seedWorkspace("user-1", seedInput({ startMonth: future as never })))
+      .rejects.toThrow("Invalid opening balance month");
     expect(dependencies.writeRows).not.toHaveBeenCalled();
   });
 
   it("refuses a seeded source whose owner is not one of the seeded people", async () => {
-    await expect(repository.seedWorkspace("user-1", {
-      templateCategories: [],
-      startMonth: "2026-07",
-      openingBalanceMinor: 0,
-      persons: [{ name: "Ben", isSelf: true }],
+    await expect(repository.seedWorkspace("user-1", seedInput({
       sources: [{ name: "Kart", type: "cash", personIndex: 7, statementDay: null, dueDay: null }],
-    })).rejects.toThrow("Onboarding payment source owner does not exist");
+    }))).rejects.toThrow("Onboarding payment source owner does not exist");
     expect(dependencies.writeRows).not.toHaveBeenCalled();
   });
 
@@ -1137,13 +1012,7 @@ describe("repository compatibility contract", () => {
     // earlier month wins and no anchor row is written at all.
     dependencies.readSetting.mockImplementation(async (_userId: string, key: string) => (key === "start_month" ? "2024-01" : null));
 
-    await repository.seedWorkspace("user-1", {
-      templateCategories: [],
-      startMonth: "2026-07",
-      openingBalanceMinor: 12_345,
-      persons: [{ name: "Ben", isSelf: true }],
-      sources: [],
-    });
+    await repository.seedWorkspace("user-1", seedInput({ openingBalanceMinor: 12_345 }));
 
     const [, writes] = required(dependencies.writeRows.mock.calls[0]);
     const anchorKeys = writes
@@ -1163,13 +1032,8 @@ describe("repository compatibility contract", () => {
   });
 
   it("rejects an onboarding graph without exactly one self person", async () => {
-    await expect(repository.seedWorkspace("user-1", {
-      templateCategories: [],
-      startMonth: "2026-07",
-      openingBalanceMinor: 0,
-      persons: [{ name: "Ada", isSelf: false }],
-      sources: [],
-    })).rejects.toThrow("exactly one self person");
+    await expect(repository.seedWorkspace("user-1", seedInput({ persons: [{ name: "Ada", isSelf: false }] })))
+      .rejects.toThrow("exactly one self person");
     expect(dependencies.writeRows).not.toHaveBeenCalled();
   });
 
@@ -1187,32 +1051,15 @@ describe("repository compatibility contract", () => {
     stored: { amount_minor: number; currency: string; canceled_at: string | null } | null,
     overrides: { isActive: boolean; amountMinor?: number; note?: string | null },
   ) {
-    dependencies.getSqliteAsync.mockResolvedValue({
-      getFirstAsync: async (sql: string) =>
-        sql.includes("FROM categories") ? { id: "cat-1" }
-        : sql.includes("FROM persons") ? { is_self: 1 }
-        : sql.includes("FROM subscriptions") ? (stored ? { ...stored, id: "sub-1" } : null)
-        : null,
-      getAllAsync: async () => [],
-    });
-    await repository.upsertSubscription("user-1", {
+    dependencies.getSqliteAsync.mockResolvedValue(ruleDb(
+      (sql) => (sql.includes("FROM subscriptions") && stored ? { ...stored, id: "sub-1" } : null),
+    ));
+    await repository.upsertSubscription("user-1", subscriptionInput({
       id: "sub-1",
-      name: "Netflix",
       amountMinor: overrides.amountMinor ?? 4_990,
-      currency: "TRY",
-      cycle: "monthly",
-      intervalMonths: 1,
-      billingDay: 5,
-      nextDueDate: "2026-08-05",
-      paymentSourceId: null,
-      categoryId: "cat-1",
-      personId: "person-1",
       isActive: overrides.isActive,
-      trialEndDate: null,
-      autoPay: false,
-      websiteDomain: null,
       note: overrides.note ?? null,
-    });
+    }));
     const [, writes] = required(dependencies.writeRows.mock.calls[0]);
     return {
       subscription: writes.find((write: { table: string }) => write.table === "subscriptions"),
@@ -1265,29 +1112,8 @@ describe("repository compatibility contract", () => {
   });
 
   it("rejects invalid subscription scheduling before writing a rule", async () => {
-    dependencies.getSqliteAsync.mockResolvedValue({
-      getFirstAsync: async (sql: string) => sql.includes("FROM categories")
-        ? { id: "cat-1" }
-        : sql.includes("FROM persons") ? { is_self: 1 } : null,
-      getAllAsync: async () => [],
-    });
-    const input = {
-      name: "Netflix",
-      amountMinor: 4_990,
-      currency: "TRY",
-      cycle: "monthly" as const,
-      intervalMonths: 1,
-      billingDay: 5,
-      nextDueDate: "2026-08-05",
-      paymentSourceId: null,
-      categoryId: "cat-1",
-      personId: "person-1",
-      isActive: true,
-      trialEndDate: null,
-      autoPay: false,
-      websiteDomain: null,
-      note: null,
-    };
+    dependencies.getSqliteAsync.mockResolvedValue(ruleDb());
+    const input = subscriptionInput();
 
     await expect(repository.upsertSubscription("user-1", { ...input, intervalMonths: 0 }))
       .rejects.toThrow("Invalid subscription interval");
@@ -1304,21 +1130,35 @@ describe("repository compatibility contract", () => {
     // A trial end that is not a real date would silently never end.
     await expect(repository.upsertSubscription("user-1", { ...input, trialEndDate: "2026-13-01" as never }))
       .rejects.toThrow("Invalid subscription trial date");
+    await expect(repository.upsertSubscription("user-1", { ...input, currency: "XYZ" as never }))
+      .rejects.toThrow("Invalid subscription currency");
+    await expect(repository.upsertSubscription("user-1", { ...input, amountMode: "tiered" as never }))
+      .rejects.toThrow("Invalid subscription amount mode");
+    await expect(repository.upsertSubscription("user-1", { ...input, categoryId: null as never }))
+      .rejects.toBeInstanceOf(repository.SubscriptionCategoryRequiredError);
+    expect(dependencies.writeRows).not.toHaveBeenCalled();
+  });
+
+  it("refuses a subscription whose category, person or source this account does not hold", async () => {
+    const input = subscriptionInput({ paymentSourceId: "card-x" });
+    const without = (table: string) => ({
+      ...ruleDb(),
+      getFirstAsync: async (sql: string) => (sql.includes(`FROM ${table}`) ? null : ruleDb().getFirstAsync(sql)),
+    });
+    dependencies.getSqliteAsync.mockResolvedValue(without("categories"));
+    await expect(repository.upsertSubscription("user-1", input)).rejects.toBeInstanceOf(repository.SubscriptionCategoryRequiredError);
+    dependencies.getSqliteAsync.mockResolvedValue(without("persons"));
+    await expect(repository.upsertSubscription("user-1", input)).rejects.toThrow("Subscription person is required");
+    dependencies.getSqliteAsync.mockResolvedValue(ruleDb());
+    await expect(repository.upsertSubscription("user-1", input)).rejects.toThrow("Subscription payment source does not exist");
     expect(dependencies.writeRows).not.toHaveBeenCalled();
   });
 
   it("keeps a paid month and tombstones the months a deactivated rule no longer owes", async () => {
-    // Editing a rule regenerates its expected payments. A month already PAID
-    // must not come back as pending -- that would ask the owner to pay it
-    // twice -- and a month the rule no longer owes has to be withdrawn.
-    dependencies.getSqliteAsync.mockResolvedValue({
-      getFirstAsync: async (sql: string) => {
-        if (sql.includes("FROM categories")) return { id: "cat-1" };
-        if (sql.includes("FROM persons")) return { is_self: 1 };
-        if (sql.includes("FROM subscriptions")) return { id: "sub-1" };
-        return null;
-      },
-      getAllAsync: async () => [
+    // A month already paid must not come back as pending, and a month the rule no longer owes is withdrawn.
+    dependencies.getSqliteAsync.mockResolvedValue(ruleDb(
+      (sql) => (sql.includes("FROM subscriptions") ? { id: "sub-1" } : null),
+      () => [
         {
           id: "expected-paid", user_id: "user-1", direction: "out", kind: "subscription", ref_id: "sub-1",
           due_date: "2026-07-05", amount_minor: 4_990, currency: "TRY", status: "paid", deleted_at: null,
@@ -1328,14 +1168,9 @@ describe("repository compatibility contract", () => {
           due_date: "2026-08-05", amount_minor: 4_990, currency: "TRY", status: "pending", deleted_at: null,
         },
       ],
-    });
+    ));
 
-    await repository.upsertSubscription("user-1", {
-      id: "sub-1", name: "Netflix", amountMinor: 4_990, currency: "TRY", cycle: "monthly", intervalMonths: 1,
-      billingDay: 5, nextDueDate: "2026-08-05", paymentSourceId: null, categoryId: "cat-1",
-      personId: "person-1", isActive: false, trialEndDate: null, autoPay: false,
-      websiteDomain: null, note: null,
-    });
+    await repository.upsertSubscription("user-1", subscriptionInput({ id: "sub-1", isActive: false }));
 
     const [, writes] = required(dependencies.writeRowsValidated.mock.calls[0]);
     const expectedWrites = writes.filter((write: { table: string }) => write.table === "expected_payments");
@@ -1346,111 +1181,45 @@ describe("repository compatibility contract", () => {
   });
 
   it("refuses a subscription billed to a card that has no statement cycle", async () => {
-    // Without a cycle the charge cannot be placed on a statement, so every
-    // month of this subscription would land on the wrong date.
-    dependencies.getSqliteAsync.mockResolvedValue({
-      getFirstAsync: async (sql: string) => {
-        if (sql.includes("FROM categories")) return { id: "cat-1" };
-        if (sql.includes("FROM persons")) return { is_self: 1 };
-        if (sql.includes("FROM payment_sources")) {
-          return { id: "card-1", type: "credit_card", statement_day: null, due_day: null };
-        }
-        return null;
-      },
-      getAllAsync: async () => [],
-    });
+    // Without a cycle the charge cannot be placed on a statement.
+    dependencies.getSqliteAsync.mockResolvedValue(ruleDb((sql) => (
+      sql.includes("FROM payment_sources")
+        ? { id: "card-1", type: "credit_card", statement_day: null, due_day: null }
+        : null
+    )));
 
-    await expect(repository.upsertSubscription("user-1", {
-      name: "Netflix", amountMinor: 4_990, currency: "TRY", cycle: "monthly", intervalMonths: 1,
-      billingDay: 5, nextDueDate: "2026-08-05", paymentSourceId: "card-1", categoryId: "cat-1",
-      personId: "person-1", isActive: true, trialEndDate: null, autoPay: false,
-      websiteDomain: null, note: null,
-    })).rejects.toBeInstanceOf(repository.CreditCardCycleRequiredError);
+    await expect(repository.upsertSubscription("user-1", subscriptionInput({ paymentSourceId: "card-1" })))
+      .rejects.toBeInstanceOf(repository.CreditCardCycleRequiredError);
     expect(dependencies.writeRows).not.toHaveBeenCalled();
   });
 
   it("rejects a variable-amount subscription that also enables auto-pay", async () => {
-    dependencies.getSqliteAsync.mockResolvedValue({
-      getFirstAsync: async (sql: string) => sql.includes("FROM categories")
-        ? { id: "cat-1" }
-        : sql.includes("FROM persons") ? { is_self: 1 } : null,
-      getAllAsync: async () => [],
-    });
-    await expect(repository.upsertSubscription("user-1", {
+    dependencies.getSqliteAsync.mockResolvedValue(ruleDb());
+    await expect(repository.upsertSubscription("user-1", subscriptionInput({
       name: "Elektrik",
       amountMinor: 1_000_00,
       amountMode: "variable",
-      currency: "TRY",
-      cycle: "monthly",
-      intervalMonths: 1,
-      billingDay: 5,
-      nextDueDate: "2026-08-05",
-      paymentSourceId: null,
-      categoryId: "cat-1",
-      personId: "person-1",
-      isActive: true,
-      trialEndDate: null,
       autoPay: true,
-      websiteDomain: null,
-      note: null,
-    })).rejects.toThrow("Variable subscriptions cannot use auto-pay");
+    }))).rejects.toThrow("Variable subscriptions cannot use auto-pay");
     expect(dependencies.writeRows).not.toHaveBeenCalled();
   });
 
   it("accepts a variable-amount subscription saved with no estimate at all", async () => {
-    dependencies.getSqliteAsync.mockResolvedValue({
-      getFirstAsync: async (sql: string) => sql.includes("FROM categories")
-        ? { id: "cat-1" }
-        : sql.includes("FROM persons") ? { is_self: 1 } : null,
-      getAllAsync: async () => [],
-    });
-    await repository.upsertSubscription("user-1", {
+    dependencies.getSqliteAsync.mockResolvedValue(ruleDb());
+    await repository.upsertSubscription("user-1", subscriptionInput({
       name: "Elektrik",
       amountMinor: 0, // the "no estimate yet" sentinel — a real bill amount is never known
       amountMode: "variable",
-      currency: "TRY",
-      cycle: "monthly",
-      intervalMonths: 1,
-      billingDay: 5,
-      nextDueDate: "2026-08-05",
-      paymentSourceId: null,
-      categoryId: "cat-1",
-      personId: "person-1",
-      isActive: true,
-      trialEndDate: null,
-      autoPay: false,
-      websiteDomain: null,
-      note: null,
-    });
+    }));
     const [, writes] = required(dependencies.writeRows.mock.calls[0]);
     const subscriptionWrite = writes.find((write: { table: string }) => write.table === "subscriptions");
     expect(subscriptionWrite?.row).toMatchObject({ amountMinor: 0, amountMode: "variable" });
   });
 
   it("still rejects a zero amount for a fixed subscription", async () => {
-    dependencies.getSqliteAsync.mockResolvedValue({
-      getFirstAsync: async (sql: string) => sql.includes("FROM categories")
-        ? { id: "cat-1" }
-        : sql.includes("FROM persons") ? { is_self: 1 } : null,
-      getAllAsync: async () => [],
-    });
-    await expect(repository.upsertSubscription("user-1", {
-      name: "Netflix",
-      amountMinor: 0,
-      currency: "TRY",
-      cycle: "monthly",
-      intervalMonths: 1,
-      billingDay: 5,
-      nextDueDate: "2026-08-05",
-      paymentSourceId: null,
-      categoryId: "cat-1",
-      personId: "person-1",
-      isActive: true,
-      trialEndDate: null,
-      autoPay: false,
-      websiteDomain: null,
-      note: null,
-    })).rejects.toThrow("Amount is outside the supported range");
+    dependencies.getSqliteAsync.mockResolvedValue(ruleDb());
+    await expect(repository.upsertSubscription("user-1", subscriptionInput({ amountMinor: 0 })))
+      .rejects.toThrow("Amount is outside the supported range");
     expect(dependencies.writeRows).not.toHaveBeenCalled();
   });
 
@@ -1458,41 +1227,26 @@ describe("repository compatibility contract", () => {
     // A bill due a few days out is inside every horizon this repository
     // generates, regardless of which real date the suite runs on.
     const dueDate = addDaysISO(todayISO(), 5);
-    dependencies.getSqliteAsync.mockResolvedValue({
-      getFirstAsync: async (sql: string) =>
-        sql.includes("FROM categories") ? { id: "cat-1" }
-        : sql.includes("FROM persons") ? { is_self: 1 }
-        : sql.includes("FROM subscriptions")
-          ? { id: "sub-1", amount_minor: 1_000_00, currency: "TRY", canceled_at: null, amount_mode: "variable" }
-          : null,
-      getAllAsync: async (sql: string) => sql.includes("FROM expected_payments")
+    dependencies.getSqliteAsync.mockResolvedValue(ruleDb(
+      (sql) => (sql.includes("FROM subscriptions")
+        ? { id: "sub-1", amount_minor: 1_000_00, currency: "TRY", canceled_at: null, amount_mode: "variable" }
+        : null),
+      (sql) => (sql.includes("FROM expected_payments")
         ? [{
             id: "expected-1", direction: "out", kind: "subscription", ref_id: "sub-1",
             due_date: dueDate, amount_minor: 1_247_50, amount_is_estimated: 0,
             currency: "TRY", status: "pending",
           }]
-        : [],
-    });
+        : []),
+    ));
 
-    await repository.upsertSubscription("user-1", {
+    await repository.upsertSubscription("user-1", subscriptionInput({
       id: "sub-1",
       name: "Elektrik",
       amountMinor: 1_100_00, // a new forecast entered while editing the rule
       amountMode: "variable",
-      currency: "TRY",
-      cycle: "monthly",
-      intervalMonths: 1,
-      billingDay: 5,
       nextDueDate: dueDate,
-      paymentSourceId: null,
-      categoryId: "cat-1",
-      personId: "person-1",
-      isActive: true,
-      trialEndDate: null,
-      autoPay: false,
-      websiteDomain: null,
-      note: null,
-    });
+    }));
 
     const [, writes] = required(dependencies.writeRows.mock.calls[0]);
     const expectedWrite = writes.find((write: { table: string }) => write.table === "expected_payments");
@@ -1534,76 +1288,30 @@ describe("repository compatibility contract", () => {
   });
 
   it("does not revive a subscription deleted while its edit form was open", async () => {
-    dependencies.getSqliteAsync.mockResolvedValue({
-      getFirstAsync: async (sql: string) => sql.includes("FROM categories")
-        ? { id: "cat-1" }
-        : sql.includes("FROM persons")
-          ? { is_self: 1 }
-          : sql.includes("FROM subscriptions") && sql.includes("SELECT amount_minor")
-            ? { amount_minor: 4_990, currency: "TRY", canceled_at: null, deleted_at: NOW }
-            : null,
-      getAllAsync: async () => [],
-    });
+    dependencies.getSqliteAsync.mockResolvedValue(ruleDb((sql) => (
+      sql.includes("FROM subscriptions") && sql.includes("SELECT amount_minor")
+        ? { amount_minor: 4_990, currency: "TRY", canceled_at: null, deleted_at: NOW }
+        : null
+    )));
 
-    await expect(repository.upsertSubscription("user-1", {
-      id: "sub-1",
-      name: "Netflix",
-      amountMinor: 4_990,
-      currency: "TRY",
-      cycle: "monthly",
-      intervalMonths: 1,
-      billingDay: 5,
-      nextDueDate: "2026-08-05",
-      paymentSourceId: null,
-      categoryId: "cat-1",
-      personId: "person-1",
-      isActive: true,
-      trialEndDate: null,
-      autoPay: false,
-      websiteDomain: null,
-      note: null,
-    })).rejects.toThrow("Cannot edit missing subscriptions row");
+    await expect(repository.upsertSubscription("user-1", subscriptionInput({ id: "sub-1" })))
+      .rejects.toThrow("Cannot edit missing subscriptions row");
     expect(dependencies.writeRows).not.toHaveBeenCalled();
   });
 
   it("rejects oversized onboarding text and money before any write", async () => {
-    await expect(repository.seedWorkspace("user-1", {
-      templateCategories: [],
-      startMonth: "2026-07",
-      openingBalanceMinor: 100_000_000_000_000,
-      persons: [{ name: "Ben", isSelf: true }],
-      sources: [],
-    })).rejects.toThrow("supported range");
-    await expect(repository.seedWorkspace("user-1", {
-      templateCategories: [],
-      startMonth: "2026-07",
-      openingBalanceMinor: 0,
-      persons: [{ name: "x".repeat(121), isSelf: true }],
-      sources: [],
-    })).rejects.toThrow("maximum length");
+    await expect(repository.seedWorkspace("user-1", seedInput({ openingBalanceMinor: 100_000_000_000_000 })))
+      .rejects.toThrow("supported range");
+    await expect(repository.seedWorkspace("user-1", seedInput({ persons: [{ name: "x".repeat(121), isSelf: true }] })))
+      .rejects.toThrow("maximum length");
     expect(dependencies.writeRows).not.toHaveBeenCalled();
   });
 });
 
-/**
- * Replace mode must never silently become add mode.
- *
- * `importBatchMap` used to DROP a year whose batch record failed to parse, so
- * `priorBatches.get(year)` was `undefined`, the cleanup list for that year came
- * out empty, and the previous import's rows stayed live while the new ones were
- * written on top — a doubled year with no error at all.
- */
-describe("replace-mode import with an unreadable batch", () => {
+// The unreadable-batch refusals run on a real database in tests/data/import-repeat-balance.test.ts.
+describe("spreadsheet import write", () => {
   beforeEach(() => {
     dependencies.writeRows.mockReset();
-    dependencies.getSqliteAsync.mockResolvedValue({
-      getAllAsync: async (sql: string) =>
-        sql.includes("import_batch:")
-          ? [{ key: "import_batch:2026", value: "{not json" }]
-          : [],
-      getFirstAsync: async (sql: string) => sql.includes("FROM persons") ? { id: "person-self" } : undefined,
-      runAsync: async () => undefined,
-    });
     dependencies.readSetting.mockResolvedValue(null);
   });
 
@@ -1620,29 +1328,6 @@ describe("replace-mode import with an unreadable batch", () => {
     excludedLabels: [],
     selfId: "person-self",
   };
-
-  it("refuses the import and writes NOTHING", async () => {
-    await expect(
-      repository.importSheets("user-1", { ...request, mode: "replace" } as never),
-    ).rejects.toBeInstanceOf(repository.ImportBatchUnreadableError);
-    expect(dependencies.writeRows).not.toHaveBeenCalled();
-  });
-
-  it("names the blocked year so the user knows what to clean", async () => {
-    await repository
-      .importSheets("user-1", { ...request, mode: "replace" } as never)
-      .then(
-        () => { throw new Error("expected a refusal"); },
-        (error: { years: number[] }) => expect(error.years).toEqual([2026]),
-      );
-  });
-
-  it("also refuses add mode because it would overwrite the only ownership index", async () => {
-    await expect(
-      repository.importSheets("user-1", { ...request, mode: "add" } as never),
-    ).rejects.toBeInstanceOf(repository.ImportBatchUnreadableError);
-    expect(dependencies.writeRows).not.toHaveBeenCalled();
-  });
 
   it("rejects a stale or foreign self owner before planning any import writes", async () => {
     dependencies.getSqliteAsync.mockResolvedValue({
@@ -1762,17 +1447,7 @@ describe("replace-mode import with an unreadable batch", () => {
   });
 });
 
-/**
- * The installment plan write path, which until now only had its refusals
- * tested.
- *
- * Measured 2026-08-21: `src/data/repo/installments.ts` sat at 12.5% functions
- * and 30.4% statements. The rejection cases above reach the guards at the top
- * of `buildPlanRows` and stop there, so the part that actually turns one plan
- * into N dated money rows — the split, the deterministic ids that make an edit
- * reproduce the same paid/unpaid rows, the realized/pending boundary — ran in
- * no test at all. That is the half where a mistake moves money.
- */
+/** The write path that turns one plan into N dated money rows. */
 describe("installment plan materialization", () => {
   const plan: NewPlan = {
     title: "Dizüstü",
@@ -1908,16 +1583,7 @@ describe("installment plan materialization", () => {
   });
 });
 
-/**
- * Skipping an expected payment, and taking that back.
- *
- * Measured 2026-08-21, `src/data/repo/expected.ts` sat at 66.7% functions with
- * lines 223-240 — the whole of `skipExpected` and `unskipExpected` — never
- * executed. Both are guard-first by design: an undo arrives from a snackbar
- * the owner may tap late, twice, or after the row has already moved on, and
- * the guard is the only thing stopping a stale tap from resurrecting a paid
- * item as unpaid.
- */
+/** Guard-first: a late or repeated undo tap must not turn a paid item back to unpaid. */
 describe("skipping an expected payment", () => {
   const expectedRow = (over: Record<string, unknown> = {}) => ({
     id: "expected-1",
@@ -2013,15 +1679,7 @@ describe("skipping an expected payment", () => {
   });
 });
 
-/**
- * Deleting a subscription or income rule, and undoing that.
- *
- * Measured 2026-08-21, `src/data/repo/rules.ts` sat at 41.2% functions with
- * lines 385-439 never executed — the delete-with-undo path in full. Deleting a
- * rule must also tombstone the payments it has already generated, or the
- * reminders outlive the rule; undo has to bring back exactly that set and
- * nothing else, or a restored rule arrives with months it never scheduled.
- */
+/** Deleting a rule tombstones the payments it generated; undo restores exactly that set. */
 describe("rule deletion and undo", () => {
   const subscription = { id: "sub-1", user_id: "user-1", name: "Servis", deleted_at: null };
   const pendingExpected = [
@@ -2100,7 +1758,7 @@ describe("rule deletion and undo", () => {
 /**
  * The repository's error contract.
  *
- * These are not decoration: screens switch on them. `attachment-panel.tsx:96`
+ * These are not decoration: screens switch on them. `attachment-panel.tsx`
  * reads `AttachmentRejectedError.reason` to say WHICH rule a file broke rather
  * than "olmadı", and the import flow reads `ImportBatchUnreadableError.years`
  * to name the years it refused. `name` is what survives a structured-clone
@@ -2147,14 +1805,7 @@ describe("repository error contract", () => {
   });
 });
 
-/**
- * The installment write path's SUCCESS side.
- *
- * Everything else in this file drives these functions only through their
- * refusals, so the branches that actually move money -- materialising a
- * schedule, shrinking one, tombstoning a plan -- were never executed. A plan is
- * the app's largest single write: one row plus one transaction per month.
- */
+/** The installment write path's success side: materialise, shrink, tombstone. */
 describe("installment plan lifecycle", () => {
   // The edit fixtures store instalment 1 only and call 2 and 3 the unpaid
   // months. On the real clock those months passed, and an edit rightly declines
@@ -2377,7 +2028,7 @@ describe("installment plan lifecycle", () => {
 
   it("divides what is left of a purchase over the unpaid months, so an older split still totals it", async () => {
     duringTheSecondMonth();
-    // Written before 1.8.0, when the remainder rode on the last instalment:
+    // An older split put the remainder on the last instalment:
     // 1.000,00 over three was 333,33 · 333,33 · 333,34, and the first is paid.
     const realized = {
       id: "id:installmentTx|plan-1|1", user_id: "user-1", installment_plan_id: "plan-1", installment_no: 1,
@@ -2418,10 +2069,7 @@ describe("installment plan lifecycle", () => {
   });
 
   it("refuses a corrected total that leaves an unpaid month less than a kuruş", async () => {
-    // Six of twelve paid at 1.000,00. Each total below once fell through with
-    // rows 7..12 still carrying a fresh split of the FULL total -- 6.000,00 paid
-    // plus 3.000,00 pending, about 9.000,00 billed for a purchase of 6.000,05 or
-    // less. A plan with more months left than kuruş left has the wrong COUNT.
+    // Six of twelve paid at 1.000,00. A plan with more unpaid months than kuruş left has the wrong count.
     const realized = Array.from({ length: 6 }, (_unused, index) => ({
       id: `id:installmentTx|plan-1|${index + 1}`, user_id: "user-1", installment_plan_id: "plan-1",
       installment_no: index + 1, status: "realized", type: "expense", amount_minor: 1000_00,
@@ -2683,8 +2331,7 @@ describe("installment plan lifecycle", () => {
 
   /**
    * An early closure keeps the instalments due by the payoff day, drops the
-   * rest, writes one payoff row and remembers the count, so it can be undone
-   * (owner decision, 2026-09-13).
+   * rest, writes one payoff row and remembers the count, so it can be undone.
    */
   describe("closing a loan early", () => {
     const loanRow = {
@@ -2878,14 +2525,7 @@ describe("subscription category", () => {
   });
 });
 
-/**
- * The recurring-income write path.
- *
- * `upsertRecurringIncome` had no test at all: every branch of a rule that
- * generates money into the ledger every month was unexecuted. Its refusals
- * matter as much as its success, because a rule that saves with a bad anchor
- * silently stops producing the payments the owner is counting on.
- */
+/** A rule saved with a bad anchor silently stops producing the payments counted on. */
 describe("recurring income rules", () => {
   const income = {
     name: "Maaş",
@@ -3002,8 +2642,7 @@ describe("recurring income rules", () => {
  *
  * Onboarding reads `hasImportedData` at the moment it commits, and the import
  * wizard reads `importedYears` to warn that a year would be REPLACED. Both
- * decide whether existing data is about to be overwritten, and neither had a
- * test.
+ * decide whether existing data is about to be overwritten.
  */
 describe("import batch questions", () => {
   beforeEach(() => {

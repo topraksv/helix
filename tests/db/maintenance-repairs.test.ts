@@ -1,17 +1,4 @@
-/**
- * The repairs the maintenance pass performs on every app open.
- *
- * Measured before this file existed: `src/data/repo/maintenance.ts` ran at
- * 62.7% of statements and 47.8% of branches, and the uncovered half was the
- * half that WRITES — the orphan-budget cascade, the one-time computed-column
- * removal, and the cleanup of obligations belonging to a watch-only person.
- * Code that tombstones rows without a test is the worst kind to leave
- * unexercised: its mistakes are silent and there is no undo.
- *
- * Each case below pairs the removal with the thing that must SURVIVE it. That
- * pairing is the point — a sweep that deletes too much passes any test which
- * only checks that it deleted something.
- */
+/** Each removal is paired with what must SURVIVE it: a sweep that deletes too much passes any test that only checks it deleted something. */
 import { DatabaseSync } from "node:sqlite";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { migrationStatements } from "../helpers";
@@ -344,11 +331,7 @@ describe("obligations belonging to a person who is only watched", () => {
   });
 });
 
-/**
- * A foreign-currency plan's instalments follow the currency (owner decision,
- * 2026-09-13): a coming one is restated at the last known rate on every pass,
- * and one whose day arrives is fixed at the rate stored for that day.
- */
+/** A foreign-currency plan's instalments follow the currency: a coming one is restated at the last known rate on every pass, and one whose day arrives is fixed at the rate stored for that day. */
 describe("foreign-currency instalments", () => {
   function instalmentRow(id: string, currency: string, effectiveDate: string, amountTryMinor: number, status = "pending"): Record<string, unknown> {
     return {

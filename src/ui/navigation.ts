@@ -1,22 +1,3 @@
-/**
- * Back navigation.
- *
- * There used to be a whole subsystem here: an allowlist of recorded origins, an
- * "exact" mode that unwound one navigator before moving to another, and a relay
- * that handed a screen's own origin to the next screen so it could be handed
- * back. All of it existed to repair one thing — pushing a screen that lives in
- * another tab used `{ withAnchor: true }`, which mounts that tab's index
- * underneath, so plain history popped to a screen the user had never visited.
- *
- * It also only ever repaired the BUTTON. The iOS edge swipe pops the stack
- * without consulting any of it, so the gesture kept landing on the anchor.
- *
- * A screen reachable from more than one place now has a root-level route, and a
- * cross-tab push goes there instead. What sits under it is the screen the user
- * came from, so plain history is the correct answer for the button and the
- * gesture alike, and neither needs to be told anything.
- */
-
 interface BackRouter<T> {
   canGoBack: () => boolean;
   back: () => void;
@@ -41,22 +22,8 @@ export function registerDirtyExitFallback(handler: DirtyExitFallback): () => voi
 }
 
 export function navigateBack<T>(router: BackRouter<T>, fallback: T): void {
-  // A browser history entry can make `canGoBack()` true even for a direct URL
-  // opened more than once. A focused dirty form has the route-owned parent and
-  // must get first refusal, otherwise Back can revisit the same form without
-  // firing the native remove guard.
-  //
-  // The confirmed exit goes back TO that parent; it never replaces the form
-  // with it. A form opened from a screen inside a tab lives on the root stack,
-  // and a replacement there mounted a second copy of the tabs holding the
-  // parent alone — whose own Back, with nothing to pop, fell through to the
-  // tab router's first route, so Taksitler went back to Durum. `dismissTo`
-  // pops to the parent where it already stands and replaces only when it is
-  // nowhere in the stack, which is the direct link this guard was written for.
-  const dirtyHandled = dirtyExitFallback?.(() => router.dismissTo(fallback)) ?? false;
-  if (dirtyHandled) return;
+  // A dirty form answers first; its confirmed exit goes back TO the parent (`dismissTo`), never replaces the form, or a second tab stack mounts.
+  if (dirtyExitFallback?.(() => router.dismissTo(fallback))) return;
   if (router.canGoBack()) router.back();
-  // No history: a direct link, a hand-typed URL or a stale bookmark. The
-  // fallback is the screen's deterministic parent.
   else router.replace(fallback);
 }

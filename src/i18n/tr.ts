@@ -48,45 +48,8 @@ export const productTerms = {
 
 export const tr = {
   app: { name: productTerms.appName, tagline: "Nakit akışın, taksitlerin ve aboneliklerin tek yerde." },
-  /**
-   * The KVKK notice: the disclosure Article 10 of Law 6698 requires a data
-   * controller to make before it processes anything.
-   *
-   * It lives here and is rendered by `src/app/privacy.tsx` rather than sitting
-   * in `docs/`, for a reason that is easy to get backwards: `docs/` is
-   * Git-ignored, so a notice written there is published nowhere and reachable
-   * by nobody — which is the one thing a notice must not be. It is also
-   * reachable BEFORE sign-up, because the screen that collects an e-mail
-   * address is the screen that has to disclose what happens to it.
-   *
-   * Its sections are the ones Article 10 enumerates, in that order, so a
-   * reader (or a regulator) can check the notice against the article item by
-   * item: who the controller is, what is processed and how it is collected,
-   * why, on what legal basis, to whom it is transferred, for how long it is
-   * kept, and what the data subject may demand. Numbered, because a legal text
-   * is cited by section.
-   *
-   * An article number belongs in the sentence that relies on it, never in a
-   * heading. "Haklarınız (KVKK m. 11)" asks the reader to decode a citation
-   * before they have been told anything, and the citation does no work there —
-   * it does real work inside the paragraph that says which article grants
-   * what.
-   *
-   * ADDRESSED FORMALLY, unlike every other screen in this app. The product
-   * speaks to its owner as "sen"; this document speaks to an "ilgili kişi" as
-   * "siz", because that is what a Turkish notice of rights reads like and the
-   * register is part of what makes it legible as one. The plainness is kept in
-   * the sentences rather than the pronouns: statutory terms are used exactly,
-   * and everything else is written the way it would be explained out loud.
-   *
-   * `controllerName` and `contactEmail` are the single source for who is
-   * answerable. `tests/ui/legal-notice.test.ts` asserts the feedback function's
-   * own recipient matches `contactEmail`, so the address a person is told to
-   * write to is the address that is actually read.
-   *
-   * Every factual claim below was checked against the migrations and the code
-   * that writes each store. It is not legal advice.
-   */
+  // The KVKK notice, rendered by `src/app/privacy.tsx`; it lives here because `docs/` is Git-ignored and would publish it nowhere.
+  // Formal "siz" on purpose, unlike the rest of the app; `contactEmail` must match the feedback function's recipient (tests/ui/legal-notice.test.ts).
   legal: {
     title: "Aydınlatma Metni",
     subtitle: "Kişisel verilerinizin nasıl işlendiğine ilişkin bilgilendirme",
@@ -185,32 +148,23 @@ export const tr = {
     consentRequired: "Devam etmek için Aydınlatma Metni'ni okuyup onaylaman gerekiyor.",
   },
   meta: {
-    /* The document title, which is also the search result and the shared-link
-       headline. It was "Helix" alone: a word that says nothing to anyone who
-       has not already used the app, in the one line a stranger reads first. */
     title: "Helix: Bütçe, Abonelikler ve Yatırımlar",
     description: "Aylık nakit akışı, taksitler ve abonelikler için çevrimdışı çalışabilen kişisel finans uygulaması.",
     /* Longer than `description` has room for, because a link preview card is
        read on its own with none of the page around it. */
     social: "Paranın bu ay nerede olduğunu ve ay sonunda nerede olacağını tek ekranda gösterir. Taksitler, abonelikler, düzenli gelirler ve yatırımlar bir arada; çevrimdışı çalışır, cihazların arasında eşitlenir.",
   },
-  // `tabs` is the accessible/screen name of each tab, `tabBar` its short footer
-  // label. They stay in step: the footer says "Durum", so the tab announces
-  // "Durum" too — a screen reader must not name a screen the UI never calls it.
+  // Also the footer labels: a screen reader must not name a screen the UI never calls that.
   tabs: { dashboard: "Durum", cashflow: productTerms.financialTable, subscriptions: "Abonelikler", investments: "Yatırımlar", settings: "Ayarlar" },
-  tabBar: { dashboard: "Durum", cashflow: productTerms.financialTable, subscriptions: "Abonelikler", investments: "Yatırımlar", settings: "Ayarlar" },
   common: {
     otherCurrencies: "Hangi para birimi?",
     save: "Kaydet", cancel: "Vazgeç", delete: "Sil", edit: "Düzenle", add: "Ekle",
     undo: "Geri Al", deleted: "Silindi", search: "Ara", close: "Kapat", done: "Tamam",
     total: "Toplam", note: "Not", none: "Kategorisiz", retry: "Tekrar dene",
     confirm: "Onayla", skip: "Atla", all: "Tümü", active: "Aktif", inactive: "Pasif",
-    operationSummary: "Bu adımda ne olur", operationPlan: "İşlem planı",
+    operationPlan: "İşlem planı",
     selectAll: "Tümünü seç", clearAll: "Tümünü bırak",
     amountLimit: "Bu tutar desteklenen sınırı aşıyor. En fazla ₺999.999.999.999,99 girebilirsin.",
-    /** For input that is not a number at all — an unfinished expression, a
-     *  lone comma. `amountLimit` used to answer for this too, naming a
-     *  ceiling the input was nowhere near. */
     amountUnreadable: "Geçerli bir tutar yaz. Örnek: 1.234,56 ya da 300+400.",
     optionalHint: "Opsiyonel",
     other: "Diğer",
@@ -225,7 +179,6 @@ export const tr = {
     monthEnd: "Ayın son günü",
     monthEndHint: "Hangi ay olursa olsun o ayın son gününe düşer: şubatta 28, kısa aylarda 30.",
     monthDayPlaceholder: "1–31",
-    dayTakenByPair: "Bu gün eşleşen alanda seçili",
   },
   a11y: {
     showPassword: "Şifreyi göster",
@@ -299,21 +252,12 @@ export const tr = {
   } as Record<string, string>,
   errors: {
     title: "Hata",
-    /* The boot screen, which is the one surface a person reaches when the app
-       could not start at all. It used to say `database: "Veritabanı hatası"`,
-       which named the layer that failed instead of what happened, and left the
-       only two useful actions — close the other tab, or try again — for the
-       reader to guess between. Both surfaces that showed it now say which of
-       the two happened, so the key itself is gone rather than left orphaned. */
     bootBusyTitle: "Helix başka bir sekmede açık",
     bootBusyLead: "Verilerin güvende. Helix aynı anda yalnızca tek bir sekmede çalışabilir.",
     bootBusySteps: [
       "Helix'in açık olduğu diğer sekmeye geç ve onu kapat.",
       "Bu sayfa birkaç saniye içinde kendiliğinden açılır; bir şeye basman gerekmez.",
     ],
-    /* Shown once another tab has actually ANSWERED, which is the state where
-       reloading provably cannot help. "Burada Aç" was here and was a promise
-       the button could not keep: pressing it reloaded into this same screen. */
     bootBusyWaiting: "Diğer sekmenin kapanması bekleniyor",
     bootBusyAction: "Yeniden Dene",
     bootFailedTitle: "Çalışma alanı açılamadı",
@@ -321,15 +265,6 @@ export const tr = {
     supabaseNotConfigured: "Supabase yapılandırılmadı",
     signUpFailed: "Kayıt oluşturulamadı",
     invalidBackupFile: "Geçersiz yedek dosyası",
-    /**
-     * WHERE the file was refused, in the file's own coordinates.
-     *
-     * A restore rejects the whole bundle when one row breaks one rule, and the
-     * message used to be four words. Finding the real cause of a refused
-     * backup took five rounds of bisecting the file WITH the source open; the
-     * owner of a single backup has no such route. The refusal now names the
-     * table, the row and the rule, which is enough to open the JSON and look.
-     */
     invalidBackupWhere: (table: string, row: number, reason: string) =>
       `Geçersiz yedek dosyası. ${table} bölümündeki ${row}. kayıt alınamadı: ${reason}.`,
     invalidBackupReason: {
@@ -353,11 +288,6 @@ export const tr = {
     undoFailed: "Geri alınamadı. Lütfen tekrar dene.",
     appCrashed: "Beklenmeyen bir sorun oluştu.",
     appCrashedHint: "Uygulama bu ekranı gösteremedi. Yeniden dene; sorun sürerse uygulamayı kapatıp aç.",
-    /* NOT an error, and it was filed as one. `importBundle` counts a row as
-       skipped when the LOCAL copy is newer than or the same age as the one in
-       the file — the device already holds the better version. Calling those
-       "geçersiz" told someone restoring their only backup that part of their
-       data was corrupt. The Excel importer already said this correctly. */
     importSkippedRows: (n: number) => `${n} kayıt zaten güncel olduğu için atlandı.`,
   },
   databaseRecovery: {
@@ -383,10 +313,6 @@ export const tr = {
     investmentQuantity: ["17,23", "456,12", "10", "125,5", "1,25"],
     investmentUnitPrice: ["5.800,00", "41,25", "250,00", "12.400,50"],
     investmentNote: ["Uzun vadeli birikim", "Aylık alım", "Portföy başlangıcı", "Kısmi satış"],
-    // Written WITHOUT a prefix, like every other pool: `example()` adds the one
-    // "Ör." this app uses. The old text said "Örn." inline, which
-    // `examplePlaceholder` did not recognise as a prefix — so the field showed
-    // "Ör. Örn. Mali Tablo'da…".
     feedback: [
       "Mali Tablo'da Nisan sütunu boş kalıyor",
       "Kaydet'e basınca hiçbir şey olmuyor",
@@ -401,25 +327,8 @@ export const tr = {
     journeyEntry: "Kaydet",
     journeyLedger: "Anla",
     journeyTrack: "Takip et",
-    /* The card's heading NAMES THE ACTION, like its two siblings ("Hesap
-       oluştur", "Şifreni yenile"). It used to be a second "hoş geldin"
-       directly under the page's own greeting. */
     signInHeading: "Hesabına giriş yap",
-    /* Every mode's heading now has a subtitle under it. Sign-in was the one
-       that did not, so its card was a line shorter than the other two and the
-       layout resized on every switch. */
     signInSubtitle: "E-posta adresin ve şifrenle çalışma alanına gir.",
-    /* The greeting above the form, and it is deliberately the SAME in all three
-       modes. It used to be a sign-in-only panel reading "Çalışma alanına dön /
-       Kaldığın yerden devam et", which addresses somebody who has been here
-       before — on the screen most people meet Helix on for the first time. It
-       also existed in one mode out of three, so the card changed height on
-       every switch and the brand mark above it moved with it. One constant
-       greeting fixes both: it welcomes whoever is reading, and it does not
-       move. */
-    /* Still used by `operation-flow.tsx`, which labels the sign-in operation
-       with it. Only the auth screen's own greeting moved. */
-    signInSignatureEyebrow: "Güvenli geri dönüş",
     welcomeTitle: "Helix'e hoş geldin",
     welcomeBody: "Gelirini, giderini ve yaklaşan ödemelerini tek yerde topla; paranın nereye gittiğini gör.",
     signUpTitle: "Hesap oluştur",
@@ -432,6 +341,7 @@ export const tr = {
     emailLinkConfirmed: "E-posta adresin onaylandı. Şimdi e-postan ve şifrenle giriş yapabilirsin.",
     emailChangeLinkConfirmed: "Onayın alındı. Diğer adrese giden bağlantı da onaylanınca yeni adresinle giriş yaparsın; o zamana kadar eski adresin geçerli.",
     emailLinkUnusable: "Bu e-posta bağlantısı artık geçerli değil. Hesabın zaten onaylandıysa giriş yapabilirsin; değilse e-postanı yazıp yeni bağlantı iste.",
+    emailLinkOffline: "Bağlantı doğrulanamadı, internete ulaşılamıyor. Bağlantı harcanmadı: internet gelince sayfayı yenile.",
     email: "E-posta", password: "Şifre",
     signIn: "Giriş yap",
     signOut: "Çıkış yap",
@@ -728,9 +638,6 @@ export const tr = {
     forecastOutgoing: "Kalan gider",
     forecastResult: "Ay sonu tahmini",
     forecastTypical: "Tipik harcamanla",
-    // Two facts, in the order a reader needs them: where the number came from,
-    // and what it is. The long version explained the arithmetic first and the
-    // answer last, so the sentence had to be finished before it said anything.
     forecastTypicalHint: (amount: string) =>
       `Market, yakıt, dışarıda yemek gibi planlanmamış harcamalar için ${amount} daha bekleniyor: son 6 ayın aylık ortalaması, bu ay harcadığın düşülerek.`,
     noUpcoming: "Önümüzdeki 31 günde ödeme yok.",
@@ -747,11 +654,6 @@ export const tr = {
     remoteChangeNotice: "Başka bir cihazdaki değişiklikler uygulandı.",
   },
   catchup: {
-    /* "Onay Bekleyenler" sat one tap away from `attention.title`,
-       "Bekleyenler", and the two screens could not be told apart by name. They
-       do different jobs: this one asks whether payments that were DUE actually
-       happened; the other collects what needs a decision next. The title now
-       says which. */
     title: "Ödeme Onayı",
     subtitle: (d: string) => `${d} tarihinden beri`,
     nothing: "Onay bekleyen bir şey yok, güncelsin",
@@ -822,10 +724,6 @@ export const tr = {
     open: "Aç",
     remove: "Sil",
     removed: "Belge silindi.",
-    /* Two readings of the same tile, because the cause differs and so does
-       what the owner can do about it. With a project, the file is on its way
-       and waiting is the answer. Without one, nothing will ever bring it and
-       saying "not downloaded yet" would be a promise the app cannot keep. */
     unavailable: "Bu belge henüz bu cihaza inmedi. İnternete bağlandığında kendiliğinden iner.",
     unavailableLocal: "Bu belge başka bir cihazda eklendi. Bulut eşitlemesi kapalı olduğu için dosya buraya gelmez.",
     otherDevice: "İnmedi",
@@ -834,11 +732,6 @@ export const tr = {
        the panel is called. Short: it sits in a wrapping badge cluster. */
     onTransaction: "Belge var",
     unsupported: "Bu tarayıcı yerel belge saklamayı desteklemiyor.",
-    /* `attachments.kind` exists in the schema and syncs, but nothing writes
-       anything except its "other" default — the picker asks for a file, not
-       for what kind of file it is. The panel was therefore printing the same
-       word, "Belge", on every document it had, under a heading that already
-       said Belgeler. The labels come back when something chooses a kind. */
     rejected: {
       unsupported_type: "Yalnızca PDF ve fotoğraf ekleyebilirsin.",
       extension_mismatch: "Dosyanın uzantısı türüyle uyuşmuyor.",
@@ -915,7 +808,6 @@ export const tr = {
     },
     installmentOf: (no: number, count: number) => `${no}/${count}. taksit`,
     refund: "İade",
-    accept: "Aktar",
     acceptCount: (count: number) => `${count} satırı aktar`,
     selectAllNew: "Yeni Olanları Seç",
     clearSelection: "Seçimi Temizle",
@@ -1003,13 +895,6 @@ export const tr = {
   cashflow: {
     title: productTerms.financialTable,
     monthDetail: "Ay Detayı",
-    /* Back to "Güncel Bakiye" at the owner's call. The audit renamed it to
-       "Ay Sonu" because the dashboard uses the same words for the one balance
-       that is true right now — but the column is not a month boundary in the
-       owner's model: it is the balance as it stands on that row's date, which
-       is exactly what "güncel" means there. The defect behind the rename was
-       never the word; it was that the two screens disagreed about the NUMBER,
-       and that is fixed in `cash-flow-matrix.ts`. */
     opening: "Ay Başı", closing: "Güncel Bakiye",
     adjustedCell: (amount: string) => `Bu ay bakiye ${amount} düzeltildi`,
     income: "Gelir", expense: "Gider", transfer: "Yatırım", adjustment: "Bakiye Düzeltmesi",
@@ -1030,14 +915,6 @@ export const tr = {
     openMonth: "Ayın Detayını Aç",
     yearTotal: (y: number) => `${y} yıl toplamı`,
     openingLink: "Başlangıç Bakiyesi",
-    /* One hint for both orientations. There were two and they disagreed: the
-       row-focused one never mentioned that tapping a month opens it, although
-       it does there too. A one-line version fit the width and lost the reader,
-       so this says the whole thing in plain sentences and wraps if it must. */
-    /* The pin used to be an emoji here while the table header drew the real
-       lucide pin two centimetres below — one idea, two pictures, and the
-       emoji took neither the palette nor the theme. The guide now names the
-       control instead of trying to draw it. */
     tableHint: "Tabloyu yana kaydır. Kaleme dokun: aylık dökümü açılır. Aya dokun: o ay açılır. Başlıktaki iğneye dokun: kolon sabitlenir.",
     tableGuide: "Mali tabloyu okuma rehberi",
     /* The colours are the owner's to name, so the guide names the GESTURE and
@@ -1049,11 +926,6 @@ export const tr = {
     uncategorized: "Kategorisiz",
     uncategorizedLegacy: "Kategorisiz eski kayıtlar",
     uncategorizedRepairHint: "Aylara göre açıp kayıtları düzenleyebilirsin.",
-    // Phone toolbar mini captions (full names stay in accessibility labels).
-    // The compact captions name the same object as the full labels above,
-    // shortened rather than renamed: a phone said "Düzenle" and "Geçmiş"
-    // where the desktop said "Kolonları Düzenle" and "Geçmiş Ay Girişi", so
-    // the same five tools had to be learned twice.
     toolEdit: "Kolonlar",
     toolInstallments: "Taksitler",
     toolAnalysis: "Analiz",
@@ -1133,11 +1005,6 @@ export const tr = {
     monthOnly: "Sadece ay",
     specificDay: "Belirli gün",
     monthOnlyHint: (m: string) => `Tarihsiz — ${m} ayına işlenir, günü belirtmen gerekmez.`,
-    // The currency the form is actually on, not a hard-coded lira. It used to
-    // read "₺ TRY · Değiştir" whatever had been chosen, so a form in dollars
-    // said lira on the one line that names the currency. The caller supplies
-    // the flag with the code — see `CURRENCY_INFO` — because a flag is how
-    // this app names a currency everywhere else.
     changeCurrency: (currency: string) => `${currency} · Değiştir`,
     futureNote: "İleri tarihli",
     autoConfirmed: "Otomatik ödendi",
@@ -1145,9 +1012,6 @@ export const tr = {
     installmentCount: "Taksit sayısı",
     alreadyPaid: "Ödenen taksit",
     installmentInfo: (m: string, n: number) => `${n} taksit × ${m}`,
-    /** When the total does not divide evenly the FIRST instalment carries the
-     *  kuruş difference, which is how most statements bill it. Saying only the
-     *  uniform figure made the preview add up to less than the purchase. */
     installmentInfoUneven: (n: number, first: string, rest: string) =>
       `İlk taksit ${first}, sonraki ${n - 1} taksit ${rest}`,
     saveAndNew: "Kaydet ve Yeni Ekle",
@@ -1311,9 +1175,6 @@ export const tr = {
     variableAmountBadge: "Değişken tutar",
     estimatedBadge: "Tahmini",
     unknownAmount: "Tutar belirtilmedi",
-    /* A variable bill is not free, and printing ₺0,00 for one said it was.
-       These three read out of `price_history`, which every entered invoice has
-       been filling since the table existed and nothing ever read back. */
     expectedBand: (low: string, high: string) => `${low} – ${high} bekleniyor`,
     expectedAround: (amount: string) => `Geçen sefer ${amount}`,
     atLeastAmount: (amount: string) => `En az ${amount}`,
@@ -1561,9 +1422,6 @@ export const tr = {
     notificationPreview: "Telefonun kilit ekranında böyle görünür:",
     notificationSampleName: "Örnek abonelik",
     reminderDays: "Hatırlatma: kaç gün önce",
-    // The lock is named after whatever the device in hand actually offers.
-    // A single "Face ID" string shipped to Android too, naming a technology
-    // that does not exist there — on a security control, of all places.
     biometric: "Biyometrik Kilit",
     biometricFaceId: "Face ID Kilidi",
     biometricTouchId: "Touch ID Kilidi",
@@ -1583,9 +1441,6 @@ export const tr = {
     exportWorkbookDesc: "Mali tablon her yıl kendi sayfasında, aboneliklerin ve yatırımların ayrı sayfalarda. Excel'de düzenleyip Mali Tablo'yu buradan geri yükleyebilirsin; abonelik ve yatırım sayfaları okumak içindir.",
     import: "Yedekten Geri Yükle",
     importDesc: "Daha önce oluşturduğun yedek dosyasını yükle, verilerini olduğu gibi geri getir.",
-    /* "yazılabilir" — may be overwritten — left the one irreversible step in
-       the app ambiguous about what it does. A restore keeps whichever copy of
-       a row is newer, which is a rule that can be stated. */
     importConfirm: "Yedekteki her kayıt, bu cihazdaki eşinin üzerine yazılır; yalnızca bu cihazda daha yeni olanlar korunur. Bu işlem geri alınamaz. Devam edilsin mi?",
     importSuccess: (n: number) => `${n} kayıt içe aktarıldı`,
     sync: "Cihazlarını Güncelle",
@@ -1615,9 +1470,6 @@ export const tr = {
       wrong_user: "hesap eşleşmiyor",
       invalid_row: "geçersiz veri",
     },
-    // What the LAST retry learned about this row, said as a next step rather
-    // than as a status. "Yeniden dene" that can only fail is the thing the
-    // owner reported; each of these names something that would actually help.
     syncQuarantineOutcome: {
       requeued: "Sıraya alındı; bir sonraki eşitlemede gönderilecek.",
       unrepairable: "Kaydın kendisinde bir sorun var. Uygulamada açıp kaydedersen düzelmiş hâli yeniden denenir.",
@@ -1626,9 +1478,6 @@ export const tr = {
     },
     syncQuarantineUntried: "Henüz denenmedi.",
     syncQuarantineEmpty: "Bekleyen kayıt kalmadı.",
-    /* Said "Her şey buluta gönderildi" unconditionally, including on a
-       device where Settings was simultaneously saying no cloud is configured.
-       The caller now picks by actual sync state. */
     syncQuarantineEmptyHint: "Bekleyen her kayıt buluta gönderildi.",
     syncQuarantineEmptyLocal: "Bulut senkronu kapalı; kayıtların yalnızca bu cihazda tutuluyor.",
     syncQuarantineTypes,
@@ -1694,11 +1543,6 @@ export const tr = {
     noProductsHint: "Önce ürününü tanımla; ardından mevcut yatırımını veya yeni alışını ekle.",
     noFilteredProducts: "Bu türde ürün yok",
     noFilteredProductsHint: "Başka bir ürün türü seçerek portföyünü görmeye devam edebilirsin.",
-    // The two used to read as the same offer. "Ürün Ekle" only defines the
-    // instrument — Gram Altın, a fund, a currency — and touches no money;
-    // "Mevcut Yatırım Ekle" records a holding you already own without spending
-    // free balance. The captions name the difference instead of leaving the
-    // user to discover it after tapping.
     addProduct: "Yeni Ürün Tanımla",
     addProductCaption: "Para hareketi yok",
     saveProduct: "Ürünü Kaydet",
@@ -1707,7 +1551,6 @@ export const tr = {
     addExisting: "Sahip Olduğumu Ekle",
     addExistingCaption: "Bakiyeden düşmez",
     refundCaption: "Mali tabloya çıkar",
-    refund: "Boş Bakiyeyi Mali Tabloya Aktar",
     refundShort: "Serbest Bakiyeyi Aktar",
     refundTitle: "Serbest Bakiyeyi Aktar",
     refundAmountTitle: "Aktarılacak bakiye",
@@ -1887,6 +1730,7 @@ export const tr = {
     stepFile: "Dosya",
     stepReview: "Kontrol",
     stepImport: "Aktar",
+    currentStep: "şu anki adım",
     intro: "Yıllardır tuttuğun bütçe tablosunu olduğu gibi buraya taşıyabilirsin. Dosyanı seçtiğinde ayları ve kalemleri kendimiz tanır, Mali Tablo'na yerleştiririz. Her yıl kendi kolonlarıyla ayrı durur, hiçbir şeyi kaybetmezsin.",
     pick: "Dosyayı Seç",
     pickAgain: "Başka Dosya Seç",
@@ -1992,16 +1836,10 @@ export const tr = {
     s4Body: "Netflix'ten elektrik faturasına, ev kredisinden telefon taksidine tüm düzenli ödemelerini ekle. Vadesi gelince Helix hatırlatır; tek dokunuşla ödendi işaretlersin. Otomatik ödeme açıksa bunu senin yerine yapar.",
     s5Title: "Maaş ve Düzenli Gelirler",
     s5Body: "Maaş, kira geliri gibi her ay tekrar eden gelirlerini bir kez tanımla. Ödeme günü geldiğinde 'geldi mi?' diye sorar; onayladığında, çoğu ay değişebilen gerçek tutarıyla bakiyene ekler.",
-    // Yatırımlar shipped after this tour was written, so the app was
-    // explaining five of its six tabs. It is the sixth slide because it comes
-    // after the ledger it feeds, and before the sync slide that closes the tour.
     s6Title: "Yatırımlar",
     s6Body: "Altın, döviz, fon, hisse ve BES'i tek yerde topla. Önce ürününü tanımlarsın — bu adımda para hareket etmez. Zaten sahip olduğun bir yatırımı eklersen serbest bakiyenden düşmez; alış yaparsan düşer, satarsan geri döner. Ortalama maliyetini ve gerçekleşen kârını Helix hesaplar; serbest bakiyeni istediğinde Mali Tablo'ya aktarırsın.",
     s7Title: "Her Cihazda, Çevrimdışı da",
-    /* The slide that promises "it syncs" is where the shape of that promise
-       belongs. Documents follow the ledger now (spec §2.5), but the backup
-       file still carries only their record — someone who reads this slide and
-       then relies on a backup to move devices would find the receipts gone. */
+    // The backup carries only the attachment record, not the file.
     s7Body: "Her şey önce cihazına kaydedilir; internet olmasa da çalışır. Aynı hesapla girdiğin telefon ve bilgisayarında otomatik senkronlanır. İşlemlere eklediğin fiş ve faturalar da eşitlenir; onları da her cihazından açabilirsin. Yalnız yedek dosyası belgelerin kaydını taşır, içeriğini taşımaz. Eski Excel'ini içe aktarabilir, verini istediğinde yedekleyebilirsin. Bakiyen hesabınla tutmuyorsa Bakiye Düzeltme ile tek adımda eşitlersin.",
     next: "Devam",
     start: "Başlayalım",
@@ -2039,10 +1877,6 @@ export const tr = {
     rangeChange: (range: string) => `${range} değişimi`,
     historyLoading: "Geçmiş yükleniyor",
     historyUnavailable: "Geçmiş veriye şu an ulaşılamıyor.",
-    /* When the whole feed is down, the chart's own failure is a symptom and
-       saying only "geçmiş veriye ulaşılamıyor" sends the reader looking for a
-       chart bug. It cost three rounds of investigation to find that the screen
-       was hiding the one fact that explained it. */
     historyFeedDown: "Piyasa servisine ulaşılamıyor, bu yüzden geçmiş de çizilemiyor. Fiyatlar son bilinen değerler.",
     snapshotNote: "Son bilinen fiyat; canlı bağlantı şu an yok.",
     sourceNote: "Fiyatlar halka açık borsa emir defterlerinden anlık olarak alınır.",
@@ -2054,10 +1888,6 @@ export const tr = {
     offline: "Çevrimdışı",
     offlineHint: "Canlı bağlantı şu an kurulamıyor; internet gelince fiyatlar otomatik güncellenir.",
     noData: "Henüz fiyat alınamadı. Bağlantı kurulduğunda canlı altın ve döviz fiyatları burada görünecek.",
-    /* The card sat empty for the height of the dense list beside it with
-       nothing a person could do. The socket does retry on its own, but after a
-       long offline stretch the next attempt can be a minute away and the card
-       never said so. */
     retryNow: "Yeniden Dene",
     autoRetry: "Bağlantı kendiliğinden yeniden denenir.",
     referenceRate: (d: string) => `Referans kur · ${d}`,
@@ -2072,17 +1902,11 @@ export const tr = {
     searchPlaceholder: "Ad yazarak ara",
     noResults: "Aramana uyan seçenek yok.",
     empty: "Seçilebilecek seçenek yok.",
-    loading: "Seçenekler hazırlanıyor",
-    error: "Seçenekler yüklenemedi. Tekrar dene.",
   },
   operation: {
     signingIn: "E-posta ve şifren doğrulanıyor",
     creatingAccount: "Helix hesabın oluşturuluyor",
     requestingReset: "Güvenli şifre bağlantın hazırlanıyor",
-    // Every lifecycle wait names the operation it is: they all end the
-    // session on the same blank screen, so a shared caption made signing out,
-    // freezing and deleting indistinguishable at the one moment the user most
-    // wants to know which one is running.
     initializeTitle: "Çalışma alanın hazırlanıyor",
     restoreTitle: "Verilerin getiriliyor",
     localSigningOutTitle: "Cihazdan çıkılıyor",
@@ -2134,20 +1958,14 @@ export const tr = {
     cycleGraceTaken: "Bu gün kesimle uyumlu bir ödeme tarihi vermiyor.",
     cycleGraceDays: (days: number) => `Kesimden ${days} gün sonra`,
     cycleHint: "Yeni harcamalar, gerçek ekstrelerinin son ödeme tarihinde bakiyene yansır.",
-    /* The countdown, not the percentage. "Dönemin %62'si doldu" was a figure
-       nobody acts on; "Ekstreye 6 gün" answers the question a person actually
-       has at the till — does this purchase land on the statement about to
-       close, or the next one. */
     cycleDaysLeft: (days: number) =>
       days === 0 ? "Ekstre bugün kesiliyor" : `Ekstreye ${days} gün`,
     cycleMissing: "Ekstre tarihleri eksik",
     statementHistory: "Ekstre Dönemleri",
-    statementHistoryHint: "Bu karta bağlı gerçek ekstrelerin kesim ve son ödeme tarihleri.",
     statementDates: (statement: string, due: string) => `Kesim ${statement} · Son ödeme ${due}`,
     statementSummary: (count: number, largest: string) =>
       `Son ${count} dönem · en yüksek ${largest}`,
     statementMore: (count: number) => `+${count} eski dönem`,
-    statementEmptyPeriod: "Bu dönemde harcama yok",
     owner: "Sahibi",
   },
   incomeKinds: {
@@ -2233,9 +2051,6 @@ export const tr = {
         `Bu biraz uzun oldu: ${used} karakter yazdın, en fazla ${max} olabilir.`,
       type: (picked: string) =>
         `Yalnızca görsel eklenebilir: JPEG, PNG, WebP ya da HEIC. Seçtiğin dosya ${picked}.`,
-      // A picker can hand back an asset with no MIME type at all — a file with
-      // no extension, or a provider that does not report one. "Kategorisiz"
-      // was standing in here, which is a word about ledger columns.
       unknownType: "tanınmayan bir türde",
       size: (max: string, picked: string) =>
         `Bir görsel ${max}'ı aşamaz. Seçtiğin görsel ${picked}.`,
@@ -2257,21 +2072,7 @@ export const tr = {
   months: ["Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran", "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık"],
 } as const;
 
-/**
- * Turkish upper case.
- *
- * `textTransform: "uppercase"` is the obvious way to write a small-capital
- * eyebrow and it is wrong here. On the web it happens to work, because
- * `<html lang="tr">` is set and browsers case per the document language — so
- * the defect is invisible in the browser suite. React Native's own transform
- * has no locale: it maps "i" to "I" rather than to "İ", so on the shipped iOS
- * and Android builds the dashboard read GÜNCEL BAKIYE, and three months a year
- * came out NISAN, HAZIRAN and EKIM.
- *
- * `toLocaleUpperCase("tr-TR")` is what the rest of this file already uses for
- * names and search keys; eyebrows now go through the same door. The dotless ı
- * is handled by the same mapping, so MAYIS and KASIM stay correct too.
- */
+// RN textTransform uppercase has no locale: i→I, not İ.
 export function upperTR(value: string): string {
   return value.toLocaleUpperCase("tr-TR");
 }
@@ -2322,19 +2123,19 @@ export function shortDateLabel(iso: string): string {
   return name && y && d ? `${Number(d)} ${name.slice(0, 3)} ${y}` : iso;
 }
 
+const DATE_TIME = new Intl.DateTimeFormat("tr-TR", { dateStyle: "long", timeStyle: "short" });
+const CLOCK = new Intl.DateTimeFormat("tr-TR", { hour: "2-digit", minute: "2-digit" });
+
 export function dateTimeLabel(iso: string): string {
   const value = new Date(iso);
   if (Number.isNaN(value.getTime())) return iso;
-  return new Intl.DateTimeFormat("tr-TR", {
-    dateStyle: "long",
-    timeStyle: "short",
-  }).format(value);
+  return DATE_TIME.format(value);
 }
 
 /** ms epoch → compact "HH:MM" when today, full date-time otherwise. */
 export function clockOrDateTimeLabel(ms: number): string {
   const at = new Date(ms);
   return at.toDateString() === new Date().toDateString()
-    ? new Intl.DateTimeFormat("tr-TR", { hour: "2-digit", minute: "2-digit" }).format(at)
+    ? CLOCK.format(at)
     : dateTimeLabel(at.toISOString());
 }

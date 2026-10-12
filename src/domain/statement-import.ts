@@ -1,32 +1,14 @@
 /**
  * Turning a statement's text into reviewable candidates (spec §3.9).
  *
- * ## Scope, and why it is this narrow
- *
- * A candidate is only ever produced from a line that carries ALL THREE of a
- * date, a description and an amount, in that order, optionally followed by an
- * instalment marker. Anything else — a running total, a header, a wrapped
- * description, a line whose amount could be a card number — yields nothing.
- *
- * That is deliberate and it is the whole safety model: this reads a financial
- * document that the app cannot verify, so the only acceptable failure is to
- * MISS a row. Inventing one puts money in the ledger that the bank never
- * charged, and the owner has no way to notice.
- *
- * ## Calibration
- *
- * `STATEMENT_FORMAT` below is the one place that knows what a statement line
- * looks like. It is currently pinned to the Turkish conventions this project
- * already parses elsewhere (`domain/money.ts` reads `1.234,56`, dates are
- * `dd.mm.yyyy` or `dd/mm/yyyy`) and is exercised by synthetic fixtures only.
- * Tuning it to a specific bank's layout means editing this constant and its
- * tests, and nothing else.
- *
- * Nothing here performs I/O, and nothing here writes: candidates are proposals
- * until a person accepts them.
+ * A candidate needs a date, a description and an amount in that order; anything
+ * else yields nothing. Missing a row is the only acceptable failure, because an
+ * invented one cannot be noticed. `STATEMENT_FORMAT` is the one place that
+ * knows what a statement line looks like. Nothing here performs I/O or writes:
+ * candidates are proposals until a person accepts them.
  */
 
-import { sameCard } from "./card-statements";
+import { groupBy, sameCard } from "./card-statements";
 import { addMonthsToKey, daysBetweenISO, isISODate, type ISODate, type MonthKey } from "./dates";
 import { conceptOf } from "./category-icons";
 import { planForSighting, type PlanSighting } from "./installments";
@@ -37,12 +19,7 @@ import { splitIntoInstallments, type Minor } from "./money";
 type StatementEntryKind = "purchase" | "installment";
 
 export interface StatementCandidate {
-  /**
-   * Deterministic identity of the source line, stable across re-imports of the
-   * same statement. Built from the fields the bank itself printed, so the same
-   * line always produces the same key and a repeated import converges instead
-   * of doubling the ledger.
-   */
+  /** Deterministic identity of the source line, so a repeated import converges instead of doubling the ledger. */
   importKey: string;
   kind: StatementEntryKind;
   date: ISODate;
@@ -54,13 +31,7 @@ export interface StatementCandidate {
   /** For an instalment line: which payment this is, and of how many. */
   installmentNo: number | null;
   installmentCount: number | null;
-  /**
-   * Payments still to come AFTER this one, when the statement prints a
-   * remaining count but not a position. The reference statement's `Kalan
-   * Tutar/Taksit` column is exactly this: it says two payments are left, never
-   * that this is the third of nine. Measured against the owner's workbook, 3 of
-   * 3 plans it already held: the count excludes the payment on this statement.
-   */
+  /** Payments still to come AFTER this one, when the statement prints a remaining count but not a position. */
   remainingInstallments: number | null;
   /** The line as printed, kept so review can show what was read. */
   sourceLine: string;
@@ -73,15 +44,10 @@ interface StatementRejection {
 }
 
 /**
- * A line that was read perfectly well and deliberately left out.
- *
- * Separate from a rejection, which means "could not be trusted". This one is
- * understood: a payment to the card is money moving between two things this
- * ledger already knows about, so importing it would count the same money
- * twice — once as the purchases it settles and once as itself.
- *
- * Surfaced rather than dropped. A statement importer that silently discards
- * lines is one whose total can never be reconciled against the paper.
+ * A line that was understood and deliberately left out, unlike a rejection
+ * ("could not be trusted"): a payment to the card would count the same money
+ * twice, once as the purchases it settles and once as itself. Surfaced, not
+ * dropped, so the total can still be reconciled against the paper.
  */
 interface StatementSkip {
   sourceLine: string;
@@ -99,9 +65,9 @@ export interface StatementParseResult {
 }
 
 /** How a statement writes money: `1.234,56` or `1,234.56`. */
-export type AmountFormat = "tr" | "en";
+type AmountFormat = "tr" | "en";
 
-/** What a statement line looks like: the one thing to re-verify against a real document. */
+/** What a statement line looks like. */
 const STATEMENT_FORMAT = {
   /** `4 Ağustos 2026`, or `dd.mm.yyyy` / `dd/mm/yy`. */
   longDate: /(\d{1,2})\s+(Ocak|Şubat|Mart|Nisan|Mayıs|Haziran|Temmuz|Ağustos|Eylül|Ekim|Kasım|Aralık)\s+(\d{4})/u,
@@ -199,15 +165,9 @@ export function amountFormat(lines: readonly string[]): AmountFormat {
 }
 
 /**
- * The identity of one printed line.
- *
- * Deliberately built from what the BANK printed — date, normalized
- * description, amount, instalment position — and not from the file, the
- * import run or a row id. Re-downloading the same statement and importing it
- * again must produce the same keys, or the second import doubles the ledger.
- *
- * The statement period is folded in so that two identical charges in two
- * different months stay distinct.
+ * The identity of one printed line, built from what the bank printed (date,
+ * description, amount, position) and the period, never from the file or a row
+ * id: re-importing the same statement must give the same keys.
  */
 export function statementImportKey(input: {
   period: string;
@@ -216,11 +176,7 @@ export function statementImportKey(input: {
   amountMinor: Minor;
   installmentNo: number | null;
 }): string {
-  // Locale-INVARIANT lowercase. Turkish casing is right for comparing names a
-  // person typed and wrong for a stable machine identity: `toLocaleLowerCase`
-  // maps "MIGROS" to "mıgros" and "Migros" to "migros", so one merchant
-  // printed in two cases would produce two identities and re-import would
-  // double it.
+  // Locale-invariant lowercase: tr-TR maps MIGROS to mıgros, which would split one merchant into two keys.
   const normalized = input.description
     .toLowerCase()
     .replace(/\s+/g, " ")
@@ -236,13 +192,9 @@ export function statementImportKey(input: {
 }
 
 /**
- * Put the spaces back where a producer ran fields together.
- *
- * One statement prints `16/07/2026MERKEZ ECZANE1.995,731/3` — date, merchant,
- * amount and instalment position with no separator at all, because each field
- * is positioned rather than spaced. Three targeted rules restore the
- * boundaries, and only those three: a blanket "split digits from letters"
- * would cut real merchant names like `A-101` and `K101-9919` in half.
+ * Put the spaces back where a producer ran fields together, as in
+ * `16/07/2026MERKEZ ECZANE1.995,731/3`. Three targeted rules only: a blanket
+ * "split digits from letters" would cut merchant names like `A-101` in half.
  */
 function separateGluedFields(line: string): string {
   return line
@@ -354,30 +306,6 @@ export function parseStatementLine(line: string, period: string, format: AmountF
   return { kind: "candidate", candidate: candidateOf(period, text, date.iso!, charge, remainder, purchase) };
 }
 
-
-/**
- * The instalment plan one statement line implies.
- *
- * A statement prints a plan one payment at a time, and the Taksitler screen is
- * built on the plan rather than the payment — so a line that says `3/9` used
- * to arrive as a single loose charge and the plan behind it never existed.
- * This is the whole of the conversion, and it is pure: what a line says, in
- * the vocabulary the plan writer already takes.
- *
- * The start month is derived rather than read, because no statement prints it:
- * the third payment of a plan billed in this period puts the first two in the
- * two periods before it. That derivation is also what makes the plan STABLE —
- * every later statement of the same plan derives the same start month and the
- * same count, so the identity built from them converges instead of producing a
- * second plan per statement.
- *
- * A line that says how many payments REMAIN gets a plan that begins here: this
- * payment and the ones after it — including a line whose position was printed
- * on the line under it, which says the same thing. The months before belong to
- * statements already imported, or to a workbook, and writing them from here
- * would reach past the one month a statement may touch. Its start and count
- * change every month, so only its END identifies it.
- */
 export interface StatementPlanSpec {
   startMonth: MonthKey;
   installmentCount: number;
@@ -385,6 +313,12 @@ export interface StatementPlanSpec {
   installmentNo: number | null;
 }
 
+/**
+ * The instalment plan one statement line implies. The start month is derived,
+ * since no statement prints it, so every later statement of the same plan
+ * derives the same start and count and converges on one plan. A remainder-only
+ * line begins its plan here: earlier months belong to statements already imported.
+ */
 export function statementPlanSpec(
   candidate: Pick<StatementCandidate, "kind" | "installmentNo" | "installmentCount" | "remainingInstallments">,
   statementMonth: MonthKey,
@@ -415,24 +349,12 @@ export function statementSighting(
   };
 }
 
-
 /**
- * Merchants the app's own vocabulary cannot read on its own.
- *
- * A statement prints who was paid, not what for, and the biggest Turkish
- * chains carry no word that says which. Each entry maps a merchant to the
- * WORDS an owner's column might use, never to a column this app invents — the
- * whole point is to land in a column the owner already made.
- *
- * Both sides are written in the FOLDED alphabet, exactly as `cardPayment`
- * above is and for a second reason besides: `foldForMatch` is applied to both
- * inputs, so `[ıi]` and `[sş]` classes would be spelling a case that cannot
- * arrive — and every one of them is a mutant no test can kill, because both
- * halves of the class reach the same folded string.
- *
- * Deliberately short. Everything a generic word can already reach ("ECZANE",
- * "AKARYAKIT", "RESTORAN", printed in the merchant line by most acquirers)
- * goes through `conceptOf` above and needs no entry here.
+ * Merchants whose name carries no word for what they sell, mapped to the WORDS
+ * an owner's column might use, never to a column this app invents. Both sides
+ * are in the folded alphabet (`foldForMatch` is applied to both inputs), so
+ * `[ıi]`-style classes would only add unkillable mutants. Deliberately short:
+ * generic words ("ECZANE", "AKARYAKIT") go through `conceptOf`.
  */
 const MERCHANT_ALIASES: readonly (readonly [RegExp, RegExp])[] = [
   [/migros|carrefour|a101|a 101|\bbim\b/, /market|gida|mutfak/],
@@ -446,17 +368,9 @@ const MERCHANT_ALIASES: readonly (readonly [RegExp, RegExp])[] = [
 ];
 
 /**
- * The owner's own column for one statement line, or null.
- *
- * Null is a real answer and the important one. Every row used to default to
- * whichever expense column happened to sort first, so a statement filed a
- * month of spending under one arbitrary heading and said nothing about it —
- * a wrong answer that looks exactly like a right one. An unmatched row now
- * arrives with no column, which the review shows and the ledger stores as
- * uncategorised until someone says otherwise.
- *
- * Nothing here creates a column. A statement is evidence about money, not
- * about how this workspace is organised.
+ * The owner's own column for one statement line, or null. Null is the
+ * important answer: a guessed column looks exactly like a right one. Nothing
+ * here creates a column.
  */
 export function matchStatementCategory(
   description: string,
@@ -487,13 +401,11 @@ export function matchStatementCategory(
 
 /**
  * The position a statement prints on the line UNDER a charge, beside the
- * purchase's whole total: `1.814,94 TL'lik işlemin 4 / 6 taksidi` on the owner's
- * Yapı Kredi statement, whose charge line prints only the payments left — and
- * on a plan's last payment nothing, so it read as a new purchase.
+ * purchase's whole total (`1.814,94 TL'lik işlemin 4 / 6 taksidi`).
  *
  * Settled by arithmetic, never wording: a dateless line with one amount and a
  * position belongs to the line above only when that line bills the total's
- * share there and any count left it printed agrees. Measured: 8 of 8 lines.
+ * share there and any count left it printed agrees.
  */
 function printedPosition(line: string, above: StatementCandidate, format: AmountFormat): { installmentNo: number; installmentCount: number } | null {
   const text = line.trim().replace(/\s+/g, " ");
@@ -561,14 +473,10 @@ export function parseStatement(text: string, period: string): StatementParseResu
 }
 
 /**
- * The period folded into every import key, taken from the candidates
- * themselves.
- *
- * Not read from a header: header wording is the most bank-specific thing on
- * the page, and getting it wrong would change every import key. Frozen as the
- * median for the same reason — a statement imported before must derive the
- * keys it was imported under. It is an identity, not the bill's month; that is
- * `billedMonthFromDates`.
+ * The period folded into every import key, from the candidates, not a header
+ * (header wording varies by bank). Frozen as the median so a statement imported
+ * before derives the keys it was imported under. An identity, not the bill's
+ * month; that is `billedMonthFromDates`.
  */
 export function periodFromDates(dates: readonly ISODate[]): string {
   if (dates.length === 0) return "unknown";
@@ -577,10 +485,9 @@ export function periodFromDates(dates: readonly ISODate[]): string {
 }
 
 /**
- * The month the statement bills, as first offered to the owner: the month of
- * its newest line. An instalment line prints the day its purchase was made,
- * months back, and the median of those dates put the owner's own statement a
- * month before the one it closed in.
+ * The month the statement bills, as first offered: the month of its newest
+ * line. An instalment line prints its purchase day, months back, so the median
+ * would land a month early.
  */
 export function billedMonthFromDates(dates: readonly ISODate[]): MonthKey | null {
   if (dates.length === 0) return null;
@@ -715,18 +622,16 @@ export function cardFromPlans(
   plans: readonly ExistingPlan[],
   period: MonthKey,
 ): string | null {
-  const byCard = new Map<string, ExistingPlan[]>();
-  for (const plan of plans) {
-    if (plan.paymentSourceId != null) byCard.set(plan.paymentSourceId, [...(byCard.get(plan.paymentSourceId) ?? []), plan]);
-  }
+  const byCard = groupBy(plans, (plan) => plan.paymentSourceId);
   const votes = new Map<string, number>();
   const claimed = new Set<string>();
   for (const candidate of candidates) {
     const spec = candidate.isRefund ? null : statementPlanSpec(candidate, period);
+    if (!spec) continue;
     // Every card that holds the line gets its vote, so a plan two cards both
     // hold ties rather than going to whichever card was listed first.
-    for (const [card, held] of spec ? byCard : []) {
-      const match = planForSighting(statementSighting(spec!, candidate.amountMinor, period, card), held, claimed);
+    for (const [card, held] of byCard) {
+      const match = planForSighting(statementSighting(spec, candidate.amountMinor, period, card), held, claimed);
       if (!match) continue;
       claimed.add(match.plan.id);
       votes.set(card, (votes.get(card) ?? 0) + 1);
@@ -748,20 +653,10 @@ export function defaultSelection(verdicts: ReadonlyMap<string, CandidateVerdict>
 
 /**
  * How far the read fell short of the figure the owner checked it against.
- *
- * Positive means the statement says more than was read — the likeliest and
- * most damaging case, because the missing amount never reaches the ledger and
- * turns up later as balance drift with nothing pointing back here. Negative
- * means the opposite and matters just as much: something was read twice, or a
- * line that was not a charge became one.
- *
- * `null` is not "correct", it is "nothing to say" — either no figure was given
- * to check against, or the two agree. Both leave the screen with no difference
- * to report, and neither should be dressed up as the other.
- *
- * Refunds are netted the way the printed figure nets them: `amountMinor` is
- * always positive here and `isRefund` is what carries direction, so a period
- * with a return in it reconciles against the same number the bank shows.
+ * Positive: the statement says more than was read, so the missing amount
+ * surfaces later as balance drift. Negative: something was read twice or a
+ * non-charge became one. `null` means nothing to report (no figure given, or
+ * they agree). Refunds are netted, since `amountMinor` is always positive.
  */
 export function statementDifferenceMinor(
   declaredMinor: Minor | null,

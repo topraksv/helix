@@ -1,40 +1,18 @@
-/**
- * The app's navigation surface: one bounded bar along the bottom, at every
- * width.
- *
- * A left rail was tried at desktop widths and removed by the owner: taking a
- * column out of the window pushed every page's content off centre, and the same
- * app then had two navigations to learn. One bar, one position, one habit — the
- * bottom edge a held hand reaches, and a bounded width so five destinations do
- * not spread across a monitor.
- *
- * Native platforms use a light translucent material; web adds the browser's
- * backdrop blur when available and falls back to the same tinted surface.
- * Reduce Transparency always selects the opaque fallback.
- *
- * The native material stays dependency-free so it can ship with the current
- * runtime; web's CSS blur is an optional enhancement, never a requirement for
- * contrast or navigation.
- *
- * Metrics live in the shared `TAB_BAR` tokens and reach every
- * consumer through `navigationInset`, so `Screen` and the undo snackbar cannot
- * drift from where navigation really is. The press behaviour reproduces the
- * library's own `tabPress` contract — a screen listener may still cancel
- * navigation, which is what keeps `popToTopOnBlur` and the selection haptic
- * working.
- */
+/** One bounded bar along the bottom at every width; translucent unless Reduce Transparency. Press and scrub go through the navigator's `tabPress`, so listeners can cancel. */
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Animated, Keyboard, PanResponder, Platform, Pressable, Text, View, useWindowDimensions, type ViewStyle } from "react-native";
 import type { BottomTabBarProps } from "expo-router/js-tabs";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { selectionTap } from "./haptics";
 import { useReducedMotion, useReduceTransparency } from "./motion";
 import { shouldUseCompactNavigationMaterial, tabLabelsFit, tooWide } from "./responsive";
 import { font, maxFontScale, motion, NAV_GLASS, navigationMaterial, radius, stateOpacity, TAB_BAR, tabBarBottomOffset, tabBarHeight, themeShadow, type, useTheme } from "./theme";
 
 /** The bar's own inset. The selection slides inside it, not over its edge. */
 const BAR_PADDING = 2;
+/** The bar's outline; the columns share what lies inside it and the padding. */
+const BAR_BORDER = 1;
+const EDGE = BAR_BORDER + BAR_PADDING;
 
 /** How far a finger travels before the bar treats it as a scrub and not a tap. */
 const DRAG_CLAIM_DISTANCE = 24;
@@ -114,15 +92,7 @@ export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
     const route = routes[index];
     if (!route || index === current) return;
     const event = navigation.emit({ type: "tabPress", target: route.key, canPreventDefault: true });
-    if (!event.defaultPrevented) {
-      // Crossing into a tab is a selection changing, and the scrub was the one
-      // way of changing it that said nothing: the destination slid past under
-      // a thumb that is covering the bar it is sliding along. Same feedback a
-      // press already gives, once per crossing rather than once per frame —
-      // `goToIndex` returns early when the index has not actually moved.
-      selectionTap();
-      navigation.navigate(route.name, route.params);
-    }
+    if (!event.defaultPrevented) navigation.navigate(route.name, route.params);
   };
 
   // Dragging across the bar scrubs through the tabs, so the box is measured in
@@ -133,35 +103,15 @@ export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
     });
   };
 
-  // The selection is one shape that travels, not five that light up in turn.
-  // Choosing a tab was a hard swap of fill and outline, which said which tab is
-  // current but never that you had moved between them — and this bar is also
-  // draggable, where a jumping highlight reads as five separate flickers rather
-  // than one thing being scrubbed.
   const [barWidth, setBarWidth] = useState(0);
-  /**
-   * The bar drops its labels once the user's text no longer fits them.
-   *
-   * Five equal columns in a bounded bar give each label roughly 60pt. Capping
-   * the multiplier at 200% stops the glyphs clipping and does nothing about the
-   * words: measured on a simulator at the largest accessibility size, the bar
-   * rendered "Duru | Mali | Abo | Yatı | Aya" with the five labels overlapping
-   * each other — worse than no labels at all.
-   *
-   * The trigger is the MEASURED label, not a font scale. `fontScale` from
-   * `useWindowDimensions` is 1 on iOS whatever the text-size setting says — it
-   * follows Display Zoom, not Dynamic Type — so a threshold on it is dead code
-   * on the one platform that has the problem. This is the same intrinsic-width
-   * probe `Figure` uses for the amount ladder.
-   *
-   * Above the threshold the bar becomes icon-only, which is what iOS does when
-   * its own tab bar runs out of room. Nothing is lost to a screen reader:
-   * `tabBarAccessibilityLabel` sits on the Pressable and is announced either
-   * way.
-   */
-  const [labelWidth, setLabelWidth] = useState(0);
+  /** Labels drop once the measured label no longer fits; iOS fontScale follows Display Zoom, not Dynamic Type, so it cannot be the trigger. */
+  // Each label's latest width, remembered with the bar width it was measured at,
+  // so a new bar width reads as "not measured yet". A report replaces, never
+  // raises, and a dropped label stays mounted unseen: shrinking the text lowers
+  // the widest and the labels come back.
+  const [measured, setMeasured] = useState<{ barWidth: number; widths: Record<string, number> }>({ barWidth: 0, widths: {} });
   const slotWidth = state.routes.length > 0 && barWidth > 0
-    ? (barWidth - BAR_PADDING * 2) / state.routes.length
+    ? (barWidth - EDGE * 2) / state.routes.length
     : 0;
   const selection = useRef(new Animated.Value(state.index)).current;
   useEffect(() => {
@@ -181,18 +131,7 @@ export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
   const pan = useMemo(
     () =>
       PanResponder.create({
-        /**
-         * Claim only a deliberate drag along the navigation's own axis, so a
-         * tap still reaches the Pressable underneath and a scroll still
-         * belongs to the page.
-         *
-         * The threshold used to be 8pt, which is inside the slop of an
-         * ordinary tap: the bar sits where a held thumb rests, so a press that
-         * slid a little navigated somewhere the user had not chosen. It is now
-         * a distance nobody crosses by accident, and the gesture also has to
-         * be clearly horizontal rather than merely more horizontal than
-         * vertical — a diagonal flick towards the bar no longer counts.
-         */
+        // A deliberate horizontal drag only, so a tap reaches the Pressable and a scroll stays the page's.
         onMoveShouldSetPanResponder: (_event, gesture) =>
           Math.abs(gesture.dx) > DRAG_CLAIM_DISTANCE
           && Math.abs(gesture.dx) > Math.abs(gesture.dy) * DRAG_HORIZONTAL_BIAS,
@@ -200,7 +139,7 @@ export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
           const { x, width } = barBox.current;
           const count = latest.current.routes.length;
           if (width <= 0 || count === 0) return;
-          const slot = Math.floor(((gesture.moveX - x) / width) * count);
+          const slot = Math.floor((gesture.moveX - x - EDGE) / ((width - EDGE * 2) / count));
           goToIndex(Math.min(Math.max(slot, 0), count - 1));
         },
       }),
@@ -208,63 +147,30 @@ export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
     [],
   );
 
-  // A quiet navigation instrument, not a second card pile: a restrained
-  // outline over a translucent fill. The outline is what gives it an edge on a
-  // near-black page, where the shadow has nothing to fall onto.
+  // An outline over a translucent fill: it is what gives the bar an edge on a near-black page.
   const material: ViewStyle = {
     backgroundColor: materialFill,
-    borderWidth: 1,
+    borderWidth: BAR_BORDER,
     borderColor: palette.border + (scheme === "dark" ? "" : "70"),
     ...webMaterial,
     ...themeShadow.overlay(palette),
   };
 
-  // Derived, not stored. The label lays itself out before the bar has reported
-  // its own width, so a decision taken inside the measurement callback is taken
-  // against `slotWidth === 0` and never revisited. Remembering the widest label
-  // and comparing it in render means the answer follows the geometry whenever
-  // the geometry changes.
+  // Derived, not stored: the label lays itself out before the bar has reported
+  // its width, so the decision is taken in render against whatever is known.
+  const labelWidth = measured.barWidth === barWidth ? Math.max(0, ...Object.values(measured.widths)) : 0;
   const labelsFit = tabLabelsFit(labelWidth, slotWidth);
-  // A new bar width deserves a fresh measurement, so shrinking the text can
-  // bring the labels back.
-  useEffect(() => setLabelWidth(0), [barWidth]);
-
-  /**
-   * One measuring callback per label, kept alive across renders.
-   *
-   * React re-invokes a ref callback — once with `null`, once with the node —
-   * every time its IDENTITY changes, and an inline arrow is a new identity on
-   * every render. The measurement below is a synchronous layout read, so the
-   * inline form ran `document.createRange()` and `getClientRects()` five times
-   * per bar render, and the bar re-renders on every tab change. Profiled at 6x
-   * CPU over three round trips, `getClientRects` was 233ms — the second
-   * largest item after Chrome's own accessibility walk.
-   *
-   * Cached by everything the callback closes over, so it stays stable while
-   * the geometry does and is rebuilt the moment the geometry moves.
-   */
-  const measurers = useRef(new Map<string, (node: unknown) => void>());
-  const measurerFor = (routeKey: string) => {
-    const cacheKey = `${routeKey}:${barWidth}:${slotWidth}`;
-    const known = measurers.current.get(cacheKey);
-    if (known) return known;
-    measurers.current.clear();
-    const measure = (node: unknown) => {
-      const measured = measureLabelText(node as HTMLElement | null);
-      if (measured.width <= 0) return;
-      setLabelWidth((seen) => Math.max(seen, measured.wrapped ? tooWide(slotWidth) : measured.width));
-    };
-    measurers.current.set(cacheKey, measure);
-    return measure;
-  };
+  // One stable callback per label: a new identity re-runs the synchronous layout read on every render.
+  const reportLabel = useCallback((key: string, width: number) =>
+    setMeasured((seen) => {
+      const known = seen.barWidth === barWidth ? seen.widths : {};
+      return known[key] === width ? seen : { barWidth, widths: { ...known, [key]: width } };
+    }), [barWidth]);
 
   const destinations = state.routes.map((route, index) => {
     const options = descriptors[route.key]?.options ?? {};
     const focused = state.index === index;
-    // On the soft pill the accent role measures 4.12 against it — below AA
-    // for an 11px label. `primaryText` is the ink that role exists for and
-    // is already proved against `primarySoft` for every palette, so the
-    // selected tab reads by weight and fill rather than by hue alone.
+    // accentText: the ink proved against primarySoft, so the selected tab reads by weight and fill.
     const color = focused ? palette.accentText : palette.textSecondary;
     const label = options.tabBarLabel ?? options.title ?? route.name;
 
@@ -272,17 +178,11 @@ export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
       <Pressable
         key={route.key}
         accessibilityRole="tab"
-        // `aria-selected`, not `accessibilityState`: react-native-web does
-        // not translate the latter for this role, so the bar rendered five
-        // tabs with no selected state at all. React Native maps the aria-*
-        // props back to accessibility state on native, so this is one
-        // mechanism rather than a web special case.
+        // `aria-selected`, not `accessibilityState`: react-native-web does not translate the latter for this role.
         aria-selected={focused}
         accessibilityLabel={options.tabBarAccessibilityLabel}
         onPress={() => {
-          // The library's contract: navigate only if no listener cancelled
-          // it. Bypassing the event would silently drop `popToTopOnBlur`
-          // and the selection haptic, both of which listen for it.
+          // Navigate only if no listener cancelled tabPress, or popToTopOnBlur and the haptic are lost.
           const event = navigation.emit({ type: "tabPress", target: route.key, canPreventDefault: true });
           if (!focused && !event.defaultPrevented) {
             navigation.navigate(route.name, route.params);
@@ -293,7 +193,6 @@ export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
         style={({ pressed }) => ({
           flex: 1,
           alignSelf: "stretch",
-          marginVertical: 0,
           alignItems: "center",
           justifyContent: "center",
           gap: 1,
@@ -309,73 +208,28 @@ export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
             alignItems: "center",
             justifyContent: "center",
             borderRadius: radius.sm,
-            backgroundColor: "transparent",
           }}
         >
           {options.tabBarIcon?.({ focused, color, size: 22 })}
         </View>
-        {labelsFit ? (
-          <Text
-            // Re-measured whenever the bar resizes. `labelWidth` is reset on a
-            // new bar width so a stale "too wide" sentinel cannot outlive the
-            // geometry that produced it — but a label that is already mounted
-            // does not change layout when that reset re-renders it, so
-            // `onLayout` never fired again and the width stayed 0 for ever.
-            // Zero reads as "not measured yet", which reads as fits: the rule
-            // that drops the labels could not fire once. Keying on the bar
-            // width makes the reset and the re-measure the same event.
-            key={`${route.key}:${barWidth}`}
-            maxFontSizeMultiplier={maxFontScale.measuredBox}
-            // A label that WRAPPED is the clearest evidence it does not fit,
-            // and it is the only evidence available without clamping the label
-            // to one line — which this app does not do to its own copy.
-            // Wrapping reports a width the column cannot hold; a single line
-            // reports its real one.
-            onTextLayout={(event) => {
-              const lines = event.nativeEvent.lines;
-              const widest = Math.max(...lines.map((line) => line.width), 0);
-              setLabelWidth((known) => Math.max(known, lines.length > 1 ? tooWide(slotWidth) : Math.ceil(widest)));
-            }}
-            // react-native-web does not dispatch `onTextLayout`, so the web half
-            // measures the DOM itself — through a ref, because that is the only
-            // handle it actually gets. This used to read `event.target` inside
-            // `onLayout`, and react-native-web synthesises that event from a
-            // ResizeObserver without a `target` at all: the probe read
-            // `undefined`, every label measured as 0, and 0 means "not measured
-            // yet", which means "fits". The rule that drops the labels when
-            // they no longer fit therefore never fired once — at 320px "Mali
-            // Tablo" and "Abonelikler" sat 1px apart and read as one word.
-            //
-            // A Range over the text CONTENT is what gets measured, not the
-            // element: a react-native-web Text is a block box the column has
-            // already sized, so every box-level answer is the column's width
-            // rather than the label's.
-            ref={measurerFor(route.key)}
-            style={{
-              fontFamily: focused ? font.semibold : font.medium,
-              fontSize: type.caption.fontSize,
-              // No `lineHeight`. A constant line box beside a scaling font size
-              // is the Dynamic Type clipping bug the shared type scale already
-              // refuses to write: at 14pt the glyphs grew with the OS setting
-              // and the box did not, so Turkish descenders (ç, ğ) were cut off
-              // the moment the user asked for larger text.
-              textAlign: "center",
-              color: focused ? palette.textStrong : palette.textSecondary,
-            }}
-          >
-            {typeof label === "string" ? label : route.name}
-          </Text>
-        ) : null}
+        <TabLabel
+          // Keyed on the bar width: a mounted native label does not re-layout
+          // when only its column changed, so it would never report again.
+          key={`${route.key}:${barWidth}`}
+          id={route.key}
+          label={typeof label === "string" ? label : route.name}
+          focused={focused}
+          hidden={!labelsFit}
+          slotWidth={slotWidth}
+          onMeasure={reportLabel}
+        />
       </Pressable>
     );
   });
 
   if (keyboardShown) return null;
   return (
-    // Two views on purpose: an absolutely positioned element with both `left`
-    // and `right` set ignores `maxWidth` and an auto margin, so the bar spanned
-    // a 1440 px viewport and each of its five targets came out ~288 px wide.
-    // The wrapper owns the position, the bar owns its own bounded width.
+    // Two views: an absolute element with left and right ignores maxWidth.
     <View
       pointerEvents="box-none"
       style={{
@@ -403,10 +257,6 @@ export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
         padding: BAR_PADDING,
         flexDirection: "row",
         alignItems: "center",
-        // The bar floats over the page, and at `radius.md` it was more square
-        // than the RESTING cards underneath it — which reads as a panel that
-        // failed to detach rather than as a layer above. `xl` is the widest
-        // corner in the scale and the only one that suits a 56pt pill.
         borderRadius: radius.xl,
         borderCurve: "continuous",
         ...material,
@@ -446,5 +296,46 @@ export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
       {destinations}
     </View>
     </View>
+  );
+}
+
+/** One label, measured after layout; web reads the DOM in a layout effect because react-native-web dispatches no onTextLayout. */
+function TabLabel({ id, label, focused, hidden, slotWidth, onMeasure }: {
+  id: string;
+  label: string;
+  focused: boolean;
+  /** Out of the layout and unseen, still measuring, so it can come back. */
+  hidden: boolean;
+  slotWidth: number;
+  onMeasure: (id: string, width: number) => void;
+}) {
+  const { palette } = useTheme();
+  const ref = useRef<Text>(null);
+  useLayoutEffect(() => {
+    const measured = measureLabelText(ref.current as unknown as HTMLElement | null);
+    if (measured.width > 0) onMeasure(id, measured.wrapped ? tooWide(slotWidth) : measured.width);
+  }, [id, label, slotWidth, onMeasure]);
+  return (
+    <Text
+      ref={ref}
+      aria-hidden={hidden}
+      maxFontSizeMultiplier={maxFontScale.measuredBox}
+      // A label that wrapped is the clearest evidence it does not fit.
+      onTextLayout={(event) => {
+        const lines = event.nativeEvent.lines;
+        const widest = Math.max(...lines.map((line) => line.width), 0);
+        onMeasure(id, lines.length > 1 ? tooWide(slotWidth) : Math.ceil(widest));
+      }}
+      style={{
+        fontFamily: focused ? font.semibold : font.medium,
+        fontSize: type.caption.fontSize,
+        // No `lineHeight`: a fixed line box clips scaled Turkish descenders.
+        textAlign: "center",
+        color: focused ? palette.textStrong : palette.textSecondary,
+        ...(hidden ? { position: "absolute" as const, opacity: 0 } : null),
+      }}
+    >
+      {label}
+    </Text>
   );
 }

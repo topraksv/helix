@@ -1,22 +1,7 @@
 /**
- * The app's own stack header, rendered by React on every platform.
- *
- * The native stack draws its header with UIKit: it owns the metrics, and since
- * iOS 26 it paints a shared glass background behind every bar button item. A
- * custom `headerLeft` therefore came out looking nothing like the web one — a
- * chevron inside a system capsule, positioned by UIKit — and no amount of
- * styling on our side could move it, because our view was only the capsule's
- * content. react-native-screens 4.16 exposes no way to opt out of that
- * background for a plain `headerLeft`.
- *
- * Rendering the header ourselves makes web and native the SAME React tree, so
- * "identical on both platforms" is structural instead of a coincidence to
- * re-verify after every OS release. It also puts the back press back in our
- * hands: with a UIKit bar button the system can pop the stack directly,
- * bypassing the recorded-origin logic in `navigateBack`.
- *
- * Screens keep declaring `headerLeft` exactly as before; this component just
- * renders it, so there is one back control and one back rule everywhere.
+ * The stack header, rendered by React on every platform: the native iOS bar
+ * paints a system capsule behind a custom `headerLeft` that cannot be opted
+ * out of, and a UIKit back item would bypass `navigateBack`.
  */
 
 import { type ReactNode } from "react";
@@ -121,18 +106,10 @@ export function pageScreenOptions(palette: Palette) {
     // Every route in this stack goes back; none of them close or dismiss.
     gestureEnabled: true,
     contentStyle: { backgroundColor: palette.background },
-    // One header component on every platform — see `ui/header-bar.tsx` for why
-    // the native stack's own header could not be made to match the web one.
-    // Screens still declare `headerLeft`; this renders whatever they declared.
     header: ({ options }: StackHeaderArgs) => (
       <HeaderBar title={options.title} left={options.headerLeft?.({ canGoBack: true, tintColor: palette.accentText })} />
     ),
   };
-}
-
-/** The same page, presented as a card over its parent. */
-export function cardScreenOptions(palette: Palette) {
-  return { ...pageScreenOptions(palette), presentation: "card" as const };
 }
 
 interface StackHeaderArgs {

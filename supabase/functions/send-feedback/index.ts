@@ -1,58 +1,21 @@
 /**
- * Turn a feedback report into an email to the owner (spec §13.1).
- *
- * This runs on Supabase Edge Functions (Deno), not in the app bundle, for two
- * reasons that both matter:
- *
- *   - the mail account's app password must never reach a client. The web build
- *     is a static export served from GitHub Pages, so anything the client holds
- *     is public;
- *   - the app is offline-first and its CSP pins `connect-src` to a short list.
- *     The Supabase origin is already on that list, so calling our own function
- *     needs no CSP change, while calling a mail provider directly would.
- *
- * It trusts nothing the client sends. The same rules `src/domain/feedback.ts`
- * states are re-checked here, because the client that posts is the one thing a
- * server may not assume is the client we shipped.
- *
- * Deployment (owner, once):
- *   supabase secrets set SMTP_USER=<gmail address> SMTP_PASS=<app password>
- *   supabase functions deploy send-feedback
+ * Mails a feedback report to the owner (SPEC 13.1). Server-side because the
+ * mail password must never reach a client, and the Supabase origin is already
+ * in the CSP `connect-src`. It re-checks every rule `src/domain/feedback.ts` states.
  */
 
-// Remote module specifiers, which is how Deno imports. `tsconfig.json` and
-// `eslint.config.js` both exclude this directory precisely so the app's
-// toolchain never tries to resolve them — which is also why there is no
-// `@ts-expect-error` here: under Deno the imports resolve fine, and the
-// directive itself became the only error `deno check` reported.
 import { feedbackSubject } from "./subject.ts";
-// Exact versions, the client's own supabase-js among them: nothing locks or
-// audits what Deno fetches here, so a range would be whatever the registry
-// served on the day of the deploy.
+// Exact versions: the frozen deno.lock checks bytes, the version picks which.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.116.0";
 import nodemailer from "npm:nodemailer@9.1.1";
 
 const OWNER_EMAIL = "topraksavli@hotmail.com";
 
-/**
- * One mail account sends everything Helix sends: Auth's reset and
- * confirmation messages through the project's custom SMTP setting, and this
- * report through the same account here. Gmail, because the project owns no
- * domain, and every provider that sends to arbitrary addresses wants one.
- *
- * Port 465 with implicit TLS is not a preference. Edge Functions refuse
- * outgoing connections to 25 and 587, which leaves 465 as Gmail's only open
- * door. Gmail also rewrites any `from` that is not the signed-in account, so
- * the sender is the account itself and the reporter goes in `replyTo`, the
- * field a reply actually uses. `SMTP_HOST` exists so a later move to a domain
- * and a transactional provider changes a secret rather than this file.
- */
+/** Port 465 because Edge Functions refuse 25 and 587. Gmail rewrites a foreign
+ *  `from`, so the reporter goes in `replyTo`. */
 const SMTP_PORT = 465;
 const FROM_NAME = "Helix Geri Bildirim";
 
-const FEEDBACK_CATEGORIES = [
-  "visual", "functional", "performance", "data", "suggestion", "other",
-] as const;
 const FEEDBACK_IMAGE_MIME_TYPES = ["image/jpeg", "image/png", "image/webp", "image/heic"] as const;
 const FEEDBACK_MESSAGE_MIN = 10;
 const FEEDBACK_MESSAGE_MAX = 4000;
@@ -65,13 +28,15 @@ const BASE64_LENGTH_RATIO = 4 / 3;
 const MAX_IMAGE_BASE64_LENGTH = Math.ceil(MAX_FEEDBACK_IMAGE_BYTES * BASE64_LENGTH_RATIO) + 4;
 const MAX_TOTAL_BASE64_LENGTH = Math.ceil(MAX_FEEDBACK_TOTAL_IMAGE_BYTES * BASE64_LENGTH_RATIO) + 16;
 
-const CATEGORY_LABEL: Record<string, string> = {
-  visual: "Görsel hata",
-  functional: "Çalışmayan özellik",
-  performance: "Yavaşlık",
-  data: "Yanlış veri veya hesap",
-  suggestion: "Öneri",
-  other: "Diğer",
+// Colours let the owner scan an inbox by category. Inline styles and tables
+// only in the mail: clients drop <style> blocks and flexbox.
+const CATEGORIES: Record<string, { label: string; bg: string; fg: string; mark: string }> = {
+  visual: { label: "Görsel hata", bg: "#EED8CC", fg: "#7B3A28", mark: "🎨" },
+  functional: { label: "Çalışmayan özellik", bg: "#F6D5D1", fg: "#8A2A22", mark: "🛠️" },
+  performance: { label: "Yavaşlık", bg: "#EDDFC5", fg: "#775624", mark: "⏱️" },
+  data: { label: "Yanlış veri veya hesap", bg: "#F6D5D1", fg: "#8A2A22", mark: "📊" },
+  suggestion: { label: "Öneri", bg: "#E2E1C9", fg: "#555937", mark: "💡" },
+  other: { label: "Diğer", bg: "#E7DFD7", fg: "#3A3028", mark: "💬" },
 };
 
 const CORS = {
@@ -108,15 +73,8 @@ Deno.serve(async (request: Request): Promise<Response> => {
   const smtpPass = Deno.env.get("SMTP_PASS");
   if (!smtpUser || !smtpPass) return json({ error: "not_configured" }, 503);
 
-  /**
-   * The function runs with the caller's own bearer token rather than the
-   * service role, so an account is the one Supabase vouches for. Someone signed
-   * out (migration 45) — sign-up and sign-in send them here when mail fails —
-   * posts with the anon key: they give an address to answer, attach no
-   * picture, and share one bound of ten a day with everyone signed out.
-   */
-  // Forwarded only when sent: an empty one would reach PostgREST as a broken
-  // token, where none lets the client fall back to the anon key.
+  // The caller's own token, not the service role. Signed out, there is no bearer
+  // (an empty one would reach PostgREST as a broken token).
   const authorization = request.headers.get("Authorization");
   const supabase = createClient(
     Deno.env.get("SUPABASE_URL") ?? "",
@@ -126,22 +84,8 @@ Deno.serve(async (request: Request): Promise<Response> => {
   const { data: userData } = await supabase.auth.getUser();
   const user = userData?.user ?? null;
 
-  /**
-   * One send, claimed before anything is read.
-   *
-   * The limit lives in the database (migration 37) rather than here: this
-   * function is a public HTTP endpoint, so a bound it enforced in its own
-   * memory would last exactly as long as one isolate and would be shared by
-   * none of them. The RPC counts and records under a per-account lock
-   * (migration 44) and the caller's own identity, and the table it writes is
-   * unreachable by any other path.
-   *
-   * Claimed BEFORE the body is parsed and the attachments are decoded, so a
-   * caller who is already over the limit cannot make this function do the
-   * expensive part anyway. The cost of that is that a report refused later for
-   * being malformed still spends its slot, which is the right way round: a
-   * client sending malformed bodies at speed is exactly what the limit is for.
-   */
+  // Claimed before the body is read, so a caller over the limit never reaches the
+  // decode; in the database because isolates share no memory.
   const { data: allowed, error: limitError } = await supabase.rpc(user ? "record_feedback_send" : "record_signed_out_feedback_send");
   if (limitError) {
     console.error("feedback rate check failed", limitError.code ?? limitError.message);
@@ -151,13 +95,13 @@ Deno.serve(async (request: Request): Promise<Response> => {
 
   let payload: Record<string, unknown>;
   try {
-    payload = await request.json();
+    payload = (await request.json()) ?? {};
   } catch {
     return json({ error: "invalid_json" }, 400);
   }
 
   const category = String(payload.category ?? "");
-  if (!(FEEDBACK_CATEGORIES as readonly string[]).includes(category)) {
+  if (!Object.hasOwn(CATEGORIES, category)) {
     return json({ error: "invalid_category" }, 400);
   }
 
@@ -166,29 +110,19 @@ Deno.serve(async (request: Request): Promise<Response> => {
     return json({ error: "invalid_message" }, 400);
   }
 
+  // The address someone signed out gives; an account's is its own.
+  const given = String(payload.replyTo ?? "").trim();
+  if (!user && (given.length > 254 || !/^[^\s@<>"]+@[^\s@<>"]+\.[^\s@<>"]+$/.test(given))) {
+    return json({ error: "invalid_reply_to" }, 400);
+  }
+  const replyTo = user ? user.email ?? null : given;
+
   const platform = String(payload.platform ?? "bilinmiyor").slice(0, 40);
   const appVersion = String(payload.appVersion ?? "bilinmiyor").slice(0, 40);
 
-  /**
-   * Screenshots, plural.
-   *
-   * A single `image` was the shape this function shipped with; a client on an
-   * older build may still send it, so both are accepted and normalised to one
-   * list before anything is checked. Nothing here trusts the count, the size or
-   * the encoding the client claims.
-   */
-  const rawImages: unknown[] = Array.isArray(payload.images)
-    ? payload.images
-    : payload.image
-      ? [payload.image]
-      : [];
+  // Nothing here trusts the count, the size or the encoding the client claims.
+  const rawImages: unknown[] = Array.isArray(payload.images) ? payload.images : [];
   if (rawImages.length > (user ? MAX_FEEDBACK_IMAGES : 0)) return json({ error: "too_many_images" }, 400);
-
-  // The address someone signed out gives; an account's is its own.
-  const replyTo = user ? user.email ?? null : String(payload.replyTo ?? "").trim();
-  if (!user && (replyTo!.length > 254 || !/^[^\s@<>"]+@[^\s@<>"]+\.[^\s@<>"]+$/.test(replyTo!))) {
-    return json({ error: "invalid_reply_to" }, 400);
-  }
 
   const attachments: { filename: string; content: string; encoding: "base64"; contentType: string }[] = [];
   let totalBase64 = 0;
@@ -206,10 +140,9 @@ Deno.serve(async (request: Request): Promise<Response> => {
     }
     totalBase64 += base64.length;
     if (totalBase64 > MAX_TOTAL_BASE64_LENGTH) return json({ error: "images_too_large" }, 400);
-    const extension = mimeType.split("/")[1] ?? "png";
+    const extension = mimeType.slice(6);
     const rawName = String(image?.filename ?? "").replace(/[^\w.-]/g, "").slice(0, 60);
-    const fallbackName = `ekran-goruntusu-${attachments.length + 1}.${extension}`;
-    const name = rawName || fallbackName;
+    const name = rawName || `ekran-goruntusu-${attachments.length + 1}.${extension}`;
     // Two screenshots a phone named the same thing still arrive as two files a
     // mail client can tell apart.
     attachments.push({
@@ -220,18 +153,7 @@ Deno.serve(async (request: Request): Promise<Response> => {
     });
   }
 
-  // Categories carry a colour the owner can scan an inbox by: a broken screen
-  // and a suggestion should not look the same at a glance. Inline styles and
-  // tables only — mail clients drop <style> blocks and flexbox.
-  const CATEGORY_TONE: Record<string, { bg: string; fg: string; mark: string }> = {
-    visual: { bg: "#EED8CC", fg: "#7B3A28", mark: "🎨" },
-    functional: { bg: "#F6D5D1", fg: "#8A2A22", mark: "🛠️" },
-    performance: { bg: "#EDDFC5", fg: "#775624", mark: "⏱️" },
-    data: { bg: "#F6D5D1", fg: "#8A2A22", mark: "📊" },
-    suggestion: { bg: "#E2E1C9", fg: "#555937", mark: "💡" },
-    other: { bg: "#E7DFD7", fg: "#3A3028", mark: "💬" },
-  };
-  const tone = CATEGORY_TONE[category] ?? CATEGORY_TONE.other;
+  const tone = CATEGORIES[category];
   const sentAt = new Intl.DateTimeFormat("tr-TR", {
     dateStyle: "long", timeStyle: "short", timeZone: "Europe/Istanbul",
   }).format(new Date());
@@ -261,7 +183,7 @@ Deno.serve(async (request: Request): Promise<Response> => {
           <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
             <tr><td style="height:6px; line-height:6px; font-size:0; background-color:#A55335; border-radius:18px 18px 0 0;">&nbsp;</td></tr>
             <tr><td style="padding:28px 32px 0 32px;">
-              <span style="display:inline-block; padding:6px 12px; border-radius:999px; background-color:${tone.bg}; color:${tone.fg}; font-family:${font}; font-size:13px; font-weight:600;">${tone.mark}&nbsp; ${escapeHtml(CATEGORY_LABEL[category] ?? category)}</span>
+              <span style="display:inline-block; padding:6px 12px; border-radius:999px; background-color:${tone.bg}; color:${tone.fg}; font-family:${font}; font-size:13px; font-weight:600;">${tone.mark}&nbsp; ${escapeHtml(tone.label)}</span>
               <h1 style="margin:16px 0 0 0; font-family:${serif}; font-size:24px; line-height:30px; font-weight:600; color:#2A211B;">Yeni bir geri bildirim geldi</h1>
             </td></tr>
             <tr><td style="padding:20px 32px 0 32px;">

@@ -1,19 +1,4 @@
-/**
- * Helix's mark, the botanical helix, drawn as vectors so it is sharp at any
- * size and can draw itself on the brand kit's timeline (2026-09-28): the two
- * strands trace down under widening masks, the rungs cross them in turn, the
- * vines reach out, then the leaves open from their stems one by one. Once the
- * intro ends every mask is dropped, so the resting mark is the kit's exact
- * drawing. The ink follows the theme and the clay leaves the palette's
- * accent, as the kit's dark, petrol and servi marks do; `onGradient` inks it
- * for a dark ground whatever the scheme. Only a cold start draws it; every
- * other screen shows it at rest. `named` writes the name under it,
- * left to right, as a cold start shows it. Reduced motion draws it at rest.
- *
- * The drawing, 18 KB of path data, is its own chunk on the web: the entry had
- * 14 KB of room left under its ceiling (measured 2026-09-28), and a mark that
- * draws itself in anyway loses nothing by arriving a frame later.
- */
+/** The mark drawing itself, and the name writing itself under it. The art is a lazy chunk, so the first screen does not wait for it. */
 
 import { useEffect, useId, useState } from "react";
 import { Easing, View } from "react-native";
@@ -61,8 +46,7 @@ const TIMELINE = {
   rungs: { at: 180, every: 60, for: 300 },
   vines: { at: 420, for: 360 },
   leaves: { at: 900, every: 70, for: 220, turn: 8 },
-  /** The name under the mark on a cold start (owner, 2026-10-02): it starts
-   *  writing as the strands are half drawn and finishes with the last leaf. */
+  /** The name under the mark on a cold start: it starts writing as the strands are half drawn and finishes with the last leaf. */
   name: { at: 450 },
 } as const;
 
@@ -142,17 +126,15 @@ function DrawMask({ id, stroke, drawn, gaps }: { id: string; stroke: Stroke; dra
 }
 
 export function BrandMark({
-  size = 56,
-  onGradient = false,
+  height,
   duration,
   named = false,
 }: {
-  size?: number;
-  onGradient?: boolean;
+  height: number;
   named?: boolean;
   /** The whole intro in milliseconds, the kit's timeline scaled evenly to fit.
-   *  Omitted, the mark is drawn at rest: the owner wants it to draw itself on
-   *  a cold start and nowhere else (2026-10-02). */
+   *  Omitted, the mark is drawn at rest: it draws itself on
+   *  a cold start and nowhere else. */
   duration?: number;
 }) {
   const { palette, paletteId } = useTheme();
@@ -164,10 +146,10 @@ export function BrandMark({
   // `useId` answers with colons, which a `url(#…)` reference cannot hold.
   const id = useId().replace(/[^a-zA-Z0-9]/g, "");
   const progress = (start: number, length: number) => (elapsed === null ? 1 : easeOut(Math.min(1, Math.max(0, (elapsed - start * pace) / (length * pace)))));
-  const ink = onGradient ? PALETTES[paletteId].dark.textStrong : palette.textStrong;
+  const ink = palette.textStrong;
   const clay = PALETTES[paletteId].light.primary;
-  const width = Math.round(size * MARK_ASPECT);
-  const box = { width, height: size };
+  const width = Math.round(height * MARK_ASPECT);
+  const box = { width, height };
   const hidden = { "aria-hidden": true, accessible: false, accessibilityElementsHidden: true, importantForAccessibility: "no-hide-descendants", pointerEvents: "none" } as const;
   if (!drawing) return <View {...hidden} style={box} />;
   const { LEAVES, RUNG_DRAW, RUNG_GAPS, RUNGS_SOLO, STRAND_A, STRAND_B, STRAND_DRAW, VIEW_BOX, VINE_DRAW } = drawing;
@@ -175,7 +157,7 @@ export function BrandMark({
   const tracing = elapsed !== null;
   return (
     <View {...hidden} style={box}>
-      <Svg width={width} height={size} viewBox={VIEW_BOX}>
+      <Svg width={width} height={height} viewBox={VIEW_BOX}>
         {tracing && (
           <Defs>
             {STRAND_DRAW.map((stroke, i) => <DrawMask key={i} id={`${id}s${i}`} stroke={stroke} drawn={progress(strands.at, strands.for)} gaps={RUNG_GAPS} />)}
@@ -221,7 +203,7 @@ export function BrandMark({
       </Svg>
       {/* Hung below the mark's box, so the mark keeps the place the native splash gave it. */}
       {named && (
-        <View style={{ position: "absolute", top: size + NAME_GAP, left: (width - (drawing.WORDMARK_BOX[2] * NAME_CAP) / drawing.WORDMARK_CAP) / 2 }}>
+        <View style={{ position: "absolute", top: height + NAME_GAP, left: (width - (drawing.WORDMARK_BOX[2] * NAME_CAP) / drawing.WORDMARK_CAP) / 2 }}>
           <Name id={id} art={drawing} ink={ink} written={tracing ? progress(name.at, natural - name.at) : null} />
         </View>
       )}

@@ -8,14 +8,10 @@ const TURKISH_FOLD: Record<string, string> = {
 };
 
 /**
- * One spelling to match a subscription's name against.
- *
- * `/internet/i` returns FALSE for "İnternet aboneliği". Without the `u` flag a
- * JavaScript regex canonicalises by `toUpperCase`, and dotted capital İ upper-
- * cases to itself while `i` upper-cases to `I` — so every utility a Turkish
- * user actually types with a capital was left without its icon. The accents go
- * too, so a pattern can be written in plain ASCII once and still match
- * "Doğalgaz", "İSKİ" and "Isıtma".
+ * One spelling to match a subscription's name against. `/internet/i` is FALSE
+ * for "İnternet aboneliği" (a non-`u` regex canonicalises by `toUpperCase`, and
+ * dotted İ stays itself), so the accents are folded away and a pattern can be
+ * written in plain ASCII.
  */
 export function foldForMatch(value: string): string {
   return value
@@ -40,16 +36,10 @@ export function nameMentions(name: string, needle: string): boolean {
 /**
  * Whether `name` contains a WORD THAT STARTS WITH `needle`, both folded.
  *
- * Turkish card programmes are named by concatenation, not by spacing:
- * Worldeko, Worldgold, Bonus Platinium written as "bonusplatinium", Axessplus,
- * Parafpara, Maximumgenc. `nameMentions` refuses every one of those, because a
- * whole-word match is exactly what a concatenated sub-brand is not — so a card
- * the owner really does hold was drawn with a generic outline while the plain
- * "World" beside it got its mark.
- *
- * The prefix must be a word's OWN beginning, so "eko world" still resolves and
- * "kredi" inside "yapikredi" does not steal the tile from Yapı Kredi. Callers
- * enforce the minimum length that makes this safe; see `MIN_PREFIX_MATCH`.
+ * Turkish card programmes are named by concatenation (Worldeko, Axessplus,
+ * Parafpara), which the whole-word `nameMentions` refuses. The prefix must be a
+ * word's OWN beginning, so "kredi" inside "yapikredi" does not steal that
+ * bank's tile. Callers enforce the minimum length; see `MIN_PREFIX_MATCH`.
  */
 export function nameStartsWord(name: string, needle: string): boolean {
   const folded = foldForMatch(name);
@@ -65,16 +55,41 @@ export function nameStartsWord(name: string, needle: string): boolean {
 }
 
 /**
- * How long a catalogue key must be before it may match as a word PREFIX.
- *
- * Short keys are ordinary Turkish and English fragments: "ing" begins
- * "İngiltere", "teb" begins "tebrik", "max" begins "maximum" — and that last
- * one is a case the catalogue already had to get right, because Max and
- * Maximum are two different companies. Five characters is where the fragments
- * stop and the brands start: World, Bonus, Axess, Paraf all clear it, and
- * every key below it keeps the strict whole-word rule it had before.
+ * How long a catalogue key must be before it may match as a word PREFIX. Short
+ * keys are ordinary fragments ("ing" begins "İngiltere", "max" begins
+ * "maximum", and Max and Maximum are different companies); five characters is
+ * where the brands start. Shorter keys keep the strict whole-word rule.
  */
 export const MIN_PREFIX_MATCH = 5;
+
+/**
+ * The catalogue entry a name refers to.
+ *
+ * Whole name, then first word, then any brand mentioned as a whole word inside
+ * it — "Ailem için Netflix" is a Netflix subscription, and "maximum" is not
+ * Max. Longest key first, so "youtube music" wins over "youtube".
+ */
+export function catalogueKey<T>(name: string, table: Record<string, T>): T | null {
+  const key = foldForMatch(name);
+  if (table[key] != null) return table[key]!;
+  const firstWord = key.split(/\s+/)[0];
+  if (firstWord && table[firstWord] != null) return table[firstWord]!;
+  const keys = Object.keys(table);
+  const longestFirst = (a: string, b: string) => b.length - a.length;
+  const mentioned = keys
+    .filter((entry) => entry.length >= 3 && nameMentions(name, entry))
+    .sort(longestFirst)[0];
+  if (mentioned != null) return table[mentioned]!;
+  // Last, and only for keys long enough to be a brand rather than a fragment:
+  // the concatenated sub-brand. "Worldeko", "Worldgold" and "bonusplatinium"
+  // are cards people really hold, and every one of them fails all three passes
+  // above. Longest key first here too, so a name that begins two keys resolves
+  // to the more specific one.
+  const prefixed = keys
+    .filter((entry) => entry.length >= MIN_PREFIX_MATCH && nameStartsWord(name, entry))
+    .sort(longestFirst)[0];
+  return prefixed != null ? table[prefixed]! : null;
+}
 
 const NON_PUBLIC_SUFFIXES = [
   ".home",
@@ -87,7 +102,8 @@ const NON_PUBLIC_SUFFIXES = [
 ] as const;
 
 function hasNonPublicSuffix(hostname: string): boolean {
-  return NON_PUBLIC_SUFFIXES.some((suffix) => hostname === suffix.slice(1) || hostname.endsWith(suffix));
+  // A bare "local" or "localhost" has no dot and is refused before this.
+  return NON_PUBLIC_SUFFIXES.some((suffix) => hostname.endsWith(suffix));
 }
 
 export function normalizeLogoDomain(value: string | null | undefined): string | null {
@@ -102,7 +118,6 @@ export function normalizeLogoDomain(value: string | null | undefined): string | 
       url.port ||
       hostname.length > 253 ||
       !hostname.includes(".") ||
-      hostname === "localhost" ||
       hasNonPublicSuffix(hostname) ||
       /^\d+(?:\.\d+){3}$/.test(hostname) ||
       hostname.includes(":")
@@ -116,20 +131,14 @@ export function normalizeLogoDomain(value: string | null | undefined): string | 
 }
 
 /**
- * 256, not 128.
- *
- * The tile is drawn at up to 46pt, and on a @3x screen that is 138 physical
- * pixels — so a 128px source was already being upscaled on every phone, which
- * is the softness in the marks the owner noticed. The service serves 256 for
- * the same request and falls back to whatever it has when a site publishes
- * nothing larger, so this costs a few KB on the sites that have it and nothing
- * on the ones that do not.
+ * The remote mark at 256px, not 128: the tile is drawn at up to 46pt, which is
+ * 138 physical pixels on a @3x screen. The service falls back to whatever it
+ * has when a site publishes nothing larger.
  */
 export function remoteFaviconUrl(value: string | null | undefined): string | null {
   const domain = normalizeLogoDomain(value);
   if (!domain) return null;
-  // Which service to ask is a measurement, not a preference: the two disagree
-  // per domain, and `markProvider` carries who won. An unaudited domain — a
-  // user's own override — gets Google, which indexes far more of the web.
+  // The service is chosen per domain by `markProvider`; an unaudited domain
+  // (a user's own override) gets Google, which indexes far more of the web.
   return markUrl(domain, markProvider(domain));
 }

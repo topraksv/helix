@@ -40,13 +40,6 @@ describe("cell editor route params", () => {
     expect(isValidCellParams("2026-07", 7)).toBeNull();
     expect(isValidCellParams({}, {})).toBeNull();
   });
-
-  it("never substitutes a plausible value for an invalid one", () => {
-    // Returning a default month would show a DIFFERENT cell's money, and a
-    // sentinel category id would run a query for a row that cannot exist.
-    expect(isValidCellParams("garbage", "cat-1")).toBeNull();
-    expect(isValidCellParams("2026-07", undefined)).toBeNull();
-  });
 });
 
 describe("item breakdown route params", () => {
@@ -88,8 +81,11 @@ describe("item breakdown route params", () => {
     expect(isValidItemParams("cat-1", "2026", ["category", "computed"])).toBeNull();
   });
 
-  it("never coerces an invalid year into a plausible one", () => {
-    expect(isValidItemParams("cat-1", "garbage", "category")).toBeNull();
+  it("rejects prefixed, suffixed, and exclusive-boundary route years", () => {
+    expect(isValidItemParams("id", "1970", "category")).toEqual({ col: "id", year: 1970, kind: "category" });
+    expect(isValidItemParams("id", "2999", "computed")).toEqual({ col: "id", year: 2999, kind: "computed" });
+    for (const year of ["x2026", "2026x"]) expect(isValidItemParams("id", year, "category")).toBeNull();
+    expect(isValidItemParams("id", "2026 ", "category")).toBeNull();
   });
 });
 

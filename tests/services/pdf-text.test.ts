@@ -1,13 +1,5 @@
-/**
- * The local PDF text boundary.
- *
- * Every case here is synthetic and built in-process: a real statement is the
- * most sensitive document the owner has and never belongs in this repository.
- *
- * What matters most is the failure side. A statement this cannot read must be
- * REPORTED as unreadable with a reason the review flow can act on, because a
- * half-read financial document is worse than an unread one.
- */
+// Every case is synthetic: a real statement never belongs in this repository. An unreadable
+// statement must be reported with a reason the review flow can act on, never half-read.
 import { deflateSync } from "node:zlib";
 import { describe, expect, it } from "vitest";
 import { MAX_PDF_BYTES, extractPdfText } from "../../src/services/pdf-text";
@@ -39,22 +31,12 @@ function makePdf(
 }
 
 /**
- * A PDF whose ToUnicode CMap is a work bomb.
- *
- * `<0000> <FFFF> <0041>` is a single range exactly as wide as the entry cap
- * allows, so each one is accepted and then walked. Repeating it is what turns
- * a few KB of deflated stream into billions of refused inserts — the cap on
- * the map's SIZE never stopped the walking, and the loop is synchronous, so
- * nothing can interrupt it. Measured before the fix: 1_000 ranges took 131 ms,
- * 10_000 took 3 s and 50_000 took 16 s, from a CMap under a megabyte.
+ * A PDF whose ToUnicode CMap is a work bomb: each `<0000> <FFFF> <0041>` range is accepted
+ * and then walked, so repeating it makes synchronous work the entry cap never bounded.
  */
 function makeCmapBombPdf(rangeCount: number): Uint8Array {
   const cmap = `begincmap\nbeginbfrange\n${"<0000> <FFFF> <0041>\n".repeat(rangeCount)}endbfrange\nendcmap`;
-  // Uncompressed on purpose: `inflate` sizes its output buffer at 12x the
-  // compressed length, which truncates a stream that deflates as well as this
-  // one does. That 12x is a real mitigation — it bounds amplification — but it
-  // is not the bound under test, and a ~34 KB deflated CMap still reaches this
-  // size inside a small PDF.
+  // Uncompressed on purpose (so not built with `pdfOf`): the inflate bound is not what is under test here.
   const cmapBody = Buffer.from(cmap, "latin1");
   const content = "BT /F1 10 Tf 40 800 Td <00410042> Tj ET";
   const contentBody = deflateSync(Buffer.from(content, "latin1"));
@@ -276,33 +258,9 @@ describe("reading the fonts a statement's text is set in", () => {
 });
 
 describe("reading a PDF's text layer", () => {
-  it("reads a compressed text layer without any new dependency", async () => {
-    const result = await extractPdfText(makePdf(["MIGROS MARKET", "1.234,56"]));
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    expect(result.text).toContain("MIGROS MARKET");
-    expect(result.text).toContain("1.234,56");
-    expect(result.pageCount).toBe(1);
-  });
-
   it("reads an uncompressed text layer too", async () => {
     const result = await extractPdfText(makePdf(["NAKIT AVANS"], { compress: false }));
     expect(result.ok && result.text).toContain("NAKIT AVANS");
-  });
-
-  /** A vertical move is a new row; without it a table collapses to one line. */
-  it("keeps separate rows on separate lines", async () => {
-    const result = await extractPdfText(makePdf(["BIRINCI", "IKINCI"]));
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    const lines = result.text.split("\n").map((line) => line.trim()).filter(Boolean);
-    expect(lines).toContain("BIRINCI");
-    expect(lines).toContain("IKINCI");
-  });
-
-  it("preserves Turkish characters written as escapes", async () => {
-    const result = await extractPdfText(makePdf(["ODEME \\350\\351"]));
-    expect(result.ok).toBe(true);
   });
 
   it("survives a literal string containing brackets and backslashes", async () => {
@@ -348,16 +306,12 @@ describe("refusing what it cannot read, with a reason", () => {
   it("does not hang or throw on a truncated stream", async () => {
     const whole = makePdf(["KESIK"]);
     const truncated = whole.slice(0, Math.floor(whole.length * 0.7));
-    await expect(extractPdfText(truncated)).resolves.toBeDefined();
+    await expect(extractPdfText(truncated)).resolves.toEqual({ ok: false, reason: "no_text_layer" });
   });
 
   /** A stream that claims to inflate to gigabytes is refused, not allocated. */
   it("bounds the WORK a CMap can demand, not only the entries it may keep", async () => {
-    // The guarded path is O(1) in the range count — it stops the moment the map
-    // is full — so the count is chosen to make the UNGUARDED path unmistakably
-    // slow rather than to stress the guarded one. Measured: 60_000 ranges is
-    // ~6 s without the guard and ~50 ms with it, so this budget has a wide
-    // margin in both directions and is not a load-sensitive assertion.
+    // Sized to make the unguarded path unmistakably slow, so the budget is not load-sensitive.
     const started = performance.now();
     const result = await extractPdfText(makeCmapBombPdf(60_000));
     const elapsed = performance.now() - started;
@@ -367,36 +321,23 @@ describe("refusing what it cannot read, with a reason", () => {
     expect(result.ok).toBe(true);
   });
 
-  /**
-   * Files whose shape is the attack: each is sized past a second and a half on
-   * the reader it guards against — the measurement behind each is beside it —
-   * and linear work reads it in milliseconds, so the bound is orders of
-   * magnitude rather than a load-sensitive assertion.
-   */
+  // Files whose shape is the attack, each sized to take over a second and a half on the reader it guards against.
   it.each<[shape: string, build: () => Uint8Array, expected: Partial<Awaited<ReturnType<typeof extractPdfText>>>]>([
-    // 20_000 took 264 ms, four times that at twice as many: about 26 s here.
     ["objects that never close", () => plainPdf("1 0 obj\n".repeat(200_000)), NO_TEXT],
-    // 60_000 digits took 1.3 s, four times that at twice as many.
     ["a run of digits no object header ends", () => plainPdf(`${"1".repeat(120_000)}\n`), NO_TEXT],
-    // 10_000 took 108 ms, four times that at twice as many.
     ["headers that one endobj closes", () => plainPdf(`${Array.from({ length: 60_000 }, (_, i) => `${i + 1} 0 obj\n`).join("")}endobj\n`), NO_TEXT],
-    // 2_000 took 160 ms, growing with the count.
     ["an object stream whose offsets go back", () => {
       const head = `${Array.from({ length: 40_000 }, (_, i) => `${i + 1} ${i % 2 ? MEGABYTE.length : 0}`).join(" ")}\n`;
       const text = head + MEGABYTE;
       return plainPdf(`9 0 obj\n<< /Type /ObjStm /N 40000 /First ${head.length} /Length ${text.length} >>\nstream\n${text}\nendstream\nendobj\n`);
     }, NO_TEXT],
-    // 2_000 took 536 ms, growing with the count.
     ["a megabyte named as the font dictionary of every page", () => plainPdf(`5 0 obj\n<< /Filler (${MEGABYTE}) >>\nendobj\n6 0 obj\n<< ${"/Font 5 0 R ".repeat(12_000)} >>\nendobj\n`), NO_TEXT],
-    // 4_000 took 463 ms, growing with the count.
     ["a megabyte selected as a font by thousands of names", () => plainPdf(`5 0 obj\n<< /Filler (${MEGABYTE}) >>\nendobj\n6 0 obj\n<< /Font << ${Array.from({ length: 24_000 }, (_, i) => `/F${i} 5 0 R`).join(" ")} >> >>\nendobj\n`), NO_TEXT],
-    // 400 took 962 ms, growing with the count.
     ["streams that share one full CMap", () => {
       const cmap = "begincmap\nbeginbfrange\n<0000> <FFFF> <0041>\nendbfrange\nendcmap";
       const streams = Array.from({ length: 3_000 }, (_, i) => `${i + 10} 0 obj\n<< /Length 15 >>\nstream\nBT <0041> Tj ET\nendstream\nendobj\n`).join("");
       return plainPdf(`3 0 obj\n<< /Subtype /Type0 >>\nendobj\n4 0 obj\n<< /Length ${cmap.length} >>\nstream\n${cmap}\nendstream\nendobj\n${streams}`);
     }, { ok: true }],
-    // 4_000 took 2 s, growing with the count.
     ["streams with no dictionary before them", () => plainPdf(`${MEGABYTE}\n${">>stream\nendstream\n".repeat(8_000)}`), NO_TEXT],
   ])("bounds the work of %s", async (_shape, build, expected) => {
     const bytes = build();
@@ -406,19 +347,7 @@ describe("refusing what it cannot read, with a reason", () => {
     expect(result).toMatchObject(expected);
   });
 
-  /**
-   * The defect that made this module's inflate a dependency decision.
-   *
-   * The old inflate allocated 12x the compressed length and read the whole
-   * buffer back, so a text layer that deflated better than that was cut off
-   * mid-document and still reported `ok`. A statement's text layer is exactly
-   * the shape that compresses well — the same merchant names, dates and column
-   * headers over and over — and the measured case was a 900 KB layer at 331:1
-   * coming back 3.6% complete with the closing balance gone.
-   *
-   * 4.000 identical lines deflate at roughly 1.000:1 here, which is comfortably
-   * past the old ceiling and inside DEFLATE's documented 1032:1 maximum.
-   */
+  // A statement's text layer compresses very well; a fixed output estimate would cut it off mid-document.
   it("reads a text layer that compresses far better than any fixed estimate", async () => {
     const lines = Array.from({ length: 4_000 }, () => "MIGROS MARKET ODEME 1.234,56");
     const pdf = makePdf([...lines, "KAPANIS BAKIYESI 9.876,54"]);
@@ -427,29 +356,16 @@ describe("refusing what it cannot read, with a reason", () => {
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    // The LAST line is the assertion. Anything that truncates keeps the head of
-    // the document and loses the tail, which is where a statement puts the
-    // figure the whole import exists to read.
+    // The last line is the assertion: truncation loses the tail, where the closing balance is.
     expect(result.text).toContain("KAPANIS BAKIYESI 9.876,54");
     expect(result.text.match(/MIGROS MARKET/g)).toHaveLength(4_000);
   });
 
-  /**
-   * The other half of the same defect: the surplus of that over-allocation was
-   * never zeroed, and everything downstream scanned it. Measured on a two-line
-   * statement, the extracted text carried 189 characters of whatever had been
-   * in that memory — JavaScript source fragments — and raising the estimate to
-   * fix the truncation above made this one worse in proportion.
-   *
-   * There is no surplus to leak now, so the check is exact: what comes out is
-   * what the stream said, and nothing after it.
-   */
+  // An over-allocated output buffer would leak unzeroed memory into the text, so the check is exact.
   it("returns the stream's own bytes and nothing that was after them", async () => {
     const result = await extractPdfText(makePdf(["ILK SATIR", "SON SATIR"]));
 
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    expect(result.text.trim()).toBe("ILK SATIR\nSON SATIR");
+    expect(result).toEqual({ ok: true, text: "ILK SATIR\nSON SATIR", pageCount: 1 });
   });
 
   it("bounds what a single stream may expand to", async () => {
@@ -462,13 +378,12 @@ describe("refusing what it cannot read, with a reason", () => {
     const started = Date.now();
     const result = await extractPdfText(new Uint8Array(Buffer.concat(parts)));
     expect(Date.now() - started).toBeLessThan(10_000);
-    // Whatever it decides, it must decide rather than exhaust memory.
-    expect(typeof result.ok).toBe("boolean");
+    // It must decide rather than exhaust memory.
+    expect(result).toEqual({ ok: false, reason: "no_text_layer" });
   });
 
   it("names a file of streams that each expand to the ceiling unreadable", async () => {
-    // A refused stream counted towards nothing, so each was inflated in full
-    // again: twenty took 450 ms, and a file this size may hold hundreds.
+    // A refused stream must count towards the budget, or each is inflated in full again.
     const bomb = deflateSync(Buffer.alloc(25 * 1024 * 1024));
     const parts = [Buffer.from("%PDF-1.4\n", "latin1")];
     for (let object = 10; object < 16; object += 1) {

@@ -1,14 +1,14 @@
 import { tr } from "../i18n/tr";
 
+export const BIOMETRIC_KEY = "helix.biometric";
+
 /**
  * The name of the device's own biometric lock.
  *
- * One hard-coded "Face ID Kilidi" used to ship to every platform, so an Android
- * user was asked to enable a technology their phone does not have — on a
- * security control, of all places. The label is asked of the hardware instead.
+ * The label is asked of the hardware.
  *
  * Pure on purpose: the sensor query and the React state live in
- * `biometric-label.ts`, and this rule is what a test can hold.
+ * the settings screen, and this rule is what a test can hold.
  */
 export function biometricName({
   ios,

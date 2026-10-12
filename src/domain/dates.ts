@@ -10,14 +10,7 @@ const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const MONTH_KEY_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
 export const MONTH_END_DAY = 31;
 
-/**
- * Whether a value is a well-formed `YYYY-MM` key with a real month number.
- *
- * Route params are the reason this is exported: a dynamic segment carries
- * whatever the URL says, and `lastDayOf` THROWS on a bad month. A screen that
- * derives its query range from an unchecked param therefore crashes during
- * render on a deep link like `/cash-flow/garbage`, before any handler runs.
- */
+/** Whether a value is a well-formed `YYYY-MM` key with a real month. Route params need it: `lastDayOf` THROWS on a bad month. */
 export function isMonthKey(value: unknown): value is MonthKey {
   return typeof value === "string" && MONTH_KEY_RE.test(value) && Number(value.slice(0, 4)) >= 1;
 }
@@ -78,15 +71,9 @@ export function makeISODate(year: number, month: number, day: number): ISODate {
 
 /**
  * Clamp a nominal day-of-month (e.g. billing day 31) into the given month.
- *
- * Only the UPPER bound used to be clamped, so a corrupt nominal day produced a
- * syntactically invalid ISO string instead of failing: day `0` returned
- * `"2026-03-00"`, `NaN` returned `"2026-03-NaN"` and `-5` returned
- * `"2026-03--5"`. Those strings were written straight into
- * `expected_payments.due_date` and `transactions.effective_date`, where every
- * comparison is lexicographic — so the row sorted and filtered as if it were a
- * real date. Fail closed like `daysInMonth` does for a bad month; generation
- * sites guard with `isMonthDay` and skip rather than invent a date.
+ * Fails closed on 0, NaN or negative days: they would otherwise become strings
+ * like `"2026-03-00"` that sort and filter as real dates. Generation sites
+ * guard with `isMonthDay` and skip rather than invent a date.
  */
 export function clampDayToMonth(year: number, month: number, day: number): ISODate {
   if (!isMonthDay(day)) throw new Error(`Invalid day of month: ${day}`);
@@ -125,21 +112,12 @@ export function todayISO(now: Date = new Date()): ISODate {
 }
 
 /**
- * The LOCAL calendar day a stored UTC timestamp falls on.
- *
- * Synced rows stamp `created_at`/`updated_at` with `new Date().toISOString()`,
- * but every date these engines compare against is a local calendar date from
- * `todayISO`. Slicing the first ten characters reads the UTC day instead,
- * which is a day behind the local one for three hours of every day in Türkiye
- * (UTC+3) — enough to make a same-day comparison silently wrong after local
- * midnight. Returns null for absent or unparseable input so callers can decide
- * what an unknown day means rather than inheriting a wrong one.
+ * The LOCAL calendar day a stored UTC timestamp falls on. Slicing the first ten
+ * characters reads the UTC day, which is behind the local one for hours of
+ * every day east of UTC. Null for absent or unparseable input.
  */
 export function localDayOfTimestamp(timestamp: unknown): ISODate | null {
-  // The type check earns its place: a number is a timestamp `Date` accepts and
-  // this contract does not. Everything else — an empty string included — is
-  // already an Invalid Date, so a second guard for it would only be a branch no
-  // input can reach.
+  // A number is a timestamp `Date` accepts and this contract does not.
   if (typeof timestamp !== "string") return null;
   const parsed = new Date(timestamp);
   return Number.isNaN(parsed.getTime()) ? null : todayISO(parsed);
@@ -154,13 +132,7 @@ export function dateForMonthEntry(month: MonthKey, today: ISODate = todayISO()):
   return monthKeyOf(today) === month ? today : `${month}-15`;
 }
 
-/**
- * A start/entry month may never sit in the future: the current calendar month
- * is the latest allowed value. Shared by the onboarding + opening-balance
- * start-month pickers and the bulk-entry month stepper so the "no future
- * month" upper bound stays consistent with the "past entry" rule. MonthKeys are
- * `YYYY-MM` strings, which compare correctly with `>=`.
- */
+/** A start/entry month may never sit in the future: the current month is the latest allowed. */
 export function isCurrentOrFutureMonth(month: MonthKey, today: ISODate = todayISO()): boolean {
   return month >= monthKeyOf(today);
 }

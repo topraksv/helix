@@ -8,7 +8,7 @@
 import { describe, expect, it } from "vitest";
 import { buildSaveSummary, landsInAnotherMonth, saveEffect, type SavedTransaction } from "../../src/domain/save-summary";
 import { countsTowardBalance } from "../../src/domain/balance";
-import type { TxLike } from "../../src/domain/types";
+import { tx } from "../helpers";
 
 const TODAY = "2026-08-18";
 const saved = (over: Partial<SavedTransaction> = {}): SavedTransaction => ({
@@ -65,13 +65,8 @@ describe("what a saved row does to the two figures", () => {
       saved({ type: "income", status: "pending" }),
     ];
     for (const row of cases) {
-      const tx: TxLike = {
-        id: "t", type: row.type, amountTryMinor: row.amountTryMinor, effectiveDate: row.effectiveDate,
-        status: row.status, categoryId: null, categoryKind: null, paymentSourceId: null,
-        personIsSelf: row.personIsSelf, installmentPlanId: null, subscriptionId: null, isAggregate: false,
-      };
       expect(saveEffect(row, TODAY).balanceMinor !== 0, JSON.stringify(row))
-        .toBe(countsTowardBalance(tx, TODAY));
+        .toBe(countsTowardBalance(tx({ id: "t", type: row.type, amountTryMinor: row.amountTryMinor, effectiveDate: row.effectiveDate, status: row.status, personIsSelf: row.personIsSelf }), TODAY));
     }
   });
 });

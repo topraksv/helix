@@ -12,15 +12,6 @@ import { marketSellRateTry } from "../../services/markets";
 import { FxRateUnavailableError } from "./errors";
 import { assertLiveTransactionPerson, assertSignedTransactionAmounts, assertTransactionCategory, cardStatementWrite, livePaymentSource, type LivePaymentSource } from "./transactions";
 
-// Expected payments: confirm / skip / revert
-// ---------------------------------------------------------------------------
-
-/**
- * Thrown when a foreign-currency item is confirmed but no FX rate is available
- * yet (no fresh live price and nothing cached from the dated FX feed). Storing the raw
- * foreign amount as if it were TRY would silently corrupt the balance, so the
- * confirm is refused instead — the caller retries once a rate is known.
- */
 export interface ExpectedRow {
   id: string;
   direction: "in" | "out";
@@ -151,8 +142,7 @@ export async function confirmExpected(userId: string, expectedId: string, opts: 
         subscriptionId: subscription ? row.ref_id : null,
         isAggregate: false,
         note: null,
-        // Confirming an expectation is not hand entry: the matching flow and
-        // duplicate review both need to tell the two apart.
+        // Not hand entry: the matching flow and duplicate review must tell the two apart.
         origin: "expected",
         importKey: null,
         deletedAt: null,
@@ -260,10 +250,8 @@ export async function revertExpected(userId: string, expectedId: string): Promis
     `SELECT * FROM transactions WHERE id = ? AND user_id = ? AND deleted_at IS NULL`,
     [row.transaction_id, userId],
   );
-  // Only a row THIS confirmation created is removed with it. A transaction the
-  // owner recorded and then MATCHED to the expectation is their own record of
-  // real money: unlinking it is the whole undo. A row with no origin predates
-  // provenance, when a confirmation was the only way to link one.
+  // Only a row THIS confirmation created is removed with it; a transaction the owner recorded and
+  // then matched is their own record, and unlinking it is the whole undo. No origin means pre-provenance.
   const createdByConfirmation = transaction != null && (transaction.origin == null || transaction.origin === "expected");
   await writeRows(userId, [
     ...(createdByConfirmation ? [{ table: "transactions" as const, row: { ...fromDbShape("transactions", transaction), deletedAt: nowIso() } }] : []),

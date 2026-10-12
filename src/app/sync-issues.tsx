@@ -1,25 +1,6 @@
 /**
- * The records the cloud would not take (spec §10.3).
- *
- * This used to be a warning panel in the middle of Settings: a red-toned card
- * headed "Eşitlenmeyi bekleyen kayıtlar", four rows of raw table names and
- * timestamps, and two buttons — permanently, on the screen a person opens to
- * change their theme. The owner's word for it was "zulüm", and the panel had
- * earned it three ways:
- *
- *   - it was alarming about something that is not an emergency. Nothing is
- *     lost; the record is on the device and the app works;
- *   - it said "transactions kaydı · geçersiz veri" and a date, which is a log
- *     line, not a sentence anyone can act on;
- *   - its one button could not work. `requeueSyncDeadLetter` queued the same
- *     local row that had just been refused, the next push refused it again for
- *     the same reason, and the list came back. Pressing it produced an error
- *     every time, which is exactly what the owner reported.
- *
- * So the panel is a single quiet row in Settings, and this screen carries what
- * a person actually needs: what is here, what it means, what the last attempt
- * learned, and — for a row that can never be sent — a way to stop being told
- * about it that does not touch the record itself.
+ * The records the cloud refused (spec §10.3): what each is, why, what the last
+ * retry learned, and a way to stop hearing about a row that can never be sent.
  */
 
 import { useState } from "react";
@@ -151,7 +132,7 @@ export default function SyncIssuesScreen() {
     }
   };
 
-  if (deadLettersState.status === "loading") {
+  if (deadLettersState.updatedAt == null) {
     return (
       <Screen width="form">
         <DataStateNotice status={deadLettersState.status} retry={deadLettersState.retry} />

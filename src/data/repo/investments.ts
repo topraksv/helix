@@ -1,6 +1,7 @@
 import { getSqliteAsync } from "../../db/client";
 import { deterministicId, naturalKeys, newId } from "../../db/ids";
 import {
+  assertLiveRow,
   assertRestorableRows,
   fromDbShape,
   nowIso,
@@ -34,10 +35,6 @@ export interface InvestmentProductInput {
   name: string;
   marketCode?: string | null;
   note?: string | null;
-  /**
-   * Intended share of the portfolio in basis points, or null to remove it.
-   * `undefined` keeps whatever is stored — see the write below.
-   */
 }
 
 export interface InvestmentOperationInput extends InvestmentQuoteInput {
@@ -49,9 +46,7 @@ export interface InvestmentOperationInput extends InvestmentQuoteInput {
 }
 
 function validateDate(date: string): asserts date is ISODate {
-  // Its own code: the screen turns a code into a sentence, and a date the
-  // owner cannot have reached yet was being reported as an amount over the
-  // ceiling — a sentence about a figure the form never held.
+  // Its own code: the screen maps a code to a sentence, and a future date is not an amount error.
   if (!isISODate(date) || date > todayISO()) throw new InvestmentDomainError("invalid_date");
 }
 
@@ -70,8 +65,7 @@ export async function setupInvestments(userId: string, input: InvestmentSetupInp
       existing.started_on === input.startedOn
       && Number(existing.opening_cash_minor) === input.openingCashMinor
     ) return;
-    // Opening cash is a starting fact, not a current-balance control. Rewriting
-    // it after journal rows exist changes prior history instead of correcting it.
+    // Opening cash is a starting fact; rewriting it after journal rows exist changes history.
     throw new InvestmentDomainError("invalid_operation");
   }
   const writes: RowWrite[] = [{
@@ -98,7 +92,7 @@ export async function saveInvestmentProduct(userId: string, input: InvestmentPro
   const sqlite = await getSqliteAsync();
   const previous = input.id
     ? await sqlite.getFirstAsync<Record<string, unknown>>(
-        "SELECT * FROM investment_products WHERE id = ? AND user_id = ?",
+        "SELECT * FROM investment_products WHERE id = ? AND user_id = ? AND deleted_at IS NULL",
         [input.id, userId],
       )
     : null;
@@ -112,10 +106,7 @@ export async function saveInvestmentProduct(userId: string, input: InvestmentPro
       name,
       marketCode: input.marketCode?.trim() || null,
       note: input.note?.trim() || null,
-      // The target-allocation feature was removed. The column stays so a
-      // client that still has one, and every backup already written, round-trip
-      // unchanged — but nothing sets it any more, so an existing value is
-      // carried and never invented.
+      // Carried, never set: old clients and backups still hold it.
       targetWeightBp: previous?.target_weight_bp ?? null,
       deletedAt: null,
     },
@@ -123,7 +114,10 @@ export async function saveInvestmentProduct(userId: string, input: InvestmentPro
   await writeRowsValidated(
     userId,
     writes,
-    (db) => assertInvestmentWrites(db, userId, writes).then(() => undefined),
+    async (db) => {
+      if (input.id) await assertLiveRow(db, "investment_products", userId, input.id);
+      await assertInvestmentWrites(db, userId, writes);
+    },
   );
   return id;
 }
@@ -139,9 +133,7 @@ async function selectedInvestmentRefunds(
     throw new InvestmentDomainError("invalid_operation");
   }
   if (uniqueIds.length === 0) return [];
-  // A ledger transfer before the product's first sale cannot be sale proceeds.
-  // The UI applies the same boundary; keeping it here prevents a stale client
-  // or a direct repository caller from selecting an unrelated transfer.
+  // A transfer before the product's first sale cannot be sale proceeds; the UI applies the same boundary.
   if (!firstSaleDate) throw new InvestmentDomainError("invalid_operation");
   const rows = await sqlite.getAllAsync<Record<string, unknown>>(
     `SELECT t.*
@@ -169,13 +161,9 @@ async function selectedInvestmentRefunds(
 }
 
 /**
- * Remove one erroneous product journal and only the ledger transfers the user
- * explicitly identifies as created to empty that journal's proceeds.
- *
- * A generic transfer has no persisted causal product link, so guessing would
- * risk deleting a legitimate ledger record. The proposed owner graph is replayed
- * before any tombstone commits; a wrong or insufficient selection leaves every
- * row unchanged.
+ * Remove one erroneous product journal and only the transfers the user names as its proceeds.
+ * A transfer has no persisted product link, so guessing could delete a legitimate record; the
+ * proposed graph is replayed before any tombstone commits.
  */
 export async function removeInvestmentProductHistory(
   userId: string,
@@ -225,22 +213,10 @@ function operationRow(input: InvestmentOperationInput, id: string): Record<strin
   if (amountOnlyContribution) {
     assertSupportedMinorAmount(input.totalMinor!, false);
     if (input.totalMinor! < 0) throw new InvestmentDomainError("invalid_money");
-    return {
-      id,
-      productId: input.productId,
-      kind: input.kind,
-      operationDate: input.operationDate,
-      quantity: null,
-      unitPriceMinor: null,
-      totalMinor: input.totalMinor,
-      costBasisMinor: 0,
-      realizedProfitLossMinor: 0,
-      note: input.note?.trim() || null,
-      importKey: null,
-      deletedAt: null,
-    };
   }
-  const quote = resolveInvestmentQuote(input);
+  const quote = amountOnlyContribution
+    ? { quantity: null, unitPriceMinor: null, totalMinor: input.totalMinor }
+    : resolveInvestmentQuote(input);
   return {
     id,
     productId: input.productId,

@@ -1,7 +1,7 @@
 /** Pure dashboard projection/analytics model. UI supplies labels and colors. */
 
 import { countsTowardBalance, projectedBalance, type MonthLedger, type UpcomingFlow } from "./balance";
-import { addMonthsToKey, firstDayOf, monthKeyOf, type ISODate } from "./dates";
+import { addMonthsToKey, firstDayOf, monthKeyOf, yearOf, type ISODate } from "./dates";
 import type { Distribution } from "./analytics";
 import type { PlannedExpectation } from "./expected";
 import type { ExpectedPaymentLike, TxLike } from "./types";
@@ -53,16 +53,9 @@ interface DashboardModelInput<TExpected extends ExpectedPaymentLike = ExpectedPa
 }
 
 /**
- * Derive the dashboard's transaction-backed summaries in one O(N) pass.
- * Previously month-end forecast, distribution and fixed/variable each scanned
- * the same full ledger independently.
- */
-/**
- * How many completed months a typical month is learned from.
- *
- * Six is long enough that one unusual month cannot define normal and short
- * enough to follow a real change in how much things cost — which in this
- * currency is not a hypothetical.
+ * How many completed months a typical month is learned from: long enough that
+ * one unusual month cannot define normal, short enough to follow a real change
+ * in prices.
  */
 const TYPICAL_MONTH_WINDOW = 6;
 
@@ -196,7 +189,7 @@ export function buildDashboardModel<TExpected extends ExpectedPaymentLike>(
       ? null
       : Math.max(0, medianOf([...variableByPastMonth.values()]) - variableMinor),
     trendMonths: input.ledger.filter(
-      (month) => Number(month.month.slice(0, 4)) === input.year && month.month <= input.currentMonth,
+      (month) => yearOf(month.month) === input.year && month.month <= input.currentMonth,
     ),
   };
 }

@@ -5,7 +5,7 @@ import { todayISO, type MonthKey } from "../../domain/dates";
 import { PAYMENT_SOURCE_TYPES, type PaymentSourceType } from "../../domain/types";
 import { isValidCardCycle, statementForDueDate, statementForPurchase, statementPeriod, type CardCycle, type CardStatementPeriod } from "../../domain/card-statements";
 import { CreditCardCycleRequiredError, ReferencedRecordError } from "./errors";
-import { cardStatementWrite, livePaymentSource } from "./transactions";
+import { cardStatementWrite, livePaymentSource, livePerson } from "./transactions";
 import { repairCardStatementLinks, runMaintenance } from "./maintenance";
 import { assertInputWithinLimit } from "../../domain/input";
 import { assertInvestmentWrites } from "./investment-validation";
@@ -30,7 +30,7 @@ export interface PaymentSourceReferenceUsage {
 export interface PaymentSourceDeleteSnapshot {
   source: Record<string, unknown>;
   statements: Record<string, unknown>[];
-  /** Absent on a snapshot taken before statement payments existed. */
+  /** Absent on snapshots from before payments were stored. */
   payments?: Record<string, unknown>[];
 }
 
@@ -105,11 +105,7 @@ async function assertPaymentSourceInput(userId: string, input: PaymentSourceInpu
   if (!input.name.trim() || !input.personId) throw new Error("Payment source name and owner are required");
   assertInputWithinLimit(input.name, "text");
   if (!PAYMENT_SOURCE_TYPES.includes(input.type)) throw new Error("Invalid payment source type");
-  const person = await (await getSqliteAsync()).getFirstAsync<{ id: string }>(
-    `SELECT id FROM persons WHERE id = ? AND user_id = ? AND deleted_at IS NULL`,
-    [input.personId, userId],
-  );
-  if (!person) throw new Error("Payment source owner does not exist");
+  if (!(await livePerson(userId, input.personId))) throw new Error("Payment source owner does not exist");
   if (input.type === "credit_card" && !isValidCardCycle(input)) throw new CreditCardCycleRequiredError();
 }
 
@@ -221,10 +217,7 @@ export async function reassignAndDeletePerson(userId: string, personId: string, 
       `SELECT * FROM persons WHERE id = ? AND user_id = ? AND is_self = 0 AND deleted_at IS NULL`,
       [personId, userId],
     ),
-    sqlite.getFirstAsync<{ id: string }>(
-      `SELECT id FROM persons WHERE id = ? AND user_id = ? AND deleted_at IS NULL`,
-      [replacementId, userId],
-    ),
+    livePerson(userId, replacementId),
   ]);
   if (!person || !replacement) throw new Error("Person not found");
   const writes = (
@@ -242,8 +235,7 @@ export async function reassignAndDeletePerson(userId: string, personId: string, 
     writes,
     (db) => assertInvestmentWrites(db, userId, writes).then(() => undefined),
   );
-  // Expected rows are derived from person ownership. Maintenance immediately
-  // creates/cleans them under the replacement's self/watch-only classification.
+  // Expected rows derive from person ownership; maintenance rebuilds them under the replacement's classification.
   await runMaintenance(userId);
 }
 
@@ -272,8 +264,7 @@ export async function deleteUnreferencedPaymentSource(
       table: "credit_card_statements" as const,
       row: { ...fromDbShape("credit_card_statements", statement), deletedAt },
     })),
-    // A payment is a row of its statement's, so it goes with it and comes back
-    // with it on undo rather than pointing at a statement nobody can see.
+    // A payment goes with its statement and returns with it on undo.
     ...payments.map((payment) => ({
       table: "card_statement_payments" as const,
       row: { ...fromDbShape("card_statement_payments", payment), deletedAt },
@@ -408,9 +399,7 @@ export async function reassignAndDeletePaymentSource(
       row: { ...fromDbShape("transactions", transaction), paymentSourceId: replacementId, purchaseDate: null, cardStatementId: null },
     });
   }
-  // A payment against one of this card's statements follows that statement's
-  // month onto the replacement card. A replacement that cannot hold a statement
-  // cannot hold a payment against one either, so it goes with its card.
+  // A payment follows its statement's month onto the replacement card; with no card to hold a statement, it goes with its card.
   const paymentWrites: RowWrite[] = [];
   for (const payment of await statementPaymentsOf(userId, oldStatements.map((statement) => statement.id))) {
     // Fetched by these statements' ids, so each payment's month is known.

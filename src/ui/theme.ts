@@ -345,7 +345,6 @@ const serviDark: Palette = {
 export type PaletteId = "clay" | "ocean" | "forest";
 
 export const DEFAULT_PALETTE_ID: PaletteId = "clay";
-const PALETTE_IDS = ["clay", "ocean", "forest"] as const satisfies readonly PaletteId[];
 
 export const PALETTES: Record<PaletteId, { light: Palette; dark: Palette }> = {
   clay: { light: amberLight, dark: amberDark },
@@ -357,13 +356,10 @@ export const PALETTES: Record<PaletteId, { light: Palette; dark: Palette }> = {
 export const lightPalette = PALETTES[DEFAULT_PALETTE_ID].light;
 export const darkPalette = PALETTES[DEFAULT_PALETTE_ID].dark;
 
-function isPaletteId(value: string | null): value is PaletteId {
-  return value != null && PALETTE_IDS.some((id) => id === value);
-}
-
 /** Eski veya bozuk tercihler güvenli biçimde varsayılan palete döner. */
 export function resolvePaletteId(value: string | null): PaletteId {
-  return isPaletteId(value) ? value : DEFAULT_PALETTE_ID;
+  // `hasOwn`, not `in`: "constructor" is `in` every object.
+  return value != null && Object.hasOwn(PALETTES, value) ? (value as PaletteId) : DEFAULT_PALETTE_ID;
 }
 
 /** Tema tercihi için aynısı: tanınmayan değer sistemi izler. */
@@ -373,19 +369,7 @@ export function resolveThemePreference(value: string | null): ThemePreference {
 
 export const spacing = { xs: 4, sm: 8, md: 12, lg: 16, xl: 24, xxl: 32 } as const;
 
-/**
- * How wide a screen's content column is allowed to grow.
- *
- * These used to be per-route numbers, and the routes drifted: settings stopped
- * at 920 while the dashboard beside it ran to 1120 and the ledger to 1200, so
- * moving between two tabs on the same desktop shifted the whole page. The width
- * now follows the information structure, which is a property of the screen, not
- * a taste — and four names are enough to describe every surface Helix has.
- *
- * `wide` is a ceiling, not a target: it exists so a very large monitor cannot
- * stretch a table into unreadable line lengths, and everything below it simply
- * fills the column.
- */
+/** How wide a content column may grow, by information structure; `wide` is a ceiling. */
 export const contentWidth = {
   /** One decision at a time — sign-in, onboarding, recovery. */
   focus: 560,
@@ -402,14 +386,7 @@ export type ContentWidth = keyof typeof contentWidth;
 // Crisp ledger geometry: enough softness for touch, never a stack of bubbles.
 export const radius = { sm: 8, md: 10, lg: 14, xl: 18, full: 999 } as const;
 
-/**
- * A circle, said once.
- *
- * Ten places wrote half of their own box as a literal — 15, 17, 19, 21, 28, 39,
- * 41, 48, 52, 64 — which is a circle only for as long as nobody edits the size
- * without editing the radius. `radius.full` also works for a square box, but it
- * says "pill" and reads as a guess next to a width; this says what it is.
- */
+/** A circle, said once: half the box. */
 export function circle(size: number): number {
   return size / 2;
 }
@@ -429,12 +406,7 @@ export const motion = {
   settle: 420,
   loading: 1200,
   loadingReveal: 350,
-  /** A pointer arriving on, or leaving, a control.
-   *
-   *  Longer than `feedback` on purpose: a press is confirming something the
-   *  user already committed to and must feel immediate, while a hover is the
-   *  control noticing a pointer that is merely passing. At 120ms the fill
-   *  snapped on and read as a flicker when the pointer crossed a list. */
+  /** A pointer arriving on, or leaving, a control; longer than `feedback`, which at 120ms flickered as the pointer crossed a list. */
   hover: 170,
   /** A figure counting to its new value. Long enough to be read as movement,
    *  short enough that the number is legible before the user looks away. */
@@ -448,6 +420,8 @@ export const motion = {
   /** An error the user has to notice without being shouted at: three
    *  oscillations inside the standard duration. */
   shake: 320,
+  /** The ease-out every web CSS transition uses. */
+  webEase: "cubic-bezier(0.22, 1, 0.36, 1)",
   spring: {
     entrance: { damping: 18, stiffness: 170, mass: 1 },
     toggle: { speed: 20, bounciness: 6 },
@@ -462,6 +436,18 @@ export const motion = {
    */
   stagger: { step: 28, budget: 320 },
 } as const;
+
+/** One alpha of the palette's own ink, so a hover is the same step in every palette and on every surface. */
+export const INTERACTION_ALPHA = { hover: 0.06, pressed: 0.11 } as const;
+
+/** `alpha` of `tint` composited over an opaque `base`, both `#RRGGBB`. */
+export function composite(base: string, tint: string, alpha: number): string {
+  const channel = (hex: string, at: number) => parseInt(hex.slice(at, at + 2), 16);
+  return `#${[1, 3, 5]
+    .map((at) => Math.round(channel(base, at) * (1 - alpha) + channel(tint, at) * alpha))
+    .map((value) => value.toString(16).padStart(2, "0"))
+    .join("")}`;
+}
 
 /** The delay an item at `index` waits before entering. */
 export function staggerDelay(index: number, count = 1): number {
@@ -481,124 +467,29 @@ export const chart = {
   donutWidth: 20,
   markerRadius: 4,
   barRadius: 4,
-  /**
-   * Text drawn INSIDE an SVG, which is drawing geometry rather than a
-   * typographic role — but it is still read by a person, so it obeys the same
-   * floor the type scale sets. `Bars` already stepped its axis between two
-   * sizes; `Lines` and the donut were left at 9, a quarter under that floor.
-   *
-   * `axis` / `axisLarge` mirror the two steps `shouldUseLargeAxisType` picks
-   * between. `centreLabel` and `centreValue` are the donut's middle, and they
-   * are RATIOS of the ring rather than constants: the ring is drawn at 152,
-   * 236 or 300 depending on the viewport, and a fixed 13pt figure that reads
-   * as the answer on a phone reads as a footnote inside a 300pt ring.
-   */
+  // Text inside an SVG obeys the type scale's floor; the centre sizes are ratios of the ring, which is drawn at 152, 236 or 300.
   axisFontSize: 10,
   axisFontSizeLarge: 11,
   centreLabelRatio: 0.062,
   centreValueRatio: 0.098,
-  /**
-   * What a ring does when one of its slices is being asked about.
-   *
-   * Emphasis by WIDTH, never by opacity. Fading the other slices was the
-   * obvious move and it is the wrong one here: measured across all six
-   * palettes, the categorical ramp's weakest colour clears its background by
-   * 3.13:1 at full strength — it only just makes the 3:1 floor this project
-   * holds its chart marks to. Any alpha at all therefore breaks it; at 0.8 the
-   * worst pair falls to 2.51 and at 0.55 to 1.86. So the chosen arc grows and
-   * the others thin, and every arc keeps the contrast it was designed with.
-   *
-   * `donutLift` thickens the chosen arc outward from the same centre line and
-   * `donutThin` narrows the rest inward from theirs, so nothing moves sideways
-   * and the ring stays concentric.
-   */
+  // A queried slice grows and the rest thin: emphasis by width, never by opacity, since any alpha breaks the ramp's 3:1.
+  // `donutLift` thickens the chosen arc and `donutThin` narrows the rest, both about the same centre line.
   donutLift: 3,
   donutThin: 7,
 } as const;
 
-/**
- * Categorical series colours.
- *
- * These deliberately leave the theme's brand fan, and that is the whole point.
- * Measured across the three shipped palettes, every non-surface token sits in a
- * band roughly 20 L* wide and 70° of hue — so the palette's own vocabulary
- * cannot supply eight colours a person can tell apart, and the ramp built from
- * it did not: the three `*Strong` entries were 7.4-8.6 ΔE from their own base,
- * `surfaceStrong` failed the 3:1 a graphical object owes its background in all
- * six schemes (1.68-2.03), and under deuteranopia two pairs collapsed to
- * ΔE 1.1 — the same colour to roughly 6% of men.
- *
- * A category colour carries no brand meaning; it is an encoding. So this is a
- * purpose-built ramp, chosen by search rather than by eye, and its separation
- * comes from a LIGHTNESS ladder as much as from hue — lightness is the axis
- * colour-blindness leaves intact.
- *
- * Measured: minimum pairwise ΔE2000 11.6 (light) / 16.5 (dark); under
- * deuteranopia 10.1 / 11.5; minimum contrast 3.13 / 4.49 against every surface
- * and surfaceAlt the app paints them on. Purple and magenta stay out of the
- * ramp entirely, as everywhere else in this app.
- *
- * `tests/ui/theme-contrast.test.ts` re-measures all of it from these values.
- */
+/** Categorical ramp outside the brand fan, separated by lightness as well as hue; the dark ramp keeps each hue. theme-contrast.test re-measures it. */
 const chartSeries = {
   light: ["#9c3548", "#008a99", "#997026", "#005fa4", "#535f06", "#006853", "#007ec4", "#a56758"],
-  /**
-   * The SAME eight hues, lifted for a dark ground.
-   *
-   * The old dark ramp was measured for separation and never for identity, and
-   * six of its eight entries changed hue family outright: index 0 went from a
-   * crimson at 15° to a peach at 55°, index 2 from gold at 79° to green at
-   * 140°, index 4 from olive at 111° to pink at 12°. A person on the "Sistem"
-   * theme therefore watched every category in every chart change colour at
-   * sunset — and this app is explicit elsewhere that a colour's meaning
-   * survives a theme change (see `lightSemanticColors`: income stays green,
-   * spending stays red). A categorical colour is an encoding too; learning
-   * "the red slice is Ek Giderler" should not expire at dusk.
-   *
-   * Searched under the same constraints the old ramp was, plus hue: each entry
-   * keeps its light counterpart's hue within 1° and its chroma character,
-   * raised in lightness for a dark surface. Measured across all three shipped
-   * dark palettes — minimum pairwise ΔE2000 16.2 (was 16.5, floor 10), 10.2
-   * under deuteranopia (floor 9), minimum contrast 4.83 against every surface
-   * and surfaceAlt (floor 3). `tests/ui/theme-contrast.test.ts` re-measures all of
-   * it, including the hue pairing.
-   */
   dark: ["#dd6f7d", "#60c4d3", "#d8a95d", "#5f98e3", "#8d9741", "#50a58d", "#c7dffe", "#eaa594"],
 } as const;
 
-/**
- * The series ramp for a scheme, as a plain function.
- *
- * `useSeriesColors` is a hook, so a test cannot call it — and the contract test
- * that claimed to "mirror" it had silently drifted to a list of eight tokens
- * the app stopped using, which is why none of the defects above were caught.
- * The hook now memoizes THIS, and the test imports THIS, so the two cannot
- * describe different ramps again.
- */
+/** The series ramp for a scheme as a plain function, so a test can call what the hook memoizes. */
 export function chartSeriesColors(scheme: "light" | "dark"): readonly string[] {
   return chartSeries[scheme];
 }
 
-/** Shared control geometry. Keep compact visual controls distinct from the
- *  minimum interactive target: compact buttons use hitSlop to reach 44pt. */
-/**
- * How far the user's own text size may grow a label whose box cannot grow with
- * it.
- *
- * React Native scales every `Text` by the platform setting by default, and it
- * should: a person who has asked for larger type has asked the whole system,
- * not just the apps that remembered. But three surfaces in this app have
- * geometry measured in points rather than in ems — the ledger's `headWidth` and
- * cell widths, the floating tab bar's fixed height, the status column — and iOS
- * accessibility sizes reach roughly 3.1x. A 3.1x label in a 116pt column is not
- * a large label; it is an ellipsis, and this repository's own rule is that
- * nothing truncates.
- *
- * 2.0 is not a compromise between those: it is exactly what WCAG 1.4.4 asks
- * for — text resizable to 200% without loss of content or function — applied
- * only where the box is fixed. Prose, headings, amounts and every form scale
- * without a ceiling, because their containers grow.
- */
+/** WCAG 1.4.4's 200%, applied only where a box cannot grow with its text. */
 export const maxFontScale = {
   /** A label inside a box whose width or height is a measured constant. */
   measuredBox: 2,
@@ -617,19 +508,7 @@ export const loadingSize = {
   progressWidth: 120,
 } as const;
 
-/**
- * Intrinsic control width.
- *
- * A segmented control is a choice, not a banner. Given a whole desktop column it
- * stretched to it — three options across 1130 px, ~376 px per segment — and
- * stopped reading as one control. This is the same defect `TAB_BAR.maxWidth`
- * already fixes for navigation; it simply never propagated to the other control
- * that divides its container between equal children.
- *
- * The budget is per option so a two-way choice does not inherit the width a
- * six-way one needs, and the ceiling stops even a long row from spanning a wide
- * monitor. Below the cap nothing changes, which is every phone.
- */
+/** A segmented control's width is per option, with a ceiling. */
 const controlWidth = {
   segmentedPerOption: 132,
   segmentedMax: 560,
@@ -639,31 +518,9 @@ export function segmentedMaxWidth(optionCount: number): number {
   return Math.min(optionCount * controlWidth.segmentedPerOption, controlWidth.segmentedMax);
 }
 
-/**
- * `headerBack` is deliberately even.
- *
- * The chevron is centred inside `controlSize.minimumTarget`, so the leftover
- * space is split in two. At 25pt each side got (44 − 25) / 2 = 9.5pt: a
- * browser paints that as-is, but React Native rounds layout to the device
- * pixel grid, so at @3x one side rounded 28.5 physical px up to 29 and the
- * other kept 28 — the glyph sat one physical pixel off-centre inside its own
- * circular target on native while the web header looked correct. An even size
- * halves to a whole point at 1x, 2x and 3x alike.
- */
-/**
- * `emoji` is gone. It sized a glyph that the text engine drew as an icon —
- * a category or payment-source mark — and those are lucide components now,
- * so they take `compact` or `control` like every other mark in the app. See
- * `ui/category-icon.tsx` for why the change stayed in the UI layer.
- */
+/** `headerBack` is even so it centres on whole pixels at 1x/2x/3x. */
 export const iconSize = { compact: 15, control: 17, accessory: 18, headerBack: 24 } as const;
 
-/**
- * `selected` is the ring a chosen tile wears. It used to be written as
- * `selected ? 2 : 1` in five screens and `selected ? 1.5 : hairline` in two
- * more, so the same answer to the same question had three weights depending on
- * which file you were in.
- */
 export const borderWidth = { control: 1.5, toggle: 1, selected: 2 } as const;
 
 /** State opacity roles stay separate because their current perceptual weight is
@@ -696,26 +553,7 @@ export const font = {
   serif: "IBMPlexSerif_600SemiBold",
 } as const;
 
-/**
- * Static font files carry one weight each, so tokens set fontFamily only —
- * never fontWeight (iOS would try to synthesize a second face).
- *
- * The serif carries the brand voice: the sign-in hero and every screen title.
- * It was Fraunces, a display face whose digit advances measured 978–1404 units
- * at 2000 upem — a **43.6% spread**, with no `tnum` feature to correct it — so
- * the rule was that it could never touch a figure: a balance updating in place
- * would visibly jump and a column of amounts would never align.
- *
- * IBM Plex Serif is drawn for technical and financial documents and does not
- * have that problem. Measured from the shipped `600SemiBold` TTF: every digit
- * advances exactly 600 units at 1000 upem — **0% spread, tabular by
- * construction**, no feature to request. Turkish is complete and ₺ (U+20BA) is
- * present, so a title never falls back mid-word.
- *
- * Dense numerics still stay Inter, whose `tnum` the amount roles below request:
- * Inter's own default spread is 58.8% and the feature is what corrects it.
- * A serif figure is for a hero, not for a table.
- */
+// One weight per static face, so fontFamily only, never fontWeight. Plex Serif's digits are tabular; dense numerics stay Inter with tnum.
 export const type = {
   display: { fontSize: 40, fontFamily: font.serif, letterSpacing: -0.8 },
   title: { fontSize: 26, fontFamily: font.serif, letterSpacing: -0.2 },
@@ -724,26 +562,13 @@ export const type = {
   sectionTitle: { fontSize: 16, fontFamily: font.semibold, letterSpacing: -0.2 },
   body: { fontSize: 15, fontFamily: font.regular },
   label: { fontSize: 13, fontFamily: font.medium },
-  /**
-   * The small capital line that names the block under it.
-   *
-   * There were ten of these and five recipes: `label` at caption size with
-   * letter-spacing 1, the same at 1.1, `small` at micro size with no spacing
-   * at all, and `small` at 0.6 and 0.7 in the operation flow. Same job, five
-   * answers, so no two screens introduced a section the same way.
-   *
-   * The role carries size, face and spacing only. The CASING is not here on
-   * purpose: `textTransform: "uppercase"` is locale-blind on native and turns
-   * Turkish "i" into "I" rather than "İ", so the text goes through
-   * `upperTR` in `i18n/tr.ts` instead and this role never sees it.
-   */
+  /** No textTransform: it is locale-blind and turns Turkish "i" into "I"; use upperTR. */
   eyebrow: { fontSize: 11, fontFamily: font.semibold, letterSpacing: 1 },
   small: { fontSize: 12, fontFamily: font.regular },
   /** What a figure beside it is called. */
   caption: { fontSize: 11, fontFamily: font.regular },
   /** The smallest text the app is allowed to draw: markers, eyebrows, the
-   *  caption under a dense tile. Nothing may go below it — the sizes it
-   *  replaces reached 9, which is 25% under the old floor. */
+   *  caption under a dense tile. */
   micro: { fontSize: 10, fontFamily: font.medium },
   button: { fontSize: 15, fontFamily: font.medium },
   buttonCompact: { fontSize: 13, fontFamily: font.medium },
@@ -776,30 +601,7 @@ export const type = {
   amountSm: { fontSize: 12, fontFamily: font.medium, fontVariant: ["tabular-nums" as const] },
 };
 
-/**
- * Prose leading, and why it is a ratio applied at one call site rather than a
- * number in the scale above.
- *
- * A pinned `lineHeight` beside a scaling `fontSize` is the Dynamic Type
- * clipping bug the scale refuses outright, and it is right to: iOS
- * accessibility sizes reach ~3.1x, the glyphs grow and a constant line box does
- * not, so descenders are cut. Neither `PixelRatio.getFontScale()` nor
- * `useWindowDimensions().fontScale` reports that multiplier on iOS — both
- * follow Display Zoom — so there is no honest way to scale a line box with it.
- *
- * The web half has the opposite problem and no such excuse. React Native Web
- * writes `font: 14px System` on every Text, and the `font` shorthand RESETS
- * `line-height` to `normal` — about 1.21 for Inter. So every paragraph in this
- * app was set at 1.21 where prose wants ~1.5, and Turkish makes that worse than
- * it sounds: a ğ or ş descender ends up nearly touching the İ dots on the line
- * below.
- *
- * Browser page zoom scales a px line box with the text, so a derived value is
- * safe there in a way it is not on native. This therefore applies on web only,
- * to PROSE only — `Body`, which is the one role that runs to several lines —
- * and it is derived from that role's own fontSize rather than written out, so
- * it cannot drift from it.
- */
+/** Prose leading, applied on web only: RNW's font shorthand resets line-height to ~1.21; a native line box cannot follow Dynamic Type. */
 export const proseLeading = 1.5;
 
 /**
@@ -840,16 +642,7 @@ export function actionTileMetrics(compact: boolean) {
   } as const;
 }
 
-/**
- * Shadows take the live palette, always.
- *
- * There used to be `cardShadow` / `overlayShadow` / `toggleThumbShadow` /
- * `scrim` constants beside these, each evaluated once against `lightPalette`.
- * Four surfaces still imported them, so in dark mode the calculator, the
- * calendar and the undo bar drew an 8%-alpha warm-brown shadow where the theme
- * asks for 30% near-black — effectively no shadow at all — and every scrim in
- * the app was the light theme's 52% instead of the dark theme's 68%.
- */
+/** Shadows take the live palette, always. */
 export const themeShadow = {
   card: (palette: Palette) => ({ boxShadow: `0 8px 24px ${palette.shadow}` } as const),
   overlay: (palette: Palette) => ({ boxShadow: `0 16px 40px ${palette.shadowStrong}` } as const),
@@ -870,19 +663,7 @@ export function heroSurface(
 /** Deterministik rozet renkleri için saf beyaz olmayan sabit foreground. */
 export const generatedBadgeForeground = "#FBF6F1";
 
-/** Tab bar metrics — the single source for the bar itself AND for overlays
- *  that must clear it (undo snackbar). Web gets extra height so Turkish
- *  descenders (ç/ğ) aren't clipped, and a floor because mobile web reports no
- *  bottom inset. */
-/**
- * The floating tab bar.
- *
- * The safe-area inset sits UNDER the bar, not inside it. While the bar was
- * docked to the bottom edge its height had to swallow the home indicator, so
- * its bottom padding was always larger than its top and the icons rode high in
- * a bar that was supposed to look symmetrical. A floating bar clears the
- * indicator by standing above it, which makes the padding even by construction.
- */
+/** The floating tab bar; the safe-area inset sits under it, so its padding is even. Web gets extra height so Turkish descenders are not clipped. */
 export const TAB_BAR = {
   /** The bar itself — content only, no safe area. */
   height: 56,
@@ -892,12 +673,7 @@ export const TAB_BAR = {
   /** Side inset of the bar, and the gap it keeps from the content above it. */
   sideInset: 12,
   gap: 10,
-  /**
-   * A floating bar that spans a 1440 px viewport stops reading as floating and
-   * starts reading as a stretched pill — each of the five targets becomes
-   * ~288 px wide. Bounded and centred it stays a bar on every width, sitting
-   * under the same content column the screens are already limited to.
-   */
+  /** Bounded and centred, so the bar stays a bar at every width. */
   maxWidth: 560,
 } as const;
 
@@ -910,33 +686,7 @@ export function tabBarBottomOffset(bottomInset: number): number {
   return Math.max(bottomInset, TAB_BAR.minBottomGap);
 }
 
-/**
- * Space a tab scene must leave under its content. The bar floats over the
- * scene, so react-navigation no longer reserves its height — this is the single
- * source every scroller and overlay reads instead of guessing an offset.
- */
-function tabBarClearance(bottomInset: number, isWeb: boolean): number {
-  return tabBarHeight(isWeb) + tabBarBottomOffset(bottomInset) + TAB_BAR.gap;
-}
-
-/**
- * Navigation material.
- *
- * The bar floats over the content it navigates, and the point of floating is
- * that the page keeps going underneath — so the fill is a veil, not a lid. The
- * owner asked for as much glass as the label can survive, so both alphas are as
- * low as the ink allows: web can afford the thinner one because a real backdrop
- * blur removes the detail that would otherwise compete with an 11px label,
- * while native has no blur in this runtime and keeps a denser veil rather than
- * setting a label directly on whatever text scrolls behind it.
- *
- * The LABEL never takes any of this. Alpha belongs to the surface; the text on
- * top is painted at full strength, which is the whole difference between a
- * translucent panel and a faded one.
- *
- * Both are alpha over `surface`, so every contrast pair already proved against
- * `surface` still describes the ink on top.
- */
+/** Navigation material: a veil, not a lid. Alpha belongs to the surface and the label on it is full strength; web is thinner because a real blur removes the detail behind it. */
 export const NAV_GLASS = {
   webAlpha: "70",
   mobileWebAlpha: "80",
@@ -950,22 +700,11 @@ export function navigationMaterial(surface: string, { glass, isWeb, compact = fa
 }
 
 /**
- * Space a tab scene must leave for navigation.
- *
- * One function so a scene, the undo snackbar and the bar itself cannot disagree
- * about where navigation is. It briefly returned a left inset too, for a
- * desktop rail; the rail is gone — it pushed every page off centre and gave the
- * app two navigations to learn — and the shape stays a single owner rather than
- * scattering `tabBarClearance` back across three call sites.
+ * Space a tab scene must leave under its content. The bar floats over the
+ * scene, so this is the single source every scroller and overlay reads.
  */
-export function navigationInset({
-  bottomInset,
-  isWeb,
-}: {
-  bottomInset: number;
-  isWeb: boolean;
-}): { bottom: number; left: number } {
-  return { bottom: tabBarClearance(bottomInset, isWeb), left: 0 };
+export function navigationInset({ bottomInset, isWeb }: { bottomInset: number; isWeb: boolean }): { bottom: number } {
+  return { bottom: tabBarHeight(isWeb) + tabBarBottomOffset(bottomInset) + TAB_BAR.gap };
 }
 
 export type ThemePreference = "system" | "light" | "dark";
@@ -986,59 +725,19 @@ export function useTheme(): Theme {
   return useContext(ThemeContext);
 }
 
-/**
- * How a contextual mark is painted, per token.
- *
- * The palette owns this, not the matrix, and the mark reuses roles the theme
- * has ALREADY measured (`success`/`warning`/`error` as status, `primary` and
- * `tertiary` as hierarchy accents) rather than introducing five more colours
- * that every contrast, hue and dark-mode contract would have to re-approve.
- *
- * `fill` is deliberately faint. A marked cell still has to show a right-aligned
- * amount in `palette.text` at small sizes, so the tint is a wash under existing
- * foregrounds, never a coloured block that would need its own ink. The `edge`
- * carries the actual identification: a saturated left border reads at a glance
- * down a column and survives both schemes.
- *
- * Colour is never the only carrier — `matrixColorLabel` in `i18n/tr.ts` names
- * each token for assistive technology, and the sheet that sets one shows the
- * name beside the swatch.
- */
-/**
- * How strongly a contextual mark tints the cell it is on.
- *
- * Measured, not chosen. At the previous `26` (15%) the four hues landed 2.7 ΔE
- * apart in light and 3.1 in dark on the shipped palettes — below the threshold
- * where a colour is a signal rather than a smudge, which is exactly the
- * "renkler stabil değil" this replaces. `59` (35%) puts the worst adjacent pair
- * at 6.8–7.4 ΔE across all six palettes while keeping `palette.text` on the
- * tinted cell at 5.96:1 or better, comfortably past AA. Raising it further buys
- * little separation and spends the cell's own legibility: at 45% the darkest
- * scheme drops the figure on the cell to 4.54:1, one rounding away from
- * failing the thing the table is for.
- */
+/** 35% tint: the four hues separate while palette.text on the cell stays past AA. */
 const MATRIX_MARK_FILL_ALPHA = "59";
 
+const MARK_ROLE = { green: "success", yellow: "caution", orange: "warning", red: "error" } as const;
+
 /**
- * The four contextual-mark hues.
- *
- * `edge` is the full-strength colour drawn as the cell's 3px rule — the part
- * that survives any tint under it. `fill` is the wash. `ink` is for a mark ON
- * the fill (the sheet's tick), which is a graphical object under WCAG 1.4.11
- * and therefore held to 3:1, not to text's 4.5:1.
+ * A contextual mark from roles the theme already measures. `edge` is the full-strength 3px rule, `fill` the wash,
+ * `ink` a mark on the fill (3:1, WCAG 1.4.11).
  */
 export function matrixColorStyle(
   palette: Palette,
   token: MatrixColorToken,
 ): { fill: string; edge: string; ink: string } {
-  switch (token) {
-    case "green":
-      return { fill: palette.success + MATRIX_MARK_FILL_ALPHA, edge: palette.success, ink: palette.successText };
-    case "yellow":
-      return { fill: palette.caution + MATRIX_MARK_FILL_ALPHA, edge: palette.caution, ink: palette.cautionText };
-    case "orange":
-      return { fill: palette.warning + MATRIX_MARK_FILL_ALPHA, edge: palette.warning, ink: palette.warningText };
-    case "red":
-      return { fill: palette.error + MATRIX_MARK_FILL_ALPHA, edge: palette.error, ink: palette.errorText };
-  }
+  const role = MARK_ROLE[token];
+  return { fill: palette[role] + MATRIX_MARK_FILL_ALPHA, edge: palette[role], ink: palette[`${role}Text`] };
 }

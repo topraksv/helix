@@ -4,17 +4,15 @@
  *
  * Reconciling writes an adjustment so the ledger lands on the declared figure,
  * and from that instant the app has no memory of what was confirmed. Keeping
- * the declaration lets every surface say "you told me ₺20.000 on 4 Ağustos; the
- * table now says ₺30.000" rather than quietly drifting away from the one number
- * the user checked against a bank.
+ * the declaration lets a surface say "you told me ₺20.000 on 4 Ağustos; the
+ * table now says ₺30.000".
  *
- * Drift is not an error. It is the ordinary result of entering more records —
- * which is exactly when a person should look at their account again.
+ * Drift is not an error: it is the ordinary result of entering more records.
  */
-import type { ISODate } from "./dates";
-import { projectedTransactionFlow } from "./transactions";
+import { addMonthsToKey, monthKeyOf, type ISODate, type MonthKey } from "./dates";
+import { signedBalanceEffect } from "./transactions";
 import type { TxLike } from "./types";
-export interface BalanceDeclaration {
+interface BalanceDeclaration {
   minor: number;
   at: string;
 }
@@ -40,8 +38,24 @@ export function balanceDeclarationDrift(
   return drift === 0 ? null : drift;
 }
 
+/** The month whose opening a declaration holds: it is dated on the last day of the month before. */
+export function declaredMonthOf(date: ISODate): MonthKey {
+  return addMonthsToKey(monthKeyOf(date), 1);
+}
+
+/**
+ * The adjustment that makes a month open at `declaredMinor`. The stored
+ * difference is measured from what the month opened with before any
+ * declaration of its own, so the part an existing one contributed is taken
+ * out of the opening first.
+ */
+export function declarationAdjustmentMinor(declaredMinor: number, openingMinor: number, existingDeltaMinor: number): number {
+  const undeclared = openingMinor - existingDeltaMinor;
+  return declaredMinor - undeclared;
+}
+
 /** A row that, if it really happened, would account for part of a drift. */
-export interface DriftCandidate {
+interface DriftCandidate {
   id: string;
   /** How the displayed balance would move once this row is realized. */
   effectMinor: number;
@@ -82,8 +96,7 @@ export function driftCandidates(
   for (const transaction of transactions) {
     if (transaction.status !== "pending" || !transaction.personIsSelf) continue;
     if (transaction.effectiveDate > today) continue;
-    const flow = projectedTransactionFlow(transaction);
-    const effectMinor = flow.direction === "in" ? flow.amountTryMinor : -flow.amountTryMinor;
+    const effectMinor = signedBalanceEffect(transaction);
     if (Math.sign(effectMinor) !== wanted) continue;
     candidates.push({ id: transaction.id, effectMinor, date: transaction.effectiveDate });
   }

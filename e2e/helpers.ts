@@ -1,62 +1,22 @@
-import { expect, type BrowserContext, type Locator, type Page, type TestInfo } from "@playwright/test";
+import { expect, type BrowserContext, type Locator, type Page } from "@playwright/test";
 
-const APP_PATH = "/helix/";
+// The browser is pinned to Europe/Istanbul but this file runs in the runner's
+// timezone (UTC on CI), so a bare `new Date()` is a day ahead of the app after 21:00 UTC.
+const istanbulToday = () => new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Istanbul" }).format(new Date());
 
-/**
- * Today as the APP sees it, never as this file does.
- *
- * The browser is pinned to Europe/Istanbul (`playwright.config.ts`); this file
- * runs in the runner's timezone, which is UTC on CI. Between 21:00 UTC and
- * midnight those are different DATES, and every value derived from a bare
- * `new Date()` here is then a day ahead of the app under test.
- */
-function todayInIstanbul(): { year: string; month: string; day: string } {
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Europe/Istanbul",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).formatToParts(new Date());
-  const value = (type: string) => parts.find((part) => part.type === type)?.value;
-  const [year, month, day] = [value("year"), value("month"), value("day")];
-  if (!year || !month || !day) throw new Error("Could not derive today in Istanbul");
-  return { year, month, day };
-}
+export const currentMonthKey = () => istanbulToday().slice(0, 7);
 
-export function currentMonthKey(): string {
-  const { year, month } = todayInIstanbul();
-  return `${year}-${month}`;
-}
-
-/**
- * The day of the month to type into a form the app reads against its own clock.
- *
- * A bare `new Date().getDate()` scheduled a subscription for the wrong day
- * whenever the run crossed the Istanbul midnight: nothing was then due today,
- * the attention inbox had no "Bugün" group, and the release gate failed on a
- * push that had nothing to do with it. Measured on the 21:34 UTC run of
- * 2026-08-31, which typed 31 while the app had already turned 1 September.
- *
- * Unpadded, because the field takes a number and not a calendar string.
- */
-export function currentIstanbulDay(): string {
-  return String(Number(todayInIstanbul().day));
-}
+/** Unpadded: the form field takes a number, not a calendar string. */
+export const currentIstanbulDay = () => String(Number(istanbulToday().slice(8)));
 
 export async function isolateExternalData(context: BrowserContext): Promise<void> {
-  // The market feed used to need its own `routeWebSocket` rule, because
-  // `context.route` does not see a WebSocket handshake. It is a plain polled
-  // request now, so the catch-all below already covers it — one rule for every
-  // external host instead of one rule plus an exception.
   await context.route("**/*", async (route) => {
     const url = new URL(route.request().url());
     if (url.hostname === "127.0.0.1" || url.protocol === "blob:" || url.protocol === "data:") {
       await route.continue();
     } else {
-      // Model an unavailable optional service with an HTTP response instead of
-      // a client-side abort. Firefox reports CORS/network aborts as page-level
-      // JavaScript errors even though the application catches them; a 503
-      // exercises the same offline fallback without manufacturing noise.
+      // A 503 rather than an abort: Firefox reports aborted CORS requests as page
+      // errors even when the app catches them.
       await route.fulfill({
         status: 503,
         contentType: "text/plain",
@@ -66,23 +26,52 @@ export async function isolateExternalData(context: BrowserContext): Promise<void
   });
 }
 
+/** Every interactive control's box lies inside the viewport it was laid out in. */
+export async function offscreenControls(page: Page): Promise<string[]> {
+  return page.evaluate(() => {
+    const found: string[] = [];
+    const width = document.documentElement.clientWidth;
+    const belongsToHorizontalScroller = (element: HTMLElement) => {
+      if (element.closest('[data-testid="table-horizontal-header"],[data-testid="table-horizontal-body"]')) {
+        return true;
+      }
+      let ancestor = element.parentElement;
+      while (ancestor && ancestor !== document.body) {
+        const style = getComputedStyle(ancestor);
+        if (
+          (style.overflowX === "auto" || style.overflowX === "scroll") &&
+          ancestor.scrollWidth > ancestor.clientWidth + 1
+        ) {
+          return true;
+        }
+        ancestor = ancestor.parentElement;
+      }
+      return false;
+    };
+    for (const el of Array.from(
+      document.querySelectorAll<HTMLElement>('[role="button"],[role="tab"],[role="switch"],[role="link"]'),
+    )) {
+      const style = getComputedStyle(el);
+      if (style.display === "none" || style.visibility === "hidden") continue;
+      const box = el.getBoundingClientRect();
+      if (box.width === 0 || box.height === 0) continue;
+      if ((box.left < -1 || box.right > width + 1) && !belongsToHorizontalScroller(el)) {
+        found.push(
+          `${(el.getAttribute("aria-label") ?? el.textContent ?? "").trim().slice(0, 30)} @${Math.round(box.left)}..${Math.round(box.right)} of ${width}`,
+        );
+      }
+    }
+    return [...new Set(found)];
+  });
+}
+
+export const scrollsSideways = (page: Page): Promise<boolean> =>
+  page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1);
+
 /**
- * Open a route for auditing, and the check that says it was really audited.
- *
- * A guard that redirects turns "this route was checked" into a claim about
- * somewhere else, and a walk cannot tell on its own: it finds a rendered
- * `#root`, does its work against whatever screen it landed on, and reports the
- * route it asked for. `/helix/data-reset` and `/helix/account-security` did
- * exactly that to the accessibility sweep until 2026-09-05.
- *
- * The two halves are separate ON PURPOSE, and the order is the whole point.
- * `<Redirect>` fires from an effect one or two animation frames after `#root`
- * appears — 35-47ms, measured — so a check made straight after the navigation
- * reads the route's own path and passes on precisely the routes it exists to
- * catch. Any fixed wait is a bet against a guard that first awaits storage or
- * configuration. Calling `routeRedirectProblem` AFTER the route's own work
- * needs no bet at all: an axe run, a full-document scan, whatever the caller
- * does, has already given the router far longer than it takes.
+ * A guard that redirects makes "this route was audited" a claim about another
+ * screen. `<Redirect>` fires a frame or two after `#root` appears, so call
+ * `routeRedirectProblem` AFTER the route's own work, never straight after this.
  */
 export async function openRouteForAudit(page: Page, route: string): Promise<void> {
   await page.goto(route);
@@ -102,32 +91,29 @@ export function collectRuntimeErrors(page: Page): string[] {
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
   page.on("console", (message) => {
-    // Chromium reports blocked optional feeds and Pages' intentional dynamic
-    // route 404 document as console resource errors. Page exceptions and real
-    // application console errors still fail the suite.
-    if (message.type() === "error" && !message.text().startsWith("Failed to load resource:")) {
-      errors.push(message.text());
+    if (message.type() !== "error") return;
+    const text = message.text();
+    // Blocked external feeds and Pages' dynamic-route 404 document are expected;
+    // a missing local file (chunk, font) is not, so only extensionless local paths pass.
+    if (text.startsWith("Failed to load resource:")) {
+      const url = message.location().url;
+      if (!url) return;
+      const { hostname, pathname } = new URL(url);
+      if (hostname !== "127.0.0.1" || !/\.[a-z0-9]+$/i.test(pathname)) return;
     }
+    errors.push(text);
   });
   return errors;
 }
 
 export async function onboard(page: Page): Promise<void> {
-  await page.goto(APP_PATH);
+  await page.goto("/helix/");
   await expect(page.getByRole("heading", { name: "Hoş geldin", exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Hemen Kullanmaya Başla" }).click();
   const skipTour = page.getByRole("button", { name: "Geç", exact: true });
-  let tourVisible = true;
-  try {
-    // The welcome tour is scheduled after the dashboard mounts, so a
-    // zero-wait visibility probe can race it and leave an invisible overlay
-    // intercepting the next real action.
-    await skipTour.waitFor({ state: "visible", timeout: 5_000 });
-  } catch {
-    // Returning/restore flows legitimately have no first-run tour.
-    tourVisible = false;
-  }
-  if (tourVisible) {
+  // The tour appears after the dashboard mounts; returning/restore flows have none.
+  await skipTour.waitFor({ state: "visible", timeout: 5_000 }).catch(() => {});
+  if (await skipTour.isVisible()) {
     await skipTour.click();
     await expect(skipTour).toBeHidden();
   }
@@ -139,14 +125,7 @@ export async function openCashFlow(page: Page): Promise<void> {
   await expect(page.getByRole("heading", { name: "Mali Tablo", exact: true })).toBeVisible();
 }
 
-/**
- * Choose a value from one of the form dropdowns (category, payment source).
- *
- * These used to be chip rows, so a test could click the option directly. They
- * are `Select` now: the field is a button carrying the label, and the options
- * are radios inside its modal. Routed through one helper so a later change to
- * the control is one edit here rather than six across the suite.
- */
+/** Choose a value from a form dropdown: the field is a button, the options are radios in its modal. */
 export async function pickOption(page: Page, field: string, option: string | RegExp): Promise<void> {
   const trigger = page.getByRole("button", { name: field, exact: true });
   await trigger.click();
@@ -156,12 +135,34 @@ export async function pickOption(page: Page, field: string, option: string | Reg
   await expect(trigger).toBeFocused();
 }
 
-export async function addMarketExpense(page: Page, note: string, amount = "1.234,56"): Promise<void> {
+export async function addSubscription(
+  page: Page,
+  name: string,
+  amount: string,
+  day = currentIstanbulDay(),
+): Promise<void> {
+  await page.getByRole("tab", { name: "Abonelikler" }).click();
+  await page.getByRole("button", { name: "Abonelik Ekle", exact: true }).click();
+  await page.getByRole("textbox", { name: "Ad", exact: true }).fill(name);
+  await page.getByRole("textbox", { name: "Tutar · TRY", exact: true }).fill(amount);
+  await page.getByRole("textbox", { name: "Ödeme günü", exact: true }).fill(day);
+  await page.getByRole("button", { name: "Kaydet", exact: true }).click();
+  const categoryOffer = page.getByRole("button", { name: "Oluştur ve Kaydet", exact: true });
+  if (await categoryOffer.count()) await categoryOffer.click();
+  await expect(page).toHaveURL(/subscriptions/u);
+}
+
+export async function addMarketExpense(
+  page: Page,
+  note: string,
+  amount = "1.234,56",
+  category: string | RegExp = /Market/,
+): Promise<void> {
   await openCashFlow(page);
   await page.getByRole("button", { name: "İşlem Ekle" }).click();
   await expect(page.getByRole("heading", { name: "Yeni İşlem" })).toBeVisible();
   await page.getByRole("textbox", { name: "Tutar · TRY" }).fill(amount);
-  await pickOption(page, "Kategori", /Market/);
+  await pickOption(page, "Kategori", category);
   await page.getByRole("textbox", { name: "Not" }).fill(note);
   const save = page.getByRole("button", { name: "Kaydet", exact: true });
   await expect(save).toBeEnabled();
@@ -170,19 +171,9 @@ export async function addMarketExpense(page: Page, note: string, amount = "1.234
 }
 
 /**
- * Rendered contrast of an element against the nearest ancestor that actually
- * paints a background.
- *
- * `getByRole` matches the accessible name, so a control can pass every
- * interaction assertion while being invisible to a human — this measures what
- * the browser really painted.
- *
- * `"text"` samples the element's own text colour. `"boundary"` samples its
- * painted border instead, and starts the backdrop walk one level up because
- * the border is painted ON the element: a control whose fill is a low-contrast
- * neutral is visible only because of its outline, which the text measurement
- * cannot see. The refund switch rendered at exactly 1.00:1 against its row and
- * simply was not there, while every role/name assertion stayed green.
+ * Contrast of what the browser painted, since role queries pass on invisible controls.
+ * `"boundary"` samples the border and starts the backdrop walk one level up, for
+ * controls whose fill is a low-contrast neutral and are seen only by their outline.
  */
 export async function renderedContrast(locator: Locator, against: "text" | "boundary"): Promise<number> {
   return locator.evaluate((element, mode) => {
@@ -219,11 +210,4 @@ export async function renderedContrast(locator: Locator, against: "text" | "boun
     const [lighter, darker] = [luminance(foreground), luminance(background)].sort((a, b) => b - a);
     return (lighter! + 0.05) / (darker! + 0.05);
   }, against);
-}
-
-export async function assertNoRuntimeErrors(errors: string[], testInfo: TestInfo): Promise<void> {
-  if (errors.length > 0) {
-    await testInfo.attach("runtime-errors", { body: errors.join("\n"), contentType: "text/plain" });
-  }
-  expect(errors).toEqual([]);
 }
