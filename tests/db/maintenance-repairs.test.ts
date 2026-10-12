@@ -161,6 +161,17 @@ describe("the orphan-attachment cascade", () => {
     expect(live("attachments", "doc-undone")).toBe(true);
   });
 
+  it("waits a day after the delete before the receipt follows it", async () => {
+    const hoursAgo = (hours: number) => new Date(Date.now() - hours * 3_600_000).toISOString();
+    for (const [id, hours] of [["recent", 23], ["outlasted", 25]] as const) {
+      insert("transactions", { ...expense(`tx-${id}`), deleted_at: hoursAgo(hours) });
+      insert("attachments", receipt(`doc-${id}`, `tx-${id}`));
+    }
+    await runMaintenance(USER);
+    expect(live("attachments", "doc-recent")).toBe(true);
+    expect(live("attachments", "doc-outlasted")).toBe(false);
+  });
+
   it("keeps the receipt of an instalment its live plan can regenerate", async () => {
     // Closing a loan, or lowering its count, tombstones instalments that
     // reopening it, or raising the count, brings back under the same id.

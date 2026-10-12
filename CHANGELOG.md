@@ -22,6 +22,7 @@ Notlar kısa tutulur: ne değişti, tek cümle. Sebebi ve ölçümü commit'te.
 - Hatırlatma günü ve bekleyenleri gösterme ayarı diğer cihazlara hemen eşitleniyor.
 - E-posta bağlantısı internet yokken açılırsa harcanmıyor; internet gelince sayfa yenilenebiliyor.
 - Excel aktarımında bir yılın sayfasında bakiye sayılan sütun, aynı adı taşıyan diğer yıllarda artık dışarıda kalmıyor; maaşlar eksik aktarılmıyor.
+- Yeni "Telefon" kategorisi yatırım ikonu değil, iletişim ikonu alıyor.
 
 ## 1.9.7
 

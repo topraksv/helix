@@ -8,6 +8,9 @@ describe("category icon policy", () => {
 
   it("recognizes Turkish keyword casing and normalizes Turkish fallback names", () => {
     expect(suggestCategoryIcon("MAAŞ", "income")).toBe("💰");
+    expect(suggestCategoryIcon("Uçak Bileti", "expense")).toBe("✈️");
+    expect(suggestCategoryIcon("Telefon", "expense")).toBe("📶");
+    expect(suggestCategoryIcon("Fonlar", "expense")).toBe("📈");
     expect(suggestCategoryIcon("İSİMSİZ", "expense")).toBe("🗂️");
     expect(suggestCategoryIcon("isimsiz", "expense")).toBe("🗂️");
   });

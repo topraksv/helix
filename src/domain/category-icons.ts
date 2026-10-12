@@ -11,7 +11,8 @@ const RULES: [RegExp, string][] = [
   [/araç|araba|otomobil|yakıt|benzin|akaryakıt|otopark/i, "⛽"],
   [/ulaşım|otobüs|metro|taksi/i, "🚌"],
   [/fatura|abonelik/i, "🧾"],
-  [/yatırım|borsa|fon/i, "📈"],
+  // A word start, or "Telefon" reads as a fund.
+  [/yatırım|borsa|\bfon/i, "📈"],
   [/maaş/i, "💰"],
   [/sağlık|eczane|doktor/i, "🩺"],
   [/eğitim|okul|kurs/i, "🎓"],

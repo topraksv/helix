@@ -2,7 +2,7 @@
 // Per rule, not per file: a file-level baseline would be rewritten whenever a file moved. `--record` adopts the counts by hand.
 // Shells out to `expo lint` cold: a warm .eslintcache reports nothing for unchanged files, so the ratchet would fall to whatever was cached.
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { readFileSync, rmSync, writeFileSync } from "node:fs";
 
 const BASELINE = "lint-baseline.json";
 
@@ -52,6 +52,16 @@ export function evaluate(measured, baseline) {
   return { problems, improvements };
 }
 
+/** Read whole, with no existence check first (TOCTOU); `null` when there is none. */
+function readBaseline() {
+  try {
+    return JSON.parse(readFileSync(BASELINE, "utf8"));
+  } catch (error) {
+    if (error.code === "ENOENT") return null;
+    throw error;
+  }
+}
+
 function runLint() {
   // `expo lint` exits non-zero on a real error; the report is still read.
   rmSync(".eslintcache", { force: true });
@@ -71,8 +81,9 @@ if (import.meta.main) {
   const { rules, errors } = countsFrom(report);
   const total = Object.values(rules).reduce((sum, count) => sum + count, 0);
   const record = process.argv.includes("--record");
-  const baselineExists = existsSync(BASELINE);
-  const baseline = baselineExists ? JSON.parse(readFileSync(BASELINE, "utf8")) : { rules: {} };
+  const stored = readBaseline();
+  const baselineExists = stored !== null;
+  const baseline = stored ?? { rules: {} };
   const { problems, improvements } = evaluate(rules, baseline);
 
   // Printed before any decision: `runLint` deleted .eslintcache, so a run that prints nothing costs a second cold lint.
