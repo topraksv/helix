@@ -419,6 +419,8 @@ describe("release contract", () => {
     // failed one, so an empty diff there drops the base and fails open.
     const fallback = classify.slice(classify.indexOf("::warning::no green ci push run"));
     expect(fallback).toMatch(/^\s+if git diff --quiet "\$BEFORE_SHA" "\$HEAD_SHA"[^\n]*; then base=""; fi$/m);
+    // And mutation runs everything with it, rather than refusing a push with no base.
+    expect(fallback).toContain('if [ -z "$mutation" ]; then mutation="$(git hash-object -t tree /dev/null)"; fi');
   });
 
   // `check-published.mjs green` owns the one query, unfiltered and paged.

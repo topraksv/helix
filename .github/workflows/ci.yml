@@ -105,6 +105,9 @@ jobs:
               if git diff --quiet "$BEFORE_SHA" "$HEAD_SHA" 2>/dev/null; then base=""; fi
             fi
             mutation="$base"
+            # Everything runs, mutation too: from the empty tree, every scoped
+            # file is changed. A push with no base used to fail the selector.
+            if [ -z "$mutation" ]; then mutation="$(git hash-object -t tree /dev/null)"; fi
           fi
           echo "sha=$base" >> "$GITHUB_OUTPUT"
           echo "mutation=$mutation" >> "$GITHUB_OUTPUT"
