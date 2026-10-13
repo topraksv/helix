@@ -64,6 +64,16 @@ Two rules follow for anything added here: a flow may not depend on state an
 earlier flow left behind, and any device state a flow needs must be established
 by the script rather than assumed.
 
+### Reading a failure
+
+A dev-client result is void when Metro was not running; confirm it with the
+simulator's screenshot. Maestro counts an element under the floating tab bar as
+visible: `scrollUntilVisible` can stop with the row beneath the bar, the tap
+lands on the tab, `useScrollToTop` scrolls the list back, and the failure reads
+as "the screen did not open". The failure screenshot is taken after the next
+scroll and misleads; the real coordinate is the "Try tapping at" line in
+`maestro.log`. Tap an inline target with `centerElement: true`.
+
 ## What each flow proves
 
 **`01-launch.yaml` — the app opens in a native runtime.**
@@ -108,7 +118,12 @@ return path.
 Face ID, notification permission and the share sheet raise OS-owned UI a
 simulator cannot answer deterministically. Their pure logic is unit-tested
 (`biometric-name.ts`, `domain/notifications.ts`); the prompts stay a manual
-check before a store build.
+check before a store build. To reproduce a lock bug by hand: enrol Face ID with
+`notifyutil -s com.apple.BiometricKit.enrollmentChanged 1` then `-p`, match
+with `notifyutil -p com.apple.BiometricKit_Sim.pearl.match`, and tap the
+"Face ID Kilidi" switch itself, not its label. Maestro cannot run a shell
+command inside a flow, so this cannot become a flow. Metro started with `CI=1`
+watches no files: restart it when a change does not show.
 
 Android's recents thumbnail is now blanked by `FLAG_SECURE` rather than by a
 React render, because `AppState` never reports `inactive` there — see

@@ -128,6 +128,8 @@ const REVIVABLE_PARENT = `p.deleted_at > ? OR EXISTS (
 )`;
 const UNDO_OUTLASTED_MS = 24 * 60 * 60 * 1000;
 
+// A child is an orphan only when its parent row is present and tombstoned: a parent that is merely
+// missing may not have synced yet, and sweeping its children during a first pull would erase them.
 async function tombstoneOrphans(userId: string): Promise<void> {
   const sqlite = await getSqliteAsync();
   const undoCutoff = new Date(Date.now() - UNDO_OUTLASTED_MS).toISOString();

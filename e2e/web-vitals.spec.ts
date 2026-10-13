@@ -3,7 +3,7 @@
 // derivation on the tap path or an unreserved box, not to police 20ms.
 //
 // BLIND SPOT: the workspace is onboard plus one expense, far under the shape
-// docs/ARCHITECTURE.md "How a performance claim is produced" requires, so an O(ledger)
+// docs/ARCHITECTURE.md "A performance claim is measured inside the page" requires, so an O(ledger)
 // derivation would not show. Layout shift is proven (Amount's font ladder walks on any
 // row); read green INP as "nothing unconditional landed on the tap path".
 

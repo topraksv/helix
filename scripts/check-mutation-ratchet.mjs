@@ -5,7 +5,7 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 const REPORT = "reports/mutation/mutation.json";
 const BASELINE = "mutation-baseline.json";
 
-// Stryker counts a timeout as detected and timeouts vary with load, so a score drifts without code changing; record from a quiet machine.
+// Stryker counts a timeout as detected and timeouts vary with load, so a score drifts without code changing; record with `--timeoutMS 60000` (.claude/rules/mutation-gate.md).
 const TOLERANCE = 0.5;
 
 // A compile or runtime error is not a mutant the tests could have detected.
