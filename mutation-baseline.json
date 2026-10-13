@@ -208,12 +208,12 @@
       "measuredDate": "2026-10-12"
     },
     "src/data/repo/onboarding.ts": {
-      "score": 84.58,
-      "killed": 110,
-      "timeout": 71,
-      "survived": 32,
-      "noCoverage": 1,
-      "measuredOn": "15eec246708bf0bfdcdfe62fad678d2243d1b6b2",
+      "score": 99.51,
+      "killed": 204,
+      "timeout": 0,
+      "survived": 1,
+      "noCoverage": 0,
+      "measuredOn": "2dfd961e796adae19287463070ac50f0ed295b60",
       "measuredDate": "2026-10-12"
     },
     "src/data/repo/reset.ts": {

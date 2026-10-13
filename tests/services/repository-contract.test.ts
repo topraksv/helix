@@ -921,13 +921,10 @@ describe("repository compatibility contract", () => {
         { name: "Ben", isSelf: true },
         { name: "Ada", isSelf: false },
       ],
-      sources: [{
-        name: "Ada Nakit",
-        type: "cash",
-        personIndex: 1,
-        statementDay: null,
-        dueDay: null,
-      }],
+      sources: [
+        { name: "Ada Nakit", type: "cash", personIndex: 1 },
+        { name: "Kart", type: "credit_card", personIndex: 0, statementDay: 20, dueDay: 5 },
+      ],
     });
 
     expect(dependencies.writeRows).toHaveBeenCalledTimes(1);
@@ -937,11 +934,17 @@ describe("repository compatibility contract", () => {
       "persons",
       "persons",
       "payment_sources",
+      "payment_sources",
       "categories",
       "settings",
       "settings",
     ]);
-    expect(writes[2].row.personId).toBe("id:onboardingPerson|user-1|1");
+    expect(writes[2].row).toMatchObject({
+      id: "id:onboardingSource|user-1|0", personId: "id:onboardingPerson|user-1|1",
+      dueDay: null, statementDay: null, logoSource: "initials", isActive: true, sortOrder: 0,
+    });
+    expect(writes[3].row).toMatchObject({ id: "id:onboardingSource|user-1|1", dueDay: 5, statementDay: 20, sortOrder: 1 });
+    expect(writes[4].row).toMatchObject({ id: "id:seedCategory|user-1|Market", icon: "🛒", sortOrder: 0 });
     expect(dependencies.settingRow.mock.calls).toEqual([
       ["user-1", "start_month", "2026-07"],
       ["user-1", "opening_balance_minor", 12_345],
@@ -949,31 +952,102 @@ describe("repository compatibility contract", () => {
     expect(dependencies.writeSetting).not.toHaveBeenCalled();
   });
 
-  it("tombstones seeded rows removed before onboarding commit", async () => {
-    dependencies.getSqliteAsync.mockResolvedValue({
-      getAllAsync: async (sql: string) => {
-        if (sql.includes("FROM persons")) {
-          return [{ id: "id:onboardingPerson|user-1|1", userId: "user-1", name: "Ada", isSelf: false, deletedAt: null }];
-        }
-        if (sql.includes("FROM payment_sources")) {
-          return [{ id: "id:onboardingSource|user-1|0", userId: "user-1", name: "Ada Nakit", type: "cash", personId: "id:onboardingPerson|user-1|1", deletedAt: null }];
-        }
-        if (sql.includes("FROM categories")) {
-          return [{ id: "id:seedCategory|user-1|Market", userId: "user-1", name: "Market", kind: "expense", isColumn: true, isTransfer: false, deletedAt: null }];
-        }
-        return [];
-      },
+  it("tombstones seeded rows removed before onboarding commit, and only those", async () => {
+    const getAllAsync = vi.fn(async (sql: string) => {
+      if (sql.includes("FROM persons")) {
+        return [
+          { id: "id:selfPerson|user-1", userId: "user-1", name: "Ben", isSelf: true, deletedAt: null },
+          { id: "id:onboardingPerson|user-1|1", userId: "user-1", name: "Ada", isSelf: false, deletedAt: null },
+          { id: "id:onboardingPerson|user-1|2", userId: "user-1", name: "Bo", isSelf: false, deletedAt: null },
+        ];
+      }
+      if (sql.includes("FROM payment_sources")) {
+        return [{ id: "id:onboardingSource|user-1|0", userId: "user-1", name: "Ada Nakit", type: "cash", personId: "id:onboardingPerson|user-1|1", deletedAt: null }];
+      }
+      if (sql.includes("FROM categories")) {
+        return [
+          { id: "id:seedCategory|user-1|Market", userId: "user-1", name: "Market", kind: "expense", isColumn: true, isTransfer: false, deletedAt: null },
+          { id: "own-category", userId: "user-1", name: "Kendi", kind: "expense", isColumn: true, isTransfer: false, deletedAt: null },
+        ];
+      }
+      return [];
     });
+    dependencies.getSqliteAsync.mockResolvedValue({ getAllAsync, getFirstAsync: async () => null });
 
-    await repository.seedWorkspace("user-1", seedInput());
+    await repository.seedWorkspace("user-1", seedInput({
+      templateCategories: [{ name: "Fatura", kind: "expense", isColumn: true }],
+    }));
 
     const [, writes] = required(dependencies.writeRows.mock.calls[0]);
     const tombstones = writes.filter((write: { row: { deletedAt?: unknown } }) => write.row.deletedAt != null);
+    // The self person stays, every onboarding slot past the draft goes, a category the owner made is not a seed.
     expect(tombstones.map((write: { table: string; row: { id: string } }) => `${write.table}:${write.row.id}`)).toEqual([
       "persons:id:onboardingPerson|user-1|1",
+      "persons:id:onboardingPerson|user-1|2",
       "payment_sources:id:onboardingSource|user-1|0",
       "categories:id:seedCategory|user-1|Market",
     ]);
+    expect(writes.find((write: { table: string; row: { name?: string } }) => write.table === "categories" && write.row.name === "Fatura")?.row.icon).toBeNull();
+    expect(getAllAsync.mock.calls.map((call) => (call as unknown[])[1])).toEqual([["user-1"], ["user-1"], ["user-1"]]);
+  });
+
+  it("seeds the starter and extra templates as the columns setup offers", async () => {
+    await repository.seedWorkspace("user-1", seedInput({
+      templateCategories: [...repository.TEMPLATE_CATEGORIES, ...repository.TEMPLATE_EXTRA_CATEGORIES],
+    }));
+
+    const [, writes] = required(dependencies.writeRows.mock.calls[0]);
+    const columns = writes
+      .filter((write: { table: string }) => write.table === "categories")
+      .map(({ row }: { row: { kind: string; isColumn: boolean; isTransfer: boolean; icon: string } }) =>
+        [row.kind, row.isColumn, row.isTransfer, row.icon].join(" "));
+    expect(columns).toEqual([
+      "expense true false 💳", "expense true false 🧾", "expense true false 🛒", "expense true false ⛽",
+      "expense true false 🏠", "expense true false 🚌", "expense true false 🩺", "expense true false 🎬",
+      "expense true false 🧺", "income true false 💰", "income true false ➕",
+      "expense true false 🏦", "expense true false 🚗", "expense true true 📈", "expense true false 🔁",
+      "expense true false 👕", "expense true false 🎓", "income true false 🏘️",
+    ]);
+  });
+
+  it("anchors at the typed month when it is not later than the one already set", async () => {
+    for (const current of ["2026-07", "2026-09"]) {
+      dependencies.writeRows.mockClear();
+      dependencies.readSetting.mockImplementation(async (_userId: string, key: string) => (key === "start_month" ? current : null));
+      await repository.seedWorkspace("user-1", seedInput({ startMonth: "2026-07", openingBalanceMinor: 500 }));
+      const [, writes] = required(dependencies.writeRows.mock.calls[0]);
+      expect(writes.filter((write: { table: string }) => write.table === "settings").map((write: { row: { key: string } }) => write.row.key))
+        .toEqual(["start_month", "opening_balance_minor"]);
+    }
+  });
+
+  it("declares a later month's opening against the balance the earlier anchor reaches", async () => {
+    const getAllAsync = vi.fn(async (sql: string, _args?: unknown[]) =>
+      sql.includes("FROM transactions") ? [{ type: "income", amount_try_minor: 1_000, category_kind: "income" }] : []);
+    const getFirstAsync = vi.fn(async (sql: string, _args?: unknown[]) => (sql.includes("balance_adjustments") ? { total: 200 } : null));
+    dependencies.getSqliteAsync.mockResolvedValue({ getAllAsync, getFirstAsync });
+    dependencies.readSetting.mockImplementation(async (_userId: string, key: string) =>
+      key === "start_month" ? "2024-01" : key === "opening_balance_minor" ? 5_000 : null);
+
+    await repository.seedWorkspace("user-1", seedInput({ openingBalanceMinor: 12_345 }));
+
+    const [, writes] = required(dependencies.writeRows.mock.calls[0]);
+    // 5,000 opening + 1,000 income + 200 adjusted leaves 6,145 to declare.
+    expect(writes.find((write: { table: string }) => write.table === "balance_adjustments")?.row)
+      .toMatchObject({ declaredMinor: 12_345, amountMinor: 6_145 });
+    expect(getAllAsync.mock.calls.find(([sql]) => sql.includes("FROM transactions"))?.[1])
+      .toEqual(["user-1", "2024-01-01", "2026-06-30"]);
+    expect(getFirstAsync.mock.calls.find(([sql]) => sql.includes("balance_adjustments"))?.[1])
+      .toEqual(["user-1", "id:monthOpeningDeclaration|user-1|2026-07", "2024-01-01", "2026-06-30"]);
+    expect(dependencies.readSetting).toHaveBeenCalledWith("user-1", "opening_balance_minor");
+  });
+
+  it("anchors the current month, and refuses an opening it cannot store", async () => {
+    const current = todayISO().slice(0, 7) as `${number}-${number}`;
+    await repository.setOpeningBalance("user-1", current, 1_000);
+    expect(dependencies.writeRows).toHaveBeenCalledTimes(1);
+    await expect(repository.setOpeningBalance("user-1", "2026-07", 100_000_000_000_000)).rejects.toThrow();
+    expect(dependencies.writeRows).toHaveBeenCalledTimes(1);
   });
 
   it("rejects a seeded credit card that has no statement/due cycle", async () => {
@@ -1303,6 +1377,8 @@ describe("repository compatibility contract", () => {
     await expect(repository.seedWorkspace("user-1", seedInput({ openingBalanceMinor: 100_000_000_000_000 })))
       .rejects.toThrow("supported range");
     await expect(repository.seedWorkspace("user-1", seedInput({ persons: [{ name: "x".repeat(121), isSelf: true }] })))
+      .rejects.toThrow("maximum length");
+    await expect(repository.seedWorkspace("user-1", seedInput({ sources: [{ name: "x".repeat(121), type: "cash", personIndex: 0 }] })))
       .rejects.toThrow("maximum length");
     expect(dependencies.writeRows).not.toHaveBeenCalled();
   });

@@ -82,7 +82,6 @@ async function removedSeedRows(
   candidateKeys: string[],
   desiredIds: ReadonlySet<string>,
 ): Promise<RowWrite[]> {
-  if (candidateKeys.length === 0) return [];
   const sqlite = await getSqliteAsync();
   const liveRows = await sqlite.getAllAsync<Record<string, unknown>>(
     `SELECT * FROM ${table} WHERE user_id = ? AND deleted_at IS NULL`,
@@ -120,10 +119,9 @@ async function removedOnboardingSlotRows(
  * balance goes through the earlier-wins rule, so a re-seed never clobbers an anchor set by an Excel import.
  */
 export async function seedWorkspace(userId: string, input: SeedInput): Promise<void> {
-  if (input.persons.length === 0 || input.persons.filter((person) => person.isSelf).length !== 1) {
+  if (input.persons.filter((person) => person.isSelf).length !== 1) {
     throw new Error("Onboarding requires exactly one self person");
   }
-  assertSupportedMinorAmount(input.openingBalanceMinor);
   input.persons.forEach((person) => assertInputWithinLimit(person.name, "text"));
   input.sources.forEach((source) => assertInputWithinLimit(source.name, "text"));
   const writes: RowWrite[] = [];
