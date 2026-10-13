@@ -11,7 +11,7 @@ set local role postgres;
 -- first for the assertion helpers.
 set local search_path = extensions, public, pg_catalog;
 
-select extensions.plan(173);
+select extensions.plan(175);
 
 -- A small invoker-rights helper lets tests assert SQLSTATE without coupling to
 -- PostgreSQL's localized/full error text. The dynamic statement still runs as
@@ -544,7 +544,7 @@ set local search_path = extensions, public, pg_catalog;
 
 
 select extensions.ok(
-  (select prosecdef from pg_proc where oid = 'public.delete_own_account()'::regprocedure),
+  (select prosecdef from pg_proc where oid = 'definers.delete_own_account()'::regprocedure),
   'account deletion remains SECURITY DEFINER'
 );
 
@@ -552,7 +552,7 @@ select extensions.is(
   (
     select pg_get_userbyid(proowner)
     from pg_proc
-    where oid = 'public.delete_own_account()'::regprocedure
+    where oid = 'definers.delete_own_account()'::regprocedure
   ),
   'postgres',
   'account deletion is owned by the trusted postgres role'
@@ -560,7 +560,7 @@ select extensions.is(
 
 select extensions.is(
   (select proconfig from pg_proc
-    where oid = 'public.delete_own_account()'::regprocedure),
+    where oid = 'definers.delete_own_account()'::regprocedure),
   array['search_path=""']::text[],
   'account deletion pins an empty search_path'
 );
@@ -655,8 +655,8 @@ select extensions.ok(
 -- window. Both properties are asserted because losing either turns a retention
 -- limit into an erase button for an incident log.
 select extensions.ok(
-  (select prosecdef from pg_proc where oid = 'public.purge_expired_diagnostics()'::regprocedure)
-    and (select proconfig from pg_proc where oid = 'public.purge_expired_diagnostics()'::regprocedure)
+  (select prosecdef from pg_proc where oid = 'definers.purge_expired_diagnostics()'::regprocedure)
+    and (select proconfig from pg_proc where oid = 'definers.purge_expired_diagnostics()'::regprocedure)
         = array['search_path=""']::text[],
   'the retention purge is SECURITY DEFINER with a pinned search_path'
 );
@@ -2297,11 +2297,11 @@ select is(
 -- rows could erase the count against it.
 reset role;
 select ok(
-  (select prosecdef from pg_proc where oid = 'public.record_feedback_send()'::regprocedure),
+  (select prosecdef from pg_proc where oid = 'definers.record_feedback_send()'::regprocedure),
   'record_feedback_send runs as its owner'
 );
 select is(
-  (select proconfig from pg_proc where oid = 'public.record_feedback_send()'::regprocedure),
+  (select proconfig from pg_proc where oid = 'definers.record_feedback_send()'::regprocedure),
   array['search_path=""'],
   'record_feedback_send resolves nothing through the caller''s search_path'
 );
@@ -2317,7 +2317,7 @@ select ok(
 -- makes the second wait for the first. Concurrency needs two sessions, so the
 -- race itself was measured outside this file; this pins the mechanism.
 select ok(
-  (select prosrc from pg_proc where oid = 'public.record_feedback_send()'::regprocedure) ~ 'pg_advisory_xact_lock',
+  (select prosrc from pg_proc where oid = 'definers.record_feedback_send()'::regprocedure) ~ 'pg_advisory_xact_lock',
   'record_feedback_send serialises the calls of one account'
 );
 -- Migration 45: signed out, ten reports a day between everyone, and an
@@ -2342,6 +2342,25 @@ select is(
   'five sends an hour are allowed'
 );
 select is(public.record_feedback_send(), false, 'the sixth within the hour is refused');
+
+-- Migration 46: what PostgREST exposes runs as its caller. A definer a client
+-- role can execute belongs in `definers`, behind an invoker of the same name.
+reset role;
+select is(
+  (select count(*) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public' and p.prosecdef
+      and (has_function_privilege('anon', p.oid, 'EXECUTE')
+        or has_function_privilege('authenticated', p.oid, 'EXECUTE'))),
+  0::bigint,
+  'no exposed function runs as its owner for a client'
+);
+select is(
+  (select count(*) from pg_policies
+    where schemaname = 'public' and tablename = 'feedback_reports'
+      and permissive = 'RESTRICTIVE' and qual = 'false' and with_check = 'false'),
+  1::bigint,
+  'feedback_reports states that no client reaches its rows'
+);
 
 -- `reset role` returns to the Supabase CLI's short-lived login role, which can
 -- execute the assertions through the test search_path but cannot execute
