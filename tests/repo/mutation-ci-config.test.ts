@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { isMutationScoped, selectMutationScope, shardOfScope } from "../../stryker.ci.config.mjs";
+import { isMutationScoped, selectMutationScope, shardOfScope, weigherOf } from "../../stryker.ci.config.mjs";
 
 const read = (path: string) => readFileSync(resolve(process.cwd(), path), "utf8");
 
@@ -140,6 +140,17 @@ describe("CI mutation contract", () => {
     for (const spec of ["0/3", "4/3", "1/0", "2", "a/b"]) {
       expect(() => shardOfScope(files, spec, sizeOf), spec).toThrow(/MUTATION_SHARD/);
     }
+  });
+
+  it("weighs a file by its recorded cost, and an unrecorded one by bytes at the recorded rate", () => {
+    const sizes: Record<string, number> = { "static.ts": 100, "plain.ts": 300, "new.ts": 200 };
+    const sizeOf = (file: string) => {
+      if (!(file in sizes)) throw new Error(`ENOENT ${file}`);
+      return sizes[file]!;
+    };
+    const weightOf = weigherOf({ "static.ts": { cost: 3000 }, "plain.ts": { cost: 1000 }, "gone.ts": { cost: 50 } }, sizeOf);
+    expect(["static.ts", "plain.ts", "new.ts", "gone.ts", "missing.ts"].map(weightOf)).toEqual([3000, 1000, 2000, 50, 0]);
+    expect(weigherOf({}, sizeOf)("new.ts")).toBe(200);
   });
 
   it("allows a ref-free sentinel only for an explicit manual dispatch", () => {

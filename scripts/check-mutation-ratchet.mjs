@@ -32,11 +32,14 @@ export function scoresFromReport(report) {
  * The entries `--record` writes: the counts behind each score, so a number can
  * be re-derived, and the tree it was measured on, per file, because a run
  * covers only its scope and one stamp for the document would claim the rest.
+ * `cost` is the test runs the file's mutants took, which deals the CI shards
+ * (`stryker.ci.config.mjs`).
  */
 export function recordedFrom(report, measuredOn, measuredDate) {
   return Object.fromEntries(Object.entries(report.files ?? {}).map(([file, entry]) => {
     const mutants = entry.mutants ?? [];
-    return [file, { score: scoreOf(mutants), ...countsOf(mutants), measuredOn, measuredDate }];
+    const cost = mutants.reduce((sum, mutant) => sum + (mutant.testsCompleted ?? 0), 0);
+    return [file, { score: scoreOf(mutants), ...countsOf(mutants), cost, measuredOn, measuredDate }];
   }));
 }
 

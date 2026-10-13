@@ -110,24 +110,56 @@ export function selectMutationScope({ base, head, eventName = "local", cwd = pro
 }
 
 /**
- * The part of the scope one runner mutates, when `MUTATION_SHARD` is `k/n`.
- * Files are dealt largest first to the lightest shard, weighed in bytes —
- * close enough to a mutant count, and known to every runner from the checkout
- * alone, so each deals the same hand and the shards together are the scope.
+ * What a file costs one runner: the test runs its mutants took when its floor
+ * was last recorded. Bytes predicted the mutant count and not the time: a
+ * static mutant runs the whole suite, so one release scope's shards, dealt by
+ * bytes, finished in 21 and 82 minutes. A file with no recorded cost is weighed
+ * by its bytes at the rate the recorded files cost, so a new file lands near
+ * its peers rather than at zero.
  */
-export function shardOfScope(files, spec, sizeOf) {
+export function weigherOf(recorded, sizeOf) {
+  const size = (file) => {
+    try {
+      return sizeOf(file);
+    } catch {
+      return 0;
+    }
+  };
+  const costed = Object.entries(recorded).filter(([file, entry]) => entry?.cost > 0 && size(file) > 0);
+  const bytes = costed.reduce((sum, [file]) => sum + size(file), 0);
+  const runs = costed.reduce((sum, [, entry]) => sum + entry.cost, 0);
+  const rate = bytes > 0 ? runs / bytes : 1;
+  return (file) => recorded[file]?.cost ?? size(file) * rate;
+}
+
+/**
+ * The part of the scope one runner mutates, when `MUTATION_SHARD` is `k/n`.
+ * Files are dealt heaviest first to the lightest shard, by `weigherOf`, known
+ * to every runner from the checkout alone, so each deals the same hand and the
+ * shards together are the scope.
+ */
+export function shardOfScope(files, spec, weightOf) {
   if (!spec) return files;
   const match = /^(\d+)\/(\d+)$/.exec(spec);
   const index = Number(match?.[1]) - 1;
   const count = Number(match?.[2]);
   if (!match || index < 0 || index >= count) throw new Error(`MUTATION_SHARD must be k/n with 1 <= k <= n, got "${spec}".`);
-  const shards = Array.from({ length: count }, () => ({ files: [], bytes: 0 }));
-  for (const file of [...files].sort((a, b) => sizeOf(b) - sizeOf(a) || a.localeCompare(b))) {
-    const lightest = shards.reduce((best, shard) => (shard.bytes < best.bytes ? shard : best));
+  const shards = Array.from({ length: count }, () => ({ files: [], weight: 0 }));
+  for (const file of [...files].sort((a, b) => weightOf(b) - weightOf(a) || a.localeCompare(b))) {
+    const lightest = shards.reduce((best, shard) => (shard.weight < best.weight ? shard : best));
     lightest.files.push(file);
-    lightest.bytes += sizeOf(file);
+    lightest.weight += weightOf(file);
   }
   return shards[index].files.sort();
+}
+
+/** Unreadable floors weigh every file by its bytes, as before costs were recorded. */
+function recordedFloors() {
+  try {
+    return JSON.parse(readFileSync(resolve(process.cwd(), "mutation-baseline.json"), "utf8")).files ?? {};
+  } catch {
+    return {};
+  }
 }
 
 export default {
@@ -139,7 +171,7 @@ export default {
       eventName: process.env.MUTATION_EVENT_NAME,
     }),
     process.env.MUTATION_SHARD,
-    (file) => statSync(resolve(process.cwd(), file)).size,
+    weigherOf(recordedFloors(), (file) => statSync(resolve(process.cwd(), file)).size),
   ),
   // Reported, not enforced here: `scripts/check-mutation-ratchet.mjs` owns
   // the pass and the fail.

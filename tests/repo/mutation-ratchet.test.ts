@@ -37,10 +37,10 @@ describe("mutation score", () => {
     expect(scoresFromReport(report)).toEqual({ "a.ts": 50 });
   });
 
-  it("records the counts behind each score and the tree it was measured on", () => {
-    const mutants = ["Killed", "Timeout", "Survived", "NoCoverage", "CompileError"].map((status) => ({ status }));
+  it("records the counts behind each score, what they cost, and the tree it was measured on", () => {
+    const mutants = ["Killed", "Timeout", "Survived", "NoCoverage", "CompileError"].map((status, index) => ({ status, ...(index < 3 && { testsCompleted: 10 * (index + 1) }) }));
     expect(recordedFrom({ files: { "a.ts": { mutants } } }, "abc", "2026-10-08")).toEqual({
-      "a.ts": { score: 50, killed: 1, timeout: 1, survived: 1, noCoverage: 1, measuredOn: "abc", measuredDate: "2026-10-08" },
+      "a.ts": { score: 50, killed: 1, timeout: 1, survived: 1, noCoverage: 1, cost: 60, measuredOn: "abc", measuredDate: "2026-10-08" },
     });
   });
 });

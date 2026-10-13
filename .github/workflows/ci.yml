@@ -207,11 +207,12 @@ jobs:
     timeout-minutes: 90
     # Divided across runners rather than given a longer limit: a release scope
     # outruns one runner's 90 minutes. `stryker.ci.config.mjs` deals each shard
-    # its part; five keep a scope's largest files off one runner.
+    # its part by recorded cost; at six, Helix's whole scope ends with its
+    # heaviest file, which no further shard can split.
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4, 5]
+        shard: [1, 2, 3, 4, 5, 6]
     env:
       # The last green run, so mutation covers every change that has not yet
       # passed a gate — a failed run's included — and not only this push's.
@@ -365,11 +366,12 @@ jobs:
       # of its own: dealt with the rest, they all landed on the last shard.
       matrix:
         include:
-          - { project: chromium, browser: chromium, shard: 1/5 }
-          - { project: chromium, browser: chromium, shard: 2/5 }
-          - { project: chromium, browser: chromium, shard: 3/5 }
-          - { project: chromium, browser: chromium, shard: 4/5 }
-          - { project: chromium, browser: chromium, shard: 5/5 }
+          - { project: chromium, browser: chromium, shard: 1/6 }
+          - { project: chromium, browser: chromium, shard: 2/6 }
+          - { project: chromium, browser: chromium, shard: 3/6 }
+          - { project: chromium, browser: chromium, shard: 4/6 }
+          - { project: chromium, browser: chromium, shard: 5/6 }
+          - { project: chromium, browser: chromium, shard: 6/6 }
           - { project: firefox-critical, browser: firefox, shard: 1/1 }
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
