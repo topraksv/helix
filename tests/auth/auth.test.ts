@@ -79,9 +79,9 @@ describe("server-side password policy", () => {
   // on whichever device reads the mail, and a link-free message is what spam
   // filters score lowest.
   it.each([
-    ["confirmation", "Helix onay kodun"],
+    ["confirmation", "Helix hesabını onayla"],
     ["recovery", "Helix şifre yenileme kodun"],
-    ["email_change", "Helix e-posta değişikliği kodun"],
+    ["email_change", "Helix e-posta adresi değişikliği"],
   ])("mails the %s as a five-minute code with no link, subject or body built to pass spam filters", (kind, subject) => {
     expect(config).toMatch(/^otp_expiry = 300$/m);
     expect(config).toMatch(new RegExp(`\\[auth\\.email\\.template\\.${kind}\\]\\nsubject = "${subject}"\\ncontent_path = "\\./supabase/templates/${kind}\\.html"$`, "m"));

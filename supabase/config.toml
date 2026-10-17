@@ -260,13 +260,13 @@ subject = "Helix şifre yenileme kodun"
 content_path = "./supabase/templates/recovery.html"
 
 [auth.email.template.confirmation]
-subject = "Helix onay kodun"
+subject = "Helix hesabını onayla"
 content_path = "./supabase/templates/confirmation.html"
 
 # A code too, one to each address while double_confirm_changes is on: the
 # change needs both, so a lost or stolen mailbox alone cannot move the account.
 [auth.email.template.email_change]
-subject = "Helix e-posta değişikliği kodun"
+subject = "Helix e-posta adresi değişikliği"
 content_path = "./supabase/templates/email_change.html"
 
 # Uncomment to customize notification email template
