@@ -76,6 +76,6 @@ export type BootFailure = "busy" | "unknown";
 const BUSY_DATABASE = /invalid vfs state|nomodificationallowed|access handle|already locked|database is locked|being used by another/i;
 
 export function classifyBootFailure(error: unknown): BootFailure {
-  const text = error instanceof Error ? `${error.name} ${error.message}` : String(error ?? "");
+  const text = error instanceof Error ? `${error.name} ${error.message}` : String(error);
   return BUSY_DATABASE.test(text) ? "busy" : "unknown";
 }
