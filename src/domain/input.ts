@@ -13,7 +13,7 @@ export const INPUT_LIMITS = {
 /** Applies only when choosing a new password. Existing accounts may still
  * have a legacy 6–7 character password and must be able to sign in once so
  * they can replace it. */
-export const MIN_NEW_PASSWORD_LENGTH = 8;
+const MIN_NEW_PASSWORD_LENGTH = 8;
 
 type InputLimitKind = keyof typeof INPUT_LIMITS;
 

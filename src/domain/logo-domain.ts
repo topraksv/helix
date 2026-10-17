@@ -60,7 +60,7 @@ export function nameStartsWord(name: string, needle: string): boolean {
  * "maximum", and Max and Maximum are different companies); five characters is
  * where the brands start. Shorter keys keep the strict whole-word rule.
  */
-export const MIN_PREFIX_MATCH = 5;
+const MIN_PREFIX_MATCH = 5;
 
 /**
  * The catalogue entry a name refers to.

@@ -1,7 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const dependencies = vi.hoisted(() => ({
-  newId: vi.fn(() => "record-id"),
   pendingOutboxCount: vi.fn(async () => 7),
   requeueSyncDeadLetter: vi.fn(async () => "requeued" as const),
   discardSyncDeadLetter: vi.fn(async () => true),
@@ -15,7 +14,6 @@ const dependencies = vi.hoisted(() => ({
 }));
 
 vi.mock("../../src/db/ids", () => ({
-  newId: dependencies.newId,
   deterministicId: dependencies.deterministicId,
   naturalKeys: { matrixColor: (...parts: string[]) => parts.join("|") },
 }));
@@ -33,7 +31,6 @@ vi.mock("../../src/db/mutations", () => ({
 }));
 
 import {
-  createRecordId,
   dismissSyncDeadLetter,
   pendingSyncChangeCount,
   retrySyncDeadLetter,
@@ -50,8 +47,7 @@ import { setMatrixColor } from "../../src/data/repo/matrix-colors";
 describe("setting repository delegation", () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it("delegates identity and sync recovery to their authoritative stores", async () => {
-    expect(createRecordId()).toBe("record-id");
+  it("delegates sync recovery to its authoritative stores", async () => {
     await expect(pendingSyncChangeCount()).resolves.toBe(7);
     await expect(retrySyncDeadLetter("user-1", 42)).resolves.toBe("requeued");
     expect(dependencies.requeueSyncDeadLetter).toHaveBeenCalledWith("user-1", 42);

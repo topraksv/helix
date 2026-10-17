@@ -2,6 +2,6 @@
   "$schema": "https://unpkg.com/knip@6/schema.json",
   "entry": ["public/sw.js", "plugins/*.js", "scripts/audit-brand-marks.mjs", "babel.config.js", "vitest.mutation.config.mts"],
   "ignore": ["src/db/expo-sqlite.server.js", "src/db/devtools-absent.js", "src/services/notifications-absent.js", "src/sync/database.types.ts", "src/sync/realtime-absent.js", "supabase/functions/**"],
-  "ignoreDependencies": ["@expo-google-fonts/ibm-plex-serif", "@expo-google-fonts/inter", "babel-plugin-inline-import", "babel-preset-expo"],
+  "ignoreDependencies": ["@expo-google-fonts/ibm-plex-serif", "@expo-google-fonts/inter", "@stryker-mutator/vitest-files-runner", "babel-plugin-inline-import", "babel-preset-expo"],
   "ignoreBinaries": ["maestro", "pyftsubset"]
 }

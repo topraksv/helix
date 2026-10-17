@@ -3,7 +3,6 @@ import { parseMatrixColorLabels, type MatrixColorLabels } from "../../domain/mat
 import { parseBalanceColumns, type StoredBalanceColumns } from "../../domain/matrix-preferences";
 import { writeSetting } from "../../db/mutations";
 
-export { newId as createRecordId } from "../../db/ids";
 export {
   pendingOutboxCount as pendingSyncChangeCount,
   requeueSyncDeadLetter as retrySyncDeadLetter,

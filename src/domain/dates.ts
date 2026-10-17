@@ -65,7 +65,7 @@ export function makeMonthKey(year: number, month: number): MonthKey {
   return `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}`;
 }
 
-export function makeISODate(year: number, month: number, day: number): ISODate {
+function makeISODate(year: number, month: number, day: number): ISODate {
   return `${makeMonthKey(year, month)}-${String(day).padStart(2, "0")}`;
 }
 

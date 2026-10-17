@@ -93,7 +93,7 @@ export function pruneAttentionState(state: AttentionState, liveIds: ReadonlySet<
 }
 
 /** How long "later" means. One working week: long enough to be a real defer. */
-export const SNOOZE_DAYS = 7;
+const SNOOZE_DAYS = 7;
 
 export function snoozeUntil(today: ISODate, days = SNOOZE_DAYS): ISODate {
   return addDaysISO(today, days);

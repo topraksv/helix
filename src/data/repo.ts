@@ -140,7 +140,6 @@ export {
 } from "./repo/computed";
 
 export {
-  createRecordId,
   dismissSyncDeadLetter,
   pendingSyncChangeCount,
   retrySyncDeadLetter,
