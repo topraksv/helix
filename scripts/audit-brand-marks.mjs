@@ -150,9 +150,11 @@ writeFileSync(
 const missing = Object.entries(measured).filter(([, m]) => m.px === 0);
 console.log(`\nrewrote ${TARGET}: ${domains.length - missing.length} marked, ${missing.length} unmarked`);
 for (const [d] of missing) console.log(`  unmarked: ${d}`);
+// A domain that ships its own mark asks no service, so it has no place in a provider list.
+const bundled = readFileSync("src/ui/bundled-marks.ts", "utf8");
 const byProvider = {};
 for (const [d, m] of Object.entries(measured)) {
-  if (m.px === 0 || m.provider === "google") continue;
+  if (m.px === 0 || m.provider === "google" || bundled.includes(`"${d}":`)) continue;
   (byProvider[m.provider] ??= []).push(d);
 }
 for (const [provider, list] of Object.entries(byProvider)) {

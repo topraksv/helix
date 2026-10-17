@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import BellRing from "lucide-react-native/icons/bell-ring";
 import CloudOff from "lucide-react-native/icons/cloud-off";
@@ -8,7 +8,7 @@ import type { LucideIcon } from "lucide-react-native";
 import { useRouter } from "expo-router";
 import { useSession } from "../../auth/session";
 import { LegalConsentControl, LegalNoticeSheet } from "../../ui/legal-notice";
-import { isSupabaseConfigured, takeEmailLinkLanding } from "../../sync/supabase";
+import { isSupabaseConfigured } from "../../sync/supabase";
 import { AuthNotice } from "../../ui/auth-notice";
 import { Body, Button, Card, Field, Screen } from "../../ui/components";
 import { useSubmitOnEnter } from "../../ui/keyboard";
@@ -155,56 +155,63 @@ function AuthLink({ label, onPress, disabled = false }: { label: string; onPress
   );
 }
 
-type AuthMode = "signIn" | "signUp" | "forgot";
+type AuthMode = "signIn" | "signUp" | "forgot" | "confirm" | "reset";
 
-/** What each mode says, and how its operation is shown. */
-const MODE = {
+const CODE_LENGTH = 6;
+const CODE_PATTERN = new RegExp(`^\\d{${CODE_LENGTH}}$`);
+
+/** What each mode says, which fields it asks for, and how its operation is shown. */
+const MODE: Record<AuthMode, {
+  heading: string;
+  subtitle: (email: string) => string;
+  running: string;
+  flow: "sign-in" | "sign-up" | "reset";
+  other: string;
+  /** Confirm and reset already know the address: it is in the subtitle. */
+  email: boolean;
+  code: boolean;
+  password: "current" | "new" | null;
+}> = {
   signIn: {
-    heading: tr.auth.signInHeading, subtitle: tr.auth.signInSubtitle, running: tr.operation.signingIn, flow: "sign-in",
-    // Three modes, three sentences: the reset screen gets its own way back
+    heading: tr.auth.signInHeading, subtitle: () => tr.auth.signInSubtitle, running: tr.operation.signingIn, flow: "sign-in",
+    // Every mode its own sentence: the reset screen gets its own way back
     // rather than one that describes a different reader.
-    other: tr.auth.createAccountAction,
+    other: tr.auth.createAccountAction, email: true, code: false, password: "current",
   },
   signUp: {
-    heading: tr.auth.signUpTitle, subtitle: tr.auth.signUpSubtitle, running: tr.operation.creatingAccount, flow: "sign-up",
-    other: tr.auth.backToSignInAction,
+    heading: tr.auth.signUpTitle, subtitle: () => tr.auth.signUpSubtitle, running: tr.operation.creatingAccount, flow: "sign-up",
+    other: tr.auth.backToSignInAction, email: true, code: false, password: "new",
   },
   forgot: {
-    heading: tr.auth.forgotTitle, subtitle: tr.auth.forgotSubtitle, running: tr.operation.requestingReset, flow: "reset",
-    other: tr.auth.backToSignIn,
+    heading: tr.auth.forgotTitle, subtitle: () => tr.auth.forgotSubtitle, running: tr.operation.requestingReset, flow: "reset",
+    other: tr.auth.backToSignIn, email: true, code: false, password: null,
   },
-} as const;
+  confirm: {
+    heading: tr.auth.confirmTitle, subtitle: tr.auth.confirmSubtitle, running: tr.operation.signingIn, flow: "sign-in",
+    other: tr.auth.backToSignIn, email: false, code: true, password: null,
+  },
+  reset: {
+    heading: tr.auth.resetTitle, subtitle: tr.auth.resetSubtitle, running: tr.operation.resettingPassword, flow: "reset",
+    other: tr.auth.backToSignIn, email: false, code: true, password: "new",
+  },
+};
 
 function useAuthForm() {
   const [mode, setMode] = useState<AuthMode>("signIn");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [code, setCode] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [resetSent, setResetSent] = useState(false);
-  const [signUpConfirmationSent, setSignUpConfirmationSent] = useState(false);
-  // Held in state so Strict Mode's second effect run reads the same answer
-  // rather than the empty one a second take would give.
-  const [landingAnswer] = useState(takeEmailLinkLanding);
-  const [landing, setLanding] = useState<"confirmed" | "changeConfirmed" | "unusable" | "offline" | null>(null);
   const [resending, setResending] = useState(false);
-  const [confirmationResent, setConfirmationResent] = useState(false);
+  const [codeResent, setCodeResent] = useState(false);
   const [consented, setConsented] = useState(false);
   /** Only true after a refused submit: the form does not scold while it is being filled. */
   const [consentRefused, setConsentRefused] = useState(false);
-  const { signIn, signUp, requestPasswordReset, resendSignUpConfirmation } = useSession();
+  const { signIn, signUp, requestPasswordReset, resendSignUpConfirmation, confirmSignUp, resetPassword } = useSession();
   const operationGuard = useOperationGuard();
 
-  useEffect(() => {
-    let live = true;
-    void landingAnswer?.then((answer) => {
-      if (live) setLanding(answer);
-    });
-    return () => {
-      live = false;
-    };
-  }, [landingAnswer]);
-
+  const text = MODE[mode];
   const emailValid = isEmail(email);
   /**
    * The two conditions are deliberately separate.
@@ -216,33 +223,57 @@ function useAuthForm() {
    * simply not filled in yet still disables the button, because there the
    * fields already show their own errors.
    */
-  const passwordReady = mode === "forgot" || (mode === "signUp" ? isValidNewPassword(password) : password.length >= 6);
-  const formReady = emailValid && passwordReady && !busy;
+  const readyWith = (typedCode: string) =>
+    emailValid
+    && (text.password === null || (text.password === "new" ? isValidNewPassword(password) : password.length >= 6))
+    && (!text.code || CODE_PATTERN.test(typedCode))
+    && !busy;
+  const formReady = readyWith(code);
   const canSubmit = formReady && (mode !== "signUp" || consented);
 
   /** Whatever the last attempt said, and a consent given on another form. */
   const clearFeedback = () => {
     setError(null);
-    setResetSent(false);
-    setSignUpConfirmationSent(false);
-    setLanding(null);
-    setConfirmationResent(false);
+    setCodeResent(false);
     // Consent belongs to the attempt that was made, not to the session.
     setConsented(false);
     setConsentRefused(false);
   };
 
+  /** A mode the e-mail's code is typed into, starting from an empty code. */
+  const awaitCode = (next: "confirm" | "reset") => {
+    setCode("");
+    if (next === "reset") setPassword("");
+    setMode(next);
+  };
+
   /** The request `mode` makes, and the error it answered with, if any. */
-  const request = async (): Promise<string | null> => {
-    if (mode === "signIn") return signIn(email.trim(), password);
-    if (mode === "forgot") return requestPasswordReset(email.trim());
-    const result = await signUp(email.trim(), password);
-    if (result.status === "confirmation-required") setSignUpConfirmationSent(true);
+  const request = async (typedCode: string): Promise<string | null> => {
+    const address = email.trim();
+    if (mode === "signIn") {
+      const err = await signIn(address, password);
+      if (err !== tr.auth.errEmailNotConfirmed) return err;
+      // The account waits on its code: mail a fresh one and ask for it here. A
+      // resend refused for coming too soon leaves the code already mailed to type.
+      const resent = await resendSignUpConfirmation(address);
+      if (resent && resent !== tr.auth.errRateLimit) return resent;
+      awaitCode("confirm");
+      return null;
+    }
+    if (mode === "forgot") {
+      const err = await requestPasswordReset(address);
+      if (!err) awaitCode("reset");
+      return err;
+    }
+    if (mode === "confirm") return confirmSignUp(address, typedCode);
+    if (mode === "reset") return (await resetPassword(address, typedCode, password)) ?? signIn(address, password);
+    const result = await signUp(address, password);
+    if (result.status === "confirmation-required") awaitCode("confirm");
     return result.status === "error" ? result.message : null;
   };
 
-  const submit = async () => {
-    if (!canSubmit) return;
+  const submit = async (typedCode = code) => {
+    if (!readyWith(typedCode) || (mode === "signUp" && !consented)) return;
     // A lifecycle intent outlives the operation that set it — it is what the
     // waiting screen reads while a session tears down. Starting a new session
     // is what ends it; otherwise the first pull after signing back in would
@@ -251,14 +282,11 @@ function useAuthForm() {
     await operationGuard.run(async () => {
       setBusy(true);
       setError(null);
-      setSignUpConfirmationSent(false);
-      setLanding(null);
-      setConfirmationResent(false);
+      setCodeResent(false);
       try {
         // The root route guard navigates on success; replacing to "/" here made the guard's redirect loop.
-        const err = await request();
+        const err = await request(typedCode);
         if (err) setError(err);
-        else if (mode === "forgot") setResetSent(true);
       } catch {
         setError(tr.errors.requestFailed);
       } finally {
@@ -267,18 +295,18 @@ function useAuthForm() {
     });
   };
 
-  /** Offered wherever a confirmation link is what stands between this person
-   *  and their account: just sent, refused at sign-in, or dead on arrival. */
-  const canResend = isSupabaseConfigured && emailValid && !busy && !resending
-    && (signUpConfirmationSent || confirmationResent || landing === "unusable" || error === tr.auth.errEmailNotConfirmed);
+  /** Offered wherever a code is what stands between this person and their account. */
+  const canResend = isSupabaseConfigured && emailValid && !busy && !resending && text.code;
 
   const resend = async () => {
     setResending(true);
     setError(null);
+    setCodeResent(false);
     try {
-      const err = await resendSignUpConfirmation(email.trim());
+      const address = email.trim();
+      const err = mode === "reset" ? await requestPasswordReset(address) : await resendSignUpConfirmation(address);
       if (err) setError(err);
-      setConfirmationResent(!err);
+      else setCodeResent(true);
     } catch {
       setError(tr.errors.requestFailed);
     } finally {
@@ -289,13 +317,19 @@ function useAuthForm() {
   const edit = (setter: (value: string) => void) => (value: string) => {
     setter(value);
     setError(null);
-    setSignUpConfirmationSent(false);
   };
 
   return {
-    mode, email, password, error, busy, resetSent, signUpConfirmationSent, landing, confirmationResent, canResend, resend, consented, consentRefused, emailValid, formReady, canSubmit, submit,
+    mode, text, email, password, code, error, busy, codeResent, canResend, resend, consented, consentRefused, emailValid, formReady, canSubmit, submit,
     setEmail: edit(setEmail),
     setPassword: edit(setPassword),
+    /** A whole code on the confirm screen is the whole form: it is sent as it lands, autofill included. */
+    typeCode: (value: string) => {
+      const digits = value.replace(/\D/g, "").slice(0, CODE_LENGTH);
+      setCode(digits);
+      setError(null);
+      if (mode === "confirm" && CODE_PATTERN.test(digits)) void submit(digits);
+    },
     switchMode: () => {
       clearFeedback();
       setMode(mode === "signIn" ? "signUp" : "signIn");
@@ -319,51 +353,77 @@ function useAuthForm() {
 
 type AuthForm = ReturnType<typeof useAuthForm>;
 
+const PRIMARY_LABEL: Record<AuthMode, string> = {
+  signIn: tr.auth.signIn,
+  signUp: tr.auth.signUpTitle,
+  forgot: tr.auth.sendResetCode,
+  confirm: tr.auth.confirmAction,
+  reset: tr.auth.resetSave,
+};
+
 function AuthFormCard({ form, wide, onOpenNotice }: { form: AuthForm; wide: boolean; onOpenNotice: () => void }) {
   const { palette } = useTheme();
   const router = useRouter();
-  const { mode } = form;
-  const text = MODE[mode];
-  const primaryLabel = mode === "signIn" ? tr.auth.signIn : mode === "signUp" ? tr.auth.signUpTitle : form.resetSent ? tr.auth.resendResetLink : tr.auth.sendResetLink;
+  const { mode, text } = form;
   return (
-    // One skeleton for all three modes — heading, subtitle, fields, actions —
-    // with the same gaps, so switching modes does not redraw three card sizes.
+    // One skeleton for every mode — heading, subtitle, fields, actions — with
+    // the same gaps, so switching modes does not redraw a different card.
     <Card style={{ flex: wide ? 0.92 : undefined, alignSelf: wide ? "flex-start" : "stretch", marginBottom: 0, padding: wide ? spacing.xl : spacing.lg }}>
       <Text accessibilityRole="header" style={[type.heading, { color: palette.text, marginBottom: spacing.xs }]}>{text.heading}</Text>
-      <Body muted style={{ marginBottom: spacing.lg }}>{text.subtitle}</Body>
-      <Field
-        label={tr.auth.email}
-        value={form.email}
-        onChangeText={form.setEmail}
-        autoCapitalize="none"
-        keyboardType="email-address"
-        autoComplete="email"
-        textContentType="emailAddress"
-        returnKeyType="next"
-        placeholder={tr.placeholders.email}
-        /* The submit button stays disabled until this is valid, so the field
-           says why — waiting for a plausible attempt rather than the first letter. */
-        error={form.email.trim().length > 3 && !form.emailValid ? tr.auth.emailInvalid : null}
-      />
-      {mode !== "forgot" ? (
+      <Body muted style={{ marginBottom: spacing.lg }}>{text.subtitle(form.email.trim())}</Body>
+      {text.email ? (
         <Field
-          label={tr.auth.password}
+          label={tr.auth.email}
+          value={form.email}
+          onChangeText={form.setEmail}
+          autoCapitalize="none"
+          keyboardType="email-address"
+          autoComplete="email"
+          textContentType="emailAddress"
+          returnKeyType="next"
+          placeholder={tr.placeholders.email}
+          /* The submit button stays disabled until this is valid, so the field
+             says why — waiting for a plausible attempt rather than the first letter. */
+          error={form.email.trim().length > 3 && !form.emailValid ? tr.auth.emailInvalid : null}
+        />
+      ) : null}
+      {text.code ? (
+        <Field
+          key={mode}
+          label={tr.auth.code}
+          value={form.code}
+          onChangeText={form.typeCode}
+          autoFocus
+          autoCapitalize="none"
+          autoCorrect={false}
+          keyboardType="number-pad"
+          // iOS offers a code from Mail above the keyboard; Android's autofill
+          // reads this as `sms-otp` and offers what its service found.
+          autoComplete="one-time-code"
+          textContentType="oneTimeCode"
+          maxLength={CODE_LENGTH}
+          placeholder="••••••"
+          returnKeyType={text.password ? "next" : "go"}
+          onSubmitEditing={text.password ? undefined : () => void form.submit()}
+        />
+      ) : null}
+      {text.password ? (
+        <Field
+          label={mode === "reset" ? tr.auth.newPassword : tr.auth.password}
           value={form.password}
           onChangeText={form.setPassword}
           secure
-          autoComplete={mode === "signIn" ? "current-password" : "new-password"}
-          textContentType={mode === "signIn" ? "password" : "newPassword"}
+          autoComplete={text.password === "current" ? "current-password" : "new-password"}
+          textContentType={text.password === "current" ? "password" : "newPassword"}
           returnKeyType="go"
           onSubmitEditing={() => void form.submit()}
-          error={mode === "signUp" && form.password.length > 0 && !isValidNewPassword(form.password) ? tr.auth.passwordMin : null}
+          error={text.password === "new" && form.password.length > 0 && !isValidNewPassword(form.password) ? tr.auth.passwordMin : null}
         />
       ) : null}
-      {form.resetSent || form.signUpConfirmationSent ? <AuthNotice tone="success" text={form.signUpConfirmationSent ? tr.auth.signUpConfirmationSent : tr.auth.resetSent} /> : null}
-      {form.landing ? <AuthNotice tone={form.landing === "unusable" || form.landing === "offline" ? "error" : "success"} text={form.landing === "unusable" ? tr.auth.emailLinkUnusable : form.landing === "offline" ? tr.auth.emailLinkOffline : form.landing === "changeConfirmed" ? tr.auth.emailChangeLinkConfirmed : tr.auth.emailLinkConfirmed} /> : null}
-      {form.confirmationResent ? <AuthNotice tone="success" text={tr.auth.confirmationResent} /> : null}
+      {form.codeResent ? <AuthNotice tone="success" text={tr.auth.codeResent} /> : null}
       {form.error ? <AuthNotice tone="error" text={form.error} /> : null}
       {form.busy ? (
-        // Between the password field and the submit button, where nothing had
+        // Between the last field and the submit button, where nothing had
         // reserved space: its own surface and margins keep the card's rhythm.
         <View style={{ marginBottom: spacing.md, padding: spacing.md, borderRadius: radius.md, backgroundColor: palette.surfaceAlt, borderWidth: StyleSheet.hairlineWidth, borderColor: palette.border }}>
           <OperationFlow kind={text.flow} label={text.running} />
@@ -378,7 +438,7 @@ function AuthFormCard({ form, wide, onOpenNotice }: { form: AuthForm; wide: bool
           <LegalConsentControl consented={form.consented} onOpen={onOpenNotice} invalid={form.consentRefused && !form.consented} />
         </>
       ) : null}
-      <Button label={primaryLabel} onPress={form.pressPrimary} disabled={!form.formReady} />
+      <Button label={PRIMARY_LABEL[mode]} onPress={form.pressPrimary} disabled={!form.formReady} />
       {/* The quiet actions, STACKED and each a whole sentence: side by side they
           read as one run-on line. Every link carries the 44pt target, which is
           the spacing. The notice is not offered here: signing in or repairing a
@@ -386,7 +446,7 @@ function AuthFormCard({ form, wide, onOpenNotice }: { form: AuthForm; wide: bool
       <View style={{ alignItems: "center", marginTop: spacing.sm }}>
         {/* Under a failure, which may be ours: the report needs no account. */}
         {form.error ? <AuthLink label={tr.auth.reportProblem} onPress={() => router.push({ pathname: "/feedback", params: { email: form.email.trim() } })} /> : null}
-        {form.canResend ? <AuthLink label={tr.auth.resendConfirmation} onPress={() => void form.resend()} /> : null}
+        {form.canResend ? <AuthLink label={tr.auth.resendCode} onPress={() => void form.resend()} /> : null}
         {mode === "signIn" ? <AuthLink label={tr.auth.forgotPassword} onPress={form.showForgot} /> : null}
         <AuthLink label={text.other} onPress={form.switchMode} disabled={form.busy} />
       </View>

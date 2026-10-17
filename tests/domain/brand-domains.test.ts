@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
-import { inflateSync } from "node:zlib";
 import { join } from "node:path";
 import { BRAND_MARK_AUDIT, PLACEHOLDER_MARK_SHA } from "../fixtures/brand-mark-audit";
 import { markProvider } from "../../src/domain/brand-marks";
@@ -16,6 +15,21 @@ function fetchedDomains(): string[] {
     logoSource.indexOf("UNMARKED INSTITUTIONS (checked, no mark published)"),
   );
   return [...new Set([...table.matchAll(/:\s*"([a-z0-9-]+(?:\.[a-z0-9-]+)+)"/g)].map((m) => m[1]!))].sort();
+}
+
+/** `bundled-marks.ts` requires its files, which only Metro resolves, so it too is read as text. */
+const bundledSource = readFileSync(join(root, "src/ui/bundled-marks.ts"), "utf8");
+const bundled = new Map(
+  [...bundledSource.matchAll(/^ {2}"([^"]+)": \{ source: require\("\.\.\/\.\.\/(assets\/marks\/[^"]+\.webp)"\)/gm)].map((m) => [m[1]!, m[2]!]),
+);
+
+/** A WebP's canvas width, from whichever of its three headers it carries. */
+function webpWidth(file: string): number {
+  const buf = readFileSync(join(root, file));
+  const chunk = buf.toString("latin1", 12, 16);
+  if (chunk === "VP8X") return buf.readUIntLE(24, 3) + 1;
+  if (chunk === "VP8L") return (buf.readUInt16LE(21) & 0x3fff) + 1;
+  return buf.readUInt16LE(26) & 0x3fff;
 }
 
 /**
@@ -78,10 +92,20 @@ describe("brand marks", () => {
   it("asks the service that measured better for that domain", () => {
     // The app ships only the short DuckDuckGo list; this keeps it in step with the full record.
     for (const [domain, mark] of Object.entries(BRAND_MARK_AUDIT)) {
+      if (bundled.has(domain)) continue;
       expect(markProvider(domain), domain).toBe(mark.provider);
       const host = { duckduckgo: "icons.duckduckgo.com", iconhorse: "icon.horse", google: "www.google.com" }[mark.provider];
       expect(new URL(remoteFaviconUrl(domain)!).hostname, domain).toBe(host);
     }
+  });
+
+  it("ships its own mark wherever the published one would draw pixelated", () => {
+    // The largest tile is the forms' 46pt; a favicon fills 82% of it, so a 3x
+    // screen needs 114px from a service and 138px from a bundled edge-to-edge mark.
+    expect(bundled.size, "the table's line shape changed and the reader matched nothing").toBeGreaterThan(60);
+    const soft = fetchedDomains().filter((domain) => (BRAND_MARK_AUDIT[domain]?.px ?? 0) < Math.ceil(46 * 0.82 * 3));
+    expect(soft.filter((domain) => !bundled.has(domain)), "add a mark to src/ui/bundled-marks.ts").toEqual([]);
+    for (const [domain, file] of bundled) expect(webpWidth(file), domain).toBeGreaterThanOrEqual(46 * 3);
   });
 
   it("keeps the names it has no mark for on the record", () => {
@@ -91,94 +115,5 @@ describe("brand marks", () => {
     for (const name of ["denizbank", "turkiye finans", "tosla", "nays", "bip", "bisu", "millenicom"]) {
       expect(listed, `${name} must say why it has no mark`).toContain(`"${name}"`);
     }
-  });
-});
-
-/** `brand.tsx` derives width from a constant ratio, which holds only while the canvas is the artwork: the ink must touch all four edges. */
-describe("the app's own brand mark", () => {
-  /** Bounding box of pixels the artwork actually paints. */
-  function inkBounds(file: string): { width: number; height: number; left: number; top: number; right: number; bottom: number } {
-    const buf = readFileSync(join(root, file));
-    let at = 8;
-    let width = 0;
-    let height = 0;
-    let depth = 0;
-    let colorType = 0;
-    const parts: Buffer[] = [];
-    while (at < buf.length) {
-      const length = buf.readUInt32BE(at);
-      const type = buf.toString("latin1", at + 4, at + 8);
-      const data = buf.subarray(at + 8, at + 8 + length);
-      if (type === "IHDR") {
-        width = data.readUInt32BE(0);
-        height = data.readUInt32BE(4);
-        depth = data[8]!;
-        colorType = data[9]!;
-      }
-      if (type === "IDAT") parts.push(Buffer.from(data));
-      at += 12 + length;
-    }
-    // 8-bit RGBA is what the un-filtering below assumes; anything else would be
-    // measured wrongly rather than reported as unmeasurable.
-    expect({ depth, colorType }, `${file} must be 8-bit RGBA`).toEqual({ depth: 8, colorType: 6 });
-    const raw = inflateSync(Buffer.concat(parts));
-    const stride = width * 4;
-    const pixels = Buffer.alloc(height * stride);
-    let read = 0;
-    for (let y = 0; y < height; y += 1) {
-      const filter = raw[read];
-      read += 1;
-      for (let x = 0; x < stride; x += 1) {
-        const left = x >= 4 ? pixels[y * stride + x - 4]! : 0;
-        const up = y > 0 ? pixels[(y - 1) * stride + x]! : 0;
-        const upLeft = y > 0 && x >= 4 ? pixels[(y - 1) * stride + x - 4]! : 0;
-        let value = raw[read + x]!;
-        if (filter === 1) value += left;
-        else if (filter === 2) value += up;
-        else if (filter === 3) value += (left + up) >> 1;
-        else if (filter === 4) {
-          const estimate = left + up - upLeft;
-          const dl = Math.abs(estimate - left);
-          const du = Math.abs(estimate - up);
-          const dul = Math.abs(estimate - upLeft);
-          value += dl <= du && dl <= dul ? left : du <= dul ? up : upLeft;
-        }
-        pixels[y * stride + x] = value & 0xff;
-      }
-      read += stride;
-    }
-    let minX = width;
-    let minY = height;
-    let maxX = -1;
-    let maxY = -1;
-    for (let y = 0; y < height; y += 1) {
-      for (let x = 0; x < width; x += 1) {
-        if (pixels[y * stride + x * 4 + 3]! > 8) {
-          if (x < minX) minX = x;
-          if (x > maxX) maxX = x;
-          if (y < minY) minY = y;
-          if (y > maxY) maxY = y;
-        }
-      }
-    }
-    return { width, height, left: minX, top: minY, right: width - 1 - maxX, bottom: height - 1 - maxY };
-  }
-
-  for (const file of ["assets/brand/symbol-light-t.png", "assets/brand/symbol-dark-t.png"]) {
-    it(`leaves no transparent margin around ${file.split("/").pop()}`, () => {
-      const bounds = inkBounds(file);
-      expect(
-        { left: bounds.left, top: bounds.top, right: bounds.right, bottom: bounds.bottom },
-        "the canvas must BE the mark, or `size` stops meaning the height it draws",
-      ).toEqual({ left: 0, top: 0, right: 0, bottom: 0 });
-    });
-  }
-
-  it("renders the splash symbol, and sizes the drawn mark, at the drawing's own ratio", async () => {
-    const bounds = inkBounds("assets/brand/symbol-light-t.png");
-    const { VIEW_BOX } = await import("../../src/ui/brand-art");
-    const [, , width, height] = VIEW_BOX.split(" ").map(Number);
-    expect(readFileSync(join(root, "src/ui/brand.tsx"), "utf8")).toContain(`const MARK_ASPECT = ${width} / ${height};`);
-    expect(bounds.width / bounds.height).toBeCloseTo(width! / height!, 2);
   });
 });

@@ -323,7 +323,7 @@ describe("change classification", () => {
   });
 
   it("ships application brand symbols while leaving README-only lockups alone", () => {
-    for (const file of ["assets/brand/symbol-light-t.png", "assets/brand/symbol-dark-t.png"]) {
+    for (const file of ["assets/brand/splash-blank.png"]) {
       expect(classify([file]), file).toMatchObject({
         full_gate: false,
         run_web_build: true,

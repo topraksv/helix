@@ -1,6 +1,6 @@
 /** Pure root-route guard. Effects consume `redirect`; rendering consumes `view`. */
 
-type RootRouteArea = "auth" | "recovery" | "public" | "onboarding" | "setup-helper" | "protected" | "root";
+type RootRouteArea = "auth" | "public" | "onboarding" | "setup-helper" | "protected" | "root";
 type RootGuardRedirect = "/(auth)/sign-in" | "/(onboarding)/setup" | "/(tabs)";
 
 interface RootGuardInput {
@@ -18,21 +18,9 @@ interface RootGuardDecision {
   redirect: RootGuardRedirect | null;
 }
 
-/**
- * Whether a route may be drawn although this document could not open the
- * database: only the reset screen, and only while another tab holds it. A reset
- * e-mail opens in a new tab beside the running app, and that screen reads
- * nothing local. Any other failure is real and must not be hidden.
- */
-export function drawsWithoutDatabase(failure: BootFailure | null, route: RootRouteArea): boolean {
-  return failure === "busy" && route === "recovery";
-}
-
 export function classifyRootRoute(segments: readonly string[]): RootRouteArea {
   const first = segments[0];
-  const second = segments[1];
   if (!first) return "root";
-  if (first === "(auth)" && second === "reset-password") return "recovery";
   if (first === "(auth)") return "auth";
   // The KVKK notice must be readable BEFORE an account exists; as `protected` it would bounce to sign-in.
   if (first === "privacy") return "public";
@@ -51,13 +39,9 @@ export function resolveRootGuard(input: RootGuardInput): RootGuardDecision {
   if (input.route === "public") return { view: "stack", redirect: null };
 
   if (!input.userId) {
-    if (input.route === "auth" || input.route === "recovery") return { view: "stack", redirect: null };
+    if (input.route === "auth") return { view: "stack", redirect: null };
     return { view: "wait", redirect: "/(auth)/sign-in" };
   }
-
-  // Password recovery must remain reachable regardless of onboarding/freeze
-  // flags; it is the credential-repair surface, not protected account UI.
-  if (input.route === "recovery") return { view: "stack", redirect: null };
 
   if (input.onboarded == null) return { view: "wait", redirect: null };
   if (!input.onboarded) {

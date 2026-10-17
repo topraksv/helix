@@ -50,7 +50,6 @@ describe("dirty form navigation contract", () => {
       "src/app/(tabs)/settings/index.tsx",
       // Credentials, not a draft. Nothing typed here is persisted, and
       // blocking the way out of a sign-in screen is how an account gets stuck.
-      "src/app/(auth)/reset-password.tsx",
       "src/app/(auth)/sign-in.tsx",
       // A destructive form: leaving loses nothing, because nothing is written
       // until the confirmation. "Discard changes?" on a screen whose whole

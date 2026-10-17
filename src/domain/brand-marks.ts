@@ -22,7 +22,6 @@ const ICONHORSE_MARKS = new Set<string>([
   "alternatifbank.com.tr",
   "coursera.org",
   "github.com",
-  "hepsiburada.com",
   "kuveytturk.com.tr",
   "maximiles.com.tr",
   "migros.com.tr",
@@ -30,7 +29,6 @@ const ICONHORSE_MARKS = new Set<string>([
   "primevideo.com",
   "puhutv.com",
   "strava.com",
-  "tivibu.com.tr",
   "turkishbank.com",
   "vercel.com",
   "yemeksepeti.com",
@@ -38,10 +36,7 @@ const ICONHORSE_MARKS = new Set<string>([
 
 /** Domains where DuckDuckGo audited better than the others. */
 const DUCKDUCKGO_MARKS = new Set<string>([
-  "drive.google.com",
   "gemini.google.com",
-  "ing.com.tr",
-  "sokmarket.com.tr",
 ]);
 
 

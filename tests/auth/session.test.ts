@@ -1,7 +1,7 @@
 // When may this device hold a usable session. Adopting a workspace is granting
 // access, so each path below is a gate, not a convenience.
 
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { tr } from "../../src/i18n/tr";
 
 interface FakeUser {
@@ -27,30 +27,27 @@ const harness = vi.hoisted(() => {
         signOut: vi.fn(async (_options?: unknown) => ({ error: null })),
         getUser: vi.fn(),
         updateUser: vi.fn(async (_attributes: unknown) => ({ error: null as { message: string } | null })),
-        resetPasswordForEmail: vi.fn(async (_email: string, _options: unknown) => ({ error: null })),
         resend: vi.fn(async (_request: unknown) => ({ error: null as { message: string } | null })),
-        exchangeCodeForSession: vi.fn(),
-        setSession: vi.fn(),
+        verifyOtp: vi.fn(async (_request: unknown): Promise<{
+          data: { user: FakeUser | null; session: { user: FakeUser } | null };
+          error: { name: string; message: string } | null;
+        }> => ({ data: { user: null, session: null }, error: null })),
       },
       rpc: vi.fn(async (_name: string) => ({ error: null as { message: string } | null })),
     },
     platform: { OS: "web" },
     authListeners: [] as ((event: string) => void)[],
-    // The client a reset link is redeemed on: its own, never the app's.
+    // The client a reset code is redeemed on: its own, never the app's.
     recoveryClient: {
       auth: {
-        verifyOtp: vi.fn(async (): Promise<{
+        resetPasswordForEmail: vi.fn(async (_email: string) => ({ error: null as { message: string } | null })),
+        verifyOtp: vi.fn(async (_request: unknown): Promise<{
           data: { session: { user: FakeUser } | null };
           error: { name: string; message: string; code?: string; status?: number } | null;
         }> => ({ data: { session: { user: { id: "user-b", email: "b@example.com" } } }, error: null })),
         updateUser: vi.fn(async (): Promise<{ error: { message: string } | null }> => ({ error: null })),
         signOut: vi.fn(async () => ({ error: null })),
       },
-    },
-    recovery: {
-      clear: vi.fn(),
-      mark: vi.fn(),
-      detected: vi.fn((_userId?: string) => false),
     },
     pendingOutbox: vi.fn(async () => 0),
     flushOutbox: vi.fn(async (_userId: string) => {}),
@@ -74,18 +71,15 @@ const harness = vi.hoisted(() => {
 
 vi.mock("react-native", () => ({ Platform: harness.platform }));
 vi.mock("../../src/sync/supabase", () => ({
-  createRecoveryClient: () => harness.recoveryClient,
-  clearPasswordRecoveryDetected: harness.recovery.clear,
+  createRecoveryClient: () => (harness.configured.value ? harness.recoveryClient : null),
   getSupabase: () => (harness.configured.value ? harness.supabase : null),
   get isSupabaseConfigured() {
     return harness.configured.value;
   },
-  markPasswordRecoverySession: harness.recovery.mark,
   subscribeSupabaseAuthEvents: (listener: (event: string) => void) => {
     harness.authListeners.push(listener);
     return () => true;
   },
-  wasPasswordRecoveryDetected: harness.recovery.detected,
 }));
 vi.mock("../../src/db/mutations", () => ({
   pendingOutboxCount: harness.pendingOutbox,
@@ -160,7 +154,7 @@ vi.mock("../../src/services/kv", () => ({
   },
 }));
 
-const { SIGN_OUT_PENDING_CHANGES, useSession } = await import("../../src/auth/session");
+const { useSession } = await import("../../src/auth/session");
 const { LOCAL_ONLY_USER_ID } = await import("../../src/domain/user-id");
 
 const OWNER_KEY = "helix.local_owner";
@@ -173,10 +167,6 @@ function reset(): void {
   harness.store.clear();
   harness.log.length = 0;
   harness.platform.OS = "web";
-  harness.recovery.clear.mockClear();
-  harness.recovery.mark.mockClear();
-  harness.recovery.detected.mockReset();
-  harness.recovery.detected.mockReturnValue(false);
   harness.pendingOutbox.mockReset();
   harness.pendingOutbox.mockResolvedValue(0);
   harness.flushOutbox.mockReset();
@@ -184,10 +174,16 @@ function reset(): void {
   harness.supabase.auth.getUser.mockReset();
   harness.supabase.auth.updateUser.mockReset();
   harness.supabase.auth.updateUser.mockResolvedValue({ error: null });
-  harness.supabase.auth.resetPasswordForEmail.mockClear();
   harness.supabase.auth.resend.mockClear();
-  harness.supabase.auth.exchangeCodeForSession.mockReset();
-  harness.supabase.auth.setSession.mockReset();
+  harness.supabase.auth.verifyOtp.mockReset();
+  harness.supabase.auth.verifyOtp.mockResolvedValue({ data: { user: null, session: null }, error: null });
+  harness.recoveryClient.auth.resetPasswordForEmail.mockReset();
+  harness.recoveryClient.auth.resetPasswordForEmail.mockResolvedValue({ error: null });
+  harness.recoveryClient.auth.verifyOtp.mockReset();
+  harness.recoveryClient.auth.verifyOtp.mockResolvedValue({ data: { session: { user: { id: "user-b", email: "b@example.com" } } }, error: null });
+  harness.recoveryClient.auth.updateUser.mockReset();
+  harness.recoveryClient.auth.updateUser.mockResolvedValue({ error: null });
+  harness.recoveryClient.auth.signOut.mockClear();
   harness.supabase.rpc.mockReset();
   harness.supabase.rpc.mockResolvedValue({ error: null });
   harness.configured.value = true;
@@ -760,222 +756,118 @@ describe("signUp refusals", () => {
   });
 });
 
-describe("requesting a reset link", () => {
-  afterEach(() => {
-    vi.unstubAllGlobals();
-    vi.unstubAllEnvs();
-  });
-
+describe("a forgotten password", () => {
   it("says the project is not configured", async () => {
     harness.configured.value = false;
     expect(await useSession.getState().requestPasswordReset(USER_A.email)).toBe(tr.errors.supabaseNotConfigured);
+    expect(await useSession.getState().resetPassword(USER_A.email, "123456", STRONG)).toBe(tr.errors.supabaseNotConfigured);
   });
 
-  it("points a phone's link at the published web page", async () => {
-    harness.platform.OS = "ios";
-    vi.stubGlobal("location", { origin: "http://localhost:8081" });
-
+  it("mails a code to the trimmed address on a client of its own, with no page to come back to", async () => {
     expect(await useSession.getState().requestPasswordReset(` ${USER_A.email} `)).toBeNull();
-
-    expect(harness.supabase.auth.resetPasswordForEmail)
-      .toHaveBeenCalledWith(USER_A.email, { redirectTo: "https://topraksv.github.io/helix/reset-password" });
+    expect(harness.recoveryClient.auth.resetPasswordForEmail.mock.calls).toEqual([[USER_A.email]]);
   });
 
-  it("points a browser's link back at the page it came from, under its base path", async () => {
-    vi.stubGlobal("location", { origin: "http://localhost:8081" });
-    await useSession.getState().requestPasswordReset(USER_A.email);
-    vi.stubEnv("EXPO_BASE_URL", "/helix");
-    await useSession.getState().requestPasswordReset(USER_A.email);
-
-    expect(harness.supabase.auth.resetPasswordForEmail.mock.calls.map(([, options]) => options)).toEqual([
-      { redirectTo: "http://localhost:8081/reset-password" },
-      { redirectTo: "http://localhost:8081/helix/reset-password" },
-    ]);
-  });
-});
-
-describe("resending a sign-up confirmation", () => {
-  it("says the project is not configured", async () => {
-    harness.configured.value = false;
-    expect(await useSession.getState().resendSignUpConfirmation(USER_A.email)).toBe(tr.errors.supabaseNotConfigured);
-    expect(harness.supabase.auth.resend).not.toHaveBeenCalled();
+  it("refuses a weak password before spending the code", async () => {
+    expect(await useSession.getState().resetPassword(USER_A.email, "123456", "short")).toBe(tr.auth.errWeakPassword);
+    expect(harness.recoveryClient.auth.verifyOtp).not.toHaveBeenCalled();
   });
 
-  it("asks Auth for a new sign-up link", async () => {
-    expect(await useSession.getState().resendSignUpConfirmation(` ${USER_A.email} `)).toBeNull();
-    expect(harness.supabase.auth.resend).toHaveBeenCalledWith({ type: "signup", email: USER_A.email });
-  });
-});
-
-describe("opening a reset link", () => {
-  const native = (query: string) => `helix://reset-password?${query}`;
-  const session = (id: string) => ({ data: { session: { user: { id } } }, error: null });
-
-  afterEach(() => {
-    vi.unstubAllGlobals();
-    vi.unstubAllEnvs();
-  });
-
-  it("refuses every link without a server", async () => {
-    harness.configured.value = false;
-    expect(await useSession.getState().preparePasswordRecovery(native("token_hash=t&type=recovery"))).toBe("invalid");
-  });
-
-  it("reads a browser's link against the page's own address", async () => {
-    vi.stubGlobal("location", { origin: "https://helix.example" });
-    expect(await useSession.getState().preparePasswordRecovery("https://helix.example/reset-password?token_hash=t&type=recovery"))
-      .toBe("ready");
-    vi.stubEnv("EXPO_BASE_URL", "/helix");
-    expect(await useSession.getState().preparePasswordRecovery("https://helix.example/helix/reset-password?token_hash=t&type=recovery"))
-      .toBe("ready");
-    expect(await useSession.getState().preparePasswordRecovery(native("token_hash=t&type=recovery"))).toBe("invalid");
-  });
-
-  it("reads a phone's link against the app's own scheme, even where a page address exists", async () => {
-    harness.platform.OS = "ios";
-    vi.stubGlobal("location", { origin: "https://helix.example" });
-    expect(await useSession.getState().preparePasswordRecovery(native("token_hash=t&type=recovery"))).toBe("ready");
-  });
-
-  it("redeems an older code link for this account and binds the recovery to it", async () => {
-    openAccount(useSession);
-    harness.supabase.auth.exchangeCodeForSession.mockResolvedValue(session(USER_A.id));
-
-    expect(await useSession.getState().preparePasswordRecovery(native("code=c"))).toBe("ready");
-
-    expect(harness.supabase.auth.exchangeCodeForSession).toHaveBeenCalledWith("c");
-    expect(harness.recovery.mark).toHaveBeenCalledWith(USER_A.id);
-  });
-
-  it("accepts any account's link when no account is open here", async () => {
-    harness.supabase.auth.exchangeCodeForSession.mockResolvedValue(session(USER_B.id));
-    expect(await useSession.getState().preparePasswordRecovery(native("code=c"))).toBe("ready");
-    expect(harness.recovery.mark).toHaveBeenCalledWith(USER_B.id);
-  });
-
-  it("refuses another account's link and drops only that account's session", async () => {
-    openAccount(useSession);
-    harness.supabase.auth.exchangeCodeForSession.mockResolvedValue(session(USER_B.id));
-
-    expect(await useSession.getState().preparePasswordRecovery(native("code=c"))).toBe("invalid");
-
-    expect(harness.recovery.clear).toHaveBeenCalled();
-    expect(harness.log).toContain(`stop:${USER_A.id}`);
-    expect(harness.supabase.auth.signOut).toHaveBeenCalledWith({ scope: "local" });
-    expect(harness.log).not.toContain("wipe");
-    expect(useSession.getState()).toMatchObject({ userId: USER_A.id, isOnlineSession: false });
-  });
-
-  it("falls back to a recovery the page already observed when the code was spent", async () => {
-    openAccount(useSession);
-    harness.supabase.auth.exchangeCodeForSession.mockResolvedValue({ data: { session: null }, error: { message: "used" } });
-    harness.supabase.auth.getSession.mockResolvedValue({ data: { session: { user: USER_A } } });
-
-    expect(await useSession.getState().preparePasswordRecovery(native("code=c"))).toBe("invalid");
-    harness.recovery.detected.mockReturnValue(true);
-    expect(await useSession.getState().preparePasswordRecovery(native("code=c"))).toBe("ready");
-    expect(harness.recovery.detected).toHaveBeenCalledWith(USER_A.id);
-
-    harness.supabase.auth.getSession.mockResolvedValue({ data: { session: null } });
-    expect(await useSession.getState().preparePasswordRecovery(native("code=c"))).toBe("invalid");
-
-    harness.supabase.auth.exchangeCodeForSession.mockResolvedValue({ data: { session: null }, error: null });
-    harness.supabase.auth.getSession.mockResolvedValue({ data: { session: { user: USER_B } } });
-    expect(await useSession.getState().preparePasswordRecovery(native("code=c")), "another account's observed recovery")
-      .toBe("invalid");
-  });
-
-  it("adopts a token pair only when it opens a session", async () => {
-    openAccount(useSession);
-    const link = "helix://reset-password#access_token=a&refresh_token=r&type=recovery";
-    harness.supabase.auth.setSession.mockResolvedValue({ data: { session: null }, error: { message: "bad" } });
-    expect(await useSession.getState().preparePasswordRecovery(link)).toBe("invalid");
-    harness.supabase.auth.setSession.mockResolvedValue({ data: { session: null }, error: null });
-    expect(await useSession.getState().preparePasswordRecovery(link)).toBe("invalid");
-    harness.supabase.auth.setSession.mockResolvedValue(session(USER_A.id));
-    expect(await useSession.getState().preparePasswordRecovery(link)).toBe("ready");
-    expect(harness.supabase.auth.setSession).toHaveBeenCalledWith({ access_token: "a", refresh_token: "r" });
-  });
-
-  it("accepts a link with nothing in it only when the page already saw a recovery", async () => {
-    openAccount(useSession);
-    harness.supabase.auth.getSession.mockResolvedValue({ data: { session: { user: USER_A } } });
-    expect(await useSession.getState().preparePasswordRecovery(native(""))).toBe("invalid");
-    harness.recovery.detected.mockReturnValue(true);
-    expect(await useSession.getState().preparePasswordRecovery(native(""))).toBe("ready");
-    harness.supabase.auth.getSession.mockResolvedValue({ data: { session: null } });
-    expect(await useSession.getState().preparePasswordRecovery(native(""))).toBe("invalid");
-    openAccount(useSession);
-    harness.supabase.auth.getSession.mockResolvedValue({ data: { session: { user: USER_B } } });
-    expect(await useSession.getState().preparePasswordRecovery(native(""))).toBe("invalid");
-  });
-
-  it("refuses an older link in a standalone tab without redeeming it", async () => {
-    expect(await useSession.getState().preparePasswordRecovery(native("code=c"), { standalone: true })).toBe("invalid");
-    expect(harness.supabase.auth.exchangeCodeForSession).not.toHaveBeenCalled();
-  });
-});
-
-describe("saving a new password from a recovery session", () => {
-  beforeEach(() => {
-    harness.supabase.auth.getSession.mockResolvedValue({ data: { session: { user: USER_A } } });
-    harness.recovery.detected.mockReturnValue(true);
-  });
-
-  it("refuses without a server, or with a weak password, before asking anything", async () => {
-    harness.configured.value = false;
-    expect(await useSession.getState().completePasswordRecovery(STRONG)).toBe(tr.errors.supabaseNotConfigured);
-    harness.configured.value = true;
-    expect(await useSession.getState().completePasswordRecovery("short")).toBe(tr.auth.errWeakPassword);
+  it("checks the code, saves the password and ends that session, signing nobody in here", async () => {
+    expect(await useSession.getState().resetPassword(` ${USER_A.email} `, "123456", STRONG)).toBeNull();
+    expect(harness.recoveryClient.auth.verifyOtp).toHaveBeenCalledWith({ email: USER_A.email, token: "123456", type: "recovery" });
+    expect(harness.recoveryClient.auth.updateUser).toHaveBeenCalledWith({ password: STRONG });
+    expect(harness.recoveryClient.auth.signOut).toHaveBeenCalledWith({ scope: "local" });
     expect(harness.supabase.auth.updateUser).not.toHaveBeenCalled();
-  });
-
-  it("refuses a session that is not a recovery", async () => {
-    harness.recovery.detected.mockReturnValue(false);
-    expect(await useSession.getState().completePasswordRecovery(STRONG)).toBe(tr.auth.resetInvalidBody);
-    harness.supabase.auth.getSession.mockResolvedValue({ data: { session: null } });
-    expect(await useSession.getState().completePasswordRecovery(STRONG)).toBe(tr.auth.resetInvalidBody);
-    expect(harness.supabase.auth.updateUser).not.toHaveBeenCalled();
-  });
-
-  it("saves, forgets the recovery and signs this device out", async () => {
-    openAccount(useSession);
-
-    expect(await useSession.getState().completePasswordRecovery(STRONG)).toBeNull();
-
-    expect(harness.supabase.auth.updateUser).toHaveBeenCalledWith({ password: STRONG });
-    expect(harness.recovery.clear).toHaveBeenCalled();
-    expect(harness.log).toContain("wipe");
     expect(useSession.getState().userId).toBeNull();
   });
 
-  it("passes on a refusal to save, and a sign-out the device refuses", async () => {
-    openAccount(useSession);
-    harness.supabase.auth.updateUser.mockResolvedValueOnce({ error: { message: "New password should be different from the old password." } });
-    const refused = await useSession.getState().completePasswordRecovery(STRONG);
-    expect(refused).toBeTruthy();
-    expect(harness.recovery.clear).not.toHaveBeenCalled();
-
-    harness.pendingOutbox.mockResolvedValue(2);
-    expect(await useSession.getState().completePasswordRecovery(STRONG)).toBe(SIGN_OUT_PENDING_CHANGES);
+  it("tells a refused code from a dropped connection and a rate limit, and saves nothing on any", async () => {
+    harness.recoveryClient.auth.verifyOtp.mockResolvedValue({ data: { session: null }, error: { name: "AuthApiError", message: "Token has expired or is invalid", code: "otp_expired" } });
+    expect(await useSession.getState().resetPassword(USER_A.email, "000000", STRONG)).toBe(tr.auth.errCode);
+    harness.recoveryClient.auth.verifyOtp.mockResolvedValue({ data: { session: null }, error: { name: "AuthRetryableFetchError", message: "Failed to fetch" } });
+    expect(await useSession.getState().resetPassword(USER_A.email, "123456", STRONG)).toBe(tr.auth.errNetwork);
+    harness.recoveryClient.auth.verifyOtp.mockResolvedValue({ data: { session: null }, error: { name: "AuthApiError", message: "For security purposes, you can only request this after 30 seconds." } });
+    expect(await useSession.getState().resetPassword(USER_A.email, "123456", STRONG)).toBe(tr.auth.errRateLimit);
+    expect(harness.recoveryClient.auth.updateUser).not.toHaveBeenCalled();
   });
 
-  it("refuses another account's recovery and takes this device offline", async () => {
-    openAccount(useSession);
-    harness.supabase.auth.getSession.mockResolvedValue({ data: { session: { user: USER_B } } });
-
-    expect(await useSession.getState().completePasswordRecovery(STRONG)).toBe(tr.auth.resetInvalidBody);
-
-    expect(harness.supabase.auth.updateUser).not.toHaveBeenCalled();
-    expect(harness.supabase.auth.signOut).toHaveBeenCalledWith({ scope: "local" });
-    expect(harness.log).not.toContain("wipe");
-    expect(useSession.getState()).toMatchObject({ userId: USER_A.id, isOnlineSession: false });
+  it("passes on a refused save in the user's terms, and keeps the spent code's session for the retry", async () => {
+    harness.recoveryClient.auth.updateUser.mockResolvedValueOnce({ error: { message: "New password should be different from the old password." } });
+    expect(await useSession.getState().resetPassword(USER_A.email, "123456", STRONG)).toBe(tr.auth.errSamePassword);
+    expect(harness.recoveryClient.auth.signOut).not.toHaveBeenCalled();
+    expect(await useSession.getState().resetPassword(USER_A.email, "000000", `${STRONG}2`)).toBeNull();
+    expect(harness.recoveryClient.auth.verifyOtp, "Auth spent the code on the first check").toHaveBeenCalledTimes(1);
+    expect(harness.recoveryClient.auth.signOut).toHaveBeenCalledWith({ scope: "local" });
+    await useSession.getState().resetPassword(USER_A.email, "654321", STRONG);
+    expect(harness.recoveryClient.auth.verifyOtp, "a saved password lets the kept session go").toHaveBeenCalledTimes(2);
   });
 
-  it("only drops the recovery session when no account is open here", async () => {
-    expect(await useSession.getState().completePasswordRecovery(STRONG)).toBeNull();
-    expect(harness.supabase.auth.signOut).toHaveBeenCalledWith({ scope: "local" });
-    expect(harness.log).not.toContain("wipe");
+  it("checks a fresh code once another is asked for, or for another address, and not when the asking is refused", async () => {
+    harness.recoveryClient.auth.updateUser.mockResolvedValue({ error: { message: "New password should be different from the old password." } });
+    await useSession.getState().resetPassword(USER_A.email, "111111", STRONG);
+    await useSession.getState().resetPassword("b@example.com", "222222", STRONG);
+    harness.recoveryClient.auth.resetPasswordForEmail.mockResolvedValueOnce({ error: { message: "For security purposes, you can only request this after 42 seconds." } });
+    expect(await useSession.getState().requestPasswordReset("b@example.com")).toBeTruthy();
+    await useSession.getState().resetPassword("b@example.com", "999999", STRONG);
+    await useSession.getState().requestPasswordReset("b@example.com");
+    harness.recoveryClient.auth.updateUser.mockResolvedValue({ error: null });
+    await useSession.getState().resetPassword("b@example.com", "333333", STRONG);
+    expect(harness.recoveryClient.auth.verifyOtp.mock.calls.map(([request]) => (request as { token: string }).token)).toEqual(["111111", "222222", "333333"]);
+  });
+
+  it("signs this device in again after resetting its own account, whose sessions the new password ended", async () => {
+    harness.supabase.auth.signInWithPassword.mockResolvedValue({ data: { user: USER_A }, error: null });
+    expect(await useSession.getState().signIn(USER_A.email, "old")).toBeNull();
+    expect(await useSession.getState().resetPassword("A@Example.com", "123456", STRONG)).toBeNull();
+    expect(harness.supabase.auth.signInWithPassword).toHaveBeenLastCalledWith({ email: USER_A.email, password: STRONG });
+    expect(useSession.getState().userId).toBe(USER_A.id);
+    harness.supabase.auth.signInWithPassword.mockClear();
+    await useSession.getState().resetPassword("b@example.com", "123456", STRONG);
+    expect(harness.supabase.auth.signInWithPassword, "another account's reset leaves this one alone").not.toHaveBeenCalled();
+  });
+
+  it("says the password changed when signing in again with it fails", async () => {
+    harness.supabase.auth.signInWithPassword.mockResolvedValue({ data: { user: USER_A }, error: null });
+    expect(await useSession.getState().signIn(USER_A.email, "old")).toBeNull();
+    harness.supabase.auth.signInWithPassword.mockResolvedValue({ data: { user: null }, error: { name: "AuthRetryableFetchError", message: "Failed to fetch" } });
+    expect(await useSession.getState().resetPassword(USER_A.email, "123456", STRONG)).toBe(tr.auth.passwordResetSignInAgain);
+  });
+});
+
+describe("the sign-up code", () => {
+  it("says the project is not configured", async () => {
+    harness.configured.value = false;
+    expect(await useSession.getState().resendSignUpConfirmation(USER_A.email)).toBe(tr.errors.supabaseNotConfigured);
+    expect(await useSession.getState().confirmSignUp(USER_A.email, "123456")).toBe(tr.errors.supabaseNotConfigured);
+    expect(harness.supabase.auth.resend).not.toHaveBeenCalled();
+  });
+
+  it("asks Auth for a new sign-up code", async () => {
+    expect(await useSession.getState().resendSignUpConfirmation(` ${USER_A.email} `)).toBeNull();
+    expect(harness.supabase.auth.resend).toHaveBeenCalledWith({ type: "signup", email: USER_A.email });
+  });
+
+  it("opens the new account with the code, straight to onboarding", async () => {
+    harness.supabase.auth.verifyOtp.mockResolvedValue({ data: { user: USER_A, session: { user: USER_A } }, error: null });
+    expect(await useSession.getState().confirmSignUp(` ${USER_A.email} `, "123456")).toBeNull();
+    // "email" would take a reset code too and open an existing account as new.
+    expect(harness.supabase.auth.verifyOtp).toHaveBeenCalledWith({ email: USER_A.email, token: "123456", type: "signup" });
+    expect(useSession.getState()).toMatchObject({ userId: USER_A.id, email: USER_A.email, isNewSignup: true, isOnlineSession: true, previousLoginAt: null });
+    expect(harness.store.get(OWNER_KEY)).toBe(USER_A.id);
+    expect(harness.store.get(USER_KEY)).toBe(USER_A.id);
+    expect(harness.startSyncSession).toHaveBeenCalledWith(USER_A.id);
+  });
+
+  it("opens nothing on a refused code, and says which refusal it was", async () => {
+    harness.supabase.auth.verifyOtp.mockResolvedValue({ data: { user: null, session: null }, error: { name: "AuthApiError", message: "Token has expired or is invalid" } });
+    expect(await useSession.getState().confirmSignUp(USER_A.email, "000000")).toBe(tr.auth.errCode);
+    harness.supabase.auth.verifyOtp.mockResolvedValue({ data: { user: null, session: null }, error: { name: "AuthRetryableFetchError", message: "Failed to fetch" } });
+    expect(await useSession.getState().confirmSignUp(USER_A.email, "123456")).toBe(tr.auth.errNetwork);
+    harness.supabase.auth.verifyOtp.mockResolvedValue({ data: { user: null, session: null }, error: null });
+    expect(await useSession.getState().confirmSignUp(USER_A.email, "123456")).toBe(tr.auth.errCode);
+    expect(useSession.getState().userId).toBeNull();
+    expect(harness.startSyncSession).not.toHaveBeenCalled();
   });
 });
 
@@ -1181,116 +1073,92 @@ describe("changing the e-mail or password", () => {
   });
 });
 
-describe("password recovery link", () => {
-  it("rejects a foreign token-pair link before exposing the password form", async () => {
-    openAccount(useSession);
-    harness.supabase.auth.setSession.mockResolvedValue({ data: { session: { user: USER_B } }, error: null });
+describe("changing the e-mail address", () => {
+  const NEW = "yeni@example.com";
+  const checked = () => harness.supabase.auth.verifyOtp.mock.calls.map(([request]) => request);
+  /** Signed in as A, with a change to NEW asked and the code each address still owes, as Auth holds them. */
+  async function asked(owed: [string, string][] = [[USER_A.email, "111111"], [NEW, "222222"]]) {
+    harness.supabase.auth.signInWithPassword.mockResolvedValue({ data: { user: USER_A }, error: null });
+    expect(await useSession.getState().signIn(USER_A.email, "pw")).toBeNull();
+    expect(await useSession.getState().changeEmail(` ${NEW} `)).toBeNull();
+    expect(harness.supabase.auth.updateUser).toHaveBeenLastCalledWith({ email: NEW });
+    harness.supabase.auth.verifyOtp.mockReset();
+    authOwes(owed);
+  }
+  function authOwes(owed: [string, string][]) {
+    const codes = new Map(owed);
+    harness.supabase.auth.verifyOtp.mockImplementation(async (request: unknown) => {
+      const { email, token } = request as { email: string; token: string };
+      if (codes.get(email) !== token) return { data: { user: null, session: null }, error: { name: "AuthApiError", message: "Token has expired or is invalid" } };
+      codes.delete(email);
+      // One side taken is not the change: Auth answers with nobody until both are in.
+      if (codes.size) return { data: { user: null, session: null }, error: null };
+      const moved = { ...USER_A, email: NEW };
+      return { data: { user: moved, session: { user: moved } }, error: null };
+    });
+  }
 
-    expect(await useSession.getState().preparePasswordRecovery(
-      "helix://reset-password#access_token=access&refresh_token=refresh&type=recovery",
-    )).toBe("invalid");
-
-    expect(harness.supabase.auth.signOut).toHaveBeenCalledWith({ scope: "local" });
-    expect(useSession.getState().userId).toBe(USER_A.id);
-    expect(harness.resetLocalWorkspace).not.toHaveBeenCalled();
+  it("makes the change once both codes are in, the new address's first", async () => {
+    await asked();
+    expect(await useSession.getState().confirmEmailChange(NEW, { current: "111111", next: "222222" })).toEqual({ error: null, accepted: { current: true, next: true } });
+    expect(checked()).toEqual([
+      { email: NEW, token: "222222", type: "email_change" },
+      { email: USER_A.email, token: "111111", type: "email_change" },
+    ]);
+    expect(useSession.getState().email).toBe(NEW);
+    expect(harness.store.get(EMAIL_KEY), "an offline start reopens the account under its new address").toBe(NEW);
   });
 
-  describe("from an unspent token", () => {
-    // Node has no `location`, so the store reads links as the native target does.
-    const link = "helix://reset-password?token_hash=pkce_token&type=recovery";
-    const recovery = harness.recoveryClient.auth;
-    const authError = (name: string, message: string, code?: string, status?: number) => ({
-      data: { session: null },
-      error: { name, message, code, status },
-    });
+  it("says which code was refused, and does not check again the one Auth took", async () => {
+    await asked();
+    expect(await useSession.getState().confirmEmailChange(NEW, { current: "999999", next: "222222" })).toEqual({ error: tr.account.emailCodeRefused.current, accepted: { current: false, next: true } });
+    expect(useSession.getState().email).toBe(USER_A.email);
+    expect(await useSession.getState().confirmEmailChange(NEW, { current: "111111", next: "" })).toMatchObject({ error: null });
+    expect(checked().map((request) => (request as { token: string }).token)).toEqual(["222222", "999999", "111111"]);
+    await asked();
+    expect(await useSession.getState().confirmEmailChange(NEW, { current: "111111", next: "000000" })).toEqual({ error: tr.account.emailCodeRefused.next, accepted: { current: false, next: false } });
+  });
 
-    beforeEach(async () => {
-      recovery.verifyOtp.mockClear();
-      recovery.updateUser.mockClear();
-      recovery.signOut.mockClear();
-      harness.supabase.auth.getSession.mockResolvedValue({ data: { session: { user: USER_B } } });
-      // Preparing a link clears whatever an earlier case left held for a retry.
-      await useSession.getState().preparePasswordRecovery(link);
-    });
+  it("starts over when the codes are asked for again", async () => {
+    await asked();
+    await useSession.getState().confirmEmailChange(NEW, { current: "999999", next: "222222" });
+    await asked([[USER_A.email, "333333"], [NEW, "444444"]]);
+    expect(await useSession.getState().confirmEmailChange(NEW, { current: "333333", next: "444444" })).toMatchObject({ error: null });
+    expect(checked().map((request) => (request as { token: string }).token), "fresh codes replace every one already taken").toEqual(["444444", "333333"]);
+  });
 
-    it("opens the form without spending the token", async () => {
-      // No session to fall back on: "ready" can only come from the token itself.
-      harness.supabase.auth.getSession.mockResolvedValue({ data: { session: null } });
-      await expect(useSession.getState().preparePasswordRecovery(link)).resolves.toBe("ready");
-      expect(recovery.verifyOtp).not.toHaveBeenCalled();
-    });
+  it("keeps the code Auth took when asking for the codes again is refused", async () => {
+    await asked();
+    await useSession.getState().confirmEmailChange(NEW, { current: "999999", next: "222222" });
+    harness.supabase.auth.updateUser.mockResolvedValueOnce({ error: { message: "For security purposes, you can only request this after 42 seconds." } });
+    expect(await useSession.getState().changeEmail(NEW)).toBeTruthy();
+    expect(await useSession.getState().confirmEmailChange(NEW, { current: "111111", next: "222222" })).toMatchObject({ error: null });
+    expect(checked().map((request) => (request as { token: string }).token)).toEqual(["222222", "999999", "111111"]);
+  });
 
-    it("spends the token on save and really changes the password, on a client of its own", async () => {
-      await expect(useSession.getState().completePasswordRecovery("new-password")).resolves.toBeNull();
+  it("does not call the change made when Auth answers the last code with no session", async () => {
+    await asked();
+    await useSession.getState().confirmEmailChange(NEW, { current: "999999", next: "222222" });
+    // Auth started over behind this device: the new address's code is owed again.
+    authOwes([[USER_A.email, "111111"], [NEW, "222222"]]);
+    expect(await useSession.getState().confirmEmailChange(NEW, { current: "111111", next: "222222" })).toEqual({ error: tr.account.emailChangeRestarted, accepted: { current: false, next: false } });
+    expect(useSession.getState().email).toBe(USER_A.email);
+    expect(harness.store.get(EMAIL_KEY)).not.toBe(NEW);
+  });
 
-      expect(recovery.verifyOtp).toHaveBeenCalledWith({ token_hash: "pkce_token", type: "recovery" });
-      expect(recovery.updateUser).toHaveBeenCalledWith({ password: "new-password" });
-      expect(recovery.signOut).toHaveBeenCalledWith({ scope: "local" });
-      expect(harness.supabase.auth.updateUser).not.toHaveBeenCalled();
-      expect(harness.supabase.auth.signOut).not.toHaveBeenCalled();
-    });
+  it("tells a dropped connection from a refused code, and changes nothing on either", async () => {
+    await asked();
+    harness.supabase.auth.verifyOtp.mockResolvedValue({ data: { user: null, session: null }, error: { name: "AuthRetryableFetchError", message: "Failed to fetch" } });
+    expect(await useSession.getState().confirmEmailChange(NEW, { current: "111111", next: "222222" })).toEqual({ error: tr.auth.errNetwork, accepted: { current: false, next: false } });
+    expect(useSession.getState().email).toBe(USER_A.email);
+  });
 
-    it("changes another account's password without touching the account signed in here", async () => {
-      useSession.setState({ userId: "user-a", email: "a@example.com", isOnlineSession: true });
-
-      await expect(useSession.getState().completePasswordRecovery("new-password")).resolves.toBeNull();
-
-      expect(recovery.updateUser).toHaveBeenCalledWith({ password: "new-password" });
-      expect(harness.supabase.auth.signOut).not.toHaveBeenCalled();
-      expect(harness.resetLocalWorkspace).not.toHaveBeenCalled();
-      expect(useSession.getState().userId).toBe("user-a");
-    });
-
-    it("sends a spent or expired token to the expired screen and changes nothing", async () => {
-      recovery.verifyOtp.mockResolvedValueOnce(authError("AuthApiError", "Email link is invalid or has expired", "otp_expired", 403));
-      await expect(useSession.getState().completePasswordRecovery("new-password")).resolves.toBe(tr.auth.resetExpiredBody);
-      expect(recovery.updateUser).not.toHaveBeenCalled();
-    });
-
-    it("sends any other refusal to the invalid screen", async () => {
-      recovery.verifyOtp.mockResolvedValueOnce(authError("AuthApiError", "Token has been revoked", "bad_jwt", 400));
-      await expect(useSession.getState().completePasswordRecovery("new-password")).resolves.toBe(tr.auth.resetInvalidBody);
-      expect(recovery.updateUser).not.toHaveBeenCalled();
-    });
-
-    it("keeps the token when the request never reached Auth, so the same link works on retry", async () => {
-      recovery.verifyOtp.mockResolvedValueOnce(authError("AuthRetryableFetchError", "Failed to fetch", undefined, 0));
-
-      await expect(useSession.getState().completePasswordRecovery("new-password")).resolves.toBe(tr.auth.errNetwork);
-      expect(recovery.updateUser).not.toHaveBeenCalled();
-      await expect(useSession.getState().completePasswordRecovery("new-password")).resolves.toBeNull();
-
-      expect(recovery.verifyOtp).toHaveBeenCalledTimes(2);
-      expect(recovery.updateUser).toHaveBeenCalledTimes(1);
-    });
-
-    it("keeps the redeemed session when the save is refused, so a retry needs no new link", async () => {
-      recovery.updateUser.mockResolvedValueOnce({ error: { message: "New password should be different from the old password." } });
-
-      await expect(useSession.getState().completePasswordRecovery("old-password")).resolves.toBe(tr.auth.errSamePassword);
-      expect(recovery.signOut).not.toHaveBeenCalled();
-      await expect(useSession.getState().completePasswordRecovery("new-password")).resolves.toBeNull();
-
-      expect(recovery.verifyOtp).toHaveBeenCalledTimes(1);
-      expect(recovery.updateUser).toHaveBeenCalledTimes(2);
-    });
-
-    it("does not spend a token an earlier link left behind", async () => {
-      await expect(useSession.getState().preparePasswordRecovery("helix://reset-password?error_code=otp_expired")).resolves.toBe("expired");
-      harness.supabase.auth.getSession.mockResolvedValue({ data: { session: null } });
-
-      await expect(useSession.getState().completePasswordRecovery("new-password")).resolves.toBe(tr.auth.resetInvalidBody);
-      expect(recovery.verifyOtp).not.toHaveBeenCalled();
-    });
-
-    it("refuses an older link in a tab that does not hold Helix, rather than sharing that tab's session", async () => {
-      await expect(useSession.getState().preparePasswordRecovery(
-        "helix://reset-password#access_token=access&refresh_token=refresh&type=recovery",
-        { standalone: true },
-      )).resolves.toBe("invalid");
-      expect(harness.supabase.auth.setSession).not.toHaveBeenCalled();
-      // A token link is still welcome there: it never touches the shared session.
-      await expect(useSession.getState().preparePasswordRecovery(link, { standalone: true })).resolves.toBe("ready");
-    });
+  it("asks for a sign-in with no account open, and says when there is no project", async () => {
+    useSession.setState({ email: null });
+    expect(await useSession.getState().confirmEmailChange(NEW, { current: "111111", next: "222222" })).toMatchObject({ error: tr.auth.errSessionExpired });
+    harness.configured.value = false;
+    expect(await useSession.getState().confirmEmailChange(NEW, { current: "111111", next: "222222" })).toMatchObject({ error: tr.errors.supabaseNotConfigured });
+    expect(await useSession.getState().changeEmail(NEW)).toBe(tr.errors.supabaseNotConfigured);
+    expect(harness.supabase.auth.verifyOtp).not.toHaveBeenCalled();
   });
 });

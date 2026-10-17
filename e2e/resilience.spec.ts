@@ -87,29 +87,6 @@ test("a second tab fails safely and its retry really recovers", async ({ page, c
   expect(errors).toEqual([]);
 });
 
-// The reset screen needs no database, so it is drawn instead of the wait; which state it
-// lands in depends on whether this build talks to Supabase, so assert the screen itself.
-test("a reset link opens its screen in a second tab while Helix holds the database", async ({ page, context }) => {
-  const errors = collectRuntimeErrors(page);
-  await onboard(page);
-  await addMarketExpense(page, "Sıfırlama sekmesi", "275,00");
-
-  const second = await context.newPage();
-  await second.goto("/helix/reset-password?token_hash=pkce_e2e&type=recovery");
-  await expect(
-    second.getByRole("heading", { name: "Yeni şifreni belirle" })
-      .or(second.getByText("Helix başka bir sekmede açık. Devam etmek için o sekmeye dön.")),
-  ).toBeVisible();
-  await expect(second.getByText("Diğer sekmenin kapanması bekleniyor")).toHaveCount(0);
-  await second.close();
-
-  await page.bringToFront();
-  await page.goto(`/helix/cash-flow/${currentMonthKey()}`);
-  await expect(page.getByRole("button", { name: /Market.*275,00/ })).toBeVisible();
-
-  expect(errors).toEqual([]);
-});
-
 test("protected and modal deep links keep deterministic navigation @cross-browser", async ({ page }) => {
   const errors = collectRuntimeErrors(page);
   await onboard(page);

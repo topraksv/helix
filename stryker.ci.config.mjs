@@ -24,7 +24,7 @@ import { resolve } from "node:path";
  * the gate on its first real diff, across auth, domain and the repository.
  */
 const SENTINEL_SCOPE = [
-  "src/auth/recovery.ts",
+  "src/auth/email-flows.ts",
   "src/domain/investments.ts",
   "src/data/repo/accounts.ts",
   "src/data/repo/categories.ts",

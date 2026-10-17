@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { classifyBootFailure, classifyRootRoute, resolveRootGuard, drawsWithoutDatabase } from "../../src/domain/app-guard";
+import { classifyBootFailure, classifyRootRoute, resolveRootGuard } from "../../src/domain/app-guard";
 import {
   completeLiveQuery,
   initialLiveSnapshot,
@@ -49,9 +49,8 @@ describe("root guard state machine", () => {
     });
   });
 
-  it("allows recovery and importer routes without weakening normal guards", () => {
+  it("allows importer routes without weakening normal guards", () => {
     expect(resolveRootGuard({ ...base, onboarded: false, route: "setup-helper" }).view).toBe("stack");
-    expect(resolveRootGuard({ ...base, userId: null, onboarded: null, route: "recovery" }).view).toBe("stack");
     expect(resolveRootGuard({ ...base, route: "auth" }).redirect).toBe("/(tabs)");
   });
 
@@ -86,7 +85,6 @@ describe("root guard boundary decisions", () => {
   it("classifies every route area that changes guard behavior", () => {
     expect(classifyRootRoute([])).toBe("root");
     expect(classifyRootRoute(["(auth)", "sign-in"])).toBe("auth");
-    expect(classifyRootRoute(["(auth)", "reset-password"])).toBe("recovery");
     expect(classifyRootRoute(["(onboarding)", "setup"])).toBe("onboarding");
     expect(classifyRootRoute(["import-wizard"])).toBe("setup-helper");
     expect(classifyRootRoute(["bulk-entry"])).toBe("setup-helper");
@@ -109,14 +107,8 @@ describe("root guard boundary decisions", () => {
       .toEqual({ view: "stack", redirect: null });
   });
 
-  it("keeps credential recovery reachable for a signed-in frozen account", () => {
-    expect(resolveRootGuard({ ...base, frozen: true, route: "recovery" }))
-      .toEqual({ view: "stack", redirect: null });
-  });
-
   it("pins the route guard's protected/setup-helper distinction and redirects", () => {
     expect(classifyRootRoute(["(auth)", "other"])).toBe("auth");
-    expect(classifyRootRoute(["other", "reset-password"])).toBe("protected");
     expect(resolveRootGuard({ ...base, route: "protected" })).toEqual({ view: "stack", redirect: null });
     expect(resolveRootGuard({ ...base, route: "setup-helper" })).toEqual({ view: "stack", redirect: null });
     expect(resolveRootGuard({ ...base, route: "root" })).toEqual({ view: "wait", redirect: "/(tabs)" });
@@ -233,18 +225,3 @@ describe("returning to an account that is already set up", () => {
   });
 });
 
-/**
- * A reset e-mail opens its link in a new tab beside the one already running
- * Helix, which holds the database. The reset screen reads nothing local, so it
- * is the one route drawn instead of the wait — and only for that failure.
- */
-describe("routes drawn without the database", () => {
-  it("draws only the reset screen, and only while another tab holds the database", () => {
-    expect(drawsWithoutDatabase("busy", "recovery")).toBe(true);
-    for (const route of ["auth", "public", "onboarding", "setup-helper", "protected", "root"] as const) {
-      expect(drawsWithoutDatabase("busy", route), route).toBe(false);
-    }
-    expect(drawsWithoutDatabase("unknown", "recovery")).toBe(false);
-    expect(drawsWithoutDatabase(null, "recovery")).toBe(false);
-  });
-});

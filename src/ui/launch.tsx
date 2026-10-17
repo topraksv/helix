@@ -1,4 +1,4 @@
-/** Cold start: the mark draws itself where the splash image sits, then dissolves once the root is ready and the drawing has rested. It is the only boot indicator, so the gates beneath draw nothing. */
+/** Cold start: the mark draws itself on the native splash's bare ground, then dissolves once the root is ready and the drawing has rested. It is the only boot indicator, so the gates beneath draw nothing. */
 
 import { useEffect, useState } from "react";
 import { Animated, Easing, Platform, StyleSheet, type ViewStyle } from "react-native";
@@ -9,8 +9,15 @@ import { BrandMark, preloadBrandMark } from "./brand";
 import { useReducedMotion } from "./motion";
 import { motion, useTheme } from "./theme";
 
-/** `imageWidth` in `app.json`: the plugin fits the image into a square of that side, and the mark is taller than wide, so 130 is its height. */
-const SPLASH_MARK = 130;
+/**
+ * The drawn mark's height. The native splash is the bare ground
+ * (`assets/brand/splash-blank.png`, transparent: the plugin's Android 12 theme
+ * names an icon drawable whether or not an image is given). A splash showing
+ * the finished symbol handed over to this mark starting from nothing, so the
+ * owner saw the logo twice. Expo Go shows the app icon in its place, which no
+ * setting reaches.
+ */
+const MARK_HEIGHT = 130;
 
 /** Draw, rest and dissolve; slower than `motion.draw` so the launch is seen. */
 const LAUNCH = { draw: 2000, rest: 300, fade: 400 } as const;
@@ -108,7 +115,7 @@ export function Launch({ settled, onGone }: { settled: boolean; onGone: () => vo
           : { opacity },
       ]}
     >
-      {drawable && <BrandMark height={SPLASH_MARK} duration={LAUNCH.draw} named />}
+      {drawable && <BrandMark height={MARK_HEIGHT} duration={LAUNCH.draw} named />}
     </Animated.View>
   );
 }

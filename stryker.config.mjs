@@ -1,6 +1,6 @@
 export default {
   mutate: [
-    "src/auth/recovery.ts",
+    "src/auth/email-flows.ts",
     "src/data/repo/accounts.ts",
     "src/data/repo/budgets.ts",
     "src/data/repo/categories.ts",

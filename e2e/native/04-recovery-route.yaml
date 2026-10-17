@@ -1,6 +1,6 @@
-# Password recovery and the way back. `src/app/_layout.tsx` exempts recovery routes from the guards
-# (`tests/app-guard.test.ts`). Recovery is a state of the auth surface, not a Stack push, so the way
-# back is the screen's own link: an edge-swipe assertion would pass on Android and mean nothing on iOS.
+# Password recovery and the way back. Recovery is a state of the sign-in screen, not a Stack push,
+# so the way back is the screen's own link: an edge-swipe assertion would pass on Android and mean
+# nothing on iOS.
 appId: com.toprak.helix
 ---
 - launchApp:
@@ -17,10 +17,10 @@ appId: com.toprak.helix
 - assertVisible: "Şifreni yenile"
 - scrollUntilVisible:
     element:
-      text: "Yenileme Bağlantısı Gönder"
+      text: "Kod Gönder"
     direction: DOWN
     timeout: 10000
-- assertVisible: "Yenileme Bağlantısı Gönder"
+- assertVisible: "Kod Gönder"
 # Never reveal whether an address has an account.
 - assertNotVisible: "Hesabına giriş yap"
 # The reset screen's own way back, not the sign-up screen's "Zaten hesabım var".

@@ -159,11 +159,8 @@ site_url = "http://127.0.0.1:3000"
 # The public URL that Auth serves on. Defaults to the API external URL with `/auth/v1` appended.
 # external_url = ""
 # A list of *exact* URLs that auth providers are permitted to redirect to post authentication.
-# Only the page the client sends: a reset link carries its token unspent, and a
-# custom scheme any app may claim would hand it over.
-additional_redirect_urls = [
-  "https://topraksv.github.io/helix/reset-password",
-]
+# None: sign-up, reset and e-mail change all mail a code.
+additional_redirect_urls = []
 # How long tokens are valid for, in seconds. Defaults to 3600 (1 hour), maximum 604,800 (1 week).
 jwt_expiry = 3600
 # JWT issuer URL. If not set, defaults to auth.external_url.
@@ -234,8 +231,8 @@ max_frequency = "1s"
 # Number of characters used in the email OTP.
 otp_length = 6
 # Number of seconds before the email OTP expires (defaults to 1 hour).
-# Five minutes: the owner's window for a reset link. Auth has ONE expiry for
-# every e-mail link, so sign-up confirmation and e-mail change share it.
+# Five minutes: the owner's window. Auth has ONE expiry for every e-mail
+# token, so the sign-up, reset and e-mail change codes share it.
 otp_expiry = 300
 
 # Use a production-ready SMTP server
@@ -253,27 +250,23 @@ otp_expiry = 300
 # subject = "You have been invited"
 # content_path = "./supabase/templates/invite.html"
 
-# The reset link lands on the app with its token UNSPENT and the app redeems it
-# on save. The default template links through Auth's verify endpoint instead,
-# which spends the token on the first GET — a mail client's link checker was
-# enough — and returns a PKCE code only the browser that asked can redeem.
-# The hosted project does not read this file: see docs/RELEASE.md.
+# Sign-up and reset mail the six-digit code and no link: nothing a mail
+# scanner fetches can spend it, it works on whichever device reads the mail,
+# and a link-free plain message is what spam filters score lowest. Subjects
+# carry no emoji for the same reason. The hosted project does not read this
+# file: see docs/RELEASE.md.
 [auth.email.template.recovery]
-subject = "🔑 Helix şifre yenileme bağlantın"
+subject = "Helix şifre yenileme kodun"
 content_path = "./supabase/templates/recovery.html"
 
-# Like the reset link, the token reaches the app unspent and the app asks Auth:
-# a PKCE code from the verify endpoint proves nothing outside the browser that
-# signed up, so the app could not say whether anything was confirmed.
 [auth.email.template.confirmation]
-subject = "✉️ Helix hesabını onayla"
+subject = "Helix onay kodun"
 content_path = "./supabase/templates/confirmation.html"
 
-# Sent to both addresses while double_confirm_changes is on, each with its own
-# token hash. The verify GET used to confirm a side on whatever fetched it
-# first, a mail scanner included; the app now redeems the token itself.
+# A code too, one to each address while double_confirm_changes is on: the
+# change needs both, so a lost or stolen mailbox alone cannot move the account.
 [auth.email.template.email_change]
-subject = "📧 Helix e-posta adresi değişikliği"
+subject = "Helix e-posta değişikliği kodun"
 content_path = "./supabase/templates/email_change.html"
 
 # Uncomment to customize notification email template

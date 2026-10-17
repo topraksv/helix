@@ -103,8 +103,8 @@ flow proves a native process can reopen it; it does not prove file protection
 while physical hardware is locked.
 
 **`04-recovery-route.yaml` — recovery, and the way back out of it.**
-The recovery routes are exempt from the signed-in and onboarding guards,
-which makes "can the user still leave" a real question.
+Asking for a reset code is a mode of the sign-in screen, so "can the user
+still leave" is the screen's own link.
 
 **`05-text-size.yaml` — native text scaling.**
 Exercises the iOS content-size behavior that React Native Web cannot reproduce.

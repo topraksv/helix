@@ -5,8 +5,8 @@
  *   utility keyword  → themed lucide icon chip (electricity, water, internet…)
  *   known brand      → a chip in the brand's accent colour with its monogram
  *   otherwise        → deterministic-hue initials badge
- * Brand accent colours are facts, not logo artwork, so nothing is bundled and
- * no trademarked bitmap is reproduced.
+ * A domain whose published favicon would draw pixelated ships its own mark
+ * (`bundled-marks.ts`) and asks no service.
  */
 
 import { useState } from "react";
@@ -29,6 +29,7 @@ import { paymentSourceIconComponent } from "./category-icon";
 import type { PaymentSourceType } from "../domain/types";
 import { font, useTheme } from "./theme";
 import { BRAND, brandPlate } from "./brand-colors";
+import { BUNDLED_MARKS } from "./bundled-marks";
 import { catalogueKey, foldForMatch, normalizeLogoDomain, remoteFaviconUrl } from "../domain/logo-domain";
 
 /** One shared frameless tile: near-square, rounded, no border — every variant
@@ -424,10 +425,11 @@ export function Logo({
   // A utility (electricity/water/…) keeps its themed icon; other known public
   // domains load transparently and fall back locally on any network error.
   const faviconDomain = utility ? null : domainFor(name, domain);
-  const faviconUrl = remoteFaviconUrl(faviconDomain);
-  const markSize = Math.round(size * FAVICON_FILL);
+  const bundled = faviconDomain ? BUNDLED_MARKS[faviconDomain] : undefined;
+  const faviconUrl = bundled ? null : remoteFaviconUrl(faviconDomain);
+  const markSize = bundled?.bleed ? size : Math.round(size * FAVICON_FILL);
 
-  if (faviconDomain && faviconUrl && failedDomain !== faviconDomain) {
+  if (faviconDomain && (bundled || faviconUrl) && failedDomain !== faviconDomain) {
     return (
       // Hidden on the tile, not on the image: `expo-image` renders its own web
       // `<img>` and forwards only `alt`, `src` and `style`, so accessibility
@@ -442,7 +444,7 @@ export function Logo({
       >
         <Image
           alt=""
-          source={{ uri: faviconUrl }}
+          source={bundled?.source ?? { uri: faviconUrl! }}
           onError={() => setFailedDomain(faviconDomain)}
           style={{ width: markSize, height: markSize }}
           // `contain`, never `cover`: a favicon that is not square must fit

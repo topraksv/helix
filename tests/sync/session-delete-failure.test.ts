@@ -27,11 +27,9 @@ const harness = vi.hoisted(() => {
 
 vi.mock("react-native", () => ({ Platform: { OS: "web" } }));
 vi.mock("../../src/sync/supabase", () => ({
-  clearPasswordRecoveryDetected: vi.fn(),
   getSupabase: () => harness.supabase,
   isSupabaseConfigured: true,
   subscribeSupabaseAuthEvents: vi.fn(),
-  wasPasswordRecoveryDetected: vi.fn(() => false),
 }));
 vi.mock("../../src/db/mutations", () => ({
   pendingOutboxCount: vi.fn(async () => 0),

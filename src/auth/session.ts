@@ -6,16 +6,7 @@
  */
 
 import { create } from "zustand";
-import { Platform } from "react-native";
-import {
-  clearPasswordRecoveryDetected,
-  createRecoveryClient,
-  getSupabase,
-  isSupabaseConfigured,
-  markPasswordRecoverySession,
-  subscribeSupabaseAuthEvents,
-  wasPasswordRecoveryDetected,
-} from "../sync/supabase";
+import { createRecoveryClient, getSupabase, isSupabaseConfigured, subscribeSupabaseAuthEvents } from "../sync/supabase";
 import { pendingOutboxCount, resetLocalWorkspace, writeSetting } from "../db/mutations";
 import { eraseDeviceAttachments, flushOutbox, purgeRemoteAttachments, reconcileAttachments, runSyncSessionTask, startSyncSession, stopSyncSession, unsentAttachments } from "../sync/engine";
 import { useSyncStatus } from "../sync/status";
@@ -28,7 +19,6 @@ import { friendlyAuthError } from "./auth-errors";
 import { requestPasswordRecoveryEmail, resendSignUpConfirmation } from "./email-flows";
 import { pendingChangesWouldBeLost, signOutWithLocalFallback } from "./sign-out";
 import { loadPreviousLogin, recordSuccessfulLogin, startLoginHistory } from "./login-history";
-import { parsePasswordRecoveryUrl, passwordRecoveryRequestRedirect } from "./recovery";
 import { LOCAL_ONLY_USER_ID } from "../domain/user-id";
 import { resetDiagnosticUploads } from "../services/diagnostics";
 import {
@@ -51,49 +41,18 @@ let invalidationCleanup: Promise<void> | null = null;
  * moment ago as "the previous one".
  */
 let openingCountedFor: string | null = null;
-/**
- * The recovery token a reset link brought, held until the owner presses save.
- *
- * Opening the page spends nothing. A mail client that checks the link, or the
- * owner reloading the screen, would otherwise burn the one token before
- * anybody had typed a password — which is how "the link has expired" arrived
- * seconds after the e-mail did.
- */
-let pendingRecoveryTokenHash: string | null = null;
+/** A reset code already checked, kept until its password is saved or another code is asked for. */
+let verifiedReset: { email: string; client: NonNullable<ReturnType<typeof createRecoveryClient>> } | null = null;
 
-/** The recovery session a redeemed token opened, kept for a retried save. */
-let recoveryClient: ReturnType<typeof createRecoveryClient> = null;
+/** The codes of the change last asked for that Auth has taken: each is spent once checked. */
+let acceptedChange: { email: string; accepted: EmailChangeAnswer["accepted"] } | null = null;
 
-/**
- * Redeem the held token and set the password, on a client of its own.
- *
- * Needs no PKCE verifier, so the link works in whichever browser the mail app
- * opens. And it touches nothing the device is signed in with: the account the
- * link belongs to may not be the one this workspace belongs to, and the tab it
- * opens in may not be the tab that holds the app. A save refused after the token
- * was spent — the old password chosen again, a dropped connection — keeps the
- * session, so the next press does not need a link that no longer exists.
- */
-async function completeWithRecoveryToken(newPassword: string): Promise<string | null> {
-  if (!recoveryClient) {
-    const client = createRecoveryClient();
-    if (!client) return tr.errors.supabaseNotConfigured;
-    const { error } = await client.auth.verifyOtp({ token_hash: pendingRecoveryTokenHash!, type: "recovery" });
-    if (error) {
-      // A request that never reached Auth spent nothing: the same link can be
-      // tried again. Auth's own refusal is final for this token.
-      if (error.name === "AuthRetryableFetchError") return friendlyAuthError(error.message);
-      pendingRecoveryTokenHash = null;
-      return error.code === "otp_expired" ? tr.auth.resetExpiredBody : tr.auth.resetInvalidBody;
-    }
-    pendingRecoveryTokenHash = null;
-    recoveryClient = client;
-  }
-  const { error } = await recoveryClient.auth.updateUser({ password: newPassword });
-  if (error) return friendlyAuthError(error.message);
-  await recoveryClient.auth.signOut({ scope: "local" }).catch(() => {});
-  recoveryClient = null;
-  return null;
+/** A refused code reads as one, unless the request never reached Auth or hit its rate limit. */
+function codeRefusal(error: { name?: string; message: string } | null): string {
+  if (!error) return tr.auth.errCode;
+  return error.name === "AuthRetryableFetchError" || /rate limit|too many|only request this after/i.test(error.message)
+    ? friendlyAuthError(error.message)
+    : tr.auth.errCode;
 }
 
 /**
@@ -270,17 +229,14 @@ interface SessionStore {
   bootstrap: () => Promise<void>;
   signIn: (email: string, password: string) => Promise<string | null>;
   signUp: (email: string, password: string) => Promise<SignUpResult>;
-  /** Send a neutral, expiring Supabase password-reset link. */
+  /** Send a neutral, expiring password-reset code. */
   requestPasswordReset: (email: string) => Promise<string | null>;
-  /** Send a new sign-up confirmation link; the last one lives five minutes. */
+  /** Send a new sign-up code; the last one lives five minutes. */
   resendSignUpConfirmation: (email: string) => Promise<string | null>;
-  /** Read a recovery link. A token link is held unspent until save; older code
-   *  and token links are exchanged for a short-lived session here — except in
-   *  a `standalone` tab, where that session would be shared with the tab that
-   *  holds the app, so only a token link is accepted. */
-  preparePasswordRecovery: (url: string | null, options?: { standalone?: boolean }) => Promise<"ready" | "expired" | "invalid">;
-  /** Spend a held recovery token, update the password and end that session. */
-  completePasswordRecovery: (newPassword: string) => Promise<string | null>;
+  /** The code the confirmation e-mail carries, which opens the new account here. */
+  confirmSignUp: (email: string, code: string) => Promise<string | null>;
+  /** The reset e-mail's code and the new password; signs nobody in here. */
+  resetPassword: (email: string, code: string, newPassword: string) => Promise<string | null>;
   /** End the session on THIS device and wipe its local finance data. Returns an
    *  error if the wipe failed or if unsynced rows would be destroyed
    *  (`SIGN_OUT_PENDING_CHANGES`); in both cases the session stays active. Pass
@@ -297,18 +253,49 @@ interface SessionStore {
    *  after repeated failures, since every attempt is a real sign-in that
    *  counts against Supabase's shared login rate limit. */
   verifyPassword: (password: string) => Promise<string | null>;
-  /** Request an e-mail change (Supabase confirms via a link). Returns an error
-   *  string, or null on success. */
+  /** Mails a code to the current address and one to the new; the change waits for both. */
   changeEmail: (newEmail: string) => Promise<string | null>;
+  /** Checks the two codes `changeEmail` mailed; a code already accepted is not asked again. */
+  confirmEmailChange: (newEmail: string, codes: EmailChangeCodes) => Promise<EmailChangeAnswer>;
   /** Set a new password (the session is fresh from a prior verifyPassword).
    *  Returns an error string, or null on success. */
   changePassword: (currentPassword: string, newPassword: string) => Promise<string | null>;
 }
 
+/** The code mailed to the address now on the account, and the one mailed to the address it moves to. */
+export type EmailChangeCodes = { current: string; next: string };
+/** No error is the change made; otherwise which codes Auth has already taken. */
+export type EmailChangeAnswer = { error: string | null; accepted: Record<keyof EmailChangeCodes, boolean> };
+
 type SignUpResult =
   | { status: "signed-in" }
   | { status: "confirmation-required" }
   | { status: "error"; message: string };
+
+/**
+ * A first session for an account just made, from sign-up or its code. A
+ * brand-new account has no cloud data to pull, so it goes straight to
+ * onboarding (`isNewSignup`), skipping the "await first pull" hold used for
+ * existing accounts syncing onto a fresh device.
+ */
+async function openNewAccount(
+  supabase: NonNullable<ReturnType<typeof getSupabase>>,
+  user: { id: string; email?: string },
+  email: string,
+): Promise<string | null> {
+  const wsError = await ensureWorkspaceFor(user.id);
+  if (wsError) {
+    await supabase.auth.signOut({ scope: "local" }).catch(() => {});
+    return wsError;
+  }
+  await kv.set(LAST_USER_KEY, user.id).catch(() => {});
+  await kv.set(LAST_EMAIL_KEY, user.email ?? email.trim()).catch(() => {});
+  openingCountedFor = user.id;
+  await startLoginHistory(kv, user.id, new Date().toISOString()).catch(() => {});
+  startSyncSession(user.id);
+  useSession.setState({ userId: user.id, email: user.email ?? email.trim(), isOnlineSession: true, isNewSignup: true, previousLoginAt: null });
+  return null;
+}
 
 export const useSession = create<SessionStore>((set, get) => ({
   userId: null,
@@ -420,34 +407,27 @@ export const useSession = create<SessionStore>((set, get) => ({
     // bearer session. Do not create an offline workspace under an identity the
     // device cannot authenticate yet; the confirmed sign-in owns that step.
     if (!data.session) return { status: "confirmation-required" };
-    const wsError = await ensureWorkspaceFor(data.user.id);
-    if (wsError) {
-      await supabase.auth.signOut({ scope: "local" }).catch(() => {});
-      return { status: "error", message: wsError };
-    }
-    await kv.set(LAST_USER_KEY, data.user.id).catch(() => {});
-    await kv.set(LAST_EMAIL_KEY, data.user.email ?? email).catch(() => {});
-    openingCountedFor = data.user.id;
-    await startLoginHistory(kv, data.user.id, new Date().toISOString()).catch(() => {});
-    // A brand-new account has no cloud data to pull → go straight to onboarding
-    // (isNewSignup), skipping the "await first pull" hold used for existing
-    // accounts syncing onto a fresh device.
-    startSyncSession(data.user.id);
-    set({ userId: data.user.id, email: data.user.email ?? email, isOnlineSession: true, isNewSignup: true, previousLoginAt: null });
-    return { status: "signed-in" };
+    const wsError = await openNewAccount(supabase, data.user, email);
+    return wsError ? { status: "error", message: wsError } : { status: "signed-in" };
+  },
+
+  confirmSignUp: async (email, code) => {
+    const supabase = getSupabase();
+    if (!supabase) return tr.errors.supabaseNotConfigured;
+    // "signup", not "email": Auth takes a reset code as "email" too, which would
+    // open an existing account here as a new one.
+    const { data, error } = await supabase.auth.verifyOtp({ email: email.trim(), token: code, type: "signup" });
+    if (error || !data.user) return codeRefusal(error);
+    return openNewAccount(supabase, data.user, email);
   },
 
   requestPasswordReset: async (email) => {
-    const supabase = getSupabase();
-    if (!supabase) return tr.errors.supabaseNotConfigured;
-    const redirectTo = Platform.OS === "web" && globalThis.location
-      ? passwordRecoveryRequestRedirect({
-          platform: "web",
-          origin: globalThis.location.origin,
-          baseUrl: process.env.EXPO_BASE_URL ?? "/",
-        })
-      : passwordRecoveryRequestRedirect({ platform: "native" });
-    return requestPasswordRecoveryEmail(supabase.auth, email, redirectTo);
+    const client = createRecoveryClient();
+    if (!client) return tr.errors.supabaseNotConfigured;
+    // A refused resend leaves the sent code standing, and the session it opened with it.
+    const refused = await requestPasswordRecoveryEmail(client.auth, email);
+    if (!refused) verifiedReset = null;
+    return refused;
   },
 
   resendSignUpConfirmation: async (email) => {
@@ -456,85 +436,31 @@ export const useSession = create<SessionStore>((set, get) => ({
     return resendSignUpConfirmation(supabase.auth, email);
   },
 
-  preparePasswordRecovery: async (url, options) => {
-    const supabase = getSupabase();
-    if (!supabase) return "invalid";
-    const target = Platform.OS === "web" && globalThis.location
-      ? { platform: "web" as const, origin: globalThis.location.origin, baseUrl: process.env.EXPO_BASE_URL ?? "/" }
-      : { platform: "native" as const, scheme: "helix" };
-    const link = parsePasswordRecoveryUrl(url, target);
-    pendingRecoveryTokenHash = null;
-    recoveryClient = null;
-    if (link.kind === "expired") return "expired";
-    if (link.kind === "tokenHash") {
-      pendingRecoveryTokenHash = link.tokenHash;
-      return "ready";
-    }
-    if (options?.standalone) return "invalid";
-    const acceptRecoverySession = async (recoveryUserId: string): Promise<boolean> => {
-      const workspaceUserId = get().userId;
-      if (workspaceUserId && workspaceUserId !== recoveryUserId) {
-        clearPasswordRecoveryDetected();
-        await stopSyncSession(workspaceUserId);
-        await discardForeignSupabaseSession();
-        set({ isOnlineSession: false });
-        return false;
-      }
-      markPasswordRecoverySession(recoveryUserId);
-      return true;
-    };
-    if (link.kind === "code") {
-      const { data: exchange, error } = await supabase.auth.exchangeCodeForSession(link.code);
-      if (!error && exchange.session?.user) {
-        return (await acceptRecoverySession(exchange.session.user.id)) ? "ready" : "invalid";
-      }
-      // On web, detectSessionInUrl may win the race and consume the one-time
-      // code before this screen mounts. Accept only an observed recovery event,
-      // never an unrelated existing session.
-      const { data: current } = await supabase.auth.getSession();
-      return current.session && wasPasswordRecoveryDetected(current.session.user.id)
-        ? (await acceptRecoverySession(current.session.user.id)) ? "ready" : "invalid"
-        : "invalid";
-    }
-    if (link.kind === "tokens") {
-      const { data, error } = await supabase.auth.setSession({
-        access_token: link.accessToken,
-        refresh_token: link.refreshToken,
-      });
-      if (error || !data.session?.user) return "invalid";
-      return (await acceptRecoverySession(data.session.user.id)) ? "ready" : "invalid";
-    }
-    const { data } = await supabase.auth.getSession();
-    return data.session && wasPasswordRecoveryDetected(data.session.user.id)
-      ? (await acceptRecoverySession(data.session.user.id)) ? "ready" : "invalid"
-      : "invalid";
-  },
-
-  completePasswordRecovery: async (newPassword) => {
-    const supabase = getSupabase();
-    if (!supabase) return tr.errors.supabaseNotConfigured;
+  resetPassword: async (email, code, newPassword) => {
     if (!isValidNewPassword(newPassword)) return tr.auth.errWeakPassword;
-    if (recoveryClient || pendingRecoveryTokenHash) return completeWithRecoveryToken(newPassword);
-    const { data } = await supabase.auth.getSession();
-    const recoveryUserId = data.session?.user.id;
-    if (!recoveryUserId || !wasPasswordRecoveryDetected(recoveryUserId)) return tr.auth.resetInvalidBody;
-    if (get().userId && get().userId !== recoveryUserId) {
-      const workspaceUserId = get().userId!;
-      clearPasswordRecoveryDetected();
-      await stopSyncSession(workspaceUserId);
-      await discardForeignSupabaseSession();
-      set({ isOnlineSession: false });
-      return tr.auth.resetInvalidBody;
+    const address = email.trim();
+    // On a client of its own: the code opens a session for the account it
+    // resets, which need not be the one this device is signed in with. Kept
+    // past a refused save, since the code is spent once checked.
+    let client = verifiedReset?.email === address ? verifiedReset.client : null;
+    if (!client) {
+      client = createRecoveryClient();
+      if (!client) return tr.errors.supabaseNotConfigured;
+      const { error } = await client.auth.verifyOtp({ email: address, token: code, type: "recovery" });
+      if (error) return codeRefusal(error);
+      verifiedReset = { email: address, client };
     }
-    const { error } = await supabase.auth.updateUser({ password: newPassword });
-    if (error) return friendlyAuthError(error.message);
-    clearPasswordRecoveryDetected();
-    if (get().userId) {
-      const signOutError = await get().signOut();
-      if (signOutError) return signOutError;
-    }
-    else await supabase.auth.signOut({ scope: "local" }).catch(() => {});
-    return null;
+    const { error: refused } = await client.auth.updateUser({ password: newPassword });
+    if (refused) return friendlyAuthError(refused.message);
+    verifiedReset = null;
+    await client.auth.signOut({ scope: "local" }).catch(() => {});
+    // A new password ends the account's other sessions, this device's among
+    // them: its next refresh would fail and wipe the workspace, so it signs in again now.
+    // `email` is set only while signed in, so it alone says whose device this is.
+    const signedIn = get().email;
+    if (signedIn?.toLowerCase() !== address.toLowerCase()) return null;
+    // The code is spent and the password saved: a retry would only be told the code is wrong.
+    return (await get().signIn(signedIn, newPassword)) ? tr.auth.passwordResetSignInAgain : null;
   },
 
   signOut: async (options) => {
@@ -689,7 +615,39 @@ export const useSession = create<SessionStore>((set, get) => ({
     const supabase = getSupabase();
     if (!supabase) return tr.errors.supabaseNotConfigured;
     const { error } = await supabase.auth.updateUser({ email: newEmail.trim() });
-    return error ? friendlyAuthError(error.message) : null;
+    // A refused resend leaves the sent codes, and the ones Auth took, standing.
+    if (error) return friendlyAuthError(error.message);
+    acceptedChange = null;
+    return null;
+  },
+
+  confirmEmailChange: async (newEmail, codes) => {
+    const supabase = getSupabase();
+    const current = get().email;
+    const address = newEmail.trim();
+    if (acceptedChange?.email !== address) acceptedChange = { email: address, accepted: { current: false, next: false } };
+    const { accepted } = acceptedChange;
+    if (!supabase || !current) return { error: supabase ? tr.auth.errSessionExpired : tr.errors.supabaseNotConfigured, accepted: { ...accepted } };
+    let changed = false;
+    for (const side of ["next", "current"] as const) {
+      if (accepted[side]) continue;
+      const { data, error } = await supabase.auth.verifyOtp({ email: side === "next" ? address : current, token: codes[side], type: "email_change" });
+      if (error) {
+        const refused = codeRefusal(error);
+        return { error: refused === tr.auth.errCode ? tr.account.emailCodeRefused[side] : refused, accepted: { ...accepted } };
+      }
+      accepted[side] = true;
+      // Auth answers the first of the two codes with no session, so only a
+      // session says the change is made; the flags are this device's memory.
+      changed = Boolean(data.session);
+    }
+    acceptedChange = null;
+    // Auth started over behind this device (a resend whose reply was lost,
+    // another tab), so a code taken earlier no longer counts.
+    if (!changed) return { error: tr.account.emailChangeRestarted, accepted: { current: false, next: false } };
+    set({ email: address });
+    await kv.set(LAST_EMAIL_KEY, address).catch(() => {});
+    return { error: null, accepted: { current: true, next: true } };
   },
 
   changePassword: async (currentPassword, newPassword) => {

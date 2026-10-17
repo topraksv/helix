@@ -1,21 +1,7 @@
 {
-  "$schema": "https://raw.githubusercontent.com/kucherenko/jscpd/master/apps/jscpd/schema.json",
   "threshold": 1,
-  "reporters": [
-    "consoleFull"
-  ],
-  "format": [
-    "typescript",
-    "tsx"
-  ],
-  "ignore": [
-    "**/node_modules/**",
-    "dist/**",
-    "dist-e2e/**",
-    "coverage/**",
-    "playwright-report/**",
-    "test-results/**",
-    "src/sync/database.types.ts"
-  ],
+  "reporters": ["consoleFull"],
+  "format": ["typescript", "tsx"],
+  "ignore": ["src/sync/database.types.ts"],
   "absolute": true
 }

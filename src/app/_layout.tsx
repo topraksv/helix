@@ -24,8 +24,7 @@ import {
 import { useSession } from "../auth/session";
 import { useSyncStatus } from "../sync/status";
 import { useAccountFrozenState, useOnboardedState } from "../data/hooks";
-import { classifyBootFailure, classifyRootRoute, drawsWithoutDatabase, resolveRootGuard, type BootFailure } from "../domain/app-guard";
-import ResetPasswordScreen from "./(auth)/reset-password";
+import { classifyBootFailure, classifyRootRoute, resolveRootGuard, type BootFailure } from "../domain/app-guard";
 import { kv } from "../services/kv";
 import {
   font,
@@ -213,18 +212,17 @@ export function setGlobalPalettePreference(pref: PaletteId) {
  * One `Launch` above both boot phases rather than one in each: the outer wait
  * and `RootLayoutInner`'s are different trees, and a mark remounted between
  * them starts drawing again from nothing. The outer phase has a screen of its
- * own on a failure, the reset page, or a recovery notice; the inner one
+ * own on a failure or a recovery notice; the inner one
  * reports through `settleInner`.
  */
 function useLaunchGate(boot: {
   dbError: string | null;
-  standaloneRecovery: boolean;
   dbReady: boolean;
   fontsReady: boolean;
   databaseRecovery: DatabaseRecoveryNotice | null;
 }) {
   const outerSettled =
-    boot.dbError != null || boot.standaloneRecovery || (boot.dbReady && boot.fontsReady && boot.databaseRecovery != null);
+    boot.dbError != null || (boot.dbReady && boot.fontsReady && boot.databaseRecovery != null);
   const [launched, setLaunched] = useState(false);
   const [innerSettled, setInnerSettled] = useState(false);
   const endLaunch = useCallback(() => setLaunched(true), []);
@@ -281,10 +279,6 @@ export default function RootLayout() {
   // holding the database goes away.
   const { heldElsewhere } = useDatabaseHandoff(dbReady, bootFailure === "busy");
   const bootEnding = bootEndingFor(bootFailure, heldElsewhere);
-  // The reset screen is drawn instead of the second-tab wait; see
-  // `drawsWithoutDatabase` for why it is the only route that may be.
-  const segments = useSegments();
-  const standaloneRecovery = drawsWithoutDatabase(bootFailure, classifyRootRoute(segments as string[]));
   // Fonts are cosmetic: after a short grace, render with the system fallback rather than hold the app on a blank screen.
   const [fontGrace, setFontGrace] = useState(false);
   const [fontsLoaded, fontsError] = useFonts({
@@ -330,12 +324,12 @@ export default function RootLayout() {
       live = false;
     };
   }, []);
-  /** The screens before the database — its failure, its recovery notice, the
-   *  reset page — in the saved theme, and the default palette only for the
+  /** The screens before the database — its failure, its recovery notice — in
+   *  the saved theme, and the default palette only for the
    *  moment before it is read. The launch screen waits for the saved one. */
   const bootTheme = useMemo(() => themeFor(savedPrefs ?? DEFAULT_THEME_PREFS, systemScheme), [savedPrefs, systemScheme]);
   const { background, text: foreground } = bootTheme.palette;
-  const { launched, settled: bootSettled, endLaunch, settleInner } = useLaunchGate({ dbError, standaloneRecovery, dbReady, fontsReady, databaseRecovery });
+  const { launched, settled: bootSettled, endLaunch, settleInner } = useLaunchGate({ dbError, dbReady, fontsReady, databaseRecovery });
 
   return (
     <KeyboardSafeRoot>
@@ -378,12 +372,6 @@ export default function RootLayout() {
         ) : (
           <RootLayoutInner launching={!launched} onSettled={settleInner} />
         )
-      ) : standaloneRecovery ? (
-        <ThemeContext.Provider value={bootTheme}>
-          <View style={{ flex: 1, backgroundColor: background }}>
-            <ResetPasswordScreen standalone />
-          </View>
-        </ThemeContext.Provider>
       ) : (
         <ThemeContext.Provider value={bootTheme}>
         <View style={{ flex: 1, backgroundColor: background, alignItems: "center", justifyContent: "center" }}>
@@ -444,7 +432,6 @@ function RootLayoutInner({ launching, onSettled }: { launching: boolean; onSettl
     const key = screenKey(`/${(segments as string[]).join("/")}`);
     if (key) recordScreenView(key);
   }, [segments]);
-  const inRecovery = routeArea === "recovery";
 
   // On a fresh device `onboarded` arrives only with the first sync pull, and until then the guard would flash onboarding. An online non-signup session gets a bounded grace, lifted once the live query has re-read the flag after the pull.
   const awaitingFirstPull = useFirstPullGrace({
@@ -545,7 +532,7 @@ function RootLayoutInner({ launching, onSettled }: { launching: boolean; onSettl
   // Frozen account: block everything behind the reactivation gate. Only applies
   // to a signed-in, onboarded user (frozen is null when signed out); suppressed
   // on the device that is mid-freeze (it's about to sign out to the login page).
-  const frozenGate = Boolean(userId && onboarded === true && frozen === true && !isFreezing && !inRecovery);
+  const frozenGate = Boolean(userId && onboarded === true && frozen === true && !isFreezing);
   const guardQueryFailed = Boolean(
     userId &&
     ((onboardedState.status === "error" && !onboardedState.updatedAt) ||
@@ -668,7 +655,6 @@ function RootLayoutInner({ launching, onSettled }: { launching: boolean; onSettl
         >
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
           <Stack.Screen name="(auth)/sign-in" options={{ headerShown: false }} />
-          <Stack.Screen name="(auth)/reset-password" options={{ headerShown: false }} />
           <Stack.Screen name="(onboarding)/setup" options={{ headerShown: false }} />
           <Stack.Screen name="transaction" options={{ title: tr.tx.new, headerLeft: () => <TransactionBackButton /> }} />
           <Stack.Screen name="installment-new" options={{ title: tr.installments.newPlan, headerLeft: () => <HeaderBackButton fallback="/(tabs)/cash-flow/installments" /> }} />

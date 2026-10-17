@@ -165,10 +165,17 @@ describe("password-manager metadata on the sign-in form", () => {
    * offering the right credential — is a browser/OS integration that is
    * verified on a real device, not in a headless run.
    */
-  it("declares email and mode-correct password autofill hints", () => {
+  it("declares email, mode-correct password and one-time-code autofill hints", () => {
     const signIn = source("src/app/(auth)/sign-in.tsx");
     expect(signIn).toContain('autoComplete="email"');
-    expect(signIn).toContain('autoComplete={mode === "signIn" ? "current-password" : "new-password"}');
+    expect(signIn).toContain('autoComplete={text.password === "current" ? "current-password" : "new-password"}');
+    // Only sign-in asks for the current password; sign-up and reset make a new one.
+    expect(signIn).toMatch(/signIn: \{[\s\S]*?password: "current"/);
+    expect(signIn).toMatch(/signUp: \{[\s\S]*?password: "new"/);
+    expect(signIn).toMatch(/reset: \{[\s\S]*?password: "new"/);
+    // The e-mailed code is offered above the keyboard on iOS and by Android's autofill.
+    expect(signIn).toContain('autoComplete="one-time-code"');
+    expect(signIn).toContain('textContentType="oneTimeCode"');
   });
 });
 

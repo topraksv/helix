@@ -159,7 +159,7 @@ describe("CI mutation contract", () => {
       head: "",
       eventName: "workflow_dispatch",
       cwd: process.cwd(),
-    })).toContain("src/auth/recovery.ts");
+    })).toContain("src/auth/email-flows.ts");
     expect(() => selectMutationScope({
       base: "",
       head: "HEAD",

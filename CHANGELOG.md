@@ -23,6 +23,11 @@ Notlar kısa tutulur: ne değişti, tek cümle. Sebebi ve ölçümü commit'te.
 - E-posta bağlantısı internet yokken açılırsa harcanmıyor; internet gelince sayfa yenilenebiliyor.
 - Excel aktarımında bir yılın sayfasında bakiye sayılan sütun, aynı adı taşıyan diğer yıllarda artık dışarıda kalmıyor; maaşlar eksik aktarılmıyor.
 - Yeni "Telefon" kategorisi yatırım ikonu değil, iletişim ikonu alıyor.
+- Kayıt onayı ve şifre yenileme e-postayla gelen 6 haneli kodla yapılıyor; kod, e-postanın okunduğu cihazdan bağımsız olarak uygulamaya girilebiliyor.
+- E-posta adresi değişikliği bağlantıyla değil, eski ve yeni adrese gelen iki kodla onaylanıyor; kodlardan biri yanlışsa doğru girilen tekrar istenmiyor.
+- Hesap ve Güvenlik'te şifre yenileme ayrı sayfaya gitmeden, kart içinde kod ve yeni şifreyle yapılıyor.
+- Açılışta logo bir kez çiziliyor; önce hazır hâliyle, sonra baştan çizilerek iki kez görünmüyor.
+- Küçük logo yayınlayan 62 marka (Akbank, Netflix, Türk Telekom ve diğerleri) artık pikselli değil, keskin görünüyor.
 
 ## 1.9.7
 

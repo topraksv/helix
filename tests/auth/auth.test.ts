@@ -9,12 +9,6 @@ import {
   startLoginHistory,
   type LoginHistoryStorage,
 } from "../../src/auth/login-history";
-import {
-  parseEmailLinkLanding,
-  parsePasswordRecoveryUrl,
-  passwordRecoveryRequestRedirect,
-  webPasswordRecoveryRedirectUrl,
-} from "../../src/auth/recovery";
 import { pendingChangesWouldBeLost, signOutWithLocalFallback } from "../../src/auth/sign-out";
 import { tr } from "../../src/i18n/tr";
 
@@ -81,199 +75,55 @@ describe("server-side password policy", () => {
     expect(config).toMatch(/\[auth\.email\][\s\S]*?^enable_confirmations = true$/m);
   });
 
-  // Auth's verify endpoint spends the token on the first GET and returns a PKCE
-  // code only the requesting browser can redeem, so the link carries the token itself.
-  it("sends reset links that reach the app with the token unspent, for five minutes", () => {
+  // A code, not a link: nothing a mail scanner fetches can spend it, it works
+  // on whichever device reads the mail, and a link-free message is what spam
+  // filters score lowest.
+  it.each([
+    ["confirmation", "Helix onay kodun"],
+    ["recovery", "Helix şifre yenileme kodun"],
+    ["email_change", "Helix e-posta değişikliği kodun"],
+  ])("mails the %s as a five-minute code with no link, subject or body built to pass spam filters", (kind, subject) => {
     expect(config).toMatch(/^otp_expiry = 300$/m);
-    expect(config).toMatch(/\[auth\.email\.template\.recovery\][\s\S]*?^content_path = "\.\/supabase\/templates\/recovery\.html"$/m);
-    const template = readFileSync(join(process.cwd(), "supabase/templates/recovery.html"), "utf8");
-    expect(template).toContain('href="{{ .RedirectTo }}?token_hash={{ .TokenHash }}&type=recovery"');
-    expect(template).not.toContain("{{ .ConfirmationURL }}");
+    expect(config).toMatch(new RegExp(`\\[auth\\.email\\.template\\.${kind}\\]\\nsubject = "${subject}"\\ncontent_path = "\\./supabase/templates/${kind}\\.html"$`, "m"));
+    const template = readFileSync(join(process.cwd(), `supabase/templates/${kind}.html`), "utf8");
+    expect(template).toContain("{{ .Token }}");
+    expect(template).not.toMatch(/href=|<img|TokenHash|ConfirmationURL|&#(8199|65279|847);|Gital/);
   });
 
-  // A PKCE code proves nothing to any browser but the signing-up one; a token hash
-  // is checked by Auth itself, from any browser.
-  it("sends sign-up confirmations to the app with a token Auth checks", () => {
-    expect(config).toMatch(/\[auth\.email\.template\.confirmation\][\s\S]*?^content_path = "\.\/supabase\/templates\/confirmation\.html"$/m);
-    const template = readFileSync(join(process.cwd(), "supabase/templates/confirmation.html"), "utf8");
-    expect(template).toContain('href="{{ .RedirectTo }}?token_hash={{ .TokenHash }}&type=email"');
-    expect(template).not.toContain("{{ .ConfirmationURL }}");
-  });
-
-  // Mailed to both addresses while double_confirm_changes is on. Auth's own
-  // verify link confirmed a side on any GET, a mail scanner's included.
-  it("sends an e-mail change to the app with a token Auth checks, naming both addresses", () => {
-    expect(config).toMatch(/\[auth\.email\.template\.email_change\][\s\S]*?^content_path = "\.\/supabase\/templates\/email_change\.html"$/m);
+  it("asks both addresses of an e-mail change for a code of their own, and leaves no address to come back to", () => {
+    expect(config).toMatch(/^double_confirm_changes = true$/m);
+    expect(config).toMatch(/^additional_redirect_urls = \[\]$/m);
     const template = readFileSync(join(process.cwd(), "supabase/templates/email_change.html"), "utf8");
-    expect(template).toContain('href="{{ .RedirectTo }}?token_hash={{ .TokenHash }}&type=email_change"');
     expect(template).toContain("{{ .Email }}");
     expect(template).toContain("{{ .NewEmail }}");
-    expect(template).not.toContain("{{ .ConfirmationURL }}");
-  });
-});
-
-describe("password recovery links", () => {
-  const webTarget = { platform: "web" as const, origin: "https://topraksv.github.io", baseUrl: "/helix" };
-  const nativeTarget = { platform: "native" as const, scheme: "helix" };
-
-  it("keeps the Expo Router base path in the web redirect", () => {
-    expect(webPasswordRecoveryRedirectUrl("https://topraksv.github.io", "/helix")).toBe(
-      "https://topraksv.github.io/helix/reset-password",
-    );
-    expect(webPasswordRecoveryRedirectUrl("https://example.com", "/nested//path/")).toBe(
-      "https://example.com/nested/path/reset-password",
-    );
-  });
-
-  it("uses the stable HTTPS recovery screen for Expo Go requests", () => {
-    expect(passwordRecoveryRequestRedirect({ platform: "native" })).toBe(
-      "https://topraksv.github.io/helix/reset-password",
-    );
-    expect(passwordRecoveryRequestRedirect({
-      platform: "web",
-      origin: "https://example.com",
-      baseUrl: "/preview",
-    })).toBe("https://example.com/preview/reset-password");
-  });
-
-  it("holds the unspent token link the reset e-mail carries, and only for recovery", () => {
-    expect(parsePasswordRecoveryUrl("https://topraksv.github.io/helix/reset-password?token_hash=pkce_abc&type=recovery", webTarget))
-      .toEqual({ kind: "tokenHash", tokenHash: "pkce_abc" });
-    expect(parsePasswordRecoveryUrl("https://topraksv.github.io/helix/reset-password?token_hash=abc&type=signup", webTarget))
-      .toEqual({ kind: "invalid" });
-    expect(parsePasswordRecoveryUrl("https://topraksv.github.io/helix/reset-password?token_hash=abc", webTarget))
-      .toEqual({ kind: "invalid" });
-    expect(parsePasswordRecoveryUrl("https://attacker.example/helix/reset-password?token_hash=abc&type=recovery", webTarget))
-      .toEqual({ kind: "invalid" });
-    // An error Auth attached still wins over a token beside it.
-    expect(parsePasswordRecoveryUrl("https://topraksv.github.io/helix/reset-password?token_hash=abc&type=recovery&error_code=otp_expired", webTarget))
-      .toEqual({ kind: "expired" });
-  });
-
-  it("parses web PKCE codes and native token deep links", () => {
-    expect(parsePasswordRecoveryUrl("https://topraksv.github.io/helix/reset-password?code=one-time-code", webTarget)).toEqual({
-      kind: "code",
-      code: "one-time-code",
-    });
-    expect(parsePasswordRecoveryUrl("helix://reset-password#access_token=access&refresh_token=refresh&type=recovery", nativeTarget)).toEqual({
-      kind: "tokens",
-      accessToken: "access",
-      refreshToken: "refresh",
-    });
-  });
-
-  it("distinguishes expired links and rejects invalid or reused links", () => {
-    expect(parsePasswordRecoveryUrl("helix://reset-password?error=access_denied&error_code=otp_expired", nativeTarget)).toEqual({ kind: "expired" });
-    expect(parsePasswordRecoveryUrl("https://topraksv.github.io/helix/reset-password?error=access_denied&error_description=Link+already+used", webTarget)).toEqual({ kind: "invalid" });
-    expect(parsePasswordRecoveryUrl("https://topraksv.github.io/helix/reset-password", webTarget)).toEqual({ kind: "invalid" });
-  });
-
-  it("rejects recovery credentials on a modified host, scheme or route", () => {
-    for (const url of [
-      "https://evil.example/helix/reset-password?code=stolen",
-      "https://topraksv.github.io/reset-password?code=wrong-base",
-      "https://topraksv.github.io/helix/other?code=wrong-route",
-      "javascript://reset-password?code=script",
-      "helix://evil/reset-password?code=stolen",
-    ]) {
-      const target = url.startsWith("helix:") ? nativeTarget : webTarget;
-      expect(parsePasswordRecoveryUrl(url, target), url).toEqual({ kind: "invalid" });
-    }
-    expect(parsePasswordRecoveryUrl("other://reset-password?code=stolen", nativeTarget)).toEqual({ kind: "invalid" });
-    expect(parsePasswordRecoveryUrl("helix://other?code=stolen", nativeTarget)).toEqual({ kind: "invalid" });
-  });
-
-  it("rejects malformed targets and URLs containing authority credentials", () => {
-    expect(parsePasswordRecoveryUrl(null, webTarget)).toEqual({ kind: "invalid" });
-    expect(parsePasswordRecoveryUrl("not a URL", webTarget)).toEqual({ kind: "invalid" });
-    expect(parsePasswordRecoveryUrl(
-      "https://topraksv.github.io/helix/reset-password?code=one-time-code",
-      { ...webTarget, origin: "not an origin" },
-    )).toEqual({ kind: "invalid" });
-    for (const authority of ["user@", "user:secret@", ":secret@"] as const) {
-      expect(parsePasswordRecoveryUrl(
-        `https://${authority}topraksv.github.io/helix/reset-password?code=stolen`,
-        webTarget,
-      ), authority).toEqual({ kind: "invalid" });
-    }
-  });
-
-  it("accepts native triple-slash callbacks but rejects non-recovery token links", () => {
-    expect(parsePasswordRecoveryUrl("helix:///reset-password?code=one-time-code", nativeTarget)).toEqual({
-      kind: "code",
-      code: "one-time-code",
-    });
-    expect(parsePasswordRecoveryUrl(
-      "helix://reset-password#access_token=access&refresh_token=refresh&type=signup",
-      nativeTarget,
-    )).toEqual({ kind: "invalid" });
-    expect(parsePasswordRecoveryUrl("helix://reset-password/?code=with-slash", nativeTarget)).toEqual({
-      kind: "code",
-      code: "with-slash",
-    });
-    expect(parsePasswordRecoveryUrl("helix://reset-password/other?code=stolen", nativeTarget)).toEqual({ kind: "invalid" });
-    expect(parsePasswordRecoveryUrl("helix:///other?code=stolen", nativeTarget)).toEqual({ kind: "invalid" });
-  });
-
-  it("requires complete recovery tokens and handles each Supabase error channel", () => {
-    for (const fragment of [
-      "access_token=access&type=recovery",
-      "refresh_token=refresh&type=recovery",
-    ]) {
-      expect(parsePasswordRecoveryUrl(`helix://reset-password#${fragment}`, nativeTarget)).toEqual({ kind: "invalid" });
-    }
-    expect(parsePasswordRecoveryUrl(
-      "helix://reset-password?error_description=OTP+expired",
-      nativeTarget,
-    )).toEqual({ kind: "expired" });
-    expect(parsePasswordRecoveryUrl(
-      "helix://reset-password?error=access_denied",
-      nativeTarget,
-    )).toEqual({ kind: "invalid" });
-    expect(parsePasswordRecoveryUrl(
-      "helix://reset-password?error_code=access_denied",
-      nativeTarget,
-    )).toEqual({ kind: "invalid" });
-    expect(parsePasswordRecoveryUrl(
-      "helix://reset-password?error=access_denied&code=must-not-be-exchanged",
-      nativeTarget,
-    )).toEqual({ kind: "invalid" });
-    expect(parsePasswordRecoveryUrl(
-      "helix://reset-password?error_code=access_denied&code=must-not-be-exchanged",
-      nativeTarget,
-    )).toEqual({ kind: "invalid" });
   });
 });
 
 describe("password recovery e-mail request", () => {
-  it("sends the normalized address with the explicit recovery callback", async () => {
-    const calls: Array<{ email: string; redirectTo: string }> = [];
+  it("sends the normalized address alone: a code needs no page to come back to", async () => {
+    const calls: unknown[][] = [];
     const error = await requestPasswordRecoveryEmail(
       {
-        resetPasswordForEmail: async (email, options) => {
-          calls.push({ email, redirectTo: options.redirectTo });
+        resetPasswordForEmail: async (...args) => {
+          calls.push(args);
           return { error: null };
         },
       },
       "  kisi@example.com ",
-      "https://topraksv.github.io/helix/reset-password",
     );
 
     expect(error).toBeNull();
-    expect(calls).toEqual([{
-      email: "kisi@example.com",
-      redirectTo: "https://topraksv.github.io/helix/reset-password",
-    }]);
+    expect(calls).toEqual([["kisi@example.com"]]);
   });
 
   it("keeps unknown addresses indistinguishable from successful delivery", async () => {
-    for (const message of ["User not found", "Email address not found"]) {
+    // Auth's wording varies; anything may stand between "user" and "not found".
+    for (const message of ["User not found", "User with this address was not found", "Email address not found"]) {
       const error = await requestPasswordRecoveryEmail(
         {
           resetPasswordForEmail: async () => ({ error: { message } }),
         },
         "unknown@example.com",
-        "https://topraksv.github.io/helix/reset-password",
       );
 
       expect(error, message).toBeNull();
@@ -288,55 +138,13 @@ describe("password recovery e-mail request", () => {
     const error = await requestPasswordRecoveryEmail(
       { resetPasswordForEmail: async () => ({ error: { message } }) },
       "kisi@example.com",
-      "https://topraksv.github.io/helix/reset-password",
     );
     expect(error).toBe(expected);
   });
 });
 
-/**
- * What a sign-up confirmation link carries back to the Site URL. Only Auth can
- * say whether it confirmed anything, so the parser reports what to ask it, and
- * a bare `code` — which no browser but the one that signed up can redeem —
- * is not read as an answer.
- */
-describe("e-mail link landings on the Site URL", () => {
-  const site = "https://topraksv.github.io/helix/";
-
-  it("hands a confirmation token on to be checked", () => {
-    expect(parseEmailLinkLanding(`${site}?token_hash=pkce_0b6f&type=email`)).toEqual({ tokenHash: "pkce_0b6f", type: "email" });
-    expect(parseEmailLinkLanding(`${site}#token_hash=pkce_0b6f&type=email`)).toEqual({ tokenHash: "pkce_0b6f", type: "email" });
-    expect(parseEmailLinkLanding(`${site}?token_hash=pkce_0b6f&type=email_change`)).toEqual({ tokenHash: "pkce_0b6f", type: "email_change" });
-  });
-
-  it("reads Auth's error, in the query or the fragment, as a link that no longer works", () => {
-    expect(parseEmailLinkLanding(`${site}?error=access_denied&error_code=otp_expired`)).toBe("unusable");
-    expect(parseEmailLinkLanding(`${site}#error_code=otp_expired&error_description=Email+link+is+invalid`)).toBe("unusable");
-    expect(parseEmailLinkLanding(`${site}#error=server_error`)).toBe("unusable");
-    expect(parseEmailLinkLanding(`${site}?token_hash=pkce_0b6f&type=email&error=access_denied`)).toBe("unusable");
-  });
-
-  it("claims nothing it cannot prove", () => {
-    expect(parseEmailLinkLanding(`${site}?code=0b6f`)).toBeNull();
-    expect(parseEmailLinkLanding(`${site}?token_hash=pkce_0b6f`)).toBeNull();
-    expect(parseEmailLinkLanding(`${site}?token_hash=pkce_0b6f&type=recovery`)).toBeNull();
-    expect(parseEmailLinkLanding(`${site}?token_hash=&type=email`)).toBeNull();
-    expect(parseEmailLinkLanding(site)).toBeNull();
-    expect(parseEmailLinkLanding(`${site}?tab=durum`)).toBeNull();
-    expect(parseEmailLinkLanding("not a url")).toBeNull();
-  });
-
-  it("leaves reset links to the reset screen", () => {
-    expect(parseEmailLinkLanding(`${site}reset-password?token_hash=pkce_0b6f&type=email`)).toBeNull();
-    expect(parseEmailLinkLanding(`${site}reset-password/#error_code=otp_expired`)).toBeNull();
-    // Only the reset screen itself: a path that merely passes through the name
-    // is not it.
-    expect(parseEmailLinkLanding(`${site}reset-password/done?token_hash=pkce_0b6f&type=email`)).toEqual({ tokenHash: "pkce_0b6f", type: "email" });
-  });
-});
-
 describe("sign-up confirmation resend", () => {
-  it("asks Auth for a new sign-up link to the trimmed address", async () => {
+  it("asks Auth for a new sign-up code to the trimmed address", async () => {
     const calls: unknown[] = [];
     const error = await resendSignUpConfirmation(
       { resend: async (request) => { calls.push(request); return { error: null }; } },

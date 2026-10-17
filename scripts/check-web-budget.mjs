@@ -19,7 +19,7 @@ const limits = {
   totalJavaScript: 4_066_000,
   // Everything but pictures, which are weighed apart; one HTML file per route makes it grow in coarse steps.
   totalExport: 7_339_500,
-  pictureBytes: 54_500,
+  pictureBytes: 166_300,
   // Exact, so adding a weight has to be a decision.
   fontFiles: 5,
   fontBytes: 800_000,

@@ -80,7 +80,8 @@ if (import.meta.main) {
   if (process.argv.includes("--record")) {
     const head = execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim();
     const entries = recordedFrom(report, head, new Date().toISOString().slice(0, 10));
-    const merged = Object.entries({ ...baseline.files, ...entries }).sort(([a], [b]) => a.localeCompare(b));
+    // A file deleted since takes its entry with it: the check above names it STALE.
+    const merged = Object.entries({ ...baseline.files, ...entries }).filter(([file]) => existsSync(file)).sort(([a], [b]) => a.localeCompare(b));
     writeFileSync(BASELINE, `${JSON.stringify({ files: Object.fromEntries(merged) }, null, 2)}\n`);
     for (const [file, { score }] of Object.entries(entries)) {
       const before = baseline.files?.[file]?.score;

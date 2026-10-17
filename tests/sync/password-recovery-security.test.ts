@@ -43,7 +43,7 @@ function emitter() {
   return emit;
 }
 
-describe("password recovery session binding", () => {
+describe("the Supabase clients", () => {
   beforeEach(() => {
     harness.platform.OS = "web";
   });
@@ -52,137 +52,7 @@ describe("password recovery session binding", () => {
     vi.unstubAllEnvs();
   });
 
-  it("clears a recovery marker when a different account signs in", async () => {
-    const { getSupabase, wasPasswordRecoveryDetected } = await load();
-    expect(getSupabase()).not.toBeNull();
-    const emit = emitter();
-
-    emit("PASSWORD_RECOVERY", { user: { id: "user-b" } });
-    expect(wasPasswordRecoveryDetected()).toBe(true);
-    expect(wasPasswordRecoveryDetected("user-b")).toBe(true);
-    expect(wasPasswordRecoveryDetected("user-c")).toBe(false);
-
-    emit("TOKEN_REFRESHED", { user: { id: "user-b" } });
-    emit("INITIAL_SESSION", null);
-    emit("TOKEN_REFRESHED", {});
-    expect(wasPasswordRecoveryDetected("user-b")).toBe(true);
-
-    emit("SIGNED_IN", { user: { id: "user-c" } });
-    expect(wasPasswordRecoveryDetected()).toBe(false);
-  });
-
-  it("ends a recovery binding on sign-out or when asked", async () => {
-    const { clearPasswordRecoveryDetected, getSupabase, markPasswordRecoverySession, wasPasswordRecoveryDetected } =
-      await load();
-    getSupabase();
-    const emit = emitter();
-
-    expect(wasPasswordRecoveryDetected()).toBe(false);
-    markPasswordRecoverySession("user-b");
-    expect(wasPasswordRecoveryDetected("user-b")).toBe(true);
-    emit("SIGNED_OUT", null);
-    expect(wasPasswordRecoveryDetected()).toBe(false);
-
-    markPasswordRecoverySession("user-b");
-    clearPasswordRecoveryDetected();
-    expect(wasPasswordRecoveryDetected()).toBe(false);
-  });
-
-  /**
-   * The landing is read before the app's client exists, and the token is
-   * redeemed on a client of its own: the account being confirmed may not be
-   * the one this device is signed in with, and confirming it must not sign
-   * anyone in here. Only Auth's answer is reported as "confirmed".
-   */
-  it("confirms an e-mail link's token with Auth, once, and says what Auth said", async () => {
-    const replaceState = vi.fn();
-    vi.stubGlobal("location", { href: "https://topraksv.github.io/helix/?token_hash=pkce_0b6f&type=email" });
-    vi.stubGlobal("history", { state: { key: 1 }, replaceState });
-    try {
-      const web = await load();
-      expect(web.takeEmailLinkLanding()).toBeNull();
-      web.getSupabase();
-      // Out of the address bar before anything else runs: a reload must not
-      // spend the same token a second time and report the refusal.
-      expect(replaceState).toHaveBeenCalledWith({ key: 1 }, "", "https://topraksv.github.io/helix/");
-      await expect(web.takeEmailLinkLanding()).resolves.toBe("confirmed");
-      expect(web.takeEmailLinkLanding()).toBeNull();
-      expect(harness.client.auth.verifyOtp).toHaveBeenCalledWith({ token_hash: "pkce_0b6f", type: "email" });
-      expect(harness.client.auth.signOut).toHaveBeenCalledWith({ scope: "local" });
-      expect(web.createClient).toHaveBeenCalledTimes(2);
-      expect(web.createClient.mock.calls[0]?.[2]).toMatchObject({ auth: { persistSession: false } });
-
-      harness.client.auth.verifyOtp.mockResolvedValueOnce({ error: { message: "Token has expired or is invalid" } });
-      const refused = await load();
-      refused.getSupabase();
-      await expect(refused.takeEmailLinkLanding()).resolves.toBe("unusable");
-
-      // Never reached Auth: nothing was spent, so the link goes back for a reload.
-      harness.client.auth.verifyOtp.mockResolvedValueOnce({ error: { name: "AuthRetryableFetchError", message: "Failed to fetch" } });
-      const offline = await load();
-      offline.getSupabase();
-      await expect(offline.takeEmailLinkLanding()).resolves.toBe("offline");
-      expect(replaceState).toHaveBeenLastCalledWith({ key: 1 }, "", "https://topraksv.github.io/helix/?token_hash=pkce_0b6f&type=email");
-
-      vi.stubGlobal("location", { href: "https://topraksv.github.io/helix/?token_hash=pkce_7c1d&type=email_change" });
-      const change = await load();
-      change.getSupabase();
-      await expect(change.takeEmailLinkLanding()).resolves.toBe("changeConfirmed");
-      expect(harness.client.auth.verifyOtp).toHaveBeenLastCalledWith({ token_hash: "pkce_7c1d", type: "email_change" });
-
-      vi.stubGlobal("location", { href: "https://topraksv.github.io/helix/#error_code=otp_expired" });
-      const expired = await load();
-      expired.getSupabase();
-      await expect(expired.takeEmailLinkLanding()).resolves.toBe("unusable");
-
-      replaceState.mockClear();
-      vi.stubGlobal("location", { href: "https://topraksv.github.io/helix/?tab=durum" });
-      const ordinary = await load();
-      ordinary.getSupabase();
-      expect(ordinary.takeEmailLinkLanding()).toBeNull();
-      expect(replaceState).not.toHaveBeenCalled();
-
-      // A native build has no address bar; a location stubbed onto it is not one.
-      vi.stubGlobal("location", { href: "https://topraksv.github.io/helix/?token_hash=pkce_0b6f&type=email" });
-      harness.platform.OS = "ios";
-      const native = await load();
-      native.getSupabase();
-      expect(native.takeEmailLinkLanding()).toBeNull();
-
-      harness.platform.OS = "web";
-      vi.stubGlobal("location", undefined);
-      const bare = await load();
-      expect(() => bare.getSupabase()).not.toThrow();
-      expect(bare.takeEmailLinkLanding()).toBeNull();
-    } finally {
-      vi.unstubAllGlobals();
-      harness.client.auth.verifyOtp.mockClear();
-      harness.client.auth.signOut.mockClear();
-    }
-  });
-
-  // A signed-in device has no sign-in screen to show it on; after a sign-out
-  // it would greet the next person with news about somebody else's link.
-  it("drops an unread landing once a session exists", async () => {
-    vi.stubGlobal("location", { href: "https://topraksv.github.io/helix/#error_code=otp_expired" });
-    vi.stubGlobal("history", { state: null, replaceState: vi.fn() });
-    try {
-      const web = await load();
-      web.getSupabase();
-      const emit = emitter();
-      emit("INITIAL_SESSION", null);
-      await expect(web.takeEmailLinkLanding()).resolves.toBe("unusable");
-
-      const signedIn = await load();
-      signedIn.getSupabase();
-      emitter()("SIGNED_IN", { user: { id: "user-b" } });
-      expect(signedIn.takeEmailLinkLanding()).toBeNull();
-    } finally {
-      vi.unstubAllGlobals();
-    }
-  });
-
-  it("creates one persisted PKCE client, reading the session from the URL only on web", async () => {
+  it("creates one persisted PKCE client that reads no session from an address", async () => {
     const web = await load();
     const client = web.getSupabase();
     expect(web.getSupabase()).toBe(client);
@@ -192,7 +62,7 @@ describe("password recovery session binding", () => {
         storage: undefined,
         autoRefreshToken: true,
         persistSession: true,
-        detectSessionInUrl: true,
+        detectSessionInUrl: false,
         flowType: "pkce",
       },
     });
@@ -233,13 +103,13 @@ describe("password recovery session binding", () => {
   });
 
   /**
-   * A reset link is redeemed on a client that keeps its session in this
+   * A reset code is redeemed on a client that keeps its session in this
    * document's memory. supabase-js mirrors a persisted session to every tab
    * over a BroadcastChannel named after its storage key, and opens that
    * channel only for a persisted session — so this is what keeps the account a
-   * link belongs to out of the tab already running Helix.
+   * code belongs to out of the tab already running Helix.
    */
-  it("redeems reset links on a client whose session never leaves the tab", async () => {
+  it("redeems reset codes on a client whose session never leaves the tab", async () => {
     const { createClient, createRecoveryClient } = await load();
     expect(createRecoveryClient()).toBe(harness.client);
     expect(createClient).toHaveBeenCalledWith("https://example.supabase.co", "publishable-test-key", {
