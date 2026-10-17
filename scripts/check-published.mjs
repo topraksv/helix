@@ -70,6 +70,17 @@ export function storeSdkMajor(sdkVersions) {
 }
 
 /**
+ * The Expo Go major the App Store carries, from Apple's lookup of the app. Expo marks an SDK released, client
+ * versions included, while Apple is still reviewing that client: on 2026-10-17 Expo listed iOS 58.0.4 and the
+ * store sold 57.0.9.
+ */
+export function appStoreMajor(lookup) {
+  const version = lookup?.results?.[0]?.version;
+  const major = typeof version === "string" ? Number.parseInt(version, 10) : Number.NaN;
+  return Number.isInteger(major) ? major : null;
+}
+
+/**
  * One `eas update --platform all` publication, verified and written down.
  *
  * It is two updates in one group, and each must name the runtime Expo Go loads
@@ -193,6 +204,16 @@ async function checkExpoGo(projectMajor) {
   if (store == null) return fail("Expo's version list names no released SDK");
   const client = Object.entries(sdkVersions).find(([version]) => Number.parseInt(version, 10) === store)[1];
   const clients = `iOS ${client.iosClientVersion}, Android ${client.androidClientVersion}`;
+  if (projectMajor < store) {
+    // The owner moves when both stores carry the client, and iOS is the one that lags.
+    const lookup = await get("https://itunes.apple.com/lookup?id=982107779&country=tr");
+    const ios = lookup.status === 200 ? appStoreMajor(JSON.parse(lookup.body)) : null;
+    if (ios == null) return fail(`the App Store's Expo Go could not be read (HTTP ${lookup.status})`);
+    if (ios === projectMajor) {
+      console.log(`::notice::SDK ${store} is released (${clients}), but the App Store's Expo Go still runs SDK ${ios}; move when it carries ${store}`);
+      return;
+    }
+  }
   if (projectMajor !== store) {
     return fail(
       `the stores' Expo Go runs SDK ${store} (${clients}) and this project is on SDK ${projectMajor}: ` +

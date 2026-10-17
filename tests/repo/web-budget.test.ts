@@ -6,7 +6,7 @@ import { join, resolve } from "node:path";
 import { spawn, spawnSync } from "node:child_process";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { appVersionOf, entryOf, greenRun, openRuns, otaRecord, storeSdkMajor } from "../../scripts/check-published.mjs";
+import { appStoreMajor, appVersionOf, entryOf, greenRun, openRuns, otaRecord, storeSdkMajor } from "../../scripts/check-published.mjs";
 
 const roots: string[] = [];
 const script = resolve(process.cwd(), "scripts/check-web-budget.mjs");
@@ -163,6 +163,12 @@ describe("published surfaces", () => {
       "57.0.0": { expoVersion: "~57.0.26", iosClientVersion: "57.0.9", releaseNoteUrl: notes(57) },
     })).toBe(57);
     expect(storeSdkMajor({})).toBeNull();
+  });
+
+  it("reads the App Store's Expo Go major from Apple's lookup", () => {
+    expect(appStoreMajor({ resultCount: 1, results: [{ version: "57.0.9" }] })).toBe(57);
+    expect(appStoreMajor({ resultCount: 0, results: [] })).toBeNull();
+    expect(appStoreMajor({ results: [{ version: "" }] })).toBeNull();
   });
 
 
