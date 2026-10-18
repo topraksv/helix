@@ -142,6 +142,9 @@ test("a clean browser restores a backup and a relationally invalid file writes n
   await restorePage.goto(`/helix/cash-flow/${currentMonthKey()}`);
   await restorePage.getByRole("button", { name: /Market.*345,67/ }).click();
   await expect(restorePage.getByText("Atomik geri yükleme kanıtı", { exact: true })).toBeVisible();
+  // A restored record is not a start from ₺0 by hand: the negative-balance hint stays settled on this device.
+  expect(await restorePage.evaluate(() => localStorage.getItem("helix.negative-balance-hint.done"))).toBe("true");
+  await expect(restorePage.getByText("Bakiyen şu an ekside", { exact: true })).toHaveCount(0);
   expect(restoreErrors).toEqual([]);
   await restoreContext.close();
 

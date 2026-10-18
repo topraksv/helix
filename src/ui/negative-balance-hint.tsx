@@ -11,6 +11,15 @@ import { appConfirm } from "./dialog";
 /** Device-wide like the tour's flag: the hint is about starting out, and asking twice on one device teaches nothing. */
 const NEGATIVE_BALANCE_HINT_KEY = "helix.negative-balance-hint.done";
 
+/**
+ * A restored backup is someone's existing record, not a start from ₺0 by
+ * hand, so restoring settles the hint on this device. Set before the write:
+ * the live queries can show the hint before the restore call returns.
+ */
+export function settleNegativeBalanceHint(): Promise<void> {
+  return kv.set(NEGATIVE_BALANCE_HINT_KEY, "true");
+}
+
 /** Asks once on this device; the tabs stay mounted under every form, so it shows as the form closes. */
 export function NegativeBalanceHint() {
   const router = useRouter();

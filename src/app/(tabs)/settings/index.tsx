@@ -67,6 +67,7 @@ import { formatMinorCompact } from "../../../domain/money";
 import { readPickedText } from "../../../services/picked-file";
 import { DelayedLoadingIndicator } from "../../../ui/loading-indicator";
 import { OperationFlow } from "../../../ui/operation-flow";
+import { settleNegativeBalanceHint } from "../../../ui/negative-balance-hint";
 import { clearLifecycleIntent, setLifecycleIntent } from "../../../ui/lifecycle-intent";
 
 /**
@@ -484,7 +485,9 @@ export default function SettingsScreen() {
         tr.errors.invalidBackupFile,
       );
       if (signal.aborted) throw signal.reason;
-      const result = await importBundle(userId, parseExportBundleText(content), {
+      const bundle = parseExportBundleText(content);
+      await settleNegativeBalanceHint();
+      const result = await importBundle(userId, bundle, {
         signal,
         onProgress: report,
       });

@@ -34,6 +34,7 @@ import { CardCycleFields, cardCycleError } from "../../ui/card-cycle-fields";
 import { useDirtyExitGuard } from "../../ui/dirty-exit";
 import { userMessage } from "../../domain/user-error";
 import { devError } from "../../services/logger";
+import { settleNegativeBalanceHint } from "../../ui/negative-balance-hint";
 
 const SOURCE_TYPES = PAYMENT_SOURCE_TYPES.map((value) => ({ value, label: tr.sources[value] }));
 const ALL_TEMPLATES: TemplateCategory[] = [...TEMPLATE_CATEGORIES, ...TEMPLATE_EXTRA_CATEGORIES];
@@ -381,7 +382,9 @@ export default function SetupScreen() {
         // Validate and restore the complete workspace atomically. Seeding first
         // would leave a partial starter workspace behind when a corrupt backup
         // is rejected or the restore write fails.
-        await importBundle(userId, parseExportBundleText(content));
+        const bundle = parseExportBundleText(content);
+        await settleNegativeBalanceHint();
+        await importBundle(userId, bundle);
         scheduleSync(userId);
         setSeeded(true);
         return;
