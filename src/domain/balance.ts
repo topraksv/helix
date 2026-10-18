@@ -431,6 +431,11 @@ export interface LedgerChain {
   plannedExpectations: readonly PlannedExpectation[];
   /** What each stored balance declaration adds, by row id, as the rows stand now. */
   declarationDeltaById: ReadonlyMap<string, Minor>;
+  /**
+   * The last day a stated balance (the anchor or a declaration up to today)
+   * fixes: a row dated on or before it is absorbed and today's balance stays.
+   */
+  balanceStatedThrough: ISODate | null;
 }
 
 /**
@@ -498,6 +503,10 @@ export function buildLedgerChain(input: {
     txLike: transactions,
     plannedExpectations: input.plannedExpectations ?? [],
     declarationDeltaById: new Map(ledger.flatMap((month) => month.declarationDeltas.map((entry) => [entry.id, entry.deltaMinor] as const))),
+    balanceStatedThrough: [
+      ...(configuredStart == null ? [] : [anchorDeclaration(configuredStart, 0).date]),
+      ...adjustments.filter((adjustment) => adjustment.declaredMinor != null && adjustment.date <= today).map((adjustment) => adjustment.date),
+    ].sort().at(-1) ?? null,
   };
 }
 
@@ -526,4 +535,29 @@ export function projectedBalance(actualMinor: Minor, flows: UpcomingFlow[], hori
     projected += expectationEffect(flow);
   }
   return projected;
+}
+
+/** Past this many records the person has been using the app for a while, and the hint would be news to nobody. */
+const FIRST_ENTRIES = 20;
+
+/**
+ * A workspace started by hand begins at ₺0, so its first expense shows a
+ * negative balance that is only the missing starting figure. Any sign that a
+ * real balance was given — an imported workbook, an opening balance, a
+ * declared or adjusted balance — means the negative figure is the person's own.
+ */
+export function needsNegativeBalanceHint(input: {
+  actualBalanceMinor: number;
+  transactionCount: number;
+  openingBalanceMinor: number;
+  declared: boolean;
+  adjustmentCount: number;
+  imported: boolean;
+}): boolean {
+  return input.actualBalanceMinor < 0
+    && input.transactionCount <= FIRST_ENTRIES
+    && input.openingBalanceMinor === 0
+    && !input.declared
+    && input.adjustmentCount === 0
+    && !input.imported;
 }

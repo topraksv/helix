@@ -11,7 +11,7 @@ import Info from "lucide-react-native/icons/info";
 import Scale from "lucide-react-native/icons/scale";
 import Trash from "lucide-react-native/icons/trash";
 import { declareMonthOpeningBalance, deleteBalanceAdjustment, restoreBalanceAdjustment, setBalanceDeclaration, setCurrentBalance, setOpeningBalance } from "../data/repo";
-import { settingValue, useAdjustmentsState, useLedgerState, useSettingsMapState, useTxLike, useUserId } from "../data/hooks";
+import { settingValue, useAdjustmentsState, useBalanceColumns, useLedgerState, useSettingsMapState, useTxLike, useUserId } from "../data/hooks";
 import { combineLiveStates } from "../data/live-state";
 import { scheduleSync } from "../sync/engine";
 import { addMonthsToKey, isCurrentOrFutureMonth, monthKeyOf, todayISO, yearOf, type MonthKey } from "../domain/dates";
@@ -210,6 +210,7 @@ function useOpeningForm(settings: ReturnType<typeof useSettingsMapState>["data"]
 function CurrentBalanceCard({ form, bundle, settings }: { form: ReturnType<typeof useCurrentBalanceForm>; bundle: Bundle; settings: ReturnType<typeof useSettingsMapState>["data"] }) {
   const { palette } = useTheme();
   const router = useRouter();
+  const balanceColumns = useBalanceColumns();
   const computed = bundle.actualBalanceMinor;
   const { target } = form;
   // What the user last confirmed against a real account, and how far the ledger
@@ -272,7 +273,7 @@ function CurrentBalanceCard({ form, bundle, settings }: { form: ReturnType<typeo
         <Info accessible={false} size={17} color={palette.primaryText} style={{ marginTop: 2 }} />
         <View style={{ flex: 1, gap: spacing.xs }}>
           <Body muted style={{ fontSize: type.small.fontSize }}>{tr.settings.balanceScopeHint}</Body>
-          <Body muted style={{ fontSize: type.small.fontSize }}>{tr.settings.balanceWillMark}</Body>
+          <Body muted style={{ fontSize: type.small.fontSize }}>{tr.settings.balanceWillMark(balanceColumns.closingLabel)}</Body>
         </View>
       </Row>
       <Button label={tr.common.save} onPress={() => void form.save()} disabled={!target.changed} loading={form.saving} haptic="none" />

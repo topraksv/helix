@@ -28,7 +28,7 @@ test("offline relaunch keeps the SQLite ledger and avoids duplicate writes", asy
   await context.setOffline(false);
 
   await openCashFlow(page);
-  await page.getByRole("radio", { name: "Ay odaklı" }).click();
+  await page.getByRole("radio", { name: "Tek ay" }).click();
   await expect(page.getByText(/-.*₺210,50/).first()).toBeVisible();
   expect(errors).toEqual([]);
 });
@@ -159,8 +159,8 @@ test("budget summary keeps its forecast, charts and cash-flow tab route", async 
     return { top: style.paddingTop, bottom: style.paddingBottom };
   });
   expect(forecastPadding.bottom).toBe(forecastPadding.top);
-  // "Şu anki bakiye" exists only in the expanded panel; the toggle and result row share a name.
-  const forecastDetails = page.getByText("Şu anki bakiye", { exact: true });
+  // "Güncel bakiye" exists only in the expanded panel; the toggle and result row share a name.
+  const forecastDetails = page.getByText("Güncel bakiye", { exact: true });
   await expect(forecastDetails).toHaveCount(0);
   for (let attempt = 0; attempt < 2; attempt += 1) {
     await forecastToggle.click();

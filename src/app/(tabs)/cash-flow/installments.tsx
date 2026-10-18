@@ -321,7 +321,7 @@ export default function InstallmentsScreen() {
                   options={cardOptions}
                   value={cardFilter ?? ""}
                   onChange={(value) => setCardFilter(value === "" ? null : value)}
-                  onCreate={{ label: tr.installments.addCard, run: () => router.push("/payment-sources") }}
+                  onCreate={{ label: tr.inlineCreate.addCreditCard, run: () => router.push("/payment-sources") }}
                 />
               </View>
               <Button icon={Plus} label={tr.installments.newPlan} onPress={() => router.push("/installment-new")} />

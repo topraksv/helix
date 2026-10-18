@@ -8,7 +8,7 @@ import { useAllTransactionsState, useAnsweredForId, useCategoriesState, usePerso
 import { combineLiveStates } from "../data/live-state";
 import { classifyRecordId } from "../domain/route-params";
 import { addMonthsToKey, monthKeyOf, todayISO, type ISODate, type MonthKey } from "../domain/dates";
-import { isValidInstallmentCount, planAmounts, planDraft, planForSighting, planProgress, planRefundTotals, type GeneratedInstallment } from "../domain/installments";
+import { isValidInstallmentCount, ownsDueDay, planAmounts, planDraft, planForSighting, planProgress, planRefundTotals, type GeneratedInstallment } from "../domain/installments";
 import { formatMinorCompact, formatMinorInput } from "../domain/money";
 import { installmentSplitText, withCurrency } from "../ui/installment-text";
 import { dateLabel, monthLabel, tr } from "../i18n/tr";
@@ -22,7 +22,7 @@ import Undo2 from "lucide-react-native/icons/undo-2";
 import type { LucideIcon } from "lucide-react-native";
 import { categoryIconComponent } from "../ui/category-icon";
 import { PaymentSourceLogo } from "../ui/logo";
-import { Badge, Body, Button, Card, CardList, ChoiceTile, DataGateScreen, DataStateNotice, FadeIn, Field, Heading, IconButton, Label, ListRow, MetricStrip, MoneyField, PanelHeader, Row, Screen, SegmentBar, Segmented, Select, Spread } from "../ui/components";
+import { Badge, Body, Button, Card, CardList, ChoiceTile, DataGateScreen, DataStateNotice, FadeIn, Field, FieldError, Heading, IconButton, Label, ListRow, MetricStrip, MoneyField, PanelHeader, Row, Screen, SegmentBar, Segmented, Select, Spread } from "../ui/components";
 import { useSubmitOnEnter } from "../ui/keyboard";
 import { appAlert, appConfirm } from "../ui/dialog";
 import { useRotatingPlaceholder } from "../ui/placeholders";
@@ -36,7 +36,9 @@ import { useDirtyExitGuard, useDraftDirty } from "../ui/dirty-exit";
 import { WorkspaceSplit } from "../ui/workspace-layout";
 import { DateField } from "../ui/calendar";
 import { useUndo } from "../ui/undo";
+import { showSaveResult } from "../ui/save-result";
 import { assignedPersonId, PersonAssignment } from "../ui/person-assignment";
+import { categoryCreateAction, sourceCreateActions } from "../ui/inline-create";
 
 /** The Select's own icon column, so a source mark fits it exactly. */
 const SOURCE_MARK = 22;
@@ -383,10 +385,17 @@ function RestructureLoanCard({
   const [remainingStr, setRemainingStr] = useState(String(pending.length));
   const [busy, setBusy] = useState(false);
   const remaining = Number(remainingStr);
-  const valid = monthlyMinor != null && monthlyMinor > 0 && Number.isInteger(remaining) && remaining >= 1
-    && isValidInstallmentCount(paidCount + remaining) && rateTry != null;
+  const amountOk = monthlyMinor != null && monthlyMinor > 0;
+  const countOk = Number.isInteger(remaining) && remaining >= 1 && isValidInstallmentCount(paidCount + remaining);
+  const valid = amountOk && countOk && rateTry != null;
+  const [attempted, setAttempted] = useState(false);
   const restructure = () => void operationGuard.run(async () => {
-    if (!valid) return;
+    if (busy) return;
+    if (!valid) {
+      setAttempted(true);
+      if (rateTry == null) void appAlert(tr.errors.fxUnavailable, tr.errors.title);
+      return;
+    }
     setBusy(true);
     try {
       // The plan as saved, which is also what taking this back restores.
@@ -408,6 +417,7 @@ function RestructureLoanCard({
           <MoneyField
             label={withCurrency(tr.installments.restructureMonthly, plan.currency)}
             value={monthlyRaw}
+            error={attempted && !amountOk ? tr.required.amount : null}
             onChangeMinor={(raw, minor) => {
               setMonthlyRaw(raw);
               setMonthlyMinor(minor);
@@ -415,7 +425,13 @@ function RestructureLoanCard({
           />
         </View>
         <View style={{ flex: 1 }}>
-          <Field label={tr.installments.restructureRemaining} value={remainingStr} onChangeText={setRemainingStr} keyboardType="number-pad" />
+          <Field
+            label={tr.installments.restructureRemaining}
+            value={remainingStr}
+            onChangeText={setRemainingStr}
+            keyboardType="number-pad"
+            error={attempted && !countOk ? tr.required.general : null}
+          />
         </View>
       </Row>
       {valid ? (
@@ -427,7 +443,7 @@ function RestructureLoanCard({
           )}
         </Body>
       ) : null}
-      <Button label={tr.installments.restructureAction} variant="secondary" onPress={restructure} disabled={!valid || busy} loading={busy} />
+      <Button label={tr.installments.restructureAction} variant="secondary" onPress={restructure} loading={busy} />
     </Card>
   );
 }
@@ -446,8 +462,14 @@ function CloseLoanCard({ plan, instalments }: { plan: Plan; instalments: PlanRow
   const closesAfterFirst = instalments.some((t) => t.effectiveDate <= closedOn);
   const valid = payoffMinor != null && payoffMinor >= 0 && closedOn <= today && closesAfterFirst;
   const removed = instalments.filter((t) => t.effectiveDate > closedOn).length;
+  const [attempted, setAttempted] = useState(false);
   const close = () => void (async () => {
-    if (!valid) return;
+    if (busy) return;
+    if (!valid) {
+      setAttempted(true);
+      // A day before the first instalment is said by the line above the button.
+      return;
+    }
     const ok = await appConfirm(
       tr.installments.closeConfirmTitle,
       tr.installments.closeConfirmBody(dateLabel(closedOn), formatMinorCompact(payoffMinor, plan.currency), removed),
@@ -474,6 +496,7 @@ function CloseLoanCard({ plan, instalments }: { plan: Plan; instalments: PlanRow
       <MoneyField
         label={withCurrency(tr.installments.payoffAmount, plan.currency)}
         value={payoffRaw}
+        error={attempted && !(payoffMinor != null && payoffMinor >= 0) ? tr.required.amount : null}
         onChangeMinor={(raw, minor) => {
           setPayoffRaw(raw);
           setPayoffMinor(minor);
@@ -483,7 +506,7 @@ function CloseLoanCard({ plan, instalments }: { plan: Plan; instalments: PlanRow
       <Body muted style={{ marginBottom: spacing.md }}>
         {closesAfterFirst ? tr.installments.closePreview(removed) : tr.installments.closeBeforeFirst}
       </Body>
-      <Button icon={Landmark} label={tr.installments.closeAction} variant="danger" onPress={close} disabled={!valid || busy} loading={busy} />
+      <Button icon={Landmark} label={tr.installments.closeAction} variant="danger" onPress={close} loading={busy} />
     </Card>
   );
 }
@@ -533,7 +556,8 @@ function planFields(plan: ExistingPlan | undefined): PlanFields {
     kind: plan.kind, title: plan.title, amountRaw: amountMinor != null ? formatMinorInput(amountMinor) : "", amountMinor,
     countText: String(plan.installmentCount), modeChoice: plan.totalAmountMinor != null ? "total" : "monthly", paidText: null,
     startChoice: plan.startMonth, sourceId: plan.paymentSourceId, personChoice: plan.personId, categoryId: plan.categoryId,
-    dueDayText: plan.kind === "loan" && plan.dueDay != null ? String(plan.dueDay) : "",
+    // Read only where the plan owns its day (`ownsDueDay`); on a card the card's day wins.
+    dueDayText: plan.dueDay != null ? String(plan.dueDay) : "",
   };
 }
 
@@ -571,9 +595,38 @@ function usePlanForm(existing: ExistingPlan | undefined) {
   const draft = planDraft({ ...fields, storedPaid, existingStartMonth: existing?.startMonth ?? null, card: selectedSource, today: todayISO() });
   const closed = existing?.closedOn != null;
   const valid = data.ready && draft.valid && personId != null && rateTry != null && !closed;
+  // The button stays live: a refused press marks what is missing instead.
+  const [attempted, setAttempted] = useState(false);
+  const missing = {
+    title: fields.title.trim() === "",
+    amount: (fields.amountMinor ?? 0) <= 0,
+    count: !isValidInstallmentCount(draft.count),
+    source: !draft.sourceChosen,
+  };
+
+  /** A refused press marks its fields; a reason no field shows is said once. */
+  const refuse = () => {
+    setAttempted(true);
+    const shown = Object.values(missing).some(Boolean) || !draft.cardSourceValid || !draft.dueDayValid || closed;
+    if (!shown) void appAlert(rateTry == null ? tr.errors.fxUnavailable : tr.required.general, tr.errors.title);
+  };
+
+  /** Writes the plan and leaves the card that says what it did. */
+  const write = async (input: Parameters<typeof createInstallmentPlan>[1]) => {
+    if (existing) {
+      await updateInstallmentPlan(userId, existing.id, input, { reschedule: draft.reschedule });
+      undo.show(tr.saved.updated(input.title));
+      return;
+    }
+    const planId = await createInstallmentPlan(userId, input);
+    showSaveResult({
+      name: input.title, amountMinor: fields.amountMinor!, currency, detail: tr.saved.plan(draft.count),
+      undo: () => deletePlan(userId, planId).then(() => scheduleSync(userId)),
+    });
+  };
 
   const save = () => operationGuard.run(async () => {
-    if (!valid || !personId) return;
+    if (!valid || !personId) return refuse();
     const amounts = {
       totalAmountMinor: amountMode === "total" ? fields.amountMinor! : null,
       monthlyAmountMinor: amountMode === "monthly" ? fields.amountMinor! : null,
@@ -596,8 +649,7 @@ function usePlanForm(existing: ExistingPlan | undefined) {
         startMonth: draft.resolvedStart, dueDay: draft.dueDay, paymentSourceId: fields.sourceId, personId,
         personIsSelf: persons.find((p) => p.id === personId)!.isSelf, categoryId: fields.categoryId, note: existing?.note ?? null, tryFactor: rateTry!,
       };
-      if (existing) await updateInstallmentPlan(userId, existing.id, input, { reschedule: draft.reschedule });
-      else await createInstallmentPlan(userId, input);
+      await write(input);
       scheduleSync(userId);
       allowExit(close);
     } catch (e) {
@@ -623,8 +675,8 @@ function usePlanForm(existing: ExistingPlan | undefined) {
   })();
 
   return {
-    isEdit: existing != null, data, persons, categories: categoriesState.data, sources: sourcesState.data, selectedSource, currency, rateTry, storedPaid,
-    fields, set, amountMode, personId, draft, closed, valid, busy, save, confirmDelete,
+    isEdit: existing != null, data, persons, categories: categoriesState.data, sources: sourcesState.data, selectedSource, currency, rateTry, storedPaid, userId,
+    fields, set, amountMode, personId, draft, closed, valid, busy, save, confirmDelete, attempted, missing,
   };
 }
 
@@ -642,7 +694,7 @@ function PlanDetailsCard({ form }: { form: PlanFormModel }) {
         <PlanKindChoice icon={CreditCard} label={tr.installments.plan} selected={fields.kind === "card_installment"} onPress={() => set("kind")("card_installment")} />
         <PlanKindChoice icon={Landmark} label={tr.installments.loan} selected={fields.kind === "loan"} onPress={() => set("kind")("loan")} />
       </View>
-      <Field label={tr.installments.titleField} value={fields.title} onChangeText={set("title")} placeholder={titlePlaceholder} />
+      <Field label={tr.installments.titleField} value={fields.title} onChangeText={set("title")} placeholder={titlePlaceholder} error={form.attempted && form.missing.title ? tr.required.name : null} />
       <Segmented
         options={[{ value: "total", label: tr.installments.totalAmount }, { value: "monthly", label: tr.installments.monthlyAmount }]}
         value={amountMode}
@@ -651,6 +703,7 @@ function PlanDetailsCard({ form }: { form: PlanFormModel }) {
       <MoneyField
         label={withCurrency(amountLabel, currency)}
         value={fields.amountRaw}
+        error={form.attempted && form.missing.amount ? tr.required.amount : null}
         onChangeMinor={(raw, minor) => {
           set("amountRaw")(raw);
           set("amountMinor")(minor);
@@ -658,7 +711,7 @@ function PlanDetailsCard({ form }: { form: PlanFormModel }) {
       />
       <Row>
         <View style={{ flex: 1 }}>
-          <Field label={tr.installments.count} value={fields.countText} onChangeText={set("countText")} keyboardType="number-pad" />
+          <Field label={tr.installments.count} value={fields.countText} onChangeText={set("countText")} keyboardType="number-pad" error={form.attempted && form.missing.count ? tr.required.count : null} />
         </View>
         <View style={{ flex: 1 }}>
           <Field label={tr.tx.alreadyPaid} value={fields.paidText ?? String(form.storedPaid)} onChangeText={set("paidText")} keyboardType="number-pad" />
@@ -673,7 +726,11 @@ function PlanDetailsCard({ form }: { form: PlanFormModel }) {
 function PlanScheduleCard({ form }: { form: PlanFormModel }) {
   const router = useRouter();
   const { fields, set, draft } = form;
-  const sourceOptions = fields.kind === "card_installment" ? form.sources.filter((source) => source.type === "credit_card") : form.sources;
+  // Cards first for an instalment purchase; a cash or bank source takes it paid by hand.
+  const sourceOptions = fields.kind === "card_installment"
+    ? [...form.sources].sort((a, b) => Number(b.type === "credit_card") - Number(a.type === "credit_card"))
+    : form.sources;
+  const ownDay = ownsDueDay(fields.kind, form.selectedSource);
   return (
     <Card>
       <PanelHeader icon={CalendarRange} title={tr.installments.scheduleAndAssignment} description={tr.installments.scheduleAndAssignmentHint} />
@@ -698,26 +755,35 @@ function PlanScheduleCard({ form }: { form: PlanFormModel }) {
         options={sourceOptions.map((s) => ({ value: s.id, label: s.name, icon: <PaymentSourceLogo name={s.name} type={s.type} logoRef={s.logoRef} size={SOURCE_MARK} /> }))}
         value={fields.sourceId}
         onChange={set("sourceId")}
-        onCreate={{ label: tr.installments.addCard, run: () => router.push("/payment-sources") }}
+        onCreate={sourceCreateActions({
+          userId: form.userId, ownerId: form.persons.find((person) => person.isSelf)?.id ?? null, sources: form.sources,
+          onCreated: set("sourceId"), openCardSetup: () => router.push("/payment-sources"),
+        })}
       />
-      {draft.cardSourceValid ? null : <Body muted style={{ marginBottom: spacing.sm }}>{tr.tx.cardCycleMissing}</Body>}
-      {fields.kind === "loan" ? (
+      <FieldError message={form.attempted && form.missing.source ? tr.tx.installmentNeedsSource : null} />
+      {draft.cardSourceValid ? null : (
+        <View style={{ marginBottom: spacing.sm, gap: spacing.xs }}>
+          <Body muted>{tr.tx.cardCycleMissing}</Body>
+          <Button size="sm" variant="secondary" label={tr.settings.sources} onPress={() => router.push("/payment-sources")} />
+        </View>
+      )}
+      {ownDay ? (
         <>
-          <Field label={tr.installments.dueDayField} value={fields.dueDayText} onChangeText={set("dueDayText")} keyboardType="number-pad" placeholder={String(form.selectedSource?.dueDay ?? 1)} />
+          <Field label={tr.installments.dueDayField} value={fields.dueDayText} onChangeText={set("dueDayText")} keyboardType="number-pad" placeholder={String(form.selectedSource?.dueDay ?? 1)} error={draft.dueDayValid ? null : tr.required.day} />
           <Body muted style={{ marginBottom: spacing.md }}>{tr.installments.dueDayHint}</Body>
         </>
       ) : null}
-      <PersonAssignment people={form.persons} value={form.personId} onChange={set("personChoice")} />
+      <PersonAssignment label={tr.tx.personExpense} people={form.persons} value={form.personId} onChange={set("personChoice")} />
       <Select
         label={tr.tx.category}
         placeholder={tr.tx.categoryPlaceholder}
         options={form.categories.filter((c) => c.kind === "expense").map((c) => ({ value: c.id, label: c.name, icon: categoryIconComponent(c) }))}
         value={fields.categoryId}
         onChange={set("categoryId")}
-        onCreate={{ label: tr.tx.addCategory, run: () => router.push("/columns-editor") }}
+        onCreate={categoryCreateAction({ userId: form.userId, kind: "expense", isTransfer: false, categories: form.categories, onCreated: set("categoryId") })}
       />
       {form.closed ? <Body muted style={{ marginBottom: spacing.sm }}>{tr.installments.closedEditLocked}</Body> : null}
-      <Button label={tr.common.save} onPress={() => void form.save()} disabled={!form.valid} loading={form.busy} />
+      <Button label={tr.common.save} onPress={() => void form.save()} loading={form.busy} />
       {form.isEdit ? (
         <View style={{ marginTop: spacing.md }}>
           <Button icon={Trash} label={tr.installments.delete} variant="danger" onPress={form.confirmDelete} />

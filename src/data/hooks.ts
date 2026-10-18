@@ -14,7 +14,7 @@ import { buildLedgerChain, ledgerChainEndYear, sliceLedgerYear, type LedgerBundl
 import type { classifyRecordId } from "../domain/route-params";
 import { projectInvestmentState } from "../domain/investment-projection";
 import type { InvestmentState } from "../domain/investments";
-import { daysBetweenISO, todayISO, type ISODate, type MonthKey } from "../domain/dates";
+import { todayISO, type ISODate, type MonthKey } from "../domain/dates";
 import { autoConfirmedTransactionIds, plannedExpectations, type PlannedExpectation } from "../domain/expected";
 import { convertToTryMinor } from "../domain/fx";
 import type { TxLike } from "../domain/types";
@@ -756,12 +756,4 @@ export function useBalanceColumns(): { openingLabel: string; closingLabel: strin
     closingLabel: balanceColumnLabel(stored?.closingLabel, tr.cashflow.closing),
     showOpening: stored?.showOpening !== false,
   };
-}
-
-export function useLastEntryInfoState(): LiveValueResult<{ at: string | null; daysAgo: number | null }> {
-  const settingsState = useSettingsMapState();
-  const iso = settingValue<string | null>(settingsState.data, "last_entry_at", null);
-  if (!iso) return { ...settingsState, data: { at: null, daysAgo: null } };
-  const date = iso.slice(0, 10);
-  return { ...settingsState, data: { at: date, daysAgo: daysBetweenISO(date, todayISO()) } };
 }

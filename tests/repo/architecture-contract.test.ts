@@ -246,15 +246,15 @@ describe("undo callbacks are owned everywhere", () => {
 
   /** A wrapper that catches its own failure resolves, so the bar reports success and drops its retry: pass the repository call straight through. */
   it("lets a failed revert or unskip reach the snackbar instead of swallowing it", () => {
-    const text = readFileSync(join(ROOT, "src/app/reconciliation.tsx"), "utf8");
+    const text = readFileSync(join(ROOT, "src/app/attention.tsx"), "utf8");
     expect(text).toMatch(/undo\.show\([^;]*revertExpected\(userId, e\.id\)/s);
     expect(text).toMatch(/undo\.show\([^;]*unskipExpected\(userId, e\.id\)/s);
   });
 
   it("keeps the skip flow owned as well", () => {
-    const text = readFileSync(join(ROOT, "src/app/reconciliation.tsx"), "utf8");
+    const text = readFileSync(join(ROOT, "src/app/attention.tsx"), "utf8");
     expect(text).not.toMatch(/void skipExpected\(/);
-    expect(text).toMatch(/const skip = async/);
+    expect(text).toMatch(/const skip = \(e: Expected\) => operationGuard\.run\(async/);
     expect(text).toContain("operationGuard.run");
     expect(text).toContain("unskipExpected");
   });
@@ -363,10 +363,13 @@ describe("live screen contract", () => {
     ...sourceFiles("src/app", { extensions: [".tsx"], atLeast: 40 }),
     ...sourceFiles("src/ui", { extensions: [".tsx"], atLeast: 25 }),
   ];
-  const stateHook = /\buse(?:Categories|Persons|Sources|Subscriptions|Plans|CreditCardStatements|RecurringIncomes|ComputedColumns|CategoryBudgets|TransactionsBetween|AllTransactions|Adjustments|SettingsMap|Ledger|PendingExpected|LastEntryInfo)State\(/;
+  const stateHook = /\buse(?:Categories|Persons|Sources|Subscriptions|Plans|CreditCardStatements|RecurringIncomes|ComputedColumns|CategoryBudgets|TransactionsBetween|AllTransactions|Adjustments|SettingsMap|Ledger|PendingExpected)State\(/;
+
+  /** Draws nothing: a read that has not answered simply does not ask yet. */
+  const RENDERS_NOTHING = new Set(["src/ui/negative-balance-hint.tsx"]);
 
   it("gives every stateful financial-data screen a shared loading/retry notice", () => {
-    for (const file of screens) {
+    for (const file of screens.filter((path) => !RENDERS_NOTHING.has(path))) {
       const source = readFileSync(join(ROOT, file), "utf8");
       if (stateHook.test(source)) expect(source, file).toContain("DataStateNotice");
     }

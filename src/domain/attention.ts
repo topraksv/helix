@@ -135,7 +135,9 @@ export function buildAttentionInbox(
   const read = new Set(state.read);
   return candidates
     .flatMap((candidate) => {
-      if (dismissed.has(candidate.id)) return [];
+      // An expected payment is settled, not dismissed: a dismissal stored before
+      // the inbox took over the reconciliation screen would hide it everywhere.
+      if (dismissed.has(candidate.id) && candidate.target.kind !== "expected") return [];
       const snoozed = state.snoozedUntil[candidate.id];
       if (snoozed && snoozed > today) return [];
       return [{

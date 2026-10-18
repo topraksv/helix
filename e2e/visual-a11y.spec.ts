@@ -47,7 +47,7 @@ const LOCAL_STATIC_ROUTES = [
   "/helix/settings/incomes", "/helix/settings/budgets", "/helix/settings/opening-balance",
   "/helix/transaction", "/helix/installment-new", "/helix/subscription-form", "/helix/bulk-entry",
   "/helix/columns-editor", "/helix/import-wizard", "/helix/opening-balance",
-  "/helix/reconciliation", "/helix/upcoming", "/helix/workspace-template",
+  "/helix/upcoming", "/helix/workspace-template",
   // A route list is a claim about what has been checked; /helix/privacy's scroll region once failed unseen.
   "/helix/privacy", "/helix/feedback", "/helix/attention", "/helix/sync-issues",
   "/helix/statement-import",
@@ -529,13 +529,13 @@ test("modal actions stay reachable in a short landscape viewport @cross-browser"
   await expect(calculatorTrigger).toBeFocused();
 
   await page.goto("/helix/transaction");
-  const categoryTrigger = page.getByRole("button", { name: "Kategori", exact: true });
+  const categoryTrigger = page.getByRole("button", { name: "Kalem", exact: true });
   await categoryTrigger.scrollIntoViewIfNeeded();
   await categoryTrigger.click();
   const selectModal = page.locator('[aria-modal="true"]');
   await expect(selectModal).toBeVisible();
   await expect(selectModal).toBeInViewport({ ratio: 1 });
-  const selectHeading = selectModal.getByRole("heading", { name: "Kategori", exact: true });
+  const selectHeading = selectModal.getByRole("heading", { name: "Kalem", exact: true });
   await expect(selectHeading).toBeInViewport({ ratio: 1 });
   const options = selectModal.getByRole("radiogroup");
   await expect(options).toBeInViewport();

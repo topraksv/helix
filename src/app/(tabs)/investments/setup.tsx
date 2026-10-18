@@ -1,9 +1,7 @@
-import React, { useState } from "react";
-import { Text, View } from "react-native";
-import ArrowRight from "lucide-react-native/icons/arrow-right";
+import { useState } from "react";
+import { View } from "react-native";
 import Banknote from "lucide-react-native/icons/banknote";
 import Check from "lucide-react-native/icons/check";
-import PackagePlus from "lucide-react-native/icons/package-plus";
 import ShieldCheck from "lucide-react-native/icons/shield-check";
 import { Redirect, Stack, useRouter } from "expo-router";
 import { setupInvestments } from "../../../data/repo";
@@ -13,12 +11,11 @@ import { userMessage } from "../../../domain/user-error";
 import { tr } from "../../../i18n/tr";
 import { scheduleSync } from "../../../sync/engine";
 import { DateField } from "../../../ui/calendar";
-import { Body, Button, Card, DataStateNotice, MoneyField, PanelHeader, Screen } from "../../../ui/components";
+import { Body, Button, Card, DataStateNotice, FieldNote, MoneyField, PanelHeader, Screen } from "../../../ui/components";
 import { appAlert } from "../../../ui/dialog";
 import { navigateBack } from "../../../ui/navigation";
 import { useDirtyExitGuard, useDraftDirty } from "../../../ui/dirty-exit";
-import { useRotatingPlaceholder } from "../../../ui/placeholders";
-import { circle, radius, spacing, type, useTheme } from "../../../ui/theme";
+import { radius, spacing, useTheme } from "../../../ui/theme";
 
 export default function InvestmentSetupScreen() {
   const router = useRouter();
@@ -31,14 +28,14 @@ export default function InvestmentSetupScreen() {
   const [cashMinor, setCashMinor] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const { allowExit } = useDirtyExitGuard(useDraftDirty(JSON.stringify({ date, cashRaw }), true) && !busy);
-  const amountPlaceholder = useRotatingPlaceholder(tr.placeholders.amount, { prefix: false });
 
-  const canSave = cashMinor != null && !(cashMinor < 0);
+  // Empty is the common answer — nothing set aside yet — and means zero, not "not filled in".
+  const openingCashMinor = cashRaw.trim() === "" ? 0 : cashMinor;
   const save = async () => {
-    if (busy || !canSave) return;
+    if (busy || openingCashMinor == null || openingCashMinor < 0) return;
     setBusy(true);
     try {
-      await setupInvestments(userId, { startedOn: date, openingCashMinor: cashMinor });
+      await setupInvestments(userId, { startedOn: date, openingCashMinor });
       scheduleSync(userId);
       // One way out, to the wallet, whose first action is defining a product.
       allowExit(() => navigateBack(router, "/(tabs)/investments"));
@@ -57,45 +54,6 @@ export default function InvestmentSetupScreen() {
   return (
     <Screen width="form">
       <Stack.Screen options={{ title: tr.investments.setupTitle }} />
-      <View
-        accessible
-        accessibilityRole="image"
-        accessibilityLabel={tr.investments.setupBody}
-        style={{ alignItems: "center", marginBottom: spacing.xl }}
-      >
-        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing.sm }}>
-          {[
-            { icon: Banknote, label: tr.investments.openingCash, active: true },
-            { icon: PackagePlus, label: tr.investments.addProduct, active: false },
-            { icon: Check, label: tr.investments.movement, active: false },
-          ].map((step, index) => {
-            const Icon = step.icon;
-            return (
-              <React.Fragment key={step.label}>
-                {index > 0 ? <ArrowRight accessible={false} size={18} color={palette.textSecondary} /> : null}
-                <View style={{ width: 82, alignItems: "center", gap: spacing.xs }}>
-                  <View
-                    style={{
-                      width: 48,
-                      height: 48,
-                      borderRadius: circle(48),
-                      alignItems: "center",
-                      justifyContent: "center",
-                      backgroundColor: step.active ? palette.primary : palette.surfaceAlt,
-                    }}
-                  >
-                    <Icon size={21} color={step.active ? palette.onPrimary : palette.textSecondary} />
-                  </View>
-                  <Text style={[type.small, { color: step.active ? palette.primaryText : palette.textSecondary, textAlign: "center", fontSize: type.micro.fontSize }]}>
-                    {step.label}
-                  </Text>
-                </View>
-              </React.Fragment>
-            );
-          })}
-        </View>
-      </View>
-
       <Card style={{ marginBottom: spacing.lg }}>
         <PanelHeader
           icon={Banknote}
@@ -106,13 +64,15 @@ export default function InvestmentSetupScreen() {
           testID="investment-opening-cash"
           label={tr.investments.openingCash}
           value={cashRaw}
-          placeholder={amountPlaceholder}
+          placeholder="0"
           onChangeMinor={(raw, minor) => {
             setCashRaw(raw);
             setCashMinor(minor);
           }}
         />
-        <DateField label={tr.investments.startedOn} value={date} onChange={setDate} max={todayISO()} />
+        <FieldNote note={tr.investments.startedOnHint}>
+          <DateField label={tr.investments.startedOn} value={date} onChange={setDate} max={todayISO()} />
+        </FieldNote>
       </Card>
 
       <View style={{ padding: spacing.md, borderRadius: radius.md, backgroundColor: palette.surfaceAlt, flexDirection: "row", gap: spacing.sm, marginBottom: spacing.lg }}>
@@ -120,10 +80,9 @@ export default function InvestmentSetupScreen() {
         <Body style={{ flex: 1 }}>{tr.investments.setupWithExistingHint}</Body>
       </View>
       <Button
-        icon={cashMinor != null ? Check : Banknote}
+        icon={Check}
         label={tr.investments.setupAction}
         loading={busy}
-        disabled={!canSave || busy}
         onPress={() => void save()}
       />
     </Screen>

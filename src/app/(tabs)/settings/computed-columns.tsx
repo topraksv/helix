@@ -30,7 +30,7 @@ import { formatMinorCompact } from "../../../domain/money";
 import { scheduleSync } from "../../../sync/engine";
 import { tr } from "../../../i18n/tr";
 import { categoryIconComponent } from "../../../ui/category-icon";
-import { Amount, Body, Button, Card, ChipPicker, CardListSkeleton, DataGateScreen, DataStateNotice, Divider, EmptyState, FadeIn, Field, IconButton, Label, PanelHeader, Row, Screen, SelectionGrid, Spread, ToggleRow } from "../../../ui/components";
+import { Amount, Body, Button, Card, ChipPicker, CardListSkeleton, DataGateScreen, DataStateNotice, Divider, EmptyState, FadeIn, Field, FieldError, IconButton, Label, PanelHeader, Row, Screen, SelectionGrid, Spread, ToggleRow } from "../../../ui/components";
 import { DraggableList, ReorderGrip } from "../../../ui/draggable-list";
 import { useUndo } from "../../../ui/undo";
 import { interactionSurface } from "../../../ui/interaction";
@@ -171,8 +171,11 @@ export default function ComputedColumnsScreen({ header }: { header?: ReactNode }
   }, [definition, bundle, sources, txLike, today]);
 
   const valid = name.trim() !== "" && definition !== null;
+  // The button stays live: a refused press marks what is missing instead.
+  const [attempted, setAttempted] = useState(false);
 
   const resetForm = () => {
+    setAttempted(false);
     setEditingId(null);
     setName("");
     setOp("sum");
@@ -182,7 +185,8 @@ export default function ComputedColumnsScreen({ header }: { header?: ReactNode }
   };
 
   const save = async () => {
-    if (!valid) return;
+    if (busy) return;
+    if (!valid) return setAttempted(true);
     await operationGuard.run(async () => {
       setBusy(true);
       try {
@@ -375,17 +379,18 @@ export default function ComputedColumnsScreen({ header }: { header?: ReactNode }
           />
         ) : null}
 
-        <Field label={tr.computed.nameLabel} value={name} onChangeText={setName} placeholder={tr.placeholders.computedColumnName} />
+        <FieldError message={attempted && definition === null ? tr.computed.pickItems : null} />
+        <Field label={tr.computed.nameLabel} value={name} onChangeText={setName} placeholder={tr.placeholders.computedColumnName} error={attempted && name.trim() === "" ? tr.required.name : null} />
 
         {editingId ? (
           <Row>
             <View style={{ flex: 1 }}>
-              <Button label={tr.computed.saveEdit} onPress={() => void save()} disabled={!valid || busy} loading={busy} />
+              <Button label={tr.computed.saveEdit} onPress={() => void save()} loading={busy} />
             </View>
             <Button variant="ghost" label={tr.computed.cancelEdit} onPress={resetForm} />
           </Row>
         ) : (
-          <Button icon={Plus} label={tr.computed.addAction} onPress={() => void save()} disabled={!valid || busy} loading={busy} />
+          <Button icon={Plus} label={tr.computed.addAction} onPress={() => void save()} loading={busy} />
         )}
       </Card>
           </View>

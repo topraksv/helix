@@ -179,6 +179,7 @@ export default function CategoriesScreen({ header }: { header?: ReactNode } = {}
   const [kind, setKind] = useState<"expense" | "income">("expense");
   const [isInvestment, setIsInvestment] = useState(false);
   const [adding, setAdding] = useState(false);
+  const [attempted, setAttempted] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
   // Persisted as `isTransfer`; the product calls it investment (see ARCHITECTURE.md).
@@ -207,13 +208,14 @@ export default function CategoriesScreen({ header }: { header?: ReactNode } = {}
   const { status: dataStatus, ready: dataReady, retry: retryData } = combineLiveStates([categoriesState]);
 
   const add = async () => {
-    if (!name.trim()) return;
+    if (!name.trim()) return setAttempted(true);
     await operationGuard.run(async () => {
       setAdding(true);
       try {
         await createCategory(userId, { name, kind, isTransfer: isInvestment, sortOrder: categories.length });
         scheduleSync(userId);
         setName("");
+        setAttempted(false);
         setIsInvestment(false);
       } catch {
         void appAlert(tr.errors.saveFailed, tr.errors.title);
@@ -316,7 +318,7 @@ export default function CategoriesScreen({ header }: { header?: ReactNode } = {}
               expenseCount={categories.filter((category) => category.kind === "expense").length}
               incomeCount={categories.filter((category) => category.kind === "income").length}
             />
-            <Field label={tr.settings.addCategory} value={name} onChangeText={setName} placeholder={categoryPlaceholder} />
+            <Field label={tr.settings.addCategory} value={name} onChangeText={setName} placeholder={categoryPlaceholder} error={attempted && !name.trim() ? tr.required.name : null} />
             <ChipPicker
               options={[
                 { value: "expense", label: tr.settings.kindExpense },
@@ -337,7 +339,7 @@ export default function CategoriesScreen({ header }: { header?: ReactNode } = {}
                 <Toggle label={tr.settings.investmentCategory} value={isInvestment} onValueChange={setIsInvestment} />
               </Spread>
             ) : null}
-            <Button label={tr.common.add} onPress={() => void add()} disabled={!name.trim() || adding} loading={adding} />
+            <Button label={tr.common.add} onPress={() => void add()} disabled={adding} loading={adding} />
             <Button
               icon={LayoutTemplate}
               variant="ghost"

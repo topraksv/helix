@@ -141,7 +141,7 @@ function enqueuePrompt(request: Omit<PromptRequest, "id">) {
 }
 
 /** Themed input dialog. Resolves the entered value, or null on cancel/backdrop. */
-function appPrompt(
+export function appPrompt(
   title: string,
   message: string,
   opts?: { placeholder?: string; confirmLabel?: string; secure?: boolean; danger?: boolean; operation?: DialogOperation },

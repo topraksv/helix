@@ -937,6 +937,26 @@ describe("accounts repository persistence", () => {
     expect(domainOutbox()).toEqual([]);
   });
 
+  it("moves a hand-paid instalment plan to any other source, never to none", async () => {
+    seedSource("cash", "cash");
+    seedSource("bank", "debit_card");
+    seedSource("bare-card", "credit_card", { statementDay: null, dueDay: null });
+    seedPlan("hand-plan", { kind: "card_installment", sourceId: "cash", dueDay: 12 });
+
+    await expect(reassignAndDeletePaymentSource(USER, "cash", null)).rejects.toThrow(
+      "Credit-card statement and due dates are required",
+    );
+    // On a credit card the plan becomes that card's, which a card without its days cannot carry.
+    await expect(reassignAndDeletePaymentSource(USER, "cash", "bare-card")).rejects.toThrow(
+      "Credit-card statement and due dates are required",
+    );
+    expect(row("installment_plans", "hand-plan").payment_source_id).toBe("cash");
+
+    await reassignAndDeletePaymentSource(USER, "cash", "bank");
+    expect(row("installment_plans", "hand-plan")).toMatchObject({ payment_source_id: "bank", due_day: 12 });
+    expect(row("payment_sources", "cash").deleted_at).toBe(NOW);
+  });
+
   it("relinks pending card expenses by purchase, old period, or due date while preserving historical rows", async () => {
     seedSource("old-card", "credit_card", { statementDay: 25, dueDay: 5 });
     seedSource("new-card", "credit_card", { statementDay: 20, dueDay: 10 });

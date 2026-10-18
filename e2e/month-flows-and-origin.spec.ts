@@ -11,7 +11,7 @@ async function addPlannedExpense(page: Page, months: number, amount: string): Pr
   await page.getByRole("button", { name: "İşlem Ekle" }).first().click();
   await expect(page.getByRole("heading", { name: "Yeni İşlem" })).toBeVisible();
   await page.getByRole("textbox", { name: "Tutar · TRY" }).fill(amount);
-  await pickOption(page, "Kategori", /Market/);
+  await pickOption(page, "Kalem", /Market/);
   await page.getByRole("radio", { name: "Sadece ay" }).click();
   for (let step = 0; step < months; step++) await page.getByRole("button", { name: "Sonraki" }).click();
   const save = page.getByRole("button", { name: "Kaydet", exact: true });
@@ -34,7 +34,7 @@ test("a future month focus states the planned flows behind its own total", async
 
   // …and so is the month-focused statement for the same month.
   await page.getByRole("tab", { name: "Mali Tablo" }).click();
-  await page.getByRole("radio", { name: "Ay odaklı" }).click();
+  await page.getByRole("radio", { name: "Tek ay" }).click();
   for (let step = 1; step <= 2; step++) {
     await page.getByRole("button", { name: monthLabel(addMonthsToKey(currentMonthKey(), step)), exact: true }).click();
   }
@@ -153,7 +153,7 @@ test("a large cell total stays inside its row after a narrow resize", async ({ p
 test("the transfer classification appears once, in the row being edited", async ({ page }) => {
   await onboard(page);
   await page.goto("/helix/columns-editor");
-  const transferSwitches = page.getByRole("switch", { name: /Yatırım kategorisi/ });
+  const transferSwitches = page.getByRole("switch", { name: /Yatırım kalemi/ });
 
   // Exactly one: the new-category form. Never one under every column.
   await expect(transferSwitches).toHaveCount(1);
@@ -165,7 +165,7 @@ test("the transfer classification appears once, in the row being edited", async 
   // Editing a column reveals its own classification, and only its own.
   await page.getByRole("button", { name: "Düzenle · Market" }).click();
   await expect(transferSwitches).toHaveCount(2);
-  const rowSwitch = page.getByRole("switch", { name: "Market · Yatırım kategorisi" });
+  const rowSwitch = page.getByRole("switch", { name: "Market · Yatırım kalemi" });
   await expect(rowSwitch).toHaveAttribute("aria-checked", "false");
 
   // It reads and writes the edited category, saved together with the name.
@@ -176,7 +176,7 @@ test("the transfer classification appears once, in the row being edited", async 
 
   // Re-opening the row reads the persisted value back.
   await page.getByRole("button", { name: "Düzenle · Market" }).click();
-  await expect(page.getByRole("switch", { name: "Market · Yatırım kategorisi" })).toHaveAttribute("aria-checked", "true");
+  await expect(page.getByRole("switch", { name: "Market · Yatırım kalemi" })).toHaveAttribute("aria-checked", "true");
 });
 
 test("Analysis returns to Summary even after a detour through Budgets @cross-browser", async ({ page }) => {

@@ -99,7 +99,7 @@ test("an edit that moves a foreign-currency row to another day prices it at that
   await page.goto("/helix/cash-flow");
   await page.getByRole("button", { name: "İşlem Ekle" }).click();
   await page.getByRole("textbox", { name: "Tutar · TRY" }).fill("10,00");
-  await pickOption(page, "Kategori", /Market/);
+  await pickOption(page, "Kalem", /Market/);
   await page.getByRole("textbox", { name: "Not" }).fill("Kur");
   await page.getByRole("button", { name: /döviz · TRY/ }).click();
   await page.getByRole("button", { name: /· Değiştir$/ }).click();
@@ -222,18 +222,29 @@ test("saving reports its balance effect without refreshing the screen", async ({
 
   await page.getByRole("button", { name: /İşlem Ekle/ }).first().click();
   await page.getByRole("textbox", { name: "Tutar · TRY", exact: true }).fill("250");
-  await pickOption(page, "Kategori", "Market");
+  await pickOption(page, "Kalem", "Market");
   await page.getByRole("button", { name: "Kaydet", exact: true }).click();
 
   const bar = page.getByRole("alert").first();
   await expect(bar).toBeVisible();
-  await expect(bar).toContainText("İşlem kaydedildi.");
-  await expect(bar).toContainText(/Güncel bakiyen .*250,00 değişti\./u);
+  // What was written and what it did, in two lines, with both ways back.
+  await expect(bar).toContainText(/Market · .*250,00/u);
+  await expect(bar).toContainText(/Güncel bakiye .*0,00 → .*250,00/u);
   await expect(bar.getByRole("button", { name: "Düzenle", exact: true })).toBeVisible();
+  await expect(bar.getByRole("button", { name: "Geri Al", exact: true })).toBeVisible();
 
   // Non-blocking: the dashboard behind it is interactive and already updated.
   await expect(page.getByTestId("dashboard-current-balance")).toContainText("250,00");
   expect(await page.locator("#remount-probe").count(), "the route must not remount").toBe(1);
+
+  // A refund adds to the balance, and the card says so rather than taking it off again.
+  await page.getByRole("button", { name: /İşlem Ekle/ }).first().click();
+  await page.getByRole("textbox", { name: "Tutar · TRY", exact: true }).fill("100");
+  await pickOption(page, "Kalem", "Market");
+  await page.getByRole("button", { name: "Gider iadesi veya döviz · TRY", exact: true }).click();
+  await page.getByRole("switch", { name: "Gider iadesi" }).first().click();
+  await page.getByRole("button", { name: "Kaydet", exact: true }).click();
+  await expect(page.getByRole("alert").first()).toContainText(/Güncel bakiye .*250,00 → .*150,00/u);
 
   expect(errors).toEqual([]);
 });
@@ -251,9 +262,34 @@ test("a hand-entered ledger row claims no origin it cannot prove", async ({ page
   await expect(page.getByTestId("transaction-provenance")).toHaveCount(0);
 
   // The removed duplicate review and expectation matching stay gone.
-  await page.goto("/helix/reconciliation");
+  await page.goto("/helix/attention");
   await expect(page.getByText("Olası tekrar kayıtlar")).toHaveCount(0);
   await expect(page.getByText("Mevcut İşlemle Eşleştir")).toHaveCount(0);
+
+  expect(errors).toEqual([]);
+});
+
+test("a hand-started balance that goes negative asks once for the real figure", async ({ page }) => {
+  const errors = collectRuntimeErrors(page);
+  await onboard(page);
+  await page.evaluate(() => localStorage.removeItem("helix.negative-balance-hint.done"));
+
+  await page.getByRole("button", { name: /İşlem Ekle/ }).first().click();
+  await page.getByRole("textbox", { name: "Tutar · TRY", exact: true }).fill("250");
+  await pickOption(page, "Kalem", "Market");
+  await page.getByRole("button", { name: "Kaydet", exact: true }).click();
+
+  const dialog = page.locator('[aria-modal="true"]');
+  await expect(dialog.getByText("Bakiyen şu an ekside", { exact: true })).toBeVisible();
+  await dialog.getByRole("button", { name: "Bakiyemi Yaz", exact: true }).click();
+  await expect(page).toHaveURL(/\/helix\/opening-balance$/u);
+
+  // Once: a second expense does not ask again.
+  await page.goto("/helix/transaction");
+  await page.getByRole("textbox", { name: "Tutar · TRY", exact: true }).fill("10");
+  await pickOption(page, "Kalem", "Market");
+  await page.getByRole("button", { name: "Kaydet", exact: true }).click();
+  await expect(page.getByText("Bakiyen şu an ekside", { exact: true })).toHaveCount(0);
 
   expect(errors).toEqual([]);
 });
@@ -277,17 +313,18 @@ test("the attention inbox groups what is waiting and lets it be deferred or fini
   await expect(item).toContainText("₺229,99");
 
   // Deferring removes the row and stays undoable: a defer is not a decision.
-  await item.getByRole("button", { name: "Sonra", exact: true }).click();
+  await item.getByRole("button", { name: /^Ertele/ }).click();
   await expect(page.locator('[data-testid^="attention-item-expected:"]')).toHaveCount(0);
   const bar = page.getByRole("alert").first();
   await expect(bar).toContainText("Bir hafta sonra yeniden hatırlatılacak.");
   await bar.getByRole("button", { name: "Geri Al", exact: true }).click();
   await expect(page.locator('[data-testid^="attention-item-expected:"]').first()).toBeVisible();
 
-  // Finishing removes it too, and the inbox is then honestly empty.
+  // Paying it on the row records the payment, which is what empties the inbox.
   await page.locator('[data-testid^="attention-item-expected:"]').first()
-    .getByRole("button", { name: "Bitti", exact: true }).click();
+    .getByRole("button", { name: /^Ödendi/ }).click();
   await expect(page.getByText("Bekleyen bir şey yok.", { exact: true })).toBeVisible();
+  await expect(page.getByRole("alert").first()).toContainText("Netflix ✓");
 
   expect(errors).toEqual([]);
 });
@@ -355,8 +392,13 @@ test("a card statement is read locally, reviewed, and only then written", async 
   await expect(page.getByTestId("statement-period")).toContainText("Ağustos 2026");
   await expect(page.getByTestId("statement-period")).toContainText("Ödeme günü: 31 Ağustos 2026");
 
+  // With nothing chosen the button still answers, and says why nothing was written.
   await page.getByTestId("statement-clear-selection").click();
-  await expect(page.getByTestId("statement-commit")).toBeDisabled();
+  await page.getByTestId("statement-commit").click();
+  const refusal = page.locator('[aria-modal="true"]');
+  await expect(refusal.getByText("Aktarmak için en az bir satır seç.", { exact: true })).toBeVisible();
+  await refusal.getByRole("button", { name: "Tamam", exact: true }).click();
+  await expect(refusal).toHaveCount(0);
   await page.getByTestId("statement-select-new").click();
   await page.getByTestId("statement-commit").click();
 
@@ -377,7 +419,11 @@ test("a card statement is read locally, reviewed, and only then written", async 
   // Next month's statement must join this plan, not open a rival.
   await expect(page.getByText(/TEKNOSA taksit planı bu ödemeyi zaten oluşturuyor/u)).toBeVisible();
   // And nothing is pre-selected, so accepting the defaults writes nothing.
-  await expect(page.getByTestId("statement-commit")).toBeDisabled();
+  await expect(page.getByTestId("statement-commit")).toHaveAccessibleName("0 satırı aktar");
+  await page.getByTestId("statement-commit").click();
+  const nothingChosen = page.locator('[aria-modal="true"]');
+  await expect(nothingChosen.getByText("Aktarmak için en az bir satır seç.", { exact: true })).toBeVisible();
+  await nothingChosen.getByRole("button", { name: "Tamam", exact: true }).click();
 
   expect(errors).toEqual([]);
 });
@@ -451,7 +497,7 @@ test("the save confirmation opens the row it just saved, even when taken at once
 
   await page.getByRole("button", { name: /İşlem Ekle/u }).first().click();
   await page.getByRole("textbox", { name: "Tutar · TRY", exact: true }).fill("321");
-  await pickOption(page, "Kategori", "Market");
+  await pickOption(page, "Kalem", "Market");
   await page.getByRole("button", { name: "Kaydet", exact: true }).click();
 
   const fired = await page.evaluate(async () => {
@@ -555,7 +601,7 @@ test("a card statement opens from Durum, takes a partial payment, and Back retur
   await openCashFlow(page);
   await page.getByRole("button", { name: "İşlem Ekle" }).click();
   await page.getByRole("textbox", { name: "Tutar · TRY" }).fill("1.000,00");
-  await pickOption(page, "Kategori", /Market/);
+  await pickOption(page, "Kalem", /Market/);
   await pickOption(page, "Ödeme Yöntemi", /Deneme Kart/);
   await page.getByRole("button", { name: "Kaydet", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Mali Tablo", exact: true })).toBeVisible();

@@ -5,6 +5,7 @@ import {
   type LedgerBundle,
   ledgerChainEndYear,
   monthFlowTotals,
+  needsNegativeBalanceHint,
   projectedBalance,
   reconciliationDelta,
   resolveLedgerAnchor,
@@ -574,6 +575,8 @@ describe("dated balance declarations", () => {
     expect(month(built, "2026-03").openingMinor).toBe(2000_00);
     expect(built.declarationDeltaById.get("feb-close")).toBe(600_00);
     expect(built.actualBalanceMinor).toBe(1750_00);
+    // The save card reads this to keep quiet about a row the declaration absorbed.
+    expect(built.balanceStatedThrough).toBe("2026-02-28");
   });
 
   it("counts a movement adjustment on its day before holding the declared figure", () => {
@@ -586,6 +589,8 @@ describe("dated balance declarations", () => {
     const built = chain([income], [{ ...declaration, date: "2026-04-30" as ISODate }]);
     expect(built.actualBalanceMinor).toBe(1500_00);
     expect(built.declarationDeltaById.size).toBe(0);
+    expect(built.balanceStatedThrough).toBe("2025-12-31");
+    expect(chain([income], [], null).balanceStatedThrough).toBeNull();
   });
 
   it("opens from a declaration dated before the anchor and still holds the anchor's own month", () => {
@@ -594,6 +599,7 @@ describe("dated balance declarations", () => {
     expect(built.startMonth).toBe("2026-01");
     expect(month(built, "2026-01").openingMinor).toBe(1000_00);
     expect(month(built, "2026-03").openingMinor).toBe(5000_00);
+    expect(built.balanceStatedThrough).toBe("2026-02-28");
     // The anchor rides along without an id, so it says nothing about itself.
     expect([...built.declarationDeltaById.keys()]).toEqual(["jan-close"]);
   });
@@ -937,5 +943,23 @@ describe("declaring a month's opening", () => {
     expect(declarationAdjustmentMinor(30_000, 30_000, 0)).toBe(0);
     expect(declarationAdjustmentMinor(25_000, 30_000, 5_000)).toBe(0);
     expect(declarationAdjustmentMinor(-1, 0, 0)).toBe(-1);
+  });
+});
+
+describe("needsNegativeBalanceHint", () => {
+  const fresh = { actualBalanceMinor: -1, transactionCount: 20, openingBalanceMinor: 0, declared: false, adjustmentCount: 0, imported: false };
+
+  it("asks a hand-started workspace whose first entries took it below zero", () => {
+    expect(needsNegativeBalanceHint(fresh)).toBe(true);
+  });
+
+  it("stays quiet at zero, past the first entries, or once any real balance exists", () => {
+    expect(needsNegativeBalanceHint({ ...fresh, actualBalanceMinor: 0 })).toBe(false);
+    expect(needsNegativeBalanceHint({ ...fresh, transactionCount: 21 })).toBe(false);
+    expect(needsNegativeBalanceHint({ ...fresh, openingBalanceMinor: 5 })).toBe(false);
+    expect(needsNegativeBalanceHint({ ...fresh, openingBalanceMinor: -5 })).toBe(false);
+    expect(needsNegativeBalanceHint({ ...fresh, declared: true })).toBe(false);
+    expect(needsNegativeBalanceHint({ ...fresh, adjustmentCount: 1 })).toBe(false);
+    expect(needsNegativeBalanceHint({ ...fresh, imported: true })).toBe(false);
   });
 });

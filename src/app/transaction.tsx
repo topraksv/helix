@@ -12,7 +12,7 @@ import TrendingUp from "lucide-react-native/icons/trending-up";
 import Undo2 from "lucide-react-native/icons/undo-2";
 import WalletCards from "lucide-react-native/icons/wallet-cards";
 import type { LucideIcon } from "lucide-react-native";
-import { addTransaction, createInstallmentPlan, CreditCardCycleRequiredError, RefundExceedsExpenseError, updateTransaction } from "../data/repo";
+import { addTransaction, createInstallmentPlan, CreditCardCycleRequiredError, deletePlan, deleteTransaction, RefundExceedsExpenseError, updateTransaction } from "../data/repo";
 import {
   useAllTransactionsState,
   useAttachmentsState,
@@ -21,6 +21,7 @@ import {
   useInvestmentOperationsState,
   useInvestmentProductsState,
   useInvestmentProfilesState,
+  useLedgerState,
   useInvestmentWalletSnapshot,
   usePersonsState,
   useSourcesState,
@@ -30,7 +31,8 @@ import {
 import { combineLiveStates } from "../data/live-state";
 import { classifyRecordId } from "../domain/route-params";
 import { previewTryMinor, resolveTransactionSave } from "../domain/transaction-draft";
-import { assertISODate, isISODate, lastDayOf, monthKeyOf, todayISO, type ISODate, type MonthKey } from "../domain/dates";
+import { monthOnlyTransferDate } from "../domain/investment-projection";
+import { assertISODate, dayOf, isISODate, isMonthDay, lastDayOf, monthKeyOf, todayISO, yearOf, type ISODate, type MonthKey } from "../domain/dates";
 import { isValidCardCycle, statementForPurchase, statementPeriod } from "../domain/card-statements";
 import { formatMinorCompact, formatMinorInput } from "../domain/money";
 import { installmentSplitText } from "../ui/installment-text";
@@ -58,9 +60,11 @@ import { AttachmentPanel } from "../ui/attachment-panel";
 import { devError } from "../services/logger";
 import { useOperationGuard } from "../ui/operation-guard";
 import { useUndo } from "../ui/undo";
+import { balanceLine, showSaveResult } from "../ui/save-result";
 import { useDirtyExitGuard, useDraftDirty } from "../ui/dirty-exit";
 import { WorkspaceSplit } from "../ui/workspace-layout";
 import { assignedPersonId, PersonAssignment } from "../ui/person-assignment";
+import { categoryCreateAction, sourceCreateActions } from "../ui/inline-create";
 
 /** The Select's own icon column, so a source mark fits it exactly. */
 const SOURCE_MARK = 22;
@@ -116,6 +120,18 @@ function refundTargetOf(
     newFormKey: target ? `refund-${target.id}` : `new-${intent ?? "default"}`,
     waiting: Boolean(wanted) && !target && state.status === "loading",
   };
+}
+
+/**
+ * What a save says about today's balance. A row on or before a stated balance
+ * is absorbed by it, so nothing is claimed; an edit's effect is new minus old,
+ * which this row alone cannot say, so it keeps the plain sentence.
+ */
+function balanceParts(summary: SaveSummary, ledger: { actualBalanceMinor: number; balanceStatedThrough: ISODate | null } | null, balanceDate: string): string[] {
+  if (ledger?.balanceStatedThrough != null && balanceDate <= ledger.balanceStatedThrough) return [];
+  const line = summary.kind === "created" ? balanceLine(ledger?.actualBalanceMinor ?? null, summary.effect.balanceMinor, tr.saved.balance) : null;
+  if (line) return [line];
+  return summary.effect.balanceMinor !== 0 ? [tr.tx.savedBalanceEffect(formatMinorCompact(summary.effect.balanceMinor))] : [];
 }
 
 export default function TransactionModal() {
@@ -185,8 +201,12 @@ function InvestmentRefundForm({ transactionsState }: { transactionsState: Return
     ? tr.investments.refundExceedsCash(formatMinorCompact(wallet.cashMinor))
     : null;
   const dateless = dateMode === "month";
-  const effectiveDate = dateless ? `${monthKey}-01` : dateStr;
-  const dateValid = dateless || isISODate(dateStr);
+  const walletStart = profile?.startedOn ?? null;
+  const effectiveDate = dateless ? monthOnlyTransferDate(monthKey, walletStart) : dateStr;
+  // The wallet counts only movements from its start, so money taken out
+  // before it would leave the ledger and never leave the wallet.
+  const dateError = walletStart != null && effectiveDate < walletStart ? tr.investments.refundBeforeStart(dateLabel(walletStart)) : null;
+  const dateValid = (dateless || isISODate(dateStr)) && dateError == null;
   const canSave = ready
     && wallet != null
     && selectedAmount != null
@@ -196,6 +216,8 @@ function InvestmentRefundForm({ transactionsState }: { transactionsState: Return
     && selfPerson != null
     && dateValid
     && !busy;
+  const [attempted, setAttempted] = useState(false);
+  const missingAmount = selectedAmount == null || selectedAmount <= 0;
   const draftSnapshot = JSON.stringify({ amountMode, amountRaw, categoryId, dateMode, monthKey, dateStr });
   // The baseline is the form as the DATA leaves it, not as the first render
   // leaves it: the single transfer category is assigned by an effect once the
@@ -207,12 +229,18 @@ function InvestmentRefundForm({ transactionsState }: { transactionsState: Return
   const close = () => navigateBack(router, "/(tabs)/investments");
 
   const save = async () => {
-    if (!canSave || !selectedAmount || !categoryId || !selfPerson) return;
+    if (busy) return;
+    if (!canSave || !selectedAmount || !categoryId || !selfPerson) {
+      setAttempted(true);
+      // "All of it" has no field to mark when there is nothing to move.
+      if (amountMode === "all" && missingAmount) void appAlert(tr.investments.noCashToMove, tr.investments.refundTitle);
+      return;
+    }
     await operationGuard.run(async () => {
       setBusy(true);
       try {
         assertISODate(effectiveDate);
-        await addTransaction(userId, {
+        const createdId = await addTransaction(userId, {
           type: "transfer",
           amountMinor: -selectedAmount,
           currency: "TRY",
@@ -226,6 +254,12 @@ function InvestmentRefundForm({ transactionsState }: { transactionsState: Return
           note: null,
         });
         scheduleSync(userId);
+        showSaveResult({
+          name: categoriesState.data.find((category) => category.id === categoryId)?.name ?? tr.saved.fallbackName,
+          amountMinor: selectedAmount,
+          detail: balanceLine(wallet.cashMinor, -selectedAmount, tr.saved.freeCash),
+          undo: () => deleteTransaction(userId, createdId).then(() => scheduleSync(userId)),
+        });
         allowExit(close);
       } catch (error) {
         devError("investment.refund", error);
@@ -281,7 +315,7 @@ function InvestmentRefundForm({ transactionsState }: { transactionsState: Return
           <MoneyField
             label={tr.investments.refundPartialAmount}
             value={amountRaw}
-            error={amountError}
+            error={amountError ?? (attempted && missingAmount ? tr.required.amount : null)}
             placeholder={amountPlaceholder}
             onChangeMinor={(raw, minor) => {
               setAmountRaw(raw);
@@ -299,7 +333,10 @@ function InvestmentRefundForm({ transactionsState }: { transactionsState: Return
           options={transferCategories.map((category) => ({ value: category.id, label: category.name, icon: categoryIconComponent(category) }))}
           value={categoryId}
           onChange={setCategoryId}
-          onCreate={{ label: tr.tx.addCategory, run: () => router.push("/columns-editor") }}
+          error={attempted && categoryId == null ? tr.required.category : null}
+          onCreate={categoryCreateAction({
+            userId, kind: "expense", isTransfer: true, categories: categoriesState.data, onCreated: setCategoryId,
+          })}
         />
         <Label>{tr.tx.whenLabel}</Label>
         <ChipPicker
@@ -311,8 +348,9 @@ function InvestmentRefundForm({ transactionsState }: { transactionsState: Return
           ]}
         />
         {dateless ? <MonthStepper value={monthKey} onChange={setMonthKey} /> : <DateField label={tr.tx.effectiveDate} value={dateStr} onChange={setDateStr} />}
+        {dateError ? <Body accessibilityRole="alert" style={{ color: palette.negative }}>{dateError}</Body> : null}
       </Card>
-      <Button label={tr.investments.refundAction} icon={ArrowUpRight} disabled={!canSave} loading={busy} onPress={() => void save()} />
+      <Button label={tr.investments.refundAction} icon={ArrowUpRight} loading={busy} onPress={() => void save()} />
     </Screen>
   );
 }
@@ -401,6 +439,7 @@ function initialEntry(existing: ExistingTx | undefined, refundOf: ExistingTx | u
     installment: false,
     countStr: "2",
     paidStr: "0",
+    dueDayStr: "",
   };
 }
 
@@ -500,6 +539,9 @@ function useTransactionForm({ existing, refundOf, investmentRefund }: { existing
   const operationGuard = useOperationGuard();
   const undo = useUndo();
   const data = combineLiveStates([categoriesState, sourcesState, personsState]);
+  const walletStart = useInvestmentProfilesState().data[0]?.startedOn ?? null;
+  // Read before the write lands, so the result card can say "before → after".
+  const ledgerNow = useLedgerState(yearOf(todayISO())).data;
   const isEdit = existing != null;
   // Opened as a router modal normally, but a web deep-link to /transaction has
   // no back stack — fall back to a real screen so "save" always closes it.
@@ -543,11 +585,28 @@ function useTransactionForm({ existing, refundOf, investmentRefund }: { existing
   // (shown by month, kept out of "upcoming"); day mode uses the exact day. A
   // month-only card charge joins that month's statement, which the repository resolves.
   const dateless = entry.dateMode === "month";
-  const effectiveDate = dateless ? `${entry.monthKey}-01` : entry.dateStr;
+  // A month-only transfer in the wallet's first month lands on its start day,
+  // or the wallet, which counts from that day, would never see it.
+  // A transfer edited within its month keeps its stored day, so one written before this rule is not moved into the wallet.
+  const keptTransferDate = existing?.isAggregate && existing.type === "transfer" && monthKeyOf(existing.effectiveDate) === entry.monthKey ? existing.effectiveDate : null;
+  const effectiveDate = dateless
+    ? entry.entryType === "transfer" ? keptTransferDate ?? monthOnlyTransferDate(entry.monthKey, walletStart) : `${entry.monthKey}-01`
+    : entry.dateStr;
   const dateValid = dateless || isISODate(entry.dateStr);
+  // History before the wallet stays in the ledger only; said, not refused, so an old month can still be filled in.
+  const beforeWalletNote = entry.entryType === "transfer" && walletStart != null && dateValid && effectiveDate < walletStart
+    ? tr.tx.beforeWalletNote(dateLabel(walletStart))
+    : null;
   const count = Number(entry.countStr);
   const paid = Number(entry.paidStr);
-  const installmentValid = !entry.installment || (isValidInstallmentCount(count) && count >= 2 && Number.isInteger(paid) && paid >= 0 && paid < count);
+  // Off a card ("elden") the plan keeps its own payment day: the one typed,
+  // else the source's, else the purchase day.
+  const onCard = selectedSource?.type === "credit_card";
+  const typedDueDay = entry.dueDayStr.trim() === "" ? null : Number(entry.dueDayStr.trim());
+  const handDueFallback = selectedSource?.dueDay ?? (!dateless && isISODate(entry.dateStr) ? dayOf(entry.dateStr) : null);
+  const handDueValid = typedDueDay == null || isMonthDay(typedDueDay);
+  const installmentValid = !entry.installment || (isValidInstallmentCount(count) && count >= 2 && Number.isInteger(paid) && paid >= 0 && paid < count
+    && selectedSource != null && (onCard || handDueValid));
   // The rule itself is in `domain/transaction-draft.ts`, where a test can hold
   // it without a renderer. This screen owns the fields; that owns the answer.
   const saveable = resolveTransactionSave({
@@ -572,19 +631,22 @@ function useTransactionForm({ existing, refundOf, investmentRefund }: { existing
    * have already delivered the row underneath it, so there is no refresh, no
    * remount and no reload behind this.
    */
-  const confirmSave = (summary: SaveSummary, editId: string | null) => {
-    const parts: string[] = [];
-    if (summary.effect.balanceMinor !== 0) parts.push(tr.tx.savedBalanceEffect(formatMinorCompact(summary.effect.balanceMinor)));
-    else if (summary.effect.forecastOnly) parts.push(tr.tx.savedForecastEffect(formatMinorCompact(summary.effect.projectedMinor)));
+  const confirmSave = (summary: SaveSummary, createdId: string | null, name: string) => {
+    const parts = balanceParts(summary, ledgerNow ?? null, cardStatementPreview?.dueDate ?? effectiveDate);
+    if (parts.length === 0 && summary.effect.forecastOnly) parts.push(tr.tx.savedForecastEffect(formatMinorCompact(summary.effect.projectedMinor)));
     if (summary.otherMonth) parts.push(tr.tx.savedOtherMonth(monthLabel(summary.otherMonth as MonthKey)));
-    const message = summary.kind === "updated" ? tr.tx.updatedNotice : tr.tx.savedNotice;
-    if (parts.length === 0) {
-      undo.show(message);
+    if (summary.kind === "updated") {
+      if (parts.length === 0) undo.show(tr.saved.updated(name));
+      else undo.showDetailed(tr.saved.updated(name), { text: parts.join(" · ") });
       return;
     }
-    undo.showDetailed(message, {
-      text: parts.join(" · "),
-      action: editId ? { label: tr.common.edit, run: () => router.push({ pathname: "/transaction", params: { id: editId } }) } : null,
+    showSaveResult({
+      name,
+      amountMinor: saveable!.amountMinor,
+      currency: entry.currency,
+      detail: parts.join(" · ") || null,
+      undo: createdId ? () => deleteTransaction(userId, createdId).then(() => scheduleSync(userId)) : null,
+      edit: createdId ? { label: tr.common.edit, run: () => router.push({ pathname: "/transaction", params: { id: createdId } }) } : null,
     });
   };
 
@@ -593,22 +655,40 @@ function useTransactionForm({ existing, refundOf, investmentRefund }: { existing
     return e instanceof RefundExceedsExpenseError && refundLink ? tr.tx.refundTooLarge(formatMinorCompact(e.remainingMinor, refundLink.currency)) : tr.errors.saveFailed;
   };
 
-  /** A card purchase in instalments: its plan starts on the statement the purchase joins, or where "already paid" places it. */
+  /** A purchase in instalments: on a card its plan starts on the statement the purchase joins, else where "already paid" places it. */
   const writePlan = (fxRate: string | null) => {
-    const dueDay = selectedSource?.dueDay ?? null;
+    const dueDay = onCard ? selectedSource.dueDay ?? null : typedDueDay ?? handDueFallback;
     const firstMonth = cardStatementPreview ? monthKeyOf(cardStatementPreview.dueDate) : dateless ? entry.monthKey : monthKeyOf(entry.dateStr);
     return createInstallmentPlan(userId, {
       title: entry.note.trim() || tr.installments.defaultTitle(formatMinorCompact(saveable!.amountMinor, entry.currency)),
       kind: "card_installment", totalAmountMinor: saveable!.amountMinor, monthlyAmountMinor: null, installmentCount: count,
       currency: entry.currency, fxRate,
-      startMonth: paid > 0 ? deriveStartMonth(paid, monthKeyOf(todayISO()), dueDay, todayISO()) : firstMonth,
+      // Off a card nothing is due until a payment day passes, so "0 paid" starts after today, as "N paid" does.
+      startMonth: paid > 0 || !onCard ? deriveStartMonth(paid, monthKeyOf(todayISO()), dueDay, todayISO()) : firstMonth,
       dueDay, paymentSourceId: sourceId, personId: saveable!.person.id, personIsSelf: saveable!.person.isSelf,
       categoryId: saveable!.categoryId, note: entry.note.trim() || null, tryFactor: saveable!.rateTry,
     });
   };
 
+  // The button stays live: a refused press marks what is missing instead.
+  const [attempted, setAttempted] = useState(false);
+  const missing = {
+    amount: entry.amountMinor == null || entry.amountMinor <= 0,
+    category: categoryId == null,
+    count: entry.installment && !(isValidInstallmentCount(count) && count >= 2),
+  };
+  const refuse = () => {
+    setAttempted(true);
+    // A reason no field shows (a missing rate, an invalid date) still gets said.
+    const shown = missing.amount || missing.category || missing.count || refundProblem != null || (isCreditCardExpense && !cardCycleValid);
+    if (!shown) void appAlert(effectiveRateTry == null ? tr.errors.fxUnavailable : tr.required.general, tr.errors.title);
+  };
+
+  /** What the result card calls the record: its note, else its kalem. */
+  const savedName = entry.note.trim() || categories.find((category) => category.id === saveable?.categoryId)?.name || tr.saved.fallbackName;
+
   const save = (thenNew: boolean) => operationGuard.run(async () => {
-    if (!saveable) return;
+    if (!canSave || !saveable) return refuse();
     setBusy(true);
     try {
       assertISODate(effectiveDate);
@@ -620,29 +700,36 @@ function useTransactionForm({ existing, refundOf, investmentRefund }: { existing
         effectiveDate, isAggregate: dateless, categoryId: saveable.categoryId, paymentSourceId: sourceId, personId: saveable.person.id,
         note: entry.note.trim() || null,
       };
+      // What the balance sees: the signed amount, since a refund adds, and a card
+      // charge on its statement's due day, where the repository dates it.
+      const balanceDate = cardStatementPreview?.dueDate ?? effectiveDate;
       const saved: SavedTransaction = {
-        type: entry.entryType, amountTryMinor: Math.abs(saveable.tryMinor), effectiveDate,
-        status: effectiveDate <= todayISO() ? "realized" : "pending", personIsSelf: saveable.person.isSelf,
+        type: entry.entryType, amountTryMinor: saveable.tryMinor, effectiveDate: balanceDate,
+        status: balanceDate <= todayISO() ? "realized" : "pending", personIsSelf: saveable.person.isSelf,
       };
       if (existing) {
         await updateTransaction(userId, existing, fields);
         scheduleSync(userId);
-        confirmSave(buildSaveSummary({ kind: "updated", saved, today: todayISO(), enteredFor: entry.dateStr }), null);
+        confirmSave(buildSaveSummary({ kind: "updated", saved, today: todayISO(), enteredFor: entry.dateStr }), null, savedName);
         allowExit(close);
         return;
       }
       // A plan writes many rows across many months: no single row to open and
-      // no one-row balance sentence to say, so it keeps the plain notice.
+      // no one-row balance sentence to say, so its card names the plan instead.
       const createdId = entry.installment ? null : await addTransaction(userId, refundOf ? { ...fields, refundOfTransactionId: refundOf.id } : fields);
-      if (entry.installment) await writePlan(fxRate);
+      const planId = entry.installment ? await writePlan(fxRate) : null;
       void kv.set(`helix.last.${entry.entryType}`, JSON.stringify({ categoryId, sourceId }));
       scheduleSync(userId);
-      const summary = entry.installment ? null : buildSaveSummary({ kind: "created", saved, today: todayISO(), enteredFor: entry.dateStr });
-      if (summary) confirmSave(summary, createdId);
+      if (planId) {
+        showSaveResult({
+          name: savedName, amountMinor: saveable.amountMinor, currency: entry.currency, detail: tr.saved.plan(count),
+          undo: () => deletePlan(userId, planId).then(() => scheduleSync(userId)),
+        });
+      } else confirmSave(buildSaveSummary({ kind: "created", saved, today: todayISO(), enteredFor: entry.dateStr }), createdId, savedName);
       // Staying on the form clears only the amount; the shared bar confirms the write.
       if (thenNew) {
+        setAttempted(false);
         patch({ amountRaw: "", amountMinor: null, isReversal: false, note: "" });
-        if (!summary) undo.show(tr.tx.savedNotice);
       } else allowExit(close);
     } catch (e) {
       // Never surface a raw engine error (English, technical) to the user.
@@ -665,9 +752,9 @@ function useTransactionForm({ existing, refundOf, investmentRefund }: { existing
   };
 
   return {
-    existing, refundOf, isEdit, data, entry, patch, busy, save, canSave, chooseEntryType, userId,
+    existing, refundOf, isEdit, data, entry, patch, busy, save, canSave, chooseEntryType, userId, selfId: persons.find((person) => person.isSelf)?.id ?? null,
     categories, sources, persons, personId, historicalRateTry, rate, isCreditCardExpense, cardCycleValid, looksLikeCardBill,
-    dateless, installmentValid, count, cardStatementPreview, refundLink, refundLeftMinor: leftMinor, refundProblem,
+    attempted, missing, dateless, beforeWalletNote, installmentValid, onCard, handDueFallback, handDueValid, count, cardStatementPreview, refundLink, refundLeftMinor: leftMinor, refundProblem,
     tryMinor: previewTryMinor(entry.amountMinor, entry.isReversal, effectiveRateTry),
   };
 }
@@ -776,31 +863,30 @@ function AssignmentFields({ form }: { form: TransactionFormModel }) {
     <>
       <Divider />
       <SectionHeader>{tr.tx.assignment}</SectionHeader>
-      {categoryOptions.length > 0 ? (
-        <Select
-          testID="transaction-category"
-          label={tr.tx.category}
-          placeholder={tr.tx.categoryPlaceholder}
-          options={categoryOptions}
-          value={entry.categoryId}
-          onChange={(categoryId) => patch({ categoryId })}
-          onCreate={{ label: tr.tx.addCategory, run: () => router.push("/columns-editor") }}
-        />
-      ) : (
-        <View style={{ marginBottom: spacing.md }}>
-          <Label>{tr.tx.category}</Label>
-          <Body muted style={{ marginBottom: spacing.sm }}>{tr.tx.categoryRequiredEmpty}</Body>
-          <Button size="sm" variant="secondary" label={tr.settings.categories} onPress={() => router.push("/columns-editor")} />
-        </View>
-      )}
-      {form.sources.length > 0 && entry.entryType !== "income" ? (
+      <Select
+        testID="transaction-category"
+        label={tr.tx.category}
+        placeholder={categoryOptions.length > 0 ? tr.tx.categoryPlaceholder : tr.tx.categoryRequiredEmpty}
+        options={categoryOptions}
+        value={entry.categoryId}
+        onChange={(categoryId) => patch({ categoryId })}
+        error={form.attempted && form.missing.category ? tr.required.category : null}
+        onCreate={categoryCreateAction({
+          userId: form.userId, kind: entry.entryType === "income" ? "income" : "expense", isTransfer: entry.entryType === "transfer",
+          categories: form.categories, onCreated: (categoryId) => patch({ categoryId }),
+        })}
+      />
+      {entry.entryType !== "income" ? (
         <Select
           label={tr.tx.source}
           placeholder={tr.tx.sourcePlaceholder}
           options={form.sources.map((s) => ({ value: s.id, label: s.name, icon: <PaymentSourceLogo name={s.name} type={s.type} logoRef={s.logoRef} size={SOURCE_MARK} /> }))}
           value={entry.sourceId}
           onChange={(sourceId) => patch({ sourceId })}
-          onCreate={{ label: tr.tx.addSource, run: () => router.push("/payment-sources") }}
+          onCreate={sourceCreateActions({
+            userId: form.userId, ownerId: form.selfId, sources: form.sources,
+            onCreated: (sourceId) => patch({ sourceId }), openCardSetup: () => router.push("/payment-sources"),
+          })}
         />
       ) : null}
       {form.looksLikeCardBill ? (
@@ -812,7 +898,7 @@ function AssignmentFields({ form }: { form: TransactionFormModel }) {
           </View>
         </View>
       ) : null}
-      <PersonAssignment people={form.persons} value={form.personId} onChange={(personChoice) => patch({ personChoice })} />
+      <PersonAssignment label={entry.entryType === "income" ? tr.tx.personIncome : entry.entryType === "transfer" ? tr.tx.personInvestment : tr.tx.personExpense} people={form.persons} value={form.personId} onChange={(personChoice) => patch({ personChoice })} />
     </>
   );
 }
@@ -834,6 +920,7 @@ function AmountCard({ form }: { form: TransactionFormModel }) {
         value={entry.amountRaw}
         expression={!transfer}
         placeholder={amountPlaceholder}
+        error={form.attempted && form.missing.amount ? tr.required.amount : null}
         onChangeMinor={(raw, minor) => patch({
           amountRaw: transfer ? raw.replace(/^-/, "") : raw,
           amountMinor: minor == null ? null : Math.abs(minor),
@@ -883,6 +970,7 @@ function TimingFields({ form }: { form: TransactionFormModel }) {
           <DateField label={isCreditCardExpense ? tr.tx.cardPurchaseDate : tr.tx.effectiveDate} value={entry.dateStr} onChange={(dateStr) => patch({ dateStr })} />
         </FieldNote>
       )}
+      {form.beforeWalletNote ? <Body muted style={{ fontSize: type.small.fontSize }}>{form.beforeWalletNote}</Body> : null}
       <CardCycleFix form={form} />
     </>
   );
@@ -890,8 +978,7 @@ function TimingFields({ form }: { form: TransactionFormModel }) {
 
 function InstallmentFields({ form }: { form: TransactionFormModel }) {
   const { entry, patch } = form;
-  const onCard = form.sources.find((source) => source.id === entry.sourceId)?.type === "credit_card";
-  if (form.isEdit || form.refundOf || entry.entryType !== "expense" || !onCard) return null;
+  if (form.isEdit || form.refundOf || entry.entryType !== "expense") return null;
   return (
     <View style={{ marginVertical: spacing.md }}>
       <ChipPicker
@@ -899,18 +986,41 @@ function InstallmentFields({ form }: { form: TransactionFormModel }) {
         value={entry.installment ? "installment" : "single"}
         onChange={(v) => patch({ installment: v === "installment" })}
       />
-      {entry.installment ? (
-        <Row>
-          <View style={{ flex: 1 }}>
-            <Field label={tr.tx.installmentCount} value={entry.countStr} onChangeText={(countStr) => patch({ countStr })} keyboardType="number-pad" />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Field label={tr.tx.alreadyPaid} value={entry.paidStr} onChangeText={(paidStr) => patch({ paidStr })} keyboardType="number-pad" />
-          </View>
-        </Row>
-      ) : null}
-      {entry.installment && form.installmentValid && entry.amountMinor ? <Body muted>{installmentSplitText(entry.amountMinor, form.count, entry.currency)}</Body> : null}
+      {entry.installment ? <InstallmentDetails form={form} /> : null}
     </View>
+  );
+}
+
+/** Count and paid so far, and — paid by hand rather than on a card — the day each instalment falls due. */
+function InstallmentDetails({ form }: { form: TransactionFormModel }) {
+  const { palette } = useTheme();
+  const { entry, patch } = form;
+  const noSource = entry.sourceId == null;
+  return (
+    <>
+      <Row>
+        <View style={{ flex: 1 }}>
+          <Field label={tr.tx.installmentCount} value={entry.countStr} onChangeText={(countStr) => patch({ countStr })} keyboardType="number-pad" error={form.attempted && form.missing.count ? tr.required.count : null} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Field label={tr.tx.alreadyPaid} value={entry.paidStr} onChangeText={(paidStr) => patch({ paidStr })} keyboardType="number-pad" />
+        </View>
+      </Row>
+      {!form.onCard && !noSource ? (
+        <FieldNote note={tr.tx.handInstallmentNote}>
+          <Field
+            label={tr.installments.dueDayField}
+            value={entry.dueDayStr}
+            onChangeText={(dueDayStr) => patch({ dueDayStr })}
+            keyboardType="number-pad"
+            placeholder={form.handDueFallback != null ? String(form.handDueFallback) : "1"}
+            error={form.handDueValid ? null : tr.tx.dueDayInvalid}
+          />
+        </FieldNote>
+      ) : null}
+      {noSource ? <Body accessibilityRole="alert" style={{ color: palette.negative }}>{tr.tx.installmentNeedsSource}</Body> : null}
+      {form.installmentValid && entry.amountMinor ? <Body muted>{installmentSplitText(entry.amountMinor, form.count, entry.currency)}</Body> : null}
+    </>
   );
 }
 
@@ -944,8 +1054,8 @@ function CompletionFields({ form }: { form: TransactionFormModel }) {
       {/* The form's own width: a pair bounded to what two buttons need rendered
           as a small block that moved with the window. */}
       <View style={{ gap: spacing.sm, width: "100%" }}>
-        <Button label={tr.common.save} onPress={() => void form.save(false)} disabled={!form.canSave} loading={form.busy} />
-        {!form.isEdit ? <Button label={tr.tx.saveAndNew} variant="secondary" onPress={() => void form.save(true)} disabled={!form.canSave || form.busy} /> : null}
+        <Button label={tr.common.save} onPress={() => void form.save(false)} loading={form.busy} />
+        {!form.isEdit ? <Button label={tr.tx.saveAndNew} variant="secondary" onPress={() => void form.save(true)} disabled={form.busy} /> : null}
       </View>
     </>
   );

@@ -4,8 +4,7 @@ import { useCallback, useState } from "react";
 import { Platform, useWindowDimensions, type LayoutChangeEvent } from "react-native";
 import { useSegments } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { shouldBoundIntrinsicControls } from "./responsive";
-import { navigationInset, segmentedMaxWidth } from "./theme";
+import { navigationInset } from "./theme";
 
 export interface NavigationSpace {
   /** Space the navigation surface occupies below the content. */
@@ -30,18 +29,6 @@ export function useNavigationSpace(): NavigationSpace {
 /** The width a layout rule should measure itself against. */
 export function useContentWidth(): number {
   return useWindowDimensions().width;
-}
-
-/**
- * The width a cluster of `count` equal controls should stop at.
- *
- * `undefined` below the threshold, where the container is still the right bound
- * and a phone expects a control to fill its column. Above it a row of controls
- * left to fill a workspace stops being a control and becomes a banner.
- */
-export function useClusterWidth(count: number): number | undefined {
-  const contentWidth = useContentWidth();
-  return shouldBoundIntrinsicControls(contentWidth) ? segmentedMaxWidth(count) : undefined;
 }
 
 /** Measure the box you are in when drawing at an explicit pixel width; a viewport number cannot know the columns around you. */

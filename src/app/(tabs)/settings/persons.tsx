@@ -130,6 +130,7 @@ export default function PersonsScreen() {
   const operationGuard = useOperationGuard();
   const [name, setName] = useState("");
   const [adding, setAdding] = useState(false);
+  const [attempted, setAttempted] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
   const [resolving, setResolving] = useState<{ person: (typeof persons)[number]; usage: PersonReferenceUsage } | null>(null);
@@ -152,13 +153,14 @@ export default function PersonsScreen() {
   };
 
   const add = async () => {
-    if (!name.trim()) return;
+    if (!name.trim()) return setAttempted(true);
     await operationGuard.run(async () => {
       setAdding(true);
       try {
         await createPerson(userId, name);
         scheduleSync(userId);
         setName("");
+        setAttempted(false);
       } catch {
         void appAlert(tr.errors.saveFailed, tr.errors.title);
       } finally {
@@ -245,9 +247,9 @@ export default function PersonsScreen() {
         <PanelHeader icon={Plus} title={tr.persons.addTitle} description={tr.persons.addHint} />
         <Row style={{ alignItems: "center" }}>
           <View style={{ flex: 1 }}>
-            <Field accessibilityLabel={tr.onboarding.addPerson} noMargin value={name} onChangeText={setName} placeholder={personPlaceholder} />
+            <Field accessibilityLabel={tr.onboarding.addPerson} noMargin value={name} onChangeText={setName} placeholder={personPlaceholder} error={attempted && !name.trim() ? tr.required.name : null} />
           </View>
-          <Button label={tr.common.add} onPress={() => void add()} disabled={!name.trim() || adding} loading={adding} />
+          <Button label={tr.common.add} onPress={() => void add()} disabled={adding} loading={adding} />
         </Row>
           </Card>
           {resolving ? (

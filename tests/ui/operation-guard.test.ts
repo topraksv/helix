@@ -105,11 +105,15 @@ describe("operation progress language", () => {
     expect(source).toContain("if (reducedMotion) {");
   });
 
-  it("keeps lifecycle entry points quiet and routes cloud sign-out through confirmation", () => {
+  it("keeps lifecycle entry points quiet and asks before sign-out only when records would be lost", () => {
     const settings = readFileSync(join(process.cwd(), "src/app/(tabs)/settings/index.tsx"), "utf8");
     const accountSecurity = readFileSync(join(process.cwd(), "src/app/account-security.tsx"), "utf8");
     expect(settings).toContain('testID="account-sign-out-action"');
-    expect(settings).toContain('operation: "sign-out"');
+    // A synced account signs out without a question; the device-loss dialog
+    // answers only the session layer's refusal over unsent records.
+    const pendingBranch = settings.slice(settings.indexOf("if (error === SIGN_OUT_PENDING_CHANGES)"));
+    expect(pendingBranch).toContain('operation: "local-sign-out"');
+    expect(settings).not.toContain('operation: "sign-out"');
     // Deleting a CLOUD account lives beside freezing it — the two ways an
     // account ends belong together rather than a screen apart. A local-only
     // workspace has no Account Security screen at all (no password, no e-mail,

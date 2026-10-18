@@ -5,6 +5,7 @@ import { spacing, type } from "./theme";
 interface AssignablePerson {
   id: string;
   name: string;
+  isSelf: boolean;
 }
 
 /** The owner's pick, else the self person, else the first; persons load live, so this is derived, never frozen in state. */
@@ -17,10 +18,12 @@ export const assignedPersonId = (choice: string | null, people: readonly { id: s
  * making every form look as if a decision is missing.
  */
 export function PersonAssignment({
+  label,
   people,
   value,
   onChange,
 }: {
+  label: string;
   people: AssignablePerson[];
   value: string | null;
   onChange: (personId: string) => void;
@@ -28,12 +31,15 @@ export function PersonAssignment({
   if (people.length > 1) {
     return (
       <>
-        <Label>{tr.tx.person}</Label>
+        <Label>{label}</Label>
         <ChipPicker
           options={people.map((person) => ({ value: person.id, label: person.name }))}
           value={value}
           onChange={onChange}
         />
+        {people.find((person) => person.id === value)?.isSelf === false ? (
+          <Body muted style={{ fontSize: type.small.fontSize, marginBottom: spacing.md }}>{tr.persons.watchedHint}</Body>
+        ) : null}
       </>
     );
   }

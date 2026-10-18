@@ -51,11 +51,14 @@ export function CardCycleFields({
   dueDayValue,
   onStatementDayChange,
   onDueDayChange,
+  attempted = false,
 }: {
   statementDayValue: string;
   dueDayValue: string;
   onStatementDayChange: (value: string) => void;
   onDueDayChange: (value: string) => void;
+  /** After a refused save, an empty day is marked as missing. */
+  attempted?: boolean;
 }) {
   const statementDay = statementDayValue.trim() === "" ? null : Number(statementDayValue);
   const dueDay = dueDayValue.trim() === "" ? null : Number(dueDayValue);
@@ -83,7 +86,7 @@ export function CardCycleFields({
             quickDays={CARD_CYCLE_QUICK_DAYS}
             unavailableDays={refusedStatementDays}
             unavailableHint={tr.sources.cycleGraceTaken}
-            error={error}
+            error={error ?? (attempted && statementDay == null ? tr.required.day : null)}
           />
         </View>
         <View style={{ flex: 1 }}>
@@ -94,7 +97,7 @@ export function CardCycleFields({
             quickDays={CARD_CYCLE_QUICK_DAYS}
             unavailableDays={refusedDueDays}
             unavailableHint={tr.sources.cycleGraceTaken}
-            error={error}
+            error={error ?? (attempted && dueDay == null ? tr.required.day : null)}
           />
         </View>
       </Row>

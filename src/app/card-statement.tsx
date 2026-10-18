@@ -148,6 +148,7 @@ function StatementDetail({
   // invite one that is a kuruş off and quietly records a partial payment.
   const payMinor = kind === "full" ? remainingMinor : amountMinor;
   const valid = payMinor != null && payMinor > 0 && payMinor <= remainingMinor;
+  const [attempted, setAttempted] = useState(false);
 
   const kindLabel: Record<StatementPaymentKind, string> = {
     full: tr.cardStatement.kindFull,
@@ -162,8 +163,10 @@ function StatementDetail({
   const badge = statementBadge(settled, statement.dueDate, today);
   const hint = statementHint(settled);
 
+  // The button stays live: a refused press marks the amount instead.
   const save = async () => {
-    if (!valid) return;
+    if (busy) return;
+    if (!valid) return setAttempted(true);
     await operationGuard.run(async () => {
       setBusy(true);
       try {
@@ -271,12 +274,14 @@ function StatementDetail({
                   setAmountRaw(raw);
                   setAmountMinor(minor);
                 }}
-                error={amountMinor != null && amountMinor > remainingMinor ? tr.cardStatement.tooLarge(formatMinorCompact(remainingMinor)) : null}
+                error={amountMinor != null && amountMinor > remainingMinor
+                  ? tr.cardStatement.tooLarge(formatMinorCompact(remainingMinor))
+                  : attempted && !(amountMinor != null && amountMinor > 0) ? tr.required.amount : null}
               />
             )}
             <DateField label={tr.cardStatement.paidOn} value={paidOn} onChange={setPaidOn} max={today} />
             <Field label={tr.cardStatement.note} value={note} onChangeText={setNote} />
-            <Button icon={Wallet} label={tr.cardStatement.save} onPress={() => void save()} disabled={!valid} loading={busy} />
+            <Button icon={Wallet} label={tr.cardStatement.save} onPress={() => void save()} loading={busy} />
           </>
         )}
       </Card>

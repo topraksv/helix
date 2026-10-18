@@ -23,7 +23,7 @@ function firstWeekday(month: MonthKey): number {
   return (new Date(yearOf(month), monthOf(month) - 1, 1).getDay() + 6) % 7;
 }
 
-export function CalendarSheet({
+function CalendarSheet({
   value,
   onSelect,
   onClose,

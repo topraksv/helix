@@ -76,7 +76,10 @@ export default function BudgetsScreen() {
   const { confirmDiscard } = useDirtyExitGuard(amountRaw !== loadedAmountRaw && !busy);
   const { status: dataStatus, ready: dataReady, retry: retryData } = combineLiveStates([categoriesState, budgetsState, transactionsState, personsState]);
 
+  // The button stays live: a refused press marks what is missing instead.
+  const [attempted, setAttempted] = useState(false);
   const reset = () => {
+    setAttempted(false);
     setCategoryChoice(null);
     setAmountRaw("");
     setLoadedAmountRaw("");
@@ -102,7 +105,8 @@ export default function BudgetsScreen() {
   };
   const canSave = !!categoryId && amountMinor != null && amountMinor > 0;
   const save = async () => {
-    if (!canSave) return;
+    if (busy) return;
+    if (!canSave) return setAttempted(true);
     await guard.run(async () => {
       setBusy(true);
       try {
@@ -152,6 +156,7 @@ export default function BudgetsScreen() {
           options={expenseCategories.map((category) => ({ value: category.id, label: category.name, icon: categoryIconComponent(category) }))}
           value={categoryId}
           placeholder={tr.budgets.pickCategory}
+          error={attempted && !categoryId ? tr.required.category : null}
           onChange={(value) => confirmDiscard(() => {
             setCategoryChoice(value);
             loadAmount(monthBudgets.find((budget) => budget.categoryId === value)?.amountMinor ?? null);
@@ -160,6 +165,7 @@ export default function BudgetsScreen() {
         <MoneyField
           label={tr.budgets.amount}
           value={amountRaw}
+          error={attempted && !(amountMinor != null && amountMinor > 0) ? tr.required.amount : null}
           onChangeMinor={(raw, minor) => {
             setAmountRaw(raw);
             setAmountMinor(minor);
@@ -167,7 +173,7 @@ export default function BudgetsScreen() {
         />
         <Row>
           <View style={{ flex: 1 }}>
-            <Button label={editing ? tr.common.save : tr.budgets.add} onPress={() => void save()} disabled={!canSave || busy} loading={busy} />
+            <Button label={editing ? tr.common.save : tr.budgets.add} onPress={() => void save()} loading={busy} />
           </View>
           {editing ? <Button label={tr.common.cancel} variant="ghost" onPress={reset} /> : null}
         </Row>

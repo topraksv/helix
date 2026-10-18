@@ -34,18 +34,17 @@ export default function BulkEntryModal() {
   const [month, setMonth] = useState(addMonthsToKey(monthKeyOf(todayISO()), -1));
   const [values, setValues] = useState<Record<string, { raw: string; minor: number | null }>>({});
   const [savedMsg, setSavedMsg] = useState<string | null>(null);
+  const [attempted, setAttempted] = useState(false);
   const [committing, setCommitting] = useState(false);
   const operation = useTrackedOperation();
   const busy = operation.state.active;
-  // Dirty is "different from what was last saved": the amounts stay in their fields after a save.
   const draftSnapshot = JSON.stringify(
     Object.entries(values)
       .map(([id, value]) => [id, value.raw.trim()] as const)
       .filter(([, raw]) => raw !== "")
       .sort(([a], [b]) => a.localeCompare(b)),
   );
-  const [savedSnapshot, setSavedSnapshot] = useState("[]");
-  const { confirmDiscard } = useDirtyExitGuard(draftSnapshot !== savedSnapshot && !busy);
+  const { confirmDiscard } = useDirtyExitGuard(draftSnapshot !== "[]" && !busy);
   const { status: dataStatus, ready: dataReady, retry: retryData } = combineLiveStates([categoriesState, personsState]);
 
   const selfId = persons.find((p) => p.isSelf)?.id;
@@ -61,14 +60,17 @@ export default function BulkEntryModal() {
   const changeMonth = (next: string) => {
     confirmDiscard(() => {
       setValues({});
-      setSavedSnapshot("[]");
       setSavedMsg(null);
       setMonth(next);
     });
   };
 
+  // Kaydet stays live: an unreadable amount is marked under its field, an empty month says so.
   const save = async () => {
-    if (!selfId || entries.length === 0) return;
+    if (busy || !selfId) return;
+    setAttempted(true);
+    if (invalid) return;
+    if (entries.length === 0) return void appAlert(tr.bulk.nothingToSave, tr.errors.title);
     await operation.run(async ({ signal }) => {
       try {
         if (signal.aborted) throw signal.reason;
@@ -84,10 +86,10 @@ export default function BulkEntryModal() {
           })),
         );
         scheduleSync(userId);
+        // The month stays and its fields empty: the confirmation line says the
+        // write landed, and figures left behind read as still unsaved.
+        setValues({});
         setSavedMsg(tr.bulk.saved(monthLabel(month)));
-        setSavedSnapshot(draftSnapshot);
-        // The amounts stay in their fields: clearing them makes a correct save look lost, and the next month opens with the previous figures to compare against.
-        setMonth(addMonthsToKey(month, -1));
       } catch (e) {
         if (e instanceof OperationCancelledError) return;
         devError("bulk-entry.save", e);
@@ -128,7 +130,7 @@ export default function BulkEntryModal() {
               hint={tr.bulk.emptyCategoriesHint}
             />
             <Button
-              label={tr.settings.categories}
+              label={tr.tx.addCategoryButton}
               variant="secondary"
               onPress={() => router.push("/columns-editor")}
             />
@@ -147,6 +149,7 @@ export default function BulkEntryModal() {
                     label={`${c.name} · ${c.kind === "income" ? tr.settings.kindIncome : tr.settings.kindExpense}`}
                     value={values[c.id]?.raw ?? ""}
                     onChangeMinor={(raw, minor) => setValues((v) => ({ ...v, [c.id]: { raw, minor } }))}
+                    error={attempted && values[c.id]?.raw.trim() && values[c.id]?.minor === null ? tr.bulk.invalidAmount : null}
                     inline
                   />
                 </View>
@@ -160,7 +163,7 @@ export default function BulkEntryModal() {
               onCancel={committing ? undefined : operation.cancel}
             />
             <View style={{ gap: spacing.sm, width: "100%" }}>
-              <Button label={tr.common.save} onPress={() => void save()} disabled={entries.length === 0 || invalid} loading={busy} />
+              <Button label={tr.common.save} onPress={() => void save()} loading={busy} />
             </View>
           </>
         )}

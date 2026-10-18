@@ -28,6 +28,7 @@ import { DateField } from "../../../ui/calendar";
 import { MonthDayField } from "../../../ui/month-day-field";
 import { appAlert } from "../../../ui/dialog";
 import { assignedPersonId, PersonAssignment } from "../../../ui/person-assignment";
+import { categoryCreateAction } from "../../../ui/inline-create";
 
 type IncomeKind = "salary" | "rent" | "allowance" | "other";
 type IncomeRecurrence = "monthly" | "weekly" | "biweekly";
@@ -157,6 +158,20 @@ function defaultIncomeCategory(categories: { id: string; name: string }[]) {
   return (categories.find((c) => c.name.toLocaleLowerCase("tr-TR").includes(salary)) ?? categories[0])?.id ?? null;
 }
 
+/** What each field says under itself once a save has been refused. */
+function incomeFieldErrors(
+  draft: { amountMinor: number | null; payDayStr: string },
+  attempted: boolean,
+  dayValid: boolean,
+  categoryId: string | null,
+) {
+  return {
+    amount: attempted && !(draft.amountMinor != null && draft.amountMinor > 0) ? tr.required.amount : null,
+    day: (draft.payDayStr !== "" || attempted) && !dayValid ? tr.incomes.dayError : null,
+    category: attempted && categoryId == null ? tr.required.category : null,
+  };
+}
+
 function useIncomeForm(incomes: Income[]) {
   const userId = useUserId();
   const operationGuard = useOperationGuard();
@@ -177,13 +192,17 @@ function useIncomeForm(incomes: Income[]) {
   const scheduleValid = draft.recurrence === "monthly" ? dayValid : Boolean(draft.anchorDate);
   const valid = name.trim() !== "" && draft.amountMinor != null && draft.amountMinor > 0 && scheduleValid && personId != null && categoryId != null;
 
+  // The button stays live: a refused press marks what is missing instead.
+  const [attempted, setAttempted] = useState(false);
   const reset = () => {
+    setAttempted(false);
     setEditingId(null);
     setDraft(newIncomeDraft());
   };
 
   const save = () => operationGuard.run(async () => {
-    if (!valid) return;
+    if (busy) return;
+    if (!valid) return setAttempted(true);
     setBusy(true);
     try {
       const monthly = draft.recurrence === "monthly";
@@ -210,8 +229,9 @@ function useIncomeForm(incomes: Income[]) {
     }
   });
 
+  const errors = incomeFieldErrors(draft, attempted, dayValid, categoryId);
   return {
-    editingId, draft, patch, busy, valid, save, reset, persons, personId, incomeCategories, categoryId, dayValid,
+    editingId, draft, patch, busy, valid, save, reset, errors, persons, personId, incomeCategories, categoryId, dayValid, userId,
     startEdit: (income: Income) => confirmDiscard(() => {
       setEditingId(income.id);
       setDraft(incomeDraftOf(income));
@@ -221,7 +241,7 @@ function useIncomeForm(incomes: Income[]) {
 
 function IncomeFormCard({ form }: { form: ReturnType<typeof useIncomeForm> }) {
   const { draft, patch } = form;
-  const submit = <Button label={form.editingId ? tr.common.save : tr.settings.addIncomeRule} onPress={() => void form.save()} disabled={!form.valid || form.busy} loading={form.busy} />;
+  const submit = <Button label={form.editingId ? tr.common.save : tr.settings.addIncomeRule} onPress={() => void form.save()} loading={form.busy} />;
   return (
     <Card>
       <PanelHeader icon={Banknote} title={form.editingId ? tr.incomes.editTitle : tr.incomes.formTitle} description={tr.incomes.formHint} />
@@ -234,7 +254,12 @@ function IncomeFormCard({ form }: { form: ReturnType<typeof useIncomeForm> }) {
         onChangeText={(name) => patch({ name, nameTouched: true })}
         placeholder={tr.incomeKinds[draft.kind]}
       />
-      <MoneyField label={tr.settings.defaultAmount} value={draft.amountRaw} onChangeMinor={(amountRaw, amountMinor) => patch({ amountRaw, amountMinor })} />
+      <MoneyField
+        label={tr.settings.defaultAmount}
+        value={draft.amountRaw}
+        onChangeMinor={(amountRaw, amountMinor) => patch({ amountRaw, amountMinor })}
+        error={form.errors.amount}
+      />
       <Label>{tr.incomes.recurrenceLabel}</Label>
       <ChipPicker
         options={[{ value: "monthly", label: tr.incomes.monthly }, { value: "weekly", label: tr.incomes.weekly }, { value: "biweekly", label: tr.incomes.biweekly }]}
@@ -247,20 +272,24 @@ function IncomeFormCard({ form }: { form: ReturnType<typeof useIncomeForm> }) {
           value={draft.payDayStr}
           onChange={(payDayStr) => patch({ payDayStr })}
           quickDays={QUICK_DAYS}
-          error={draft.payDayStr !== "" && !form.dayValid ? tr.incomes.dayError : null}
+          error={form.errors.day}
         />
       ) : (
         <DateField label={tr.incomes.firstPaymentDate} value={draft.anchorDate} onChange={(anchorDate) => patch({ anchorDate: anchorDate as ISODate })} />
       )}
-      <PersonAssignment people={form.persons} value={form.personId} onChange={(personChoice) => patch({ personChoice })} />
-      {form.incomeCategories.length > 1 ? (
-        <Select
-          label={tr.incomes.categoryLabel}
-          options={form.incomeCategories.map((c) => ({ value: c.id, label: c.name, icon: categoryIconComponent(c) }))}
-          value={form.categoryId}
-          onChange={(categoryChoice) => patch({ categoryChoice })}
-        />
-      ) : null}
+      <PersonAssignment label={tr.tx.personIncome} people={form.persons} value={form.personId} onChange={(personChoice) => patch({ personChoice })} />
+      <Select
+        label={tr.incomes.categoryLabel}
+        placeholder={form.incomeCategories.length > 0 ? tr.tx.categoryPlaceholder : tr.tx.categoryRequiredEmpty}
+        options={form.incomeCategories.map((c) => ({ value: c.id, label: c.name, icon: categoryIconComponent(c) }))}
+        value={form.categoryId}
+        onChange={(categoryChoice) => patch({ categoryChoice })}
+        error={form.errors.category}
+        onCreate={categoryCreateAction({
+          userId: form.userId, kind: "income", isTransfer: false, categories: form.incomeCategories,
+          onCreated: (categoryChoice) => patch({ categoryChoice }),
+        })}
+      />
       {form.editingId ? (
         <Row>
           <View style={{ flex: 1 }}>{submit}</View>

@@ -19,7 +19,6 @@ import { tr } from "../../i18n/tr";
  * `TEMPLATE_EXTRA_CATEGORIES` and are offered separately.
  */
 export const TEMPLATE_CATEGORIES: TemplateCategory[] = [
-  { name: tr.template.categoryNames.creditCard, kind: "expense", isColumn: true, icon: "💳" },
   { name: tr.template.categoryNames.bills, kind: "expense", isColumn: true, icon: "🧾" },
   { name: tr.template.categoryNames.groceries, kind: "expense", isColumn: true, icon: "🛒" },
   { name: tr.template.categoryNames.carFuel, kind: "expense", isColumn: true, icon: "⛽" },
@@ -28,15 +27,16 @@ export const TEMPLATE_CATEGORIES: TemplateCategory[] = [
   { name: tr.template.categoryNames.health, kind: "expense", isColumn: true, icon: "🩺" },
   { name: tr.template.categoryNames.entertainment, kind: "expense", isColumn: true, icon: "🎬" },
   { name: tr.template.categoryNames.extraExpenses, kind: "expense", isColumn: true, icon: "🧺" },
+  { name: tr.template.categoryNames.investment, kind: "expense", isColumn: true, isTransfer: true, icon: "📈" },
   { name: tr.template.categoryNames.salary, kind: "income", isColumn: true, icon: "💰" },
   { name: tr.template.categoryNames.extraIncome, kind: "income", isColumn: true, icon: "➕" },
 ];
 
 /** Less-universal example columns, offered as optional extras (not default). */
 export const TEMPLATE_EXTRA_CATEGORIES: TemplateCategory[] = [
+  { name: tr.template.categoryNames.creditCard, kind: "expense", isColumn: true, icon: "💳" },
   { name: tr.template.categoryNames.mortgage, kind: "expense", isColumn: true, icon: "🏦" },
   { name: tr.template.categoryNames.carLoan, kind: "expense", isColumn: true, icon: "🚗" },
-  { name: tr.template.categoryNames.investment, kind: "expense", isColumn: true, isTransfer: true, icon: "📈" },
   { name: tr.template.categoryNames.subscriptions, kind: "expense", isColumn: true, icon: "🔁" },
   { name: tr.template.categoryNames.clothing, kind: "expense", isColumn: true, icon: "👕" },
   { name: tr.template.categoryNames.education, kind: "expense", isColumn: true, icon: "🎓" },

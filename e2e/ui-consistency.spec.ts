@@ -79,7 +79,7 @@ async function effectiveControlTextContrast(page: Page, label: string): Promise<
 async function openInvestmentWorkspace(page: Page, balance: string) {
   await page.getByRole("tab", { name: "Yatırımlar", exact: true }).click();
   await page.getByRole("button", { name: "Yatırım Alanını Aç", exact: true }).click();
-  await page.getByRole("textbox", { name: "Bugünkü serbest yatırım bakiyesi", exact: true }).fill(balance);
+  await page.getByRole("textbox", { name: "Yatırıma ayırdığın serbest bakiye", exact: true }).fill(balance);
   await page.getByRole("button", { name: "Yatırım Alanını Aç", exact: true }).click();
 }
 
@@ -126,7 +126,7 @@ test("a card's trailing action leaves the same gap as its first row", async ({ p
   // A future-dated expense gives the Upcoming card a row and its footer link.
   await page.getByRole("button", { name: "İşlem Ekle" }).first().click();
   await page.getByRole("textbox", { name: "Tutar · TRY" }).fill("750,00");
-  await pickOption(page, "Kategori", /Market/);
+  await pickOption(page, "Kalem", /Market/);
   await page.getByRole("button", { name: "Ödeme günü" }).click();
   const days = await page.getByRole("button").evaluateAll((els) =>
     els.map((e) => e.getAttribute("aria-label")).filter((l): l is string => !!l && /^\d{1,2} .+ \d{4}$/u.test(l)));
@@ -353,12 +353,12 @@ test("returning from an investment editor leaves the page still and visible", as
 test("a later expense stays before incomes in the financial table", async ({ page }) => {
   await onboard(page);
   await page.goto("/helix/columns-editor");
-  await page.getByRole("textbox", { name: "Kategori adı", exact: true }).fill("Sonradan eklenen gider");
+  await page.getByRole("textbox", { name: "Kalem adı", exact: true }).fill("Sonradan eklenen gider");
   await page.getByRole("button", { name: "Ekle", exact: true }).click();
   await expect(page.getByRole("button", { name: "Düzenle · Sonradan eklenen gider", exact: true })).toBeVisible();
 
   await page.goto("/helix/cash-flow");
-  await page.getByRole("radio", { name: "Ay odaklı", exact: true }).click();
+  await page.getByRole("radio", { name: "Tek ay", exact: true }).click();
   const labels = await page.getByTestId("table-row-label").allTextContents();
   expect(labels.indexOf("Sonradan eklenen gider")).toBeGreaterThanOrEqual(0);
   expect(labels.indexOf("Maaş")).toBeGreaterThanOrEqual(0);
@@ -371,7 +371,7 @@ test("deleting an imported column can move its records to a compatible column", 
   await page.goto("/helix/columns-editor");
 
   for (const name of ["2025 Gider", "2026 Gider"]) {
-    await page.getByRole("textbox", { name: "Kategori adı", exact: true }).fill(name);
+    await page.getByRole("textbox", { name: "Kalem adı", exact: true }).fill(name);
     await page.getByRole("button", { name: "Ekle", exact: true }).click();
     await expect(page.getByRole("button", { name: `Düzenle · ${name}`, exact: true })).toBeVisible();
   }
@@ -402,7 +402,7 @@ test("a column with only transactions can be deleted and left uncategorized", as
   await page.setViewportSize({ width: 390, height: 844 });
   await onboard(page);
   await page.goto("/helix/columns-editor");
-  await page.getByRole("textbox", { name: "Kategori adı", exact: true }).fill("Dernek Aidatı");
+  await page.getByRole("textbox", { name: "Kalem adı", exact: true }).fill("Dernek Aidatı");
   await page.getByRole("button", { name: "Ekle", exact: true }).click();
   await expect(page.getByRole("button", { name: "Düzenle · Dernek Aidatı", exact: true })).toBeVisible();
 
@@ -419,8 +419,8 @@ test("a column with only transactions can be deleted and left uncategorized", as
   expect(sheetBox, "the resolution sheet is laid out").not.toBeNull();
   expect(sheetBox!.y, "the sheet lands inside the viewport, not above it").toBeGreaterThan(-1);
   expect(sheetBox!.y, "the sheet lands inside the viewport, not below it").toBeLessThan(844);
-  // "Kategorisiz bırak" is preselected when nothing else is compatible.
-  await expect(resolution.getByRole("radio", { name: "Kategorisiz bırak", exact: true })).toHaveAttribute("aria-checked", "true");
+  // "Kalemi boş bırak" is preselected when nothing else is compatible.
+  await expect(resolution.getByRole("radio", { name: "Kalemi boş bırak", exact: true })).toHaveAttribute("aria-checked", "true");
   await resolution.getByRole("button", { name: "Sil", exact: true }).click();
   await expect(resolution).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Düzenle · Dernek Aidatı", exact: true })).toHaveCount(0);
@@ -434,7 +434,7 @@ test("deleting one of two identically-named columns still offers the other as a 
   const errors = collectRuntimeErrors(page);
   await onboard(page);
   await page.goto("/helix/columns-editor");
-  const addField = page.getByRole("textbox", { name: "Kategori adı", exact: true });
+  const addField = page.getByRole("textbox", { name: "Kalem adı", exact: true });
   const addButton = page.getByRole("button", { name: "Ekle", exact: true });
   for (let i = 0; i < 2; i += 1) {
     await addField.fill("Market Alışverişi");
@@ -446,7 +446,7 @@ test("deleting one of two identically-named columns still offers the other as a 
   await openCashFlow(page);
   await page.getByRole("button", { name: "İşlem Ekle", exact: true }).click();
   await page.getByRole("textbox", { name: "Tutar · TRY", exact: true }).fill("75,00");
-  await page.getByRole("button", { name: "Kategori", exact: true }).click();
+  await page.getByRole("button", { name: "Kalem", exact: true }).click();
   await page.locator('[aria-modal="true"]').getByRole("radio", { name: "Market Alışverişi", exact: true }).first().click();
   await page.getByRole("button", { name: "Kaydet", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Mali Tablo", exact: true })).toBeVisible();
@@ -473,7 +473,7 @@ test("row and column pins persist independently", async ({ page }) => {
   await onboard(page);
   await openCashFlow(page);
 
-  await page.getByRole("radio", { name: "Satır odaklı", exact: true }).click();
+  await page.getByRole("radio", { name: "Aylar satırda", exact: true }).click();
   const rowPin = page.getByRole("button", { name: /kolonunu sabitle$/u }).first();
   await expect(rowPin).toBeVisible();
   const rowPinLabel = await rowPin.getAttribute("aria-label");
@@ -481,7 +481,7 @@ test("row and column pins persist independently", async ({ page }) => {
   await rowPin.click();
   await expect(page.getByRole("button", { name: /kolonunun sabitlemesini kaldır$/u }).first()).toBeVisible();
 
-  await page.getByRole("radio", { name: "Kolon odaklı", exact: true }).click();
+  await page.getByRole("radio", { name: "Aylar sütunda", exact: true }).click();
   const columnPin = page.getByRole("button", { name: /kolonunu sabitle$/u }).first();
   await expect(columnPin).toBeVisible();
   const columnPinLabel = await columnPin.getAttribute("aria-label");
@@ -489,10 +489,10 @@ test("row and column pins persist independently", async ({ page }) => {
   await columnPin.click();
   await expect(page.getByRole("button", { name: /kolonunun sabitlemesini kaldır$/u }).first()).toBeVisible();
 
-  await page.getByRole("radio", { name: "Satır odaklı", exact: true }).click();
+  await page.getByRole("radio", { name: "Aylar satırda", exact: true }).click();
   const rowUnpinLabel = rowPinLabel!.replace("kolonunu sabitle", "kolonunun sabitlemesini kaldır");
   await expect(page.getByRole("button", { name: rowUnpinLabel, exact: true })).toBeVisible();
-  await page.getByRole("radio", { name: "Kolon odaklı", exact: true }).click();
+  await page.getByRole("radio", { name: "Aylar sütunda", exact: true }).click();
   const columnUnpinLabel = columnPinLabel!.replace("kolonunu sabitle", "kolonunun sabitlemesini kaldır");
   await expect(page.getByRole("button", { name: columnUnpinLabel, exact: true })).toBeVisible();
   expect(errors).toEqual([]);
@@ -506,7 +506,7 @@ test("a pinned column keeps every action it had while unpinned", async ({ page }
   await onboard(page);
   await openCashFlow(page);
 
-  await page.getByRole("radio", { name: "Kolon odaklı", exact: true }).click();
+  await page.getByRole("radio", { name: "Aylar sütunda", exact: true }).click();
   const pin = page.getByRole("button", { name: /kolonunu sabitle$/u }).first();
   const month = (await pin.getAttribute("aria-label"))!.replace(" kolonunu sabitle", "");
 
@@ -541,7 +541,7 @@ test("a pinned column keeps every action it had while unpinned", async ({ page }
   await expect(page.getByRole("heading", { name: "Mali Tablo", exact: true })).toBeVisible();
 
   // Row-focused pins the other axis through the same component.
-  await page.getByRole("radio", { name: "Satır odaklı", exact: true }).click();
+  await page.getByRole("radio", { name: "Aylar satırda", exact: true }).click();
   const itemPin = page.getByRole("button", { name: /kolonunu sabitle$/u }).first();
   const item = (await itemPin.getAttribute("aria-label"))!.replace(" kolonunu sabitle", "");
   await itemPin.click();
@@ -567,7 +567,7 @@ test("a contextual colour marks a cell, survives a pin, and is announced not mer
   await page.setViewportSize({ width: 1280, height: 900 });
   await onboard(page);
   await openCashFlow(page);
-  await page.getByRole("radio", { name: "Kolon odaklı", exact: true }).click();
+  await page.getByRole("radio", { name: "Aylar sütunda", exact: true }).click();
 
   const month = monthName(currentMonthKey());
   const year = currentMonthKey().slice(0, 4);
@@ -613,7 +613,7 @@ test("renaming a mark colour renames every cell already marked with it", async (
   await page.setViewportSize({ width: 1280, height: 900 });
   await onboard(page);
   await openCashFlow(page);
-  await page.getByRole("radio", { name: "Kolon odaklı", exact: true }).click();
+  await page.getByRole("radio", { name: "Aylar sütunda", exact: true }).click();
 
   const month = monthName(currentMonthKey());
   const year = currentMonthKey().slice(0, 4);
@@ -655,7 +655,7 @@ test("a column lights as one under the pointer, and pinning moves nothing but th
   await page.setViewportSize({ width: 1280, height: 900 });
   await onboard(page);
   await openCashFlow(page);
-  await page.getByRole("radio", { name: "Kolon odaklı", exact: true }).click();
+  await page.getByRole("radio", { name: "Aylar sütunda", exact: true }).click();
 
   const background = (locator: Locator) =>
     locator.evaluate((element) => getComputedStyle(element as HTMLElement).backgroundColor);
@@ -957,6 +957,7 @@ test("clicking a table item opens its month-value bars on desktop and mobile", a
 
   await page.setViewportSize({ width: 320, height: 844 });
   await page.goto("/helix/cash-flow");
+  await page.getByRole("radio", { name: "Aylar sütunda" }).click();
   const matrixValues = page.getByTestId("matrix-value");
   await expect(matrixValues.first()).toBeVisible();
   const matrixGeometry = await matrixValues.evaluateAll((elements) => elements
@@ -1033,7 +1034,7 @@ test("subscriptions explain recurrence and summarize the next payment path", asy
   await expect(page.getByText("Sonraki tekrar", { exact: true })).toBeVisible();
   await page.getByRole("textbox", { name: "Ad", exact: true }).fill("Müzik");
   await page.getByRole("textbox", { name: "Tutar · TRY", exact: true }).fill("199,90");
-  await pickOption(page, "Kategori", "Market");
+  await pickOption(page, "Kalem", "Market");
   await page.getByRole("button", { name: "Kaydet", exact: true }).click();
 
   await expect(page.getByRole("heading", { name: "Abonelikler", exact: true })).toBeVisible();
@@ -1064,7 +1065,7 @@ test("variable subscriptions accept the invoice amount from the upcoming calenda
   await page.getByRole("textbox", { name: "Ad", exact: true }).fill("Elektrik");
   await page.getByRole("textbox", { name: "Tutar · TRY", exact: true }).fill("1.000,00");
   await page.getByRole("switch", { name: "Tutar her ay değişir", exact: true }).click();
-  await pickOption(page, "Kategori", "Market");
+  await pickOption(page, "Kalem", "Market");
   await page.getByRole("button", { name: "Kaydet", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Abonelikler", exact: true })).toBeVisible();
   await page.goto("/helix/");
@@ -1093,7 +1094,7 @@ test("a variable subscription can be saved with no amount estimate at all", asyn
   await page.goto("/helix/subscription-form");
   await page.getByRole("textbox", { name: "Ad", exact: true }).fill("Doğalgaz");
   await page.getByRole("switch", { name: "Tutar her ay değişir", exact: true }).click();
-  await pickOption(page, "Kategori", "Market");
+  await pickOption(page, "Kalem", "Market");
   await page.getByRole("button", { name: "Kaydet", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Abonelikler", exact: true })).toBeVisible();
   await expect(page.getByText("Tutar belirtilmedi", { exact: true }).first()).toBeVisible();
@@ -1163,7 +1164,7 @@ test("a declared balance is remembered, so the drift warning can fire", async ({
   await expect(page.getByRole("heading", { name: "Mali Tablo", exact: true })).toBeVisible();
   await page.getByRole("button", { name: "İşlem Ekle", exact: true }).click();
   await page.getByRole("textbox", { name: "Tutar · TRY", exact: true }).fill("250,00");
-  await pickOption(page, "Kategori", "Market");
+  await pickOption(page, "Kalem", "Market");
   await page.getByRole("button", { name: "Kaydet", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Mali Tablo", exact: true })).toBeVisible();
 
@@ -1217,14 +1218,14 @@ test("a single-person workspace keeps assignment optional and compact", async ({
 
   await expect(page.getByTestId("person-assignment-hint")).toBeVisible();
   await expect(page.getByText(/Sana ait/)).toBeVisible();
-  await expect(page.getByText("Kimin İçin", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("Kimin harcaması", { exact: true })).toHaveCount(0);
   await page.goto("/helix/settings/persons");
   await expect(page.getByText("Şimdilik yalnızca kendi hesabını izliyorsun.", { exact: true })).toBeVisible();
   await page.getByRole("textbox", { name: "Kişi Ekle", exact: true }).fill("Deniz");
   await page.getByRole("button", { name: "Ekle", exact: true }).click();
   await expect(page.getByTestId("persons-workspace-secondary").getByText("Deniz", { exact: true })).toBeVisible();
   await page.goto("/helix/transaction");
-  await expect(page.getByText("Kimin İçin", { exact: true })).toBeVisible();
+  await expect(page.getByText("Kimin harcaması", { exact: true })).toBeVisible();
   await expect(page.getByTestId("person-assignment-hint")).toHaveCount(0);
 });
 
@@ -1282,13 +1283,16 @@ test("a mistaken investment journal and its selected ledger refund are removed t
   await defineProduct(page, "Borsa", "Yanlış ürün");
   await page.getByRole("button", { name: "Sahip Olduğumu Ekle" }).click();
   await enterValue(page.getByRole("textbox", { name: "Miktar / adet · zorunlu", exact: true }), "1");
-  await page.getByRole("textbox", { name: "Birim fiyat · zorunlu", exact: true }).fill("100.000");
+  await page.getByRole("textbox", { name: "Birim fiyat", exact: true }).fill("100.000");
   await page.getByRole("button", { name: "Mevcut yatırımı ekle", exact: true }).click();
+  // The tiles answer from the projection, so each step waits for the journal row the last one wrote.
+  await expect(page.getByRole("button", { name: /^Düzenle · Yanlış ürün · Mevcut yatırımı ekle/ })).toBeVisible();
 
   await page.getByRole("button", { name: "Satış Yap" }).click();
   await enterValue(page.getByRole("textbox", { name: "Miktar / adet · zorunlu", exact: true }), "1");
-  await page.getByRole("textbox", { name: "Birim fiyat · zorunlu", exact: true }).fill("100.000");
+  await page.getByRole("textbox", { name: "Birim fiyat", exact: true }).fill("100.000");
   await page.getByRole("button", { name: "Satış yap", exact: true }).click();
+  await expect(page.getByRole("button", { name: /^Düzenle · Yanlış ürün · Satış yap/ })).toBeVisible();
 
   await page.getByRole("button", { name: "Serbest Bakiyeyi Aktar" }).click();
   await page.getByRole("button", { name: "Mali Tabloya Aktar", exact: true }).click();
@@ -1350,7 +1354,7 @@ test("investment setup, weighted sale, BES contribution and wallet refund form o
   // only Firefox-tagged tests pay a click per character.
   await enterAmountViaCalculator(
     page,
-    page.getByRole("textbox", { name: "Bugünkü serbest yatırım bakiyesi", exact: true }),
+    page.getByRole("textbox", { name: "Yatırıma ayırdığın serbest bakiye", exact: true }),
     "10000",
     "10.000,00",
   );
@@ -1364,11 +1368,11 @@ test("investment setup, weighted sale, BES contribution and wallet refund form o
   await enterValue(page.getByRole("textbox", { name: "Miktar / adet · zorunlu", exact: true }), "10");
   await enterAmountViaCalculator(
     page,
-    page.getByRole("textbox", { name: "Birim fiyat · zorunlu", exact: true }),
+    page.getByRole("textbox", { name: "Birim fiyat", exact: true }),
     "100",
     "100,00",
   );
-  const total = page.getByRole("textbox", { name: "Toplam TRY · isteğe bağlı", exact: true });
+  const total = page.getByRole("textbox", { name: "Toplam tutar", exact: true });
   await enterAmountViaCalculator(page, total, "2000", "2.000,00");
   await expect(page.getByRole("alert")).toContainText("birbiriyle uyuşmuyor");
   await enterAmountViaCalculator(page, total, "1000", "1.000,00");
@@ -1380,7 +1384,7 @@ test("investment setup, weighted sale, BES contribution and wallet refund form o
   // Quantity is a plain numeric field and stays a `fill`; the price is a MoneyField.
   await enterAmountViaCalculator(
     page,
-    page.getByRole("textbox", { name: "Birim fiyat · zorunlu", exact: true }),
+    page.getByRole("textbox", { name: "Birim fiyat", exact: true }),
     "150",
     "150,00",
   );
@@ -1590,7 +1594,7 @@ test("the investment wallet keeps large balances readable at the narrowest phone
   expect(Math.max(...metricTextGeometry.map(({ fontSize }) => fontSize)) - Math.min(...metricTextGeometry.map(({ fontSize }) => fontSize))).toBeLessThanOrEqual(0.5);
   expect(new Set(metricTextGeometry.map(({ bottom }) => bottom)).size).toBe(1);
 
-  await page.getByRole("button", { name: "Serbest Bakiyeyi Aktar. Mali tabloya çıkar", exact: true }).click();
+  await page.getByRole("button", { name: "Serbest Bakiyeyi Aktar. Mali Tablo'ya çıkar", exact: true }).click();
   const refundAmount = page.getByTestId("investment-refund-cash-amount");
   await expect(refundAmount).toBeVisible();
   const refundGeometry = await refundAmount.evaluate((element) => {
@@ -1613,7 +1617,7 @@ test("the financial-table tools are one control, one row, at every width", async
   await expect(page.getByRole("button", { name: "İşlem Ekle", exact: true })).toBeVisible();
 
   // ONE toolbar at every width: it was six labelled buttons above a tablet and five 9px icon tiles below.
-  const toolRow = page.locator("text=/^(Kolonlar|Taksitler|Analiz|Geçmiş Ay|Başlangıç)$/");
+  const toolRow = page.locator("text=/^(Kalemler|Taksitler|Analiz|Geçmiş Ay|Düzeltme)$/");
   const measure = async () => {
     const tools = page.getByRole("button").filter({ has: toolRow });
     await expect(tools).toHaveCount(5);
@@ -1646,8 +1650,10 @@ test("pivoting the financial table resets unrelated offsets and keeps complete c
   await onboard(page);
   await page.goto("/helix/cash-flow");
 
-  await expect(page.getByRole("radio", { name: "Kolon odaklı" })).toHaveAttribute("aria-checked", "true");
-  await expect(page.getByRole("link", { name: "Kredi Kartı", exact: true })).toBeVisible();
+  // A phone opens on one month; the column view is a choice away.
+  await expect(page.getByRole("radio", { name: "Tek ay" })).toHaveAttribute("aria-checked", "true");
+  await page.getByRole("radio", { name: "Aylar sütunda" }).click();
+  await expect(page.getByRole("link", { name: "Faturalar", exact: true })).toBeVisible();
   const visibleMonths = await page.getByTestId("table-horizontal-header").getByRole("button").evaluateAll((buttons) => {
     // The scroller is the viewport; a fixed number of parents encoded the wrapper depth.
     const viewport = buttons[0]?.closest('[data-testid="table-horizontal-header"]')?.getBoundingClientRect();
@@ -1676,8 +1682,8 @@ test("pivoting the financial table resets unrelated offsets and keeps complete c
   expect(visibleMonths.every(({ left, right, viewportLeft, viewportRight }) =>
     left >= viewportLeft - 1 && right <= viewportRight + 1
   )).toBe(true);
-  await page.getByRole("radio", { name: "Satır odaklı" }).click();
-  const firstCategory = page.getByRole("button", { name: "Kredi Kartı", exact: true });
+  await page.getByRole("radio", { name: "Aylar satırda" }).click();
+  const firstCategory = page.getByRole("button", { name: "Faturalar", exact: true });
   await expect(firstCategory).toBeVisible();
   const box = await firstCategory.boundingBox();
   expect(box).not.toBeNull();
@@ -1689,6 +1695,7 @@ test("supplementary financial-table details collapse without losing recovery", a
   await page.setViewportSize({ width: 320, height: 844 });
   await onboard(page);
   await page.goto("/helix/cash-flow");
+  await page.getByRole("radio", { name: "Aylar sütunda" }).click();
 
   const details = page.getByRole("button", { name: "Mali tabloyu okuma rehberi", exact: true });
   const guide = page.getByTestId("cash-flow-table-details-content");
@@ -1755,8 +1762,8 @@ test("desktop action systems use intentional full-width or single-stream geometr
   expect(formBox).not.toBeNull();
   expect(behaviorBox!.width).toBeGreaterThanOrEqual(formBox!.width * 0.9);
 
-  await page.goto("/helix/reconciliation");
-  await expect(page.getByText("Onay bekleyen bir şey yok, güncelsin", { exact: true })).toBeVisible();
+  await page.goto("/helix/attention");
+  await expect(page.getByText("Bekleyen bir şey yok.", { exact: true })).toBeVisible();
 });
 
 test("investment summary keeps financial meaning grouped on phone and desktop", async ({ page }) => {
@@ -1764,13 +1771,13 @@ test("investment summary keeps financial meaning grouped on phone and desktop", 
   await onboard(page);
   await page.goto("/helix/investments");
   await page.getByRole("button", { name: "Yatırım Alanını Aç", exact: true }).click();
-  await page.getByRole("textbox", { name: "Bugünkü serbest yatırım bakiyesi", exact: true }).fill("100000");
+  await page.getByRole("textbox", { name: "Yatırıma ayırdığın serbest bakiye", exact: true }).fill("100000");
   await page.getByRole("button", { name: "Yatırım Alanını Aç", exact: true }).click();
   await defineProduct(page, "Borsa", "Uzun Vadeli Büyüme Sepeti");
   await page.getByTestId("screen-header").getByRole("button", { name: "İşlem Ekle", exact: true }).click();
   await pickOption(page, "Ürün", "Uzun Vadeli Büyüme Sepeti · Borsa");
   await enterValue(page.getByRole("textbox", { name: "Miktar / adet · zorunlu", exact: true }), "12");
-  await page.getByRole("textbox", { name: "Birim fiyat · zorunlu", exact: true }).fill("1.250");
+  await page.getByRole("textbox", { name: "Birim fiyat", exact: true }).fill("1.250");
 
   const summary = page.getByTestId("investment-operation-summary");
   await expect(summary).toContainText("Uzun Vadeli Büyüme Sepeti");
@@ -1903,9 +1910,9 @@ test("compact financial-table pins stay beside headers and month labels keep bre
     expect(Math.abs(metrics.pinCenterY - metrics.labelCenterY)).toBeLessThanOrEqual(2);
   };
 
-  await page.getByRole("radio", { name: "Satır odaklı" }).click();
-  await assertPinBesideLabel("Kredi Kartı kolonunu sabitle", "Kredi Kartı");
-  const billsHeader = await page.getByTestId("table-column-label").filter({ hasText: "Faturalar" }).first().boundingBox();
+  await page.getByRole("radio", { name: "Aylar satırda" }).click();
+  await assertPinBesideLabel("Faturalar kolonunu sabitle", "Faturalar");
+  const billsHeader = await page.getByTestId("table-column-label").filter({ hasText: "Market" }).first().boundingBox();
   expect(billsHeader).not.toBeNull();
   expect(billsHeader!.height).toBeLessThanOrEqual(30);
   // A fresh workspace starts in the current month and draws no earlier rows, so use the current and next month.
@@ -1929,7 +1936,7 @@ test("compact financial-table pins stay beside headers and month labels keep bre
     expect(metrics.height).toBeLessThanOrEqual(18);
   }
 
-  await page.getByRole("radio", { name: "Kolon odaklı" }).click();
+  await page.getByRole("radio", { name: "Aylar sütunda" }).click();
   await assertPinBesideLabel(`${monthName(monthKey(0))} kolonunu sabitle`, monthName(monthKey(0)).slice(0, 3));
 });
 
@@ -1938,7 +1945,7 @@ test("bulk entry gives long item names more room than bounded amounts", async ({
   await onboard(page);
   await page.goto("/helix/bulk-entry");
 
-  const field = page.getByRole("textbox", { name: /Kredi Kartı/ }).first();
+  const field = page.getByRole("textbox", { name: /Faturalar/ }).first();
   const widths = await field.evaluate((input) => {
     const inputBox = input.parentElement!.getBoundingClientRect();
     const row = input.parentElement!.parentElement!;
@@ -1981,8 +1988,8 @@ test("shared selection tiles search, toggle and reflow long labels consistently"
   await page.goto("/helix/settings/categories");
 
   const longName = "Kredi kartı tek çekim ödeme planı ve yıllık aidatlar";
-  await page.getByRole("button", { name: "Düzenle · Kredi Kartı", exact: true }).click();
-  await page.getByRole("textbox", { name: "Düzenle · Kredi Kartı", exact: true }).fill(longName);
+  await page.getByRole("button", { name: "Düzenle · Faturalar", exact: true }).click();
+  await page.getByRole("textbox", { name: "Düzenle · Faturalar", exact: true }).fill(longName);
   await page.getByRole("button", { name: "Kaydet", exact: true }).click();
   await expect(page.getByRole("button", { name: `Düzenle · ${longName}`, exact: true })).toBeVisible();
 
@@ -2083,8 +2090,8 @@ test("financial-table labels and amounts stay inside their cells across widths a
     await page.getByRole("button", { name: "Kaydet", exact: true }).click();
     await expect(page.getByRole("button", { name: `Düzenle · ${to}`, exact: true })).toBeVisible();
   };
-  await rename("Kredi Kartı", "Kredi Kartı ve Aidat Ödemeleri");
-  await rename("Faturalar", "TelekomünikasyonHizmetleri");
+  await rename("Faturalar", "Faturalar ve Aidat Ödemeleri");
+  await rename("Ulaşım", "TelekomünikasyonHizmetleri");
   await page.goto("/helix/cash-flow");
 
   const assertCellContainment = async () => {
@@ -2133,20 +2140,20 @@ test("financial-table labels and amounts stay inside their cells across widths a
 
   for (const width of [320, 375, 390, 430, 768, 1024]) {
     await page.setViewportSize({ width, height: width < 600 ? 844 : 900 });
-    await page.getByRole("radio", { name: "Satır odaklı" }).click();
+    await page.getByRole("radio", { name: "Aylar satırda" }).click();
     await assertCellContainment();
-    await page.getByRole("radio", { name: "Kolon odaklı" }).click();
+    await page.getByRole("radio", { name: "Aylar sütunda" }).click();
     await assertCellContainment();
-    await page.getByRole("radio", { name: "Ay odaklı" }).click();
+    await page.getByRole("radio", { name: "Tek ay" }).click();
     await assertCellContainment();
   }
 
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.getByRole("radio", { name: "Kolon odaklı" }).click();
+  await page.getByRole("radio", { name: "Aylar sütunda" }).click();
   const shortLabel = page.getByTestId("table-row-label").filter({ hasText: "Market" }).first();
-  const longLabel = page.getByTestId("table-row-label").filter({ hasText: "Kredi Kartı ve Aidat Ödemeleri" }).first();
+  const longLabel = page.getByTestId("table-row-label").filter({ hasText: "Faturalar ve Aidat Ödemeleri" }).first();
   await expect(shortLabel).toHaveAttribute("aria-label", "Market");
-  await expect(longLabel).toHaveAttribute("aria-label", "Kredi Kartı ve Aidat Ödemeleri");
+  await expect(longLabel).toHaveAttribute("aria-label", "Faturalar ve Aidat Ödemeleri");
   const labelFlow = await Promise.all([
     shortLabel.evaluate((element) => ({
       clamp: getComputedStyle(element).webkitLineClamp,
@@ -2251,10 +2258,13 @@ test("disabled primary actions remain readable in every theme", async ({ page })
       await page.goto("/helix/settings");
       await page.getByRole("radio", { name: palette, exact: true }).click();
       await page.getByRole("radio", { name: scheme, exact: true }).click();
+      // A save button is live for a missing field (docs/UI.md §4); the one-field prompt is the primary still disabled while empty.
       await page.goto("/helix/transaction");
-      const save = page.getByRole("button", { name: "Kaydet", exact: true });
-      await expect(save).toBeDisabled();
-      expect(await effectiveControlTextContrast(page, "Kaydet"), `${palette} · ${scheme}`).toBeGreaterThanOrEqual(4.5);
+      await page.getByRole("button", { name: "Kalem", exact: true }).click();
+      await page.getByRole("button", { name: "Yeni kalem ekle", exact: true }).click();
+      const add = page.getByRole("button", { name: "Ekle", exact: true });
+      await expect(add).toBeDisabled();
+      expect(await effectiveControlTextContrast(page, "Ekle"), `${palette} · ${scheme}`).toBeGreaterThanOrEqual(4.5);
     }
   }
 });
@@ -2466,7 +2476,7 @@ test("a dragged ledger rests on a whole month in the browser too", async ({ page
   await page.setViewportSize({ width: 390, height: 844 });
   await onboard(page);
   await openCashFlow(page);
-  await page.getByRole("radio", { name: "Kolon odaklı" }).click();
+  await page.getByRole("radio", { name: "Aylar sütunda" }).click();
   await expect(page.getByTestId("cash-flow-matrix-table")).toBeVisible();
 
   const body = page.getByTestId("table-horizontal-body");
@@ -2495,7 +2505,7 @@ test("the financial-table pivot underlines the option it belongs to", async ({ p
   await onboard(page);
   await openCashFlow(page);
 
-  for (const name of ["Satır odaklı", "Kolon odaklı", "Ay odaklı"]) {
+  for (const name of ["Aylar satırda", "Aylar sütunda", "Tek ay"]) {
     const option = page.getByRole("radio", { name, exact: true });
     await expect(option, `the pivot offers "${name}"`).toHaveCount(1);
     await option.click();

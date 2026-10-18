@@ -671,7 +671,7 @@ function RootLayoutInner({ launching, onSettled }: { launching: boolean; onSettl
               owns the same vertical pan used by the reorder grip, even when
               swipe-to-dismiss is disabled; the Settings entry point works
               because it has no sheet recognizer. */}
-          <Stack.Screen name="columns-editor" options={{ title: tr.cashflow.editColumns, headerLeft: () => <HeaderBackButton fallback="/(tabs)/cash-flow" /> }} />
+          <Stack.Screen name="columns-editor" options={{ title: tr.settings.categories, headerLeft: () => <HeaderBackButton fallback="/(tabs)/cash-flow" /> }} />
           <Stack.Screen name="statement-import" options={{ title: tr.statement.title, headerLeft: () => <HeaderBackButton fallback="/(tabs)/settings" /> }} />
           <Stack.Screen name="feedback" options={{ title: tr.feedback.title, headerLeft: () => <HeaderBackButton fallback="/(tabs)/settings" /> }} />
           {/* Outside the protected group on purpose: the notice has to be
@@ -680,7 +680,6 @@ function RootLayoutInner({ launching, onSettled }: { launching: boolean; onSettl
           <Stack.Screen name="privacy" options={{ title: tr.legal.title, headerLeft: () => <HeaderBackButton fallback="/(tabs)/settings" /> }} />
           <Stack.Screen name="sync-issues" options={{ title: tr.settings.syncQuarantineTitle, headerLeft: () => <HeaderBackButton fallback="/(tabs)/settings" /> }} />
           <Stack.Screen name="attention" options={{ title: tr.attention.title, headerLeft: () => <HeaderBackButton fallback="/(tabs)" /> }} />
-          <Stack.Screen name="reconciliation" options={{ title: tr.catchup.title, headerLeft: () => <HeaderBackButton fallback="/(tabs)" /> }} />
           <Stack.Screen name="upcoming" options={{ title: tr.upcoming.title, headerLeft: () => <HeaderBackButton fallback="/(tabs)" /> }} />
           <Stack.Screen name="analytics" options={{ title: tr.analysis.title, headerLeft: () => <HeaderBackButton fallback="/(tabs)" /> }} />
           <Stack.Screen name="installments" options={{ title: tr.installments.title, headerLeft: () => <HeaderBackButton fallback="/(tabs)" /> }} />

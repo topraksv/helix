@@ -1002,10 +1002,10 @@ describe("repository compatibility contract", () => {
       .map(({ row }: { row: { kind: string; isColumn: boolean; isTransfer: boolean; icon: string } }) =>
         [row.kind, row.isColumn, row.isTransfer, row.icon].join(" "));
     expect(columns).toEqual([
-      "expense true false 💳", "expense true false 🧾", "expense true false 🛒", "expense true false ⛽",
+      "expense true false 🧾", "expense true false 🛒", "expense true false ⛽",
       "expense true false 🏠", "expense true false 🚌", "expense true false 🩺", "expense true false 🎬",
-      "expense true false 🧺", "income true false 💰", "income true false ➕",
-      "expense true false 🏦", "expense true false 🚗", "expense true true 📈", "expense true false 🔁",
+      "expense true false 🧺", "expense true true 📈", "income true false 💰", "income true false ➕",
+      "expense true false 💳", "expense true false 🏦", "expense true false 🚗", "expense true false 🔁",
       "expense true false 👕", "expense true false 🎓", "income true false 🏘️",
     ]);
   });
@@ -2040,19 +2040,31 @@ describe("installment plan lifecycle", () => {
     expect(transactions.every((write) => typeof write.row.cardStatementId === "string")).toBe(true);
   });
 
-  it("refuses a card plan whose source is not a credit card with a cycle", async () => {
+  it("keeps a hand-paid plan on its own day, and refuses one with no source or a card with no cycle", async () => {
+    let source: Record<string, unknown> | null = { id: "acct-1", type: "bank_account", statement_day: null, due_day: null };
     dependencies.getSqliteAsync.mockResolvedValue({
       getFirstAsync: async (sql: string) => {
         if (sql.includes("FROM persons")) return { id: "person-1" };
-        if (sql.includes("FROM payment_sources")) return { id: "acct-1", type: "bank_account", statement_day: null, due_day: null };
+        if (sql.includes("FROM payment_sources")) return source;
+        if (sql.includes("FROM installment_plans")) return null;
         return { kind: "expense", is_transfer: 0 };
       },
       getAllAsync: async () => [],
     });
 
-    await expect(repository.createInstallmentPlan("user-1", {
-      ...plan, kind: "card_installment", paymentSourceId: "acct-1",
-    })).rejects.toBeInstanceOf(repository.CreditCardCycleRequiredError);
+    await repository.createInstallmentPlan("user-1", { ...plan, kind: "card_installment", paymentSourceId: "acct-1", dueDay: 12 });
+    const [, writes] = dependencies.writeRows.mock.calls[0] as [string, { table: string; row: Record<string, unknown> }[]];
+    expect(writes.find((write) => write.table === "installment_plans")?.row).toMatchObject({ dueDay: 12, paymentSourceId: "acct-1" });
+    expect(writes.some((write) => write.table === "credit_card_statements")).toBe(false);
+    expect(writes.filter((write) => write.table === "transactions").map((write) => String(write.row.effectiveDate).slice(8))).toEqual(["12", "12", "12"]);
+
+    dependencies.writeRows.mockClear();
+    for (const refused of [null, { id: "card-1", type: "credit_card", statement_day: null, due_day: 5 }]) {
+      source = refused;
+      await expect(repository.createInstallmentPlan("user-1", {
+        ...plan, kind: "card_installment", paymentSourceId: refused ? "card-1" : null,
+      })).rejects.toBeInstanceOf(repository.CreditCardCycleRequiredError);
+    }
     expect(dependencies.writeRows).not.toHaveBeenCalled();
   });
 

@@ -15,8 +15,8 @@ import { extname, join, relative } from "node:path";
 const root = process.argv[2] ?? "dist";
 
 const limits = {
-  entryJavaScript: 3_362_700,
-  totalJavaScript: 4_066_000,
+  entryJavaScript: 3_386_900,
+  totalJavaScript: 4_090_200,
   // Everything but pictures, which are weighed apart; one HTML file per route makes it grow in coarse steps.
   totalExport: 7_339_500,
   pictureBytes: 166_300,

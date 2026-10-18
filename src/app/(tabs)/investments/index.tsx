@@ -138,7 +138,7 @@ function InvestmentQuickAction({
   caption,
   tone,
   compact,
-  disabled = false,
+  disabledReason,
   onPress,
 }: {
   icon: React.ComponentType<{ size?: number; color?: string; accessible?: boolean; strokeWidth?: number }>;
@@ -147,10 +147,12 @@ function InvestmentQuickAction({
   caption: string;
   tone: "primary" | "secondary" | "quiet";
   compact: boolean;
-  disabled?: boolean;
+  /** Dimmed, yet a tap says why: a dead tile teaches nothing. */
+  disabledReason?: string | null;
   onPress: () => void;
 }) {
   const { palette } = useTheme();
+  const disabled = disabledReason != null;
   const metrics = actionTileMetrics(compact);
   const isPrimary = tone === "primary";
   const foreground = isPrimary
@@ -169,8 +171,8 @@ function InvestmentQuickAction({
       accessibilityRole="button"
       accessibilityLabel={`${label}. ${caption}`}
       accessibilityState={{ disabled }}
-      disabled={disabled}
-      onPress={onPress}
+      accessibilityHint={disabledReason ?? undefined}
+      onPress={disabledReason ? () => void appAlert(disabledReason, label) : onPress}
       style={(state) => ({
         flex: 1,
         minWidth: 0,
@@ -510,8 +512,9 @@ export default function InvestmentsScreen() {
       >
         <InvestmentQuickAction compact={compact} icon={PackagePlus} tone="secondary" label={tr.investments.addProduct} caption={tr.investments.addProductCaption} onPress={() => router.push("/investments/product")} />
         <InvestmentQuickAction compact={compact} icon={ArrowDownToLine} tone="secondary" label={tr.investments.addExisting} caption={tr.investments.addExistingCaption} onPress={() => router.push({ pathname: "/investments/operation", params: { kind: "existing" } })} />
-        <InvestmentQuickAction compact={compact} icon={ArrowUpFromLine} tone="quiet" label={tr.investments.sell} caption={tr.investments.sellCaption} disabled={active.length === 0} onPress={() => router.push({ pathname: "/investments/operation", params: { kind: "sell" } })} />
-        <InvestmentQuickAction compact={compact} icon={WalletCards} tone="secondary" label={tr.investments.refundShort} caption={tr.investments.refundCaption} disabled={state.cashMinor <= 0} onPress={() => router.push({ pathname: "/transaction", params: { intent: "investment-refund" } })} />
+        {/* The reason waits for the data: a tile read while the lists are still loading would say there is nothing to sell. */}
+        <InvestmentQuickAction compact={compact} icon={ArrowUpFromLine} tone="quiet" label={tr.investments.sell} caption={tr.investments.sellCaption} disabledReason={ready && active.length === 0 ? tr.investments.noProductToSell : null} onPress={() => router.push({ pathname: "/investments/operation", params: { kind: "sell" } })} />
+        <InvestmentQuickAction compact={compact} icon={WalletCards} tone="secondary" label={tr.investments.refundShort} caption={tr.investments.refundCaption} disabledReason={ready && state.cashMinor <= 0 ? tr.investments.noCashToMove : null} onPress={() => router.push({ pathname: "/transaction", params: { intent: "investment-refund" } })} />
       </View>
 
       <SectionHeader>{tr.investments.activeProducts}</SectionHeader>

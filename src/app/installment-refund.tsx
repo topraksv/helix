@@ -145,10 +145,13 @@ function RefundForm({
     ? formatMinorCompact(splitIntoInstallments(amountMinor, summary.pending).at(-1)!, summary.plan.currency)
     : null;
   const valid = refundSaveable(summary, amountMinor, spread);
+  const [attempted, setAttempted] = useState(false);
   const preview = refundPreviewLine(summary, amountMinor);
 
+  // The button stays live: a refused press marks the amount; "too large" is the preview line's.
   const save = async () => {
-    if (!valid) return;
+    if (busy) return;
+    if (!valid) return setAttempted(true);
     await operationGuard.run(async () => {
       setBusy(true);
       try {
@@ -170,6 +173,7 @@ function RefundForm({
       <MoneyField
         label={withCurrency(tr.installments.refundAmount, summary.plan.currency)}
         value={amountRaw}
+        error={attempted && !(amountMinor != null && amountMinor > 0) ? tr.required.amount : null}
         onChangeMinor={(raw, minor) => {
           setAmountRaw(raw);
           setAmountMinor(minor);
@@ -206,7 +210,7 @@ function RefundForm({
       ) : null}
       <Field label={tr.installments.refundNote} value={note} onChangeText={setNote} />
       {preview ? <Body muted style={{ marginBottom: spacing.md }}>{preview}</Body> : null}
-      <Button icon={Undo2} label={tr.installments.refundSave} onPress={() => void save()} disabled={!valid} loading={busy} />
+      <Button icon={Undo2} label={tr.installments.refundSave} onPress={() => void save()} loading={busy} />
       {onChangePlan ? (
         <View style={{ marginTop: spacing.sm }}>
           <Button label={tr.installments.refundChangePlan} variant="ghost" size="sm" onPress={onChangePlan} disabled={busy} />

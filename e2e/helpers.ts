@@ -118,6 +118,10 @@ export async function onboard(page: Page): Promise<void> {
     await expect(skipTour).toBeHidden();
   }
   await expect(page.getByRole("tab", { name: "Durum", selected: true })).toBeVisible();
+  // Quick start leaves the balance at ₺0, so the first expense would raise the
+  // one-time "bakiyen ekside" hint over whatever the test does next; the test
+  // that owns the hint clears this again.
+  await page.evaluate(() => localStorage.setItem("helix.negative-balance-hint.done", "true"));
 }
 
 export async function openCashFlow(page: Page): Promise<void> {
@@ -162,7 +166,7 @@ export async function addMarketExpense(
   await page.getByRole("button", { name: "İşlem Ekle" }).click();
   await expect(page.getByRole("heading", { name: "Yeni İşlem" })).toBeVisible();
   await page.getByRole("textbox", { name: "Tutar · TRY" }).fill(amount);
-  await pickOption(page, "Kategori", category);
+  await pickOption(page, "Kalem", category);
   await page.getByRole("textbox", { name: "Not" }).fill(note);
   const save = page.getByRole("button", { name: "Kaydet", exact: true });
   await expect(save).toBeEnabled();

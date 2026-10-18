@@ -1721,7 +1721,6 @@ describe("loading and motion boundaries", () => {
     ["src/app/import-wizard.tsx", "a wizard whose first step is chosen by the file"],
     ["src/app/bulk-entry.tsx", "an empty grid the owner fills; there is no shape to hold"],
     ["src/app/workspace-template.tsx", "a one-off picker shown once per workspace"],
-    ["src/app/reconciliation.tsx", "a prompt list that is usually empty"],
     ["src/app/cell-editor.tsx", "a sheet sized by its own content"],
     ["src/app/(onboarding)/setup.tsx", "onboarding, where a skeleton would suggest data exists"],
     ["src/app/(tabs)/cash-flow/analytics.tsx", "charts; a chart skeleton is a different shape again"],

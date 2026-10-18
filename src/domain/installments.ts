@@ -9,6 +9,7 @@
 import {
   addMonthsToKey,
   clampDayToMonth,
+  dayOf,
   isMonthDay,
   monthDiff,
   monthKeyOf,
@@ -193,20 +194,38 @@ interface PlanDraftInput {
   today: ISODate;
 }
 
-/** A loan's own payment day, falling back to its account's; a card plan takes the card's. */
-function draftDueDay(input: PlanDraftInput) {
-  const typed = input.kind === "loan" && input.dueDayText.trim() !== "" ? Number(input.dueDayText) : null;
-  return { dueDay: typed ?? input.card?.dueDay ?? null, dueDayValid: typed == null || isMonthDay(typed) };
+/** A plan off a card (a loan, or instalments paid by hand) has its own payment day, falling back to its account's; a card plan takes the card's. */
+export function ownsDueDay(kind: PlanDraftInput["kind"], card: PlanDraftInput["card"]): boolean {
+  return kind === "loan" || (card != null && card.type !== "credit_card");
 }
 
-/** A card plan needs a card with both days; until the owner picks a month it starts on the statement a purchase made today joins. */
-function draftStart(input: PlanDraftInput) {
+function draftDueDay(input: PlanDraftInput) {
+  const typed = ownsDueDay(input.kind, input.card) && input.dueDayText.trim() !== "" ? Number(input.dueDayText) : null;
+  // Paid by hand with no day anywhere: the purchase day, as the transaction form takes it; a loan keeps the first.
+  const handDay = input.kind === "card_installment" && ownsDueDay(input.kind, input.card) ? dayOf(input.today) : null;
+  return { dueDay: typed ?? input.card?.dueDay ?? handDay, dueDayValid: typed == null || isMonthDay(typed) };
+}
+
+/**
+ * An instalment purchase names where it is paid from; on a card it needs both
+ * of the card's days, and until the owner picks a month it starts on the
+ * statement a purchase made today joins.
+ */
+/** Nothing paid by hand means no instalment is due yet: the first is the next due day after today. */
+function handPaidStart(input: PlanDraftInput, due: { dueDay: number | null; dueDayValid: boolean }): MonthKey | null {
+  const byHand = input.kind === "card_installment" && input.card?.type !== "credit_card";
+  return byHand && due.dueDayValid ? deriveStartMonth(0, monthKeyOf(input.today), due.dueDay, input.today) : null;
+}
+
+function draftStart(input: PlanDraftInput, due: { dueDay: number | null; dueDayValid: boolean }) {
   const { card, kind, today } = input;
   const cycle = { statementDay: card?.statementDay ?? null, dueDay: card?.dueDay ?? null };
-  const onCard = kind === "card_installment";
+  const onCard = kind === "card_installment" && card?.type === "credit_card";
+  const handStart = handPaidStart(input, due);
   return {
-    cardSourceValid: !onCard || (card?.type === "credit_card" && isValidCardCycle(cycle)),
-    startMonth: input.startChoice ?? (onCard && isValidCardCycle(cycle) ? firstInstallmentMonth(today, cycle) : monthKeyOf(today)),
+    sourceChosen: kind !== "card_installment" || card != null,
+    cardSourceValid: !onCard || isValidCardCycle(cycle),
+    startMonth: input.startChoice ?? handStart ?? (onCard && isValidCardCycle(cycle) ? firstInstallmentMonth(today, cycle) : monthKeyOf(today)),
   };
 }
 
@@ -228,9 +247,9 @@ function draftPaid(input: PlanDraftInput, count: number) {
  */
 export function planDraft(input: PlanDraftInput) {
   const count = Number(input.countText);
-  const { cardSourceValid, startMonth } = draftStart(input);
-  const { paid, paidChanged, paidValid } = draftPaid(input, count);
   const { dueDay, dueDayValid } = draftDueDay(input);
+  const { sourceChosen, cardSourceValid, startMonth } = draftStart(input, { dueDay, dueDayValid });
+  const { paid, paidChanged, paidValid } = draftPaid(input, count);
   // Derive only from input this function has already judged sound. `paid` and
   // `dueDay` are read for validity two lines above and again in `valid` below;
   // deriving between the two let exactly the values being refused reach
@@ -248,8 +267,9 @@ export function planDraft(input: PlanDraftInput) {
     reschedule: input.existingStartMonth != null && resolvedStart !== input.existingStartMonth,
     dueDay,
     dueDayValid,
+    sourceChosen,
     cardSourceValid,
-    valid: described && isValidInstallmentCount(count) && paidValid && cardSourceValid && dueDayValid,
+    valid: described && isValidInstallmentCount(count) && paidValid && sourceChosen && cardSourceValid && dueDayValid,
   };
 }
 

@@ -6,11 +6,14 @@ import ArrowUpFromLine from "lucide-react-native/icons/arrow-up-from-line";
 import Landmark from "lucide-react-native/icons/landmark";
 import Plus from "lucide-react-native/icons/plus";
 import Trash from "lucide-react-native/icons/trash";
-import { addInvestmentOperation, updateInvestmentOperation } from "../../../data/repo";
+import { addInvestmentOperation, deleteInvestmentOperation, updateInvestmentOperation } from "../../../data/repo";
 import {
+  useInvestmentCategoriesState,
   useInvestmentOperationsState,
   useInvestmentProfilesState,
   useInvestmentProductsState,
+  useInvestmentWalletSnapshot,
+  usePersonsState,
   useUserId,
 } from "../../../data/hooks";
 import { todayISO } from "../../../domain/dates";
@@ -26,14 +29,17 @@ import { userMessage } from "../../../domain/user-error";
 import { dateLabel, tr } from "../../../i18n/tr";
 import { scheduleSync } from "../../../sync/engine";
 import { DateField } from "../../../ui/calendar";
-import { Amount, Button, Card, DataStateNotice, Eyebrow, FadeIn, Field, IconButton, Label, MoneyField, PanelHeader, Screen, Segmented, Select } from "../../../ui/components";
-import { appAlert } from "../../../ui/dialog";
+import { Amount, Body, Button, Card, DataStateNotice, Eyebrow, FadeIn, Field, FieldNote, IconButton, Label, MoneyField, PanelHeader, Screen, Segmented, Select, Toggle } from "../../../ui/components";
+import { appAlert, appConfirm } from "../../../ui/dialog";
 import { navigateBack } from "../../../ui/navigation";
 import { useDirtyExitGuard, useDraftDirty } from "../../../ui/dirty-exit";
 import { useRotatingPlaceholder } from "../../../ui/placeholders";
 import { controlSize, font, radius, spacing, type, useTheme } from "../../../ui/theme";
 import { shouldPairOperationSummary } from "../../../ui/responsive";
 import { useContentWidth } from "../../../ui/viewport";
+import { balanceLine, showSaveResult } from "../../../ui/save-result";
+import { useUndo } from "../../../ui/undo";
+import { useOperationGuard } from "../../../ui/operation-guard";
 
 const VALID_KINDS = new Set<InvestmentOperationKind>(["existing", "buy", "sell", "contribution"]);
 type ContributionMode = "units" | "amount";
@@ -96,7 +102,15 @@ function draftQuote(quantity: string, unitMinor: number | null, totalMinor: numb
   } catch {
     quantityError = tr.investments.invalidQuantity;
   }
-  if (amountOnly || !typed || unitMinor == null) return { atoms, quantityError, calculated: null, quote: null, totalError: null };
+  if (amountOnly || !typed || quantityError || (unitMinor == null && totalMinor == null)) return { atoms, quantityError, calculated: null, quote: null, totalError: null };
+  // "1 gram for 4.250" is how a purchase is remembered: the total names the unit price.
+  if (unitMinor == null) {
+    try {
+      return { atoms, quantityError, calculated: null, quote: resolveInvestmentQuote({ quantity, totalMinor }), totalError: null };
+    } catch (error) {
+      return { atoms, quantityError, calculated: null, quote: null, totalError: errorText(error) };
+    }
+  }
   const attempt = (withTotal: boolean) => {
     try {
       return { quote: resolveInvestmentQuote({ quantity, unitPriceMinor: unitMinor, ...(withTotal ? { totalMinor } : {}) }), error: null };
@@ -133,6 +147,7 @@ function useOperationDraft() {
   const [note, setNote] = useState("");
   const [contributionMode, setContributionMode] = useState<ContributionMode>("units");
   const [busy, setBusy] = useState(false);
+  const operationGuard = useOperationGuard();
   const hydratedEdit = useRef<string | null>(null);
   // `useDraftDirty` reads this only until it captures a baseline, so it has to
   // be false for exactly the renders between the row arriving and the effect
@@ -171,23 +186,89 @@ function useOperationDraft() {
   const oversellError = kind === "sell" && quoted.atoms != null && heldAtoms != null && quoted.atoms > heldAtoms
     ? tr.investments.oversoldWithHolding(formatInvestmentQuantityAtoms(heldAtoms))
     : null;
-  const canSave = productId != null && !busy && !oversellError && !quoted.quantityError && (amountOnly ? total.minor != null : quoted.quote != null);
+  const canSave = productId != null && !busy && !oversellError && !quoted.quantityError && !quoted.totalError && (amountOnly ? total.minor != null : quoted.quote != null);
+  /** Only after a refused save: the form does not scold while it is being filled. */
+  const [attempted, setAttempted] = useState(false);
+  const missing = attempted
+    ? {
+        product: productId == null ? tr.investments.missingProduct : null,
+        quantity: !amountOnly && quantity.trim() === "" ? tr.investments.missingQuantity : null,
+        price: !amountOnly && unit.minor == null && total.minor == null ? tr.investments.missingPrice : null,
+        total: amountOnly && total.minor == null ? tr.investments.missingTotal : null,
+      }
+    : { product: null, quantity: null, price: null, total: null };
 
-  const save = async () => {
-    if (!productId || !canSave) return;
+  // Money moved with the operation itself, so a purchase never stops at an empty wallet.
+  const walletCash = useInvestmentWalletSnapshot().data?.cashMinor ?? null;
+  const ledgerItems = useInvestmentCategoriesState().data.filter((category) => category.isTransfer && category.deletedAt == null);
+  const selfId = usePersonsState().data.find((person) => person.isSelf && person.deletedAt == null)?.id ?? null;
+  const [ledgerItemId, setLedgerItemId] = useState<string | null>(null);
+  const ledgerItem = ledgerItems.find((category) => category.id === ledgerItemId) ?? ledgerItems[0] ?? null;
+  const ledgerItemName = ledgerItem?.name ?? tr.template.categoryNames.investment;
+  const operationTotal = amountOnly ? total.minor : quoted.quote?.totalMinor ?? null;
+  const spends = !editing && (kind === "buy" || kind === "contribution");
+  const shortMinor = spends && operationTotal != null && walletCash != null && operationTotal > walletCash ? operationTotal - walletCash : 0;
+  const [fundOn, setFundOn] = useState(false);
+  const [fund, setFund] = useState<{ raw: string; minor: number | null }>({ raw: "", minor: null });
+  // An empty field means exactly what is missing.
+  const fundMinor = fund.minor ?? shortMinor;
+  const fundError = fundOn && fundMinor < shortMinor ? tr.investments.fundTooLittle(formatMinorCompact(shortMinor)) : null;
+  const [bankOn, setBankOn] = useState(false);
+  const banks = !editing && kind === "sell";
+  const transfer = selfId == null
+    ? undefined
+    : spends && fundOn && fundMinor > 0
+      ? { amountMinor: fundMinor, categoryId: ledgerItem?.id ?? null, categoryName: ledgerItemName, personId: selfId }
+      : banks && bankOn && operationTotal != null
+        ? { amountMinor: -operationTotal, categoryId: ledgerItem?.id ?? null, categoryName: ledgerItemName, personId: selfId }
+        : undefined;
+
+  const productName = selected?.name ?? tr.saved.fallbackName;
+  /** The write itself, and the card that says what it did. */
+  const write = async (product: string) => {
+    const input = {
+      productId: product,
+      kind,
+      operationDate: date,
+      quantity: amountOnly ? null : quoted.quote!.quantity,
+      unitPriceMinor: amountOnly ? null : quoted.quote!.unitPriceMinor,
+      totalMinor: amountOnly ? total.minor! : quoted.quote!.totalMinor,
+      note,
+    };
+    if (editing) {
+      await updateInvestmentOperation(userId, editing.id, input);
+      useUndo.getState().show(tr.saved.updated(productName));
+      return;
+    }
+    const id = await addInvestmentOperation(userId, input, transfer);
+    // Free cash moves by the operation and by any money it brought along or sent back.
+    const cashDelta = (transfer?.amountMinor ?? 0) + (kind === "sell" ? input.totalMinor : spends ? -input.totalMinor : 0);
+    showSaveResult({
+      name: productName,
+      amountMinor: input.totalMinor,
+      detail: balanceLine(walletCash, cashDelta, tr.saved.freeCash),
+      // With a ledger transfer the operation is half of one write; removing it alone would leave the other half.
+      undo: transfer ? null : () => deleteInvestmentOperation(userId, id).then(() => scheduleSync(userId)),
+    });
+  };
+
+  // `busy` is state, read stale by a second tap in the same frame; the guard closes synchronously.
+  const save = () => operationGuard.run(async () => {
+    if (!productId || !canSave || fundError) {
+      setAttempted(true);
+      return;
+    }
+    if (shortMinor > 0 && !fundOn) {
+      const fundNow = await appConfirm(tr.investments.shortTitle, tr.investments.shortDialog(formatMinorCompact(shortMinor)), {
+        confirmLabel: tr.investments.fundAction,
+        cancelLabel: tr.common.done,
+      });
+      if (fundNow) setFundOn(true);
+      return;
+    }
     setBusy(true);
     try {
-      const input = {
-        productId,
-        kind,
-        operationDate: date,
-        quantity: amountOnly ? null : quoted.quote!.quantity,
-        unitPriceMinor: amountOnly ? null : quoted.quote!.unitPriceMinor,
-        totalMinor: amountOnly ? total.minor! : quoted.quote!.totalMinor,
-        note,
-      };
-      if (editing) await updateInvestmentOperation(userId, editing.id, input);
-      else await addInvestmentOperation(userId, input);
+      await write(productId);
       scheduleSync(userId);
       allowExit(() => navigateBack(router, "/(tabs)/investments"));
     } catch (error) {
@@ -195,11 +276,13 @@ function useOperationDraft() {
     } finally {
       setBusy(false);
     }
-  };
+  });
 
   return {
     profilesState, editing, baseKind, kind, products, selected, productId, setProductId, date, setDate, quantity, setQuantity, unit, setUnit, total, setTotal,
-    note, setNote, contributionMode, setContributionMode, amountOnly, quoted, heldAtoms, oversellError, canSave, busy, save,
+    note, setNote, contributionMode, setContributionMode, amountOnly, quoted, heldAtoms, oversellError, canSave, busy, save, missing,
+    walletCash, operationTotal, shortMinor, fundOn, setFundOn, fund, setFund, fundError, banks, bankOn, setBankOn,
+    ledgerItems, ledgerItem, setLedgerItemId, ledgerItemName,
     title: editing ? tr.investments.editOperation : tr.investments.operationTitle[kind],
     calculationTotal: amountOnly ? total.minor : quoted.quote?.totalMinor ?? quoted.calculated?.totalMinor ?? null,
   };
@@ -336,7 +419,7 @@ function QuoteFields({ draft }: { draft: OperationDraft }) {
   const quantityPlaceholder = useRotatingPlaceholder(tr.placeholders.investmentQuantity, { prefix: false, active: quantity.length === 0 });
   const unitPlaceholder = useRotatingPlaceholder(tr.placeholders.investmentUnitPrice, { prefix: false, active: unit.raw.length === 0 || total.raw.length === 0 });
   const onTotal = (raw: string, minor: number | null) => draft.setTotal({ raw, minor });
-  if (draft.amountOnly) return <MoneyField label={tr.investments.requiredTotal} value={total.raw} placeholder={unitPlaceholder} onChangeMinor={onTotal} />;
+  if (draft.amountOnly) return <MoneyField label={tr.investments.requiredTotal} value={total.raw} placeholder={unitPlaceholder} onChangeMinor={onTotal} error={draft.missing.total} />;
   return (
     <>
       <View style={{ marginBottom: spacing.md }}>
@@ -348,7 +431,7 @@ function QuoteFields({ draft }: { draft: OperationDraft }) {
               accessibilityLabel={tr.investments.requiredQuantity}
               noMargin
               value={quantity}
-              error={quoted.quantityError ?? draft.oversellError}
+              error={quoted.quantityError ?? draft.oversellError ?? draft.missing.quantity}
               onChangeText={(raw) => draft.setQuantity(raw.replace(/[^\d.,]/g, "").slice(0, 30))}
               keyboardType="decimal-pad"
               inputMode="decimal"
@@ -362,17 +445,87 @@ function QuoteFields({ draft }: { draft: OperationDraft }) {
         testID="investment-unit-price"
         label={tr.investments.requiredUnitPrice}
         value={unit.raw}
-        placeholder={unitPlaceholder}
+        placeholder={unit.minor == null && quoted.quote ? formatMinorInput(quoted.quote.unitPriceMinor) : unitPlaceholder}
         onChangeMinor={(raw, minor) => draft.setUnit({ raw, minor })}
+        error={draft.missing.price}
       />
-      <MoneyField
-        label={tr.investments.optionalTotal}
-        value={total.raw}
-        error={quoted.totalError}
-        placeholder={quoted.calculated ? formatMinorInput(quoted.calculated.totalMinor) : tr.common.optionalHint}
-        onChangeMinor={onTotal}
-      />
+      <FieldNote note={tr.investments.quoteHint}>
+        <MoneyField
+          label={tr.investments.optionalTotal}
+          value={total.raw}
+          error={quoted.totalError}
+          placeholder={quoted.calculated ? formatMinorInput(quoted.calculated.totalMinor) : tr.common.optionalHint}
+          onChangeMinor={onTotal}
+        />
+      </FieldNote>
     </>
+  );
+}
+
+/**
+ * The ledger side of the operation: money added for a purchase the wallet
+ * cannot pay, or a sale's proceeds taken straight back. Shown only where it
+ * applies, so an ordinary purchase from free cash reads as before.
+ */
+function LedgerTransfer({ draft }: { draft: OperationDraft }) {
+  const { palette } = useTheme();
+  const funding = draft.shortMinor > 0 || draft.fundOn;
+  if (!funding && !draft.banks) return null;
+  const itemPicker = draft.ledgerItems.length > 1 ? (
+    <Select
+      label={tr.investments.ledgerItem}
+      options={draft.ledgerItems.map((category) => ({ value: category.id, label: category.name }))}
+      value={draft.ledgerItem?.id ?? null}
+      onChange={draft.setLedgerItemId}
+    />
+  ) : null;
+  if (!funding) {
+    return (
+      <View style={{ marginBottom: spacing.md }}>
+        <Toggle label={tr.investments.bankSaleToggle} value={draft.bankOn} onValueChange={draft.setBankOn} />
+        {draft.bankOn ? (
+          <View style={{ marginTop: spacing.sm }}>
+            {itemPicker}
+            <Body muted>{tr.investments.bankSaleExplain(draft.ledgerItemName)}</Body>
+          </View>
+        ) : null}
+      </View>
+    );
+  }
+  return (
+    <View
+      testID="investment-funding"
+      style={{
+        marginBottom: spacing.md,
+        padding: spacing.md,
+        borderRadius: radius.md,
+        backgroundColor: palette.warning + "14",
+        borderWidth: StyleSheet.hairlineWidth,
+        borderColor: palette.warning + "70",
+      }}
+    >
+      <Text style={[type.label, { color: palette.textStrong }]}>{tr.investments.shortTitle}</Text>
+      {draft.shortMinor > 0 && draft.walletCash != null && draft.operationTotal != null ? (
+        <Body muted style={{ marginTop: 2, marginBottom: spacing.sm }}>
+          {tr.investments.shortBody(formatMinorCompact(draft.walletCash), formatMinorCompact(draft.operationTotal), formatMinorCompact(draft.shortMinor))}
+        </Body>
+      ) : null}
+      <Toggle label={tr.investments.fundToggle} value={draft.fundOn} onValueChange={draft.setFundOn} />
+      {draft.fundOn ? (
+        <View style={{ marginTop: spacing.sm }}>
+          <MoneyField
+            testID="investment-funding-amount"
+            label={tr.investments.fundAmount}
+            value={draft.fund.raw}
+            placeholder={formatMinorInput(draft.shortMinor)}
+            onChangeMinor={(raw, minor) => draft.setFund({ raw, minor })}
+            error={draft.fundError}
+          />
+          {itemPicker}
+          <Body muted>{tr.investments.fundExplain(draft.ledgerItemName)}</Body>
+        </View>
+      ) : null}
+    </View>
   );
 }
 
@@ -392,6 +545,7 @@ function OperationFields({ draft }: { draft: OperationDraft }) {
         onChange={draft.setProductId}
         placeholder={tr.investments.product}
         onCreate={baseKind === "sell" ? undefined : { label: tr.investments.addProduct, run: addProduct }}
+        error={draft.missing.product}
       />
       {products.length === 0 && baseKind !== "sell" ? (
         <View style={{ marginBottom: spacing.md }}>
@@ -407,6 +561,7 @@ function OperationFields({ draft }: { draft: OperationDraft }) {
         />
       ) : null}
       <QuoteFields draft={draft} />
+      <LedgerTransfer draft={draft} />
       <Field label={tr.common.note} value={draft.note} onChangeText={draft.setNote} multiline placeholder={notePlaceholder} />
     </Card>
   );
@@ -426,7 +581,7 @@ export default function InvestmentOperationScreen() {
       <Stack.Screen options={{ title: draft.title }} />
       <OperationSummary draft={draft} />
       <OperationFields draft={draft} />
-      <Button testID="investment-operation-save" label={draft.title} loading={draft.busy} disabled={!draft.canSave} onPress={() => void draft.save()} />
+      <Button testID="investment-operation-save" label={draft.title} loading={draft.busy} onPress={() => void draft.save()} />
       {editing ? (
         <View
           testID="investment-history-removal-row"

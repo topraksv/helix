@@ -790,6 +790,17 @@ describe("transaction repository persistence", () => {
         deleted_at: null,
       })),
     );
+
+    // In the wallet's first month a transfer total lands on its start day, or the wallet would never count it.
+    harness.db!.prepare(
+      "INSERT INTO investment_profiles (id, user_id, created_at, updated_at, started_on, opening_cash_minor) VALUES ('wallet', ?, ?, ?, '2026-06-10', 0)",
+    ).run(USER, NOW, NOW);
+    await bulkMonthEntry(USER, "2026-06", "self", [
+      { categoryId: "expense", type: "expense", amountMinor: 1_000 },
+      { categoryId: "transfer", type: "transfer", amountMinor: 5_000 },
+    ]);
+    expect(harness.db!.prepare("SELECT type, effective_date FROM transactions WHERE effective_date LIKE '2026-06%' ORDER BY type").all())
+      .toEqual([{ type: "expense", effective_date: "2026-06-01" }, { type: "transfer", effective_date: "2026-06-10" }]);
   });
 
   /**

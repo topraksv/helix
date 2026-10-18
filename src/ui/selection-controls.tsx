@@ -40,7 +40,7 @@ import { modalAnimationType } from "./modal-motion";
 import { interactionSurface } from "./interaction";
 import { SlideUp } from "./motion-primitives";
 import { Body, DisclosureChevron, FadeIn, Label, Row, controlStateStyle } from "./primitives";
-import { Field, webOnlyLabel } from "./fields";
+import { Field, FieldError, webOnlyLabel } from "./fields";
 import { shouldBoundIntrinsicControls, shouldPresentOptionsAsSheet, shouldUseTripleTileGrid } from "./responsive";
 import { useContentWidth } from "./viewport";
 import { borderWidth, controlSize, font, iconSize, motion, radius, segmentedMaxWidth, spacing, themeShadow, type, useTheme, type Palette } from "./theme";
@@ -67,6 +67,8 @@ function SelectOptionMark({ icon, color }: { icon: SelectOptionIcon; color: stri
   );
 }
 
+export interface CreateAction { label: string; run: () => void }
+
 /** Dropdown select: field-styled trigger opening a modal option list. */
 
 export function Select<T extends string>({
@@ -80,8 +82,11 @@ export function Select<T extends string>({
   selectedOption,
   trigger,
   testID,
+  error,
 }: {
   label?: string;
+  /** Shown after a refused save, the way a text field shows its own. */
+  error?: string | null;
   /**
    * `icon` is separate from `label` on purpose. Packing an emoji into the
    * label string left every name starting at a different x — emoji advance
@@ -102,7 +107,7 @@ export function Select<T extends string>({
    * here it is also there when the list is NOT empty, which is when "none of
    * these" actually happens.
    */
-  onCreate?: { label: string; run: () => void };
+  onCreate?: CreateAction | readonly CreateAction[];
   /** A value chosen through the pinned create action can remain visible in the
    * trigger without becoming a duplicate ordinary option in the list. */
   selectedOption?: { value: T; label: string; icon?: SelectOptionIcon };
@@ -239,13 +244,14 @@ export function Select<T extends string>({
                       );
                     })}
                   </ScrollView>
-                  {onCreate ? (
+                  {(onCreate == null ? [] : "label" in onCreate ? [onCreate] : onCreate).map((create) => (
                     <Pressable
+                      key={create.label}
                       accessibilityRole="button"
-                      accessibilityLabel={onCreate.label}
+                      accessibilityLabel={create.label}
                       onPress={() => {
                         setOpen(false);
-                        onCreate.run();
+                        create.run();
                       }}
                       style={(state) => ({
                         paddingHorizontal: spacing.lg,
@@ -258,11 +264,11 @@ export function Select<T extends string>({
                       <Row gap={spacing.sm}>
                         <Plus accessible={false} size={iconSize.control} color={palette.primary} style={{ width: SELECT_ICON_W }} />
                         <Text style={[type.body, { flex: 1, color: palette.primaryText, fontFamily: font.medium }]}>
-                          {onCreate.label}
+                          {create.label}
                         </Text>
                       </Row>
                     </Pressable>
-                  ) : null}
+                  ))}
                   {sheet && insets.bottom > 0 ? (
                     <View accessible={false} style={{ height: insets.bottom, backgroundColor: palette.surface }} />
                   ) : null}
@@ -300,7 +306,7 @@ export function Select<T extends string>({
         onPress={() => setOpen(true)}
         style={(state) => [
           {
-            ...controlStateStyle(palette, open),
+            ...controlStateStyle(palette, open, Boolean(error)),
             borderRadius: radius.sm,
             paddingHorizontal: spacing.md,
             paddingVertical: spacing.sm,
@@ -325,6 +331,7 @@ export function Select<T extends string>({
         </Text>
         <DisclosureChevron open={open} />
       </Pressable>
+      <FieldError message={error} />
       {open ? optionsModal() : null}
     </View>
   );

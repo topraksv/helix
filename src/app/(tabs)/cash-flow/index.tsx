@@ -179,10 +179,10 @@ export default function CashflowScreen() {
   const wide = shouldUseWideWorkspace(contentWidth);
   const router = useRouter();
   const { palette } = useTheme();
-  // A phone needs the category-first scan of column mode; a wide workspace has
-  // room for the year-wide row mode. Once the owner chooses, that persisted
-  // preference wins over device width on every later mount.
-  const defaultMode: MatrixMode = wide ? "rows" : "columns";
+  // A phone opens on one month, which fits its width without a sideways
+  // scroll; a wide workspace has room for the year-wide row mode. Once the
+  // owner chooses, that persisted preference wins over device width.
+  const defaultMode: MatrixMode = wide ? "rows" : "cards";
   const [mode, setMode] = useState<MatrixMode>(defaultMode);
   const [hasSavedMode, setHasSavedMode] = useState<boolean | null>(null);
   const [focusMonthNumber, setFocusMonthNumber] = useState(monthOf(todayISO()));

@@ -357,6 +357,11 @@ async function cardOnNewCycle(userId: string, cardId: string, cycle: CardCycle):
   ];
 }
 
+/** A card's instalment plan needs another card with a cycle; one paid by hand needs a source, and a card only with a cycle. */
+function carriesInstalmentPlans(removedType: unknown, replacement: { type: unknown } | null | undefined, replacementHasCycle: boolean): boolean {
+  return removedType === "credit_card" || replacement?.type === "credit_card" ? replacementHasCycle : replacement != null;
+}
+
 export async function reassignAndDeletePaymentSource(
   userId: string,
   sourceId: string,
@@ -387,7 +392,9 @@ export async function reassignAndDeletePaymentSource(
       [userId, sourceId],
     ),
   ]);
-  if (!card && plans.some((plan) => plan.kind === "card_installment")) throw new CreditCardCycleRequiredError();
+  if (plans.some((plan) => plan.kind === "card_installment") && !carriesInstalmentPlans(source.type, replacement, card != null)) {
+    throw new CreditCardCycleRequiredError();
+  }
   const oldPeriodById = new Map(oldStatements.map((statement) => [statement.id, statement.period_month]));
   const statementWrites = new Map<string, RowWrite>();
   const transactionWrites: RowWrite[] = [];

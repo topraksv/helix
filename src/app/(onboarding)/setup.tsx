@@ -37,6 +37,8 @@ import { devError } from "../../services/logger";
 
 const SOURCE_TYPES = PAYMENT_SOURCE_TYPES.map((value) => ({ value, label: tr.sources[value] }));
 const ALL_TEMPLATES: TemplateCategory[] = [...TEMPLATE_CATEGORIES, ...TEMPLATE_EXTRA_CATEGORIES];
+// The extras stay offered, unticked: a quick start opens with the eleven most people use.
+const DEFAULT_TEMPLATES = TEMPLATE_CATEGORIES.map((category) => category.name);
 const templateLabel = (c: TemplateCategory) => `${c.icon ?? ""} ${c.name}`.trim();
 
 interface DraftSource {
@@ -101,19 +103,26 @@ function usePersonDrafts(onRemoved: (index: number) => void) {
   const [newPerson, setNewPerson] = useState("");
   const [editing, setEditing] = useState<number | null>(null);
   const [editName, setEditName] = useState("");
+  // Buttons stay live: an empty name is marked under its field instead.
+  const [attempted, setAttempted] = useState<"add" | "edit" | null>(null);
   return {
-    persons, newPerson, setNewPerson, editing, editName, setEditName,
+    persons, newPerson, setNewPerson, editing, editName, setEditName, attempted,
     dirty: JSON.stringify(persons) !== JSON.stringify([tr.onboarding.me]) || newPerson.trim() !== "" || (editing != null && editName.trim() !== (persons[editing] ?? "")),
     add: () => {
+      if (!newPerson.trim()) return setAttempted("add");
       setPersons([...persons, newPerson.trim()]);
       setNewPerson("");
+      setAttempted(null);
     },
     startEdit: (index: number) => {
+      setAttempted(null);
       setEditing(index);
       setEditName(persons[index] ?? "");
     },
     cancelEdit: () => setEditing(null),
     saveEdit: () => {
+      if (!editName.trim()) return setAttempted("edit");
+      setAttempted(null);
       setPersons(persons.map((name, index) => (index === editing ? editName.trim() : name)));
       setEditing(null);
     },
@@ -132,18 +141,21 @@ function useSourceDrafts() {
   const [sources, setSources] = useState<DraftSource[]>([]);
   const [form, setForm] = useState(EMPTY_SOURCE_FORM);
   const [editing, setEditing] = useState<number | null>(null);
+  const [attempted, setAttempted] = useState(false);
   const onCard = form.type === "credit_card";
+  // The same rule the settings editor applies: a card created here must be one that screen can reopen.
+  const valid = form.name.trim() !== "" && (!onCard || ([form.statementDay, form.dueDay].every(isMonthDay) && cardCycleError(Number(form.statementDay), Number(form.dueDay)) === null));
   const reset = () => {
     setForm(EMPTY_SOURCE_FORM);
     setEditing(null);
+    setAttempted(false);
   };
   return {
-    sources, form, editing, reset,
+    sources, form, editing, reset, attempted,
     patch: (next: Partial<typeof EMPTY_SOURCE_FORM>) => setForm((current) => ({ ...current, ...next })),
     dirty: sources.length > 0 || editing != null || JSON.stringify({ ...form, name: form.name.trim(), statementDay: form.statementDay.trim(), dueDay: form.dueDay.trim() }) !== JSON.stringify(EMPTY_SOURCE_FORM),
-    // The same rule the settings editor applies: a card created here must be one that screen can reopen.
-    valid: form.name.trim() !== "" && (!onCard || ([form.statementDay, form.dueDay].every(isMonthDay) && cardCycleError(Number(form.statementDay), Number(form.dueDay)) === null)),
     submit: () => {
+      if (!valid) return setAttempted(true);
       const draft: DraftSource = {
         name: form.name.trim(),
         type: form.type,
@@ -211,9 +223,9 @@ function PersonsStep({ drafts }: { drafts: PersonDrafts }) {
         drafts.editing === i ? (
           <Row key={`edit-${i}`} gap={spacing.sm} style={{ marginBottom: spacing.sm, alignItems: "center" }}>
             <View style={{ flex: 1 }}>
-              <Field accessibilityLabel={`${tr.common.edit} · ${tr.onboarding.addPerson}`} noMargin value={drafts.editName} onChangeText={drafts.setEditName} autoFocus />
+              <Field accessibilityLabel={`${tr.common.edit} · ${tr.onboarding.addPerson}`} noMargin value={drafts.editName} onChangeText={drafts.setEditName} autoFocus error={drafts.attempted === "edit" && !drafts.editName.trim() ? tr.required.name : null} />
             </View>
-            <Button label={tr.common.save} variant="secondary" disabled={!drafts.editName.trim()} onPress={drafts.saveEdit} />
+            <Button label={tr.common.save} variant="secondary" onPress={drafts.saveEdit} />
             <Button label={tr.common.cancel} variant="ghost" onPress={drafts.cancelEdit} />
           </Row>
         ) : (
@@ -228,9 +240,9 @@ function PersonsStep({ drafts }: { drafts: PersonDrafts }) {
       )}
       <Row style={{ alignItems: "center" }}>
         <View style={{ flex: 1 }}>
-          <Field accessibilityLabel={tr.onboarding.addPerson} noMargin value={drafts.newPerson} onChangeText={drafts.setNewPerson} placeholder={placeholder} />
+          <Field accessibilityLabel={tr.onboarding.addPerson} noMargin value={drafts.newPerson} onChangeText={drafts.setNewPerson} placeholder={placeholder} error={drafts.attempted === "add" && !drafts.newPerson.trim() ? tr.required.name : null} />
         </View>
-        <Button label={tr.onboarding.addPerson} variant="secondary" disabled={!drafts.newPerson.trim()} onPress={drafts.add} />
+        <Button label={tr.onboarding.addPerson} variant="secondary" onPress={drafts.add} />
       </Row>
     </Card>
   );
@@ -258,7 +270,7 @@ function SourcesStep({ drafts, persons }: { drafts: SourceDrafts; persons: strin
           </Row>
         </Spread>
       ))}
-      <Field accessibilityLabel={tr.onboarding.addSource} value={form.name} onChangeText={(name) => drafts.patch({ name })} placeholder={placeholder} />
+      <Field accessibilityLabel={tr.onboarding.addSource} value={form.name} onChangeText={(name) => drafts.patch({ name })} placeholder={placeholder} error={drafts.attempted && !form.name.trim() ? tr.required.name : null} />
       <ChipPicker options={SOURCE_TYPES.map((t) => ({ value: t.value, label: t.label }))} value={form.type} onChange={(type) => drafts.patch({ type })} />
       {form.type === "credit_card" ? (
         <CardCycleFields
@@ -266,6 +278,7 @@ function SourcesStep({ drafts, persons }: { drafts: SourceDrafts; persons: strin
           dueDayValue={form.dueDay}
           onStatementDayChange={(statementDay) => drafts.patch({ statementDay })}
           onDueDayChange={(dueDay) => drafts.patch({ dueDay })}
+          attempted={drafts.attempted}
         />
       ) : null}
       {persons.length > 1 ? (
@@ -277,7 +290,7 @@ function SourcesStep({ drafts, persons }: { drafts: SourceDrafts; persons: strin
       ) : null}
       <Row gap={spacing.sm} style={{ alignItems: "center" }}>
         <View style={{ flex: 1 }}>
-          <Button label={drafts.editing != null ? tr.onboarding.updateSource : tr.onboarding.addSource} variant="secondary" disabled={!drafts.valid} onPress={drafts.submit} />
+          <Button label={drafts.editing != null ? tr.onboarding.updateSource : tr.onboarding.addSource} variant="secondary" onPress={drafts.submit} />
         </View>
         {drafts.editing != null ? <Button label={tr.common.cancel} variant="ghost" onPress={drafts.reset} /> : null}
       </Row>
@@ -308,7 +321,7 @@ export default function SetupScreen() {
   const hasImport = importedYears.length > 0;
   // Template: every recommended category is shown and pre-selected; the user
   // unticks the ones they don't want.
-  const [selectedTemplate, setSelectedTemplate] = useState<string[]>(ALL_TEMPLATES.map((c) => c.name));
+  const [selectedTemplate, setSelectedTemplate] = useState<string[]>(DEFAULT_TEMPLATES);
   const [startMonth, setStartMonth] = useState(monthKeyOf(todayISO()));
   const [opening, setOpening] = useState<{ raw: string; minor: number | null }>({ raw: "", minor: 0 });
   const [seeded, setSeeded] = useState(false);
@@ -321,7 +334,7 @@ export default function SetupScreen() {
   const personDrafts = usePersonDrafts(sourceDrafts.personRemoved);
   const { persons } = personDrafts;
   const draftDirty =
-    JSON.stringify(selectedTemplate) !== JSON.stringify(hasImport ? [] : ALL_TEMPLATES.map((category) => category.name)) ||
+    JSON.stringify(selectedTemplate) !== JSON.stringify(hasImport ? [] : DEFAULT_TEMPLATES) ||
     startMonth !== initialStartMonth ||
     opening.raw.trim() !== "" ||
     personDrafts.dirty ||

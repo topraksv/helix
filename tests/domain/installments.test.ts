@@ -6,6 +6,7 @@ import {
   isValidInstallmentCount,
   MAX_INSTALLMENT_COUNT,
   planAmounts,
+  ownsDueDay,
   planDraft,
   planForSighting,
   planProgress,
@@ -308,6 +309,22 @@ describe("planDraft", () => {
     expect(draft({ kind: "loan", card: null })).toMatchObject({ valid: true, startMonth: "2026-08", dueDay: null });
   });
 
+  it("takes instalments paid by hand on a cash or bank source, with their own day", () => {
+    const cash = { type: "cash", statementDay: null, dueDay: null };
+    expect(draft({ card: null })).toMatchObject({ valid: false, sourceChosen: false, cardSourceValid: true });
+    // Nothing paid yet: no instalment may fall on or before today, so the first is the next due day.
+    expect(draft({ card: cash })).toMatchObject({ valid: true, sourceChosen: true, cardSourceValid: true, startMonth: "2026-09", resolvedStart: "2026-09", dueDay: 13 });
+    expect(draft({ card: cash, dueDayText: "12" })).toMatchObject({ valid: true, dueDay: 12, startMonth: "2026-09" });
+    expect(draft({ card: cash, dueDayText: "14" })).toMatchObject({ dueDay: 14, startMonth: "2026-08" });
+    expect(draft({ card: cash, startChoice: "2026-05" })).toMatchObject({ startMonth: "2026-05" });
+    expect(draft({ card: { type: "bank", statementDay: null, dueDay: 3 } })).toMatchObject({ dueDay: 3, startMonth: "2026-09" });
+    expect(draft({ card: cash, dueDayText: "40" })).toMatchObject({ valid: false, dueDayValid: false });
+    expect(ownsDueDay("card_installment", cash)).toBe(true);
+    expect(ownsDueDay("card_installment", card)).toBe(false);
+    expect(ownsDueDay("card_installment", null)).toBe(false);
+    expect(ownsDueDay("loan", null)).toBe(true);
+  });
+
   it("follows the month the owner picked", () => {
     expect(draft({ startChoice: "2026-05" })).toMatchObject({ startMonth: "2026-05", resolvedStart: "2026-05" });
     expect(draft({ startChoice: "2026-05", paidText: "0" }), "nothing paid moves nothing").toMatchObject({ paidChanged: false, resolvedStart: "2026-05" });
@@ -356,7 +373,6 @@ describe("planDraft", () => {
       { paidText: "-1" },
       { paidText: "7" },
       { paidText: "1.5" },
-      { card: { ...card, type: "bank" } },
       { card: { ...card, dueDay: 32 } },
       { card: null },
     ]) expect(draft(over), JSON.stringify(over)).toMatchObject({ valid: false });

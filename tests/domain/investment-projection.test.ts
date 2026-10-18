@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { projectInvestmentState } from "../../src/domain/investment-projection";
+import { monthOnlyTransferDate, projectInvestmentState } from "../../src/domain/investment-projection";
 
 afterEach(() => vi.useRealTimers());
 
@@ -57,5 +57,15 @@ describe("investment projection cash events", () => {
       { startedOn: "2026-01-01", openingCashMinor: 1_000 }, [], [], transactions, categories,
     );
     expect(state.cashMinor).toBe(1_100);
+  });
+});
+
+describe("month-only investment transfer date", () => {
+  it("dates a transfer in the wallet's opening month on its first day, every other month on the first", () => {
+    expect(monthOnlyTransferDate("2026-10", "2026-10-18")).toBe("2026-10-18");
+    expect(monthOnlyTransferDate("2026-10", "2026-10-01")).toBe("2026-10-01");
+    expect(monthOnlyTransferDate("2026-11", "2026-10-18")).toBe("2026-11-01");
+    expect(monthOnlyTransferDate("2026-09", "2026-10-18")).toBe("2026-09-01");
+    expect(monthOnlyTransferDate("2026-10", null)).toBe("2026-10-01");
   });
 });

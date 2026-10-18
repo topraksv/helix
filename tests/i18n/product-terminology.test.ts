@@ -37,8 +37,8 @@ describe("canonical product terminology", () => {
     expect(productTerms).toEqual({
       appName: "Helix",
       financialTable: "Mali Tablo",
-      rowFocused: "Satır odaklı",
-      columnFocused: "Kolon odaklı",
+      rowFocused: "Aylar satırda",
+      columnFocused: "Aylar sütunda",
       item: "Kalem",
       items: "Kalemler",
       column: "Kolon",

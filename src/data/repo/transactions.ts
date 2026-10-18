@@ -22,6 +22,7 @@ import { categoryAcceptsTransaction } from "../../domain/transactions";
 import { isValidCardCycle, statementForPurchase, statementPeriod, type CardStatementPeriod } from "../../domain/card-statements";
 import { CreditCardCycleRequiredError, RefundExceedsExpenseError, StatementPaymentTooLargeError } from "./errors";
 import { assertInvestmentWrites } from "./investment-validation";
+import { monthOnlyTransferDate } from "../../domain/investment-projection";
 
 export interface NewTransaction {
   type: TransactionType;
@@ -396,8 +397,14 @@ export async function bulkMonthEntry(
     ),
   );
   const today = todayISO();
-  // A month total is stored on the first of the month, like every other dateless row.
-  const effectiveDate = firstDayOf(month);
+  // A month total is stored on the first of the month, like every other dateless row,
+  // except a transfer in the wallet's first month, which the wallet counts only from its start day.
+  const sqlite = await getSqliteAsync();
+  const wallet = await sqlite.getFirstAsync<{ started_on: string }>(
+    "SELECT started_on FROM investment_profiles WHERE user_id = ? AND deleted_at IS NULL",
+    [userId],
+  );
+  const transferDate = monthOnlyTransferDate(month, wallet?.started_on ?? null) as ISODate;
   const writes: RowWrite[] = entries.map((entry) => ({
     table: "transactions" as const,
     row: {
@@ -408,7 +415,7 @@ export async function bulkMonthEntry(
       fxRate: null,
       amountTryMinor: entry.amountMinor,
       entryDate: today,
-      effectiveDate,
+      effectiveDate: entry.type === "transfer" ? transferDate : firstDayOf(month),
       status: "realized",
       categoryId: entry.categoryId,
       paymentSourceId: null,

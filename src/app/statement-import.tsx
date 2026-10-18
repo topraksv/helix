@@ -170,10 +170,12 @@ function CandidateEditor({ draft, categories, onChange, onDone }: {
   onChange: (next: Partial<Draft>) => void;
   onDone: () => void;
 }) {
+  // Bitti stays live: a refused press marks the empty name or amount.
+  const [attempted, setAttempted] = useState(false);
   return (
     <View style={{ marginTop: spacing.md }}>
-      <Field label={tr.statement.descriptionLabel} value={draft.description} onChangeText={(description) => onChange({ description })} />
-      <MoneyField label={tr.tx.amount} value={draft.amountRaw} onChangeMinor={(amountRaw, amountMinor) => onChange({ amountRaw, amountMinor: amountMinor ?? 0 })} />
+      <Field label={tr.statement.descriptionLabel} value={draft.description} onChangeText={(description) => onChange({ description })} error={attempted && !draft.description.trim() ? tr.required.name : null} />
+      <MoneyField label={tr.tx.amount} value={draft.amountRaw} error={attempted && !(draft.amountMinor > 0) ? tr.required.amount : null} onChangeMinor={(amountRaw, amountMinor) => onChange({ amountRaw, amountMinor: amountMinor ?? 0 })} />
       <Select
         label={tr.statement.category}
         value={draft.categoryId ?? ""}
@@ -181,7 +183,7 @@ function CandidateEditor({ draft, categories, onChange, onDone }: {
         onChange={(categoryId) => onChange({ categoryId: categoryId === "" ? null : categoryId })}
       />
       <Row gap={spacing.sm}>
-        <Button size="sm" label={tr.common.done} onPress={onDone} disabled={!draftComplete(draft)} />
+        <Button size="sm" label={tr.common.done} onPress={() => (draftComplete(draft) ? onDone() : setAttempted(true))} />
       </Row>
     </View>
   );
@@ -565,7 +567,9 @@ export default function StatementImportScreen() {
 
   const commit = async () => {
     const chosen = visibleCandidates.filter((candidate) => selected.has(candidate.importKey));
-    if (!ledger.selfPerson || chosen.length === 0) return;
+    if (busy || !ledger.selfPerson) return;
+    if (editingKey != null) return void appAlert(tr.statement.finishEditing, tr.errors.title);
+    if (chosen.length === 0) return void appAlert(tr.statement.pickRows, tr.errors.title);
     if (!chosen.every((candidate) => draftComplete(drafts[candidate.importKey]))) {
       void appAlert(tr.statement.needsAmount, tr.errors.title);
       return;
@@ -672,7 +676,7 @@ export default function StatementImportScreen() {
             testID="statement-commit"
             label={tr.statement.acceptCount(selected.size)}
             onPress={() => void commit()}
-            disabled={selected.size === 0 || busy || !ledger.selfPerson || editingKey != null}
+            disabled={!ledger.selfPerson}
             loading={busy}
           />
         </>

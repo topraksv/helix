@@ -61,6 +61,7 @@ export default function InvestmentProductScreen() {
   const [name, setName] = useState("");
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
+  const [attempted, setAttempted] = useState(false);
   // Before the `Redirect` below, because a hook after a conditional return is
   // not a hook this component always runs.
   const { allowExit } = useDirtyExitGuard(useDraftDirty(JSON.stringify({ assetType, marketCode, name, note }), true) && !busy);
@@ -81,8 +82,10 @@ export default function InvestmentProductScreen() {
   }
   if (profilesState.data.length === 0) return <Redirect href="/investments/setup" />;
 
+  // The button stays live: a refused press marks the picker or the name.
   const save = async () => {
-    if (!effectiveName || busy) return;
+    if (busy) return;
+    if (!effectiveName) return setAttempted(true);
     setBusy(true);
     try {
       const id = await saveInvestmentProduct(userId, {
@@ -149,6 +152,7 @@ export default function InvestmentProductScreen() {
             value={marketCode}
             onChange={setMarketCode}
             placeholder={tr.investments.marketProduct}
+            error={attempted && !effectiveName && !customCatalog ? tr.required.product : null}
             selectedOption={customCatalog ? {
               value: customCode,
               label: assetType === "metal" ? tr.markets.otherMetal : tr.markets.otherCurrency,
@@ -169,6 +173,7 @@ export default function InvestmentProductScreen() {
             value={name}
             onChangeText={setName}
             placeholder={productPlaceholder}
+            error={attempted && !effectiveName ? tr.required.name : null}
           />
         ) : null}
         <Field label={tr.investments.productNote} value={note} onChangeText={setNote} multiline placeholder={notePlaceholder} />
@@ -180,7 +185,7 @@ export default function InvestmentProductScreen() {
           <Body style={{ flex: 1 }}>{effectiveName} · {tr.investments.types[assetType]}</Body>
         </View>
       ) : null}
-      <Button icon={PackagePlus} label={tr.investments.saveProduct} loading={busy} disabled={!effectiveName || busy} onPress={() => void save()} />
+      <Button icon={PackagePlus} label={tr.investments.saveProduct} loading={busy} onPress={() => void save()} />
     </Screen>
   );
 }

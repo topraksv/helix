@@ -181,7 +181,10 @@ function useSourceForm(sources: Source[], persons: { id: string; isSelf: boolean
     || (statementDay != null && isMonthDay(statementDay) && dueDay != null && isMonthDay(dueDay) && cardCycleError(statementDay, dueDay) === null);
   const valid = Boolean(name.trim() && personId && cycleValid);
 
+  // The button stays live: a refused press marks what is missing instead.
+  const [attempted, setAttempted] = useState(false);
   const fill = (source: Source | null) => {
+    setAttempted(false);
     setEditingId(source?.id ?? null);
     setName(source?.name ?? "");
     setSourceType(source?.type ?? "credit_card");
@@ -191,7 +194,8 @@ function useSourceForm(sources: Source[], persons: { id: string; isSelf: boolean
   };
 
   const save = () => operationGuard.run(async () => {
-    if (!valid || !personId) return;
+    if (busy) return;
+    if (!valid || !personId) return setAttempted(true);
     setBusy(true);
     try {
       await upsertPaymentSource(userId, { id: editingId ?? undefined, name, type: sourceType, personId, dueDay, statementDay });
@@ -206,9 +210,11 @@ function useSourceForm(sources: Source[], persons: { id: string; isSelf: boolean
 
   return {
     editingId, name, setName, sourceType, setSourceType, personId, setPersonChoice, dueDayStr, setDueDayStr, statementDayStr, setStatementDayStr,
-    valid, save, reset: () => fill(null), startEdit: (source: Source) => confirmDiscard(() => fill(source)),
+    valid, attempted, save, reset: () => fill(null), startEdit: (source: Source) => confirmDiscard(() => fill(source)),
   };
 }
+
+const cardRequiredFor = (removed: Source, usage: PaymentSourceReferenceUsage) => removed.type === "credit_card" && usage.cardInstallmentPlans > 0;
 
 /** Deleting a source: at once when nothing uses it, else after choosing where its records go. */
 function useSourceRemoval(sources: Source[], [busy, setBusy]: Busy) {
@@ -216,9 +222,11 @@ function useSourceRemoval(sources: Source[], [busy, setBusy]: Busy) {
   const undo = useUndo();
   const [resolving, setResolving] = useState<{ source: Source; usage: PaymentSourceReferenceUsage } | null>(null);
   const [replacementChoice, setReplacementChoice] = useState<string>(NO_SOURCE);
-  // A card instalment plan can only move to another card with a cycle.
-  const eligible = (sourceId: string, usage: PaymentSourceReferenceUsage) =>
-    sources.filter((source) => source.id !== sourceId && (usage.cardInstallmentPlans === 0 || (source.type === "credit_card" && isValidCardCycle(source))));
+  // A card's instalment plan can only move to another card with a cycle; one
+  // paid by hand moves to any source, but to some source, and to a card only with a cycle.
+  const eligible = (removed: Source, usage: PaymentSourceReferenceUsage) =>
+    sources.filter((source) => source.id !== removed.id && (usage.cardInstallmentPlans === 0
+      || (source.type === "credit_card" ? isValidCardCycle(source) : !cardRequiredFor(removed, usage))));
 
   const remove = async (source: Source) => {
     if (busy) return;
@@ -227,7 +235,7 @@ function useSourceRemoval(sources: Source[], [busy, setBusy]: Busy) {
       const usage = await paymentSourceReferenceUsage(userId, source.id);
       if (usage.total > 0) {
         setResolving({ source, usage });
-        setReplacementChoice(eligible(source.id, usage)[0]?.id ?? NO_SOURCE);
+        setReplacementChoice(eligible(source, usage)[0]?.id ?? NO_SOURCE);
         return;
       }
       if (!(await appConfirm(source.name, tr.references.deleteUnusedSource, { confirmLabel: tr.common.delete, danger: true }))) return;
@@ -264,13 +272,14 @@ function useSourceRemoval(sources: Source[], [busy, setBusy]: Busy) {
     }
   };
 
-  return { resolving, cancel: () => setResolving(null), replacementChoice, setReplacementChoice, remove, reassign, options: resolving ? eligible(resolving.source.id, resolving.usage) : [] };
+  return { resolving, cancel: () => setResolving(null), replacementChoice, setReplacementChoice, remove, reassign, options: resolving ? eligible(resolving.source, resolving.usage) : [] };
 }
 
 function SourceInUseCard({ removal, busy }: { removal: ReturnType<typeof useSourceRemoval>; busy: boolean }) {
   const { resolving, replacementChoice } = removal;
   if (!resolving) return null;
-  const cardRequired = resolving.usage.cardInstallmentPlans > 0;
+  const cardRequired = cardRequiredFor(resolving.source, resolving.usage);
+  const sourceRequired = resolving.usage.cardInstallmentPlans > 0;
   const usageRows = ([
     [tr.references.installmentPlans, resolving.usage.installmentPlans],
     [tr.references.transactions, resolving.usage.transactions],
@@ -283,7 +292,7 @@ function SourceInUseCard({ removal, busy }: { removal: ReturnType<typeof useSour
       chooseLabel={tr.references.chooseSource}
       note={cardRequired ? tr.references.cardReplacementRequired : undefined}
       options={[
-        ...(!cardRequired ? [{ value: NO_SOURCE, label: tr.references.noSource }] : []),
+        ...(!sourceRequired ? [{ value: NO_SOURCE, label: tr.references.noSource }] : []),
         ...removal.options.map((source) => ({ value: source.id, label: source.name })),
       ]}
       value={replacementChoice}
@@ -291,7 +300,7 @@ function SourceInUseCard({ removal, busy }: { removal: ReturnType<typeof useSour
       onConfirm={() => void removal.reassign()}
       onCancel={removal.cancel}
       busy={busy}
-      confirmDisabled={cardRequired && replacementChoice === NO_SOURCE}
+      confirmDisabled={sourceRequired && replacementChoice === NO_SOURCE}
     />
   );
 }
@@ -342,9 +351,9 @@ function StatementHistoryCard({ cardId }: { cardId: string }) {
   );
 }
 
-function SourceFormCard({ form, persons, busy }: { form: ReturnType<typeof useSourceForm>; persons: { id: string; name: string }[]; busy: boolean }) {
+function SourceFormCard({ form, persons, busy }: { form: ReturnType<typeof useSourceForm>; persons: { id: string; name: string; isSelf: boolean }[]; busy: boolean }) {
   const sourcePlaceholder = useRotatingPlaceholder(tr.placeholders.source);
-  const saveButton = <Button label={form.editingId ? tr.common.save : tr.common.add} onPress={() => void form.save()} disabled={!form.valid || busy} loading={busy} />;
+  const saveButton = <Button label={form.editingId ? tr.common.save : tr.common.add} onPress={() => void form.save()} loading={busy} />;
   return (
     <Card>
       <PanelHeader
@@ -361,16 +370,18 @@ function SourceFormCard({ form, persons, busy }: { form: ReturnType<typeof useSo
           value={form.name}
           onChangeText={form.setName}
           placeholder={sourcePlaceholder}
+          error={form.attempted && !form.name.trim() ? tr.required.name : null}
         />
       </View>
       <SourceTypePicker value={form.sourceType} onChange={form.setSourceType} />
-      <PersonAssignment people={persons} value={form.personId} onChange={form.setPersonChoice} />
+      <PersonAssignment label={tr.tx.personOwner} people={persons} value={form.personId} onChange={form.setPersonChoice} />
       {form.sourceType === "credit_card" ? (
         <CardCycleFields
           statementDayValue={form.statementDayStr}
           dueDayValue={form.dueDayStr}
           onStatementDayChange={form.setStatementDayStr}
           onDueDayChange={form.setDueDayStr}
+          attempted={form.attempted}
         />
       ) : null}
       {form.editingId ? (

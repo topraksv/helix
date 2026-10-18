@@ -692,6 +692,20 @@ describe("repository model oracle", () => {
       "SELECT quantity, unit_price_minor, total_minor FROM investment_operations WHERE id = ?",
     ).get(id)).toMatchObject({ quantity: null, unit_price_minor: null, total_minor: 500_000 });
 
+    // A contribution is paid into the wallet like a purchase, so ledger money may fund it but not leave with it.
+    const selfId = String((harness.db!.prepare("SELECT id FROM persons WHERE user_id = ? AND is_self = 1").get(USER) as { id: string }).id);
+    const contribution = { productId, kind: "contribution" as const, operationDate: "2026-01-03" as const, quantity: null, unitPriceMinor: null, totalMinor: 100_000 };
+    const funding = { amountMinor: 100_000, categoryId: null, categoryName: "Yatırım", personId: selfId };
+    await expect(addInvestmentOperation(USER, contribution, { ...funding, amountMinor: -100_000 })).rejects.toMatchObject({ code: "invalid_operation" });
+    await addInvestmentOperation(USER, contribution, funding);
+    expect(harness.db!.prepare("SELECT amount_minor FROM transactions WHERE user_id = ? AND type = 'transfer'").all(USER)).toEqual([{ amount_minor: 100_000 }]);
+
+    // The owner renamed that item and made it an ordinary expense: the next funding opens its own item and leaves theirs alone.
+    harness.db!.prepare("UPDATE categories SET name = 'Birikim', is_transfer = 0 WHERE user_id = ? AND name = 'Yatırım'").run(USER);
+    await addInvestmentOperation(USER, contribution, funding);
+    expect(harness.db!.prepare("SELECT name, is_transfer FROM categories WHERE user_id = ? AND name IN ('Birikim', 'Yatırım') ORDER BY name").all(USER))
+      .toEqual([{ name: "Birikim", is_transfer: 0 }, { name: "Yatırım", is_transfer: 1 }]);
+
     // A negative contribution is money leaving in the wrong direction.
     await expect(addInvestmentOperation(USER, {
       productId,
@@ -701,6 +715,51 @@ describe("repository model oracle", () => {
       unitPriceMinor: null,
       totalMinor: -1,
     })).rejects.toMatchObject({ name: "InvestmentDomainError" });
+  });
+
+  it("funds a purchase and banks a sale through the ledger in the same write", async () => {
+    const selfId = await createPerson(USER, "Ben");
+    const watchedId = await createPerson(USER, "Annem");
+    const funding = { amountMinor: 425_000, categoryId: null, categoryName: "Yatırım", personId: selfId };
+    // No wallet yet: there is no first day to date the money on.
+    await expect(addInvestmentOperation(USER, { productId: "none", kind: "buy", operationDate: "2026-08-01", quantity: "1", unitPriceMinor: 425_000 }, funding))
+      .rejects.toMatchObject({ code: "invalid_operation" });
+    const marketId = await createCategory(USER, { name: "Market", kind: "expense", isTransfer: false, sortOrder: 3 });
+    await setupInvestments(USER, { startedOn: "2026-08-05", openingCashMinor: 0 });
+    const productId = await saveInvestmentProduct(USER, { assetType: "metal", name: "Gram Altın" });
+    const buy = { productId, kind: "buy" as const, operationDate: "2026-08-01" as const, quantity: "1", unitPriceMinor: 425_000 };
+    const transfers = () => harness.db!.prepare(
+      "SELECT t.amount_minor, t.effective_date, t.status, t.currency, t.is_aggregate, t.origin, c.name, c.is_transfer, c.is_column, c.icon, c.sort_order FROM transactions t JOIN categories c ON c.id = t.category_id WHERE t.user_id = ? AND t.deleted_at IS NULL ORDER BY t.amount_minor DESC",
+    ).all(USER);
+
+    await expect(addInvestmentOperation(USER, buy)).rejects.toMatchObject({ code: "insufficient_cash" });
+    // Each refusal leaves nothing behind: the transfer is written with the operation or not at all.
+    await expect(addInvestmentOperation(USER, buy, { ...funding, personId: "nobody" })).rejects.toMatchObject({ code: "invalid_operation" });
+    await expect(addInvestmentOperation(USER, buy, { ...funding, categoryId: marketId })).rejects.toMatchObject({ code: "invalid_operation" });
+    await expect(addInvestmentOperation(USER, buy, { ...funding, categoryId: "missing" })).rejects.toMatchObject({ code: "invalid_operation" });
+    await expect(addInvestmentOperation(USER, buy, { ...funding, amountMinor: 424_999 })).rejects.toMatchObject({ code: "insufficient_cash" });
+    await expect(addInvestmentOperation(USER, buy, { ...funding, personId: watchedId })).rejects.toMatchObject({ code: "invalid_operation" });
+    await expect(addInvestmentOperation(USER, buy, { ...funding, amountMinor: -425_000 })).rejects.toMatchObject({ code: "invalid_operation" });
+    await expect(addInvestmentOperation(USER, { ...buy, kind: "existing" }, funding)).rejects.toMatchObject({ code: "invalid_operation" });
+    expect(transfers()).toEqual([]);
+
+    await addInvestmentOperation(USER, buy, funding);
+    // Dated before the wallet opened, the purchase's money arrives on its first day, or free cash would never see it.
+    // The suggested item is created after the owner's own, as a column.
+    const funded = { amount_minor: 425_000, effective_date: "2026-08-05", status: "realized", currency: "TRY", is_aggregate: 0, origin: "manual", name: "Yatırım", is_transfer: 1, is_column: 1, icon: "📈", sort_order: 4 };
+    expect(transfers()).toEqual([funded]);
+    // A sale banks into the item the owner picks, not into a suggested one.
+    const categoryId = await createCategory(USER, { name: "Borsa", kind: "expense", isTransfer: true, sortOrder: 5 });
+
+    const sale = { productId, kind: "sell" as const, operationDate: "2026-08-08" as const, quantity: "1", unitPriceMinor: 450_000 };
+    await expect(addInvestmentOperation(USER, sale, { ...funding, categoryId, amountMinor: 450_000 })).rejects.toMatchObject({ code: "invalid_operation" });
+    await expect(addInvestmentOperation(USER, sale, { ...funding, categoryId, amountMinor: -450_001 })).rejects.toMatchObject({ code: "insufficient_cash" });
+    await addInvestmentOperation(USER, sale, { ...funding, categoryId, amountMinor: -450_000 });
+    expect(transfers()).toEqual([
+      funded,
+      { ...funded, amount_minor: -450_000, effective_date: "2026-08-08", name: "Borsa", sort_order: 5 },
+    ]);
+    expect(harness.db!.prepare("SELECT COUNT(*) AS count FROM categories WHERE user_id = ?").get(USER)).toEqual({ count: 3 });
   });
 
   it("answers safely for a product or operation that is not there", async () => {

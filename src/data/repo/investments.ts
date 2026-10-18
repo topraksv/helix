@@ -19,6 +19,7 @@ import {
 import { assertSupportedMinorAmount, type Minor } from "../../domain/money";
 import { assertInputWithinLimit, textLength } from "../../domain/input";
 import type { SQLiteDatabase } from "expo-sqlite";
+import { categoryRow } from "./categories";
 import {
   assertInvestmentWrites,
   projectInvestmentWrites,
@@ -231,9 +232,114 @@ function operationRow(input: InvestmentOperationInput, id: string): Record<strin
   };
 }
 
-async function writeOperation(userId: string, row: Record<string, unknown>): Promise<void> {
-  const writes: RowWrite[] = [{ table: "investment_operations", row }];
-  await writeRowsValidated(userId, writes, (sqlite) => validateInvestmentMutation(sqlite, userId, writes));
+/**
+ * Money moved between the ledger and free cash in the same write as the
+ * operation it pays for or comes from. Positive funds a purchase; negative
+ * takes sale proceeds straight to the ledger.
+ */
+export interface InvestmentLedgerTransfer {
+  amountMinor: Minor;
+  /** The ledger's investment item; null creates the suggested one. */
+  categoryId: string | null;
+  categoryName: string;
+  personId: string;
+}
+
+async function ledgerTransferWrites(
+  sqlite: SQLiteDatabase,
+  userId: string,
+  transfer: InvestmentLedgerTransfer,
+  operationDate: ISODate,
+): Promise<RowWrite[]> {
+  // Zero is refused by the direction check before this; the range is what is asserted here.
+  assertSupportedMinorAmount(transfer.amountMinor);
+  const profile = await sqlite.getFirstAsync<{ started_on: string }>(
+    "SELECT started_on FROM investment_profiles WHERE user_id = ? AND deleted_at IS NULL",
+    [userId],
+  );
+  if (!profile) throw new InvestmentDomainError("invalid_operation");
+  // Free cash counts transfers from the wallet's first day; one dated earlier would leave the ledger and never arrive.
+  const date = operationDate < profile.started_on ? profile.started_on as ISODate : operationDate;
+  const writes: RowWrite[] = [];
+  let categoryId = transfer.categoryId;
+  if (!categoryId) {
+    const seedId = await deterministicId(naturalKeys.seedCategory(userId, transfer.categoryName));
+    // The seed's id may hold the owner's own item, renamed or no longer an investment; rewriting it would turn its expenses into transfers.
+    const seedTaken = await sqlite.getFirstAsync<{ id: string }>(
+      "SELECT id FROM categories WHERE id = ? AND deleted_at IS NULL",
+      [seedId],
+    );
+    categoryId = seedTaken ? newId() : seedId;
+    const maxOrder = await sqlite.getFirstAsync<{ max_order: number | null }>(
+      "SELECT MAX(sort_order) AS max_order FROM categories WHERE user_id = ? AND deleted_at IS NULL",
+      [userId],
+    );
+    writes.push({
+      table: "categories",
+      row: categoryRow(categoryId, {
+        name: transfer.categoryName,
+        kind: "expense",
+        icon: "📈",
+        sortOrder: (maxOrder?.max_order ?? -1) + 1,
+        isColumn: true,
+        isTransfer: true,
+      }),
+    });
+  }
+  writes.push({
+    table: "transactions",
+    row: {
+      id: newId(),
+      type: "transfer",
+      amountMinor: transfer.amountMinor,
+      currency: "TRY",
+      fxRate: null,
+      amountTryMinor: transfer.amountMinor,
+      purchaseDate: null,
+      effectiveDate: date,
+      cardStatementId: null,
+      categoryId,
+      paymentSourceId: null,
+      personId: transfer.personId,
+      note: null,
+      isAggregate: false,
+      subscriptionId: null,
+      origin: "manual",
+      importKey: null,
+      refundOfTransactionId: null,
+      installmentPlanId: null,
+      installmentNo: null,
+      entryDate: todayISO(),
+      status: "realized",
+      deletedAt: null,
+    },
+  });
+  return writes;
+}
+
+async function writeOperation(userId: string, row: Record<string, unknown>, transfer?: InvestmentLedgerTransfer): Promise<void> {
+  const sqlite = await getSqliteAsync();
+  const writes: RowWrite[] = [
+    ...(transfer ? await ledgerTransferWrites(sqlite, userId, transfer, row.operationDate as ISODate) : []),
+    { table: "investment_operations", row },
+  ];
+  await writeRowsValidated(userId, writes, async (db) => {
+    if (transfer) {
+      const person = await db.getFirstAsync<{ is_self: number }>(
+        "SELECT is_self FROM persons WHERE id = ? AND user_id = ? AND deleted_at IS NULL",
+        [transfer.personId, userId],
+      );
+      if (person?.is_self !== 1) throw new InvestmentDomainError("invalid_operation");
+      if (transfer.categoryId) {
+        const category = await db.getFirstAsync<{ is_transfer: number }>(
+          "SELECT is_transfer FROM categories WHERE id = ? AND user_id = ? AND deleted_at IS NULL",
+          [transfer.categoryId, userId],
+        );
+        if (category?.is_transfer !== 1) throw new InvestmentDomainError("invalid_operation");
+      }
+    }
+    await validateInvestmentMutation(db, userId, writes);
+  });
 }
 
 async function applySaleResults(
@@ -292,9 +398,18 @@ async function validateInvestmentMutation(
   await assertInvestmentWrites(sqlite, userId, writes);
 }
 
-export async function addInvestmentOperation(userId: string, input: InvestmentOperationInput): Promise<string> {
+export async function addInvestmentOperation(
+  userId: string,
+  input: InvestmentOperationInput,
+  transfer?: InvestmentLedgerTransfer,
+): Promise<string> {
+  // A purchase is funded into free cash and a sale is taken out of it; the other directions would be a typo.
+  const direction = input.kind === "sell" ? -1 : input.kind === "buy" || input.kind === "contribution" ? 1 : 0;
+  if (transfer && (direction === 0 || Math.sign(transfer.amountMinor) !== direction)) {
+    throw new InvestmentDomainError("invalid_operation");
+  }
   const id = input.id ?? newId();
-  await writeOperation(userId, operationRow(input, id));
+  await writeOperation(userId, operationRow(input, id), transfer);
   return id;
 }
 

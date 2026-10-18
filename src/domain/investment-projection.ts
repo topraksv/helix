@@ -70,3 +70,13 @@ export function projectInvestmentState(
       })),
   });
 }
+
+/**
+ * The day a month-only investment transfer is written on. A dateless row is the
+ * first of its month (SPEC "Rows that belong to a month"), except in the month
+ * the wallet opened: free cash counts from the wallet's first day, so the first
+ * would take the money out of the ledger and never put it in the wallet.
+ */
+export function monthOnlyTransferDate(monthKey: string, walletStartedOn: string | null): string {
+  return walletStartedOn?.slice(0, 7) === monthKey ? walletStartedOn : `${monthKey}-01`;
+}

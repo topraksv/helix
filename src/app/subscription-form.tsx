@@ -7,7 +7,7 @@ import BellRing from "lucide-react-native/icons/bell-ring";
 import CalendarClock from "lucide-react-native/icons/calendar-clock";
 import Repeat2 from "lucide-react-native/icons/repeat-2";
 import { Redirect, Stack, useLocalSearchParams, useRouter } from "expo-router";
-import { CreditCardCycleRequiredError, ensureSubscriptionCategory, upsertSubscription } from "../data/repo";
+import { CreditCardCycleRequiredError, deleteSubscriptionWithExpected, ensureSubscriptionCategory, upsertSubscription } from "../data/repo";
 import { useAnsweredForId, useCategoriesState, usePersonsState, useSourcesState, useSubscriptionsState, useUserId } from "../data/hooks";
 import { combineLiveStates } from "../data/live-state";
 import { classifyRecordId } from "../domain/route-params";
@@ -22,7 +22,7 @@ import { scheduleSync } from "../sync/engine";
 import { categoryIconComponent } from "../ui/category-icon";
 import { Logo, PaymentSourceLogo } from "../ui/logo";
 import { CurrencyPicker } from "../ui/currency-picker";
-import { Amount, Body, Button, Card, ChipPicker, DataGateScreen, DataStateNotice, FadeIn, Field, FieldNote, InlineDisclosure, Label, MoneyField, PanelHeader, Row, Screen, Select, Spread, Toggle } from "../ui/components";
+import { Amount, Body, Button, Card, ChipPicker, DataGateScreen, DataStateNotice, FadeIn, Field, FieldError, FieldNote, InlineDisclosure, Label, MoneyField, PanelHeader, Row, Screen, Select, Spread, Toggle } from "../ui/components";
 import { useSubmitOnEnter } from "../ui/keyboard";
 import { appAlert } from "../ui/dialog";
 import { DateField } from "../ui/calendar";
@@ -35,6 +35,9 @@ import { MonthDayField } from "../ui/month-day-field";
 import { font, radius, spacing, type, useTheme } from "../ui/theme";
 import { WorkspaceSplit } from "../ui/workspace-layout";
 import { assignedPersonId, PersonAssignment } from "../ui/person-assignment";
+import { categoryCreateAction, sourceCreateActions } from "../ui/inline-create";
+import { showSaveResult } from "../ui/save-result";
+import { useUndo } from "../ui/undo";
 
 /** The Select's own icon column, so a source mark fits it exactly. */
 const SOURCE_MARK = 22;
@@ -295,21 +298,44 @@ function useSubscriptionForm(existing: ExistingSubscription | undefined) {
   const amountValid = amountMode === "variable" ? fields.amountMinor == null || fields.amountMinor >= 0 : fields.amountMinor != null && fields.amountMinor > 0;
   const valid = data.ready && fields.name.trim() !== "" && amountValid && scheduleValid && (cycle !== "yearly" || fields.yearlyRenewalDate != null)
     && (!fields.isTrial || fields.trialDate != null) && personId != null && sourceValid;
+  // The button stays live: a refused press marks what is missing instead.
+  const [attempted, setAttempted] = useState(false);
+  const missing = {
+    name: fields.name.trim() === "",
+    amount: !amountValid,
+    interval: cycle === "custom" && !(Number.isInteger(intervalMonths) && intervalMonths >= 1),
+    day: cycle !== "yearly" && !isMonthDay(billingDay),
+    renewal: cycle === "yearly" && fields.yearlyRenewalDate == null,
+    trial: fields.isTrial && fields.trialDate == null,
+  };
   const expenseCategories = categoriesState.data.filter((category) => category.kind === "expense");
   const selectedCategoryId = expenseCategories.some((category) => category.id === fields.categoryId) ? fields.categoryId : null;
   const today = todayISO();
   const previewDueDate = cycle === "yearly" ? fields.yearlyRenewalDate : scheduleValid ? firstDueDate(today, billingDay, intervalMonths) : null;
   const followingDueDate = previewDueDate && scheduleValid ? advanceDueDate(previewDueDate, intervalMonths, billingDay) : null;
 
-  const persist = async (categoryId: string) => {
+  const nextDueDateFor = (): ISODate => {
     const now = todayISO();
+    if (cycle === "yearly" && fields.yearlyRenewalDate) return fields.yearlyRenewalDate;
     // An edit that keeps the day and interval keeps the charge it was waiting for.
-    const unchanged = existing?.billingDay === billingDay && existing.intervalMonths === intervalMonths;
-    const nextDueDate = cycle === "yearly" && fields.yearlyRenewalDate
-      ? fields.yearlyRenewalDate
-      : unchanged ? existing.nextDueDate : existing ? nextDueAfter(now, now, intervalMonths, billingDay) : firstDueDate(now, billingDay, intervalMonths);
+    if (existing?.billingDay === billingDay && existing.intervalMonths === intervalMonths) return existing.nextDueDate;
+    return existing ? nextDueAfter(now, now, intervalMonths, billingDay) : firstDueDate(now, billingDay, intervalMonths);
+  };
+
+  const announce = (savedId: string, nextDueDate: ISODate) => {
+    const name = fields.name.trim();
+    if (existing) return useUndo.getState().show(tr.saved.updated(name));
+    showSaveResult({
+      name, amountMinor: fields.amountMinor ?? 0, currency: fields.currency,
+      detail: tr.saved.subscription(dateLabel(nextDueDate)),
+      undo: () => deleteSubscriptionWithExpected(userId, savedId).then(() => scheduleSync(userId)),
+    });
+  };
+
+  const persist = async (categoryId: string) => {
+    const nextDueDate = nextDueDateFor();
     try {
-      await upsertSubscription(userId, {
+      const savedId = await upsertSubscription(userId, {
         id: existing?.id,
         name: fields.name.trim(),
         amountMinor: fields.amountMinor ?? 0,
@@ -329,6 +355,7 @@ function useSubscriptionForm(existing: ExistingSubscription | undefined) {
         websiteDomain: existing?.websiteDomain || null,
         note: fields.note.trim() || null,
       });
+      announce(savedId, nextDueDate);
     } finally {
       scheduleSync(userId);
     }
@@ -336,7 +363,12 @@ function useSubscriptionForm(existing: ExistingSubscription | undefined) {
   };
 
   const save = () => {
-    if (!valid) return;
+    if (busy) return;
+    if (!valid) {
+      setAttempted(true);
+      if (!Object.values(missing).some(Boolean) && sourceValid) void appAlert(tr.required.general, tr.errors.title);
+      return;
+    }
     if (!selectedCategoryId) {
       setShowCategoryOffer(true);
       return;
@@ -370,8 +402,14 @@ function useSubscriptionForm(existing: ExistingSubscription | undefined) {
     }
   });
 
+  // What the schedule fields say under themselves once a save has been refused.
+  const scheduleErrors = {
+    interval: attempted && missing.interval ? tr.required.general : null,
+    renewal: attempted && missing.renewal ? tr.required.date : null,
+    day: (fields.billingDayStr !== "" || attempted) && missing.day ? tr.incomes.dayError : null,
+  };
   return {
-    existing, data, fields, patch, busy, valid, save, acceptCategoryOffer, confirmDiscard, close, persons, sources, personId, sourceValid,
+    existing, data, fields, patch, busy, valid, save, attempted, missing, scheduleErrors, acceptCategoryOffer, confirmDiscard, close, persons, sources, personId, sourceValid, userId,
     expenseCategories, selectedCategoryId, showCategoryOffer, setShowCategoryOffer, previewDueDate, followingDueDate,
   };
 }
@@ -410,7 +448,7 @@ function SubscriptionIdentityCard({ form }: { form: SubscriptionFormModel }) {
           ? (fields.yearlyRenewalDate ? dateLabel(fields.yearlyRenewalDate) : "")
           : (fields.billingDayStr ? tr.subs.daySchedule(fields.billingDayStr) : "")}
       />
-      <Field label={tr.subs.name} value={fields.name} onChangeText={(name) => patch({ name })} placeholder={namePlaceholder} />
+      <Field label={tr.subs.name} value={fields.name} onChangeText={(name) => patch({ name })} placeholder={namePlaceholder} error={form.attempted && form.missing.name ? tr.required.name : null} />
       {/* The choice between a fixed and a variable amount changes what the
           field below it is for — asked first, "tahmini tutar" and an
           empty field both read as intentional instead of unfinished. */}
@@ -424,6 +462,7 @@ function SubscriptionIdentityCard({ form }: { form: SubscriptionFormModel }) {
         label={`${variable ? tr.subs.estimatedAmountFieldLabel : tr.tx.amount} · ${fields.currency}`}
         value={fields.amountRaw}
         onChangeMinor={(amountRaw, amountMinor) => patch({ amountRaw, amountMinor })}
+        error={form.attempted && form.missing.amount ? tr.required.amount : null}
       />
       {fields.showCurrency ? (
         <>
@@ -452,7 +491,7 @@ function SubscriptionScheduleCard({ form }: { form: SubscriptionFormModel }) {
       />
       {fields.cycle === "custom" ? (
         <FieldNote note={tr.subs.intervalHint}>
-          <Field label={tr.subs.intervalLabel} value={fields.intervalStr} onChangeText={(intervalStr) => patch({ intervalStr })} keyboardType="number-pad" />
+          <Field label={tr.subs.intervalLabel} value={fields.intervalStr} onChangeText={(intervalStr) => patch({ intervalStr })} keyboardType="number-pad" error={form.scheduleErrors.interval} />
         </FieldNote>
       ) : null}
       {fields.cycle === "yearly" ? (
@@ -463,6 +502,7 @@ function SubscriptionScheduleCard({ form }: { form: SubscriptionFormModel }) {
             min={todayISO()}
             onChange={(date) => patch({ yearlyRenewalDate: date, billingDayStr: String(Number(date.slice(8, 10))) })}
           />
+          <FieldError message={form.scheduleErrors.renewal} />
         </FieldNote>
       ) : (
         <FieldNote note={tr.subs.billingDayHint}>
@@ -471,23 +511,27 @@ function SubscriptionScheduleCard({ form }: { form: SubscriptionFormModel }) {
             value={fields.billingDayStr}
             onChange={(billingDayStr) => patch({ billingDayStr })}
             quickDays={QUICK_DAYS}
-            error={fields.billingDayStr !== "" && !isMonthDay(fields.billingDayStr) ? tr.incomes.dayError : null}
+            error={form.scheduleErrors.day}
           />
         </FieldNote>
       )}
-      {form.expenseCategories.length > 0 ? (
-        <Select
-          label={tr.tx.category}
-          placeholder={tr.tx.categoryPlaceholder}
-          options={form.expenseCategories.map((category) => ({ value: category.id, label: category.name, icon: categoryIconComponent(category) }))}
-          value={form.selectedCategoryId}
-          onChange={(categoryId) => {
+      <Select
+        label={tr.tx.category}
+        placeholder={form.expenseCategories.length > 0 ? tr.tx.categoryPlaceholder : tr.tx.categoryRequiredEmpty}
+        options={form.expenseCategories.map((category) => ({ value: category.id, label: category.name, icon: categoryIconComponent(category) }))}
+        value={form.selectedCategoryId}
+        onChange={(categoryId) => {
+          patch({ categoryId });
+          form.setShowCategoryOffer(false);
+        }}
+        onCreate={categoryCreateAction({
+          userId: form.userId, kind: "expense", isTransfer: false, categories: form.expenseCategories,
+          onCreated: (categoryId) => {
             patch({ categoryId });
             form.setShowCategoryOffer(false);
-          }}
-          onCreate={{ label: tr.tx.addCategory, run: () => router.push("/columns-editor") }}
-        />
-      ) : null}
+          },
+        })}
+      />
       {form.showCategoryOffer && !form.selectedCategoryId ? (
         <View style={{ backgroundColor: palette.primarySoft, borderRadius: radius.md, padding: spacing.md, marginBottom: spacing.md }}>
           <Body style={{ marginBottom: spacing.sm }}>{tr.subs.categoryOffer}</Body>
@@ -497,20 +541,24 @@ function SubscriptionScheduleCard({ form }: { form: SubscriptionFormModel }) {
           </Row>
         </View>
       ) : null}
-      {form.sources.length > 0 ? (
-        <>
-          <Select
-            label={tr.tx.source}
-            placeholder={tr.tx.sourcePlaceholder}
-            options={form.sources.map((s) => ({ value: s.id, label: s.name, icon: <PaymentSourceLogo name={s.name} type={s.type} logoRef={s.logoRef} size={SOURCE_MARK} /> }))}
-            value={fields.sourceId}
-            onChange={(sourceId) => patch({ sourceId })}
-            onCreate={{ label: tr.tx.addSource, run: () => router.push("/payment-sources") }}
-          />
-          {!form.sourceValid ? <Body muted style={{ marginBottom: spacing.sm }}>{tr.tx.cardCycleMissing}</Body> : null}
-        </>
+      <Select
+        label={tr.tx.source}
+        placeholder={tr.tx.sourcePlaceholder}
+        options={form.sources.map((s) => ({ value: s.id, label: s.name, icon: <PaymentSourceLogo name={s.name} type={s.type} logoRef={s.logoRef} size={SOURCE_MARK} /> }))}
+        value={fields.sourceId}
+        onChange={(sourceId) => patch({ sourceId })}
+        onCreate={sourceCreateActions({
+          userId: form.userId, ownerId: form.persons.find((person) => person.isSelf)?.id ?? null, sources: form.sources,
+          onCreated: (sourceId) => patch({ sourceId }), openCardSetup: () => router.push("/payment-sources"),
+        })}
+      />
+      {!form.sourceValid ? (
+        <View style={{ marginBottom: spacing.sm, gap: spacing.xs }}>
+          <Body muted>{tr.tx.cardCycleMissing}</Body>
+          <Button size="sm" variant="secondary" label={tr.settings.sources} onPress={() => router.push("/payment-sources")} />
+        </View>
       ) : null}
-      <PersonAssignment people={form.persons} value={form.personId} onChange={(personChoice) => patch({ personChoice })} />
+      <PersonAssignment label={tr.tx.personSubscription} people={form.persons} value={form.personId} onChange={(personChoice) => patch({ personChoice })} />
     </Card>
   );
 }
@@ -522,7 +570,12 @@ function SubscriptionBehaviorCard({ form }: { form: SubscriptionFormModel }) {
     <Card>
       <PanelHeader icon={BellRing} title={tr.subs.formBehavior} description={tr.subs.formBehaviorHint} />
       <ToggleRow label={tr.subs.trialToggle} hint={tr.subs.trialToggleHint} value={fields.isTrial} onChange={(isTrial) => patch({ isTrial })} />
-      {fields.isTrial ? <DateField label={tr.subs.trialDate} value={fields.trialDate} onChange={(trialDate) => patch({ trialDate })} /> : null}
+      {fields.isTrial ? (
+        <>
+          <DateField label={tr.subs.trialDate} value={fields.trialDate} onChange={(trialDate) => patch({ trialDate })} />
+          <FieldError message={form.attempted && form.missing.trial ? tr.required.date : null} />
+        </>
+      ) : null}
       <Field label={tr.common.note} value={fields.note} onChangeText={(note) => patch({ note })} multiline placeholder={tr.common.optionalHint} />
       <Spread style={{ marginBottom: spacing.md }}>
         <View style={{ flex: 1 }}>
@@ -556,7 +609,7 @@ function SubscriptionForm({ existing }: { existing?: ExistingSubscription }) {
       <SubscriptionBehaviorCard form={form} />
       <Row style={{ alignItems: "center" }}>
         <View style={{ flex: 1 }}>
-          <Button label={tr.common.save} onPress={() => void form.save()} disabled={!form.valid} loading={form.busy} />
+          <Button label={tr.common.save} onPress={() => void form.save()} loading={form.busy} />
         </View>
         <Button label={tr.common.cancel} variant="secondary" disabled={form.busy} onPress={() => form.confirmDiscard(form.close)} />
       </Row>

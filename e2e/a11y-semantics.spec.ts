@@ -186,7 +186,7 @@ test("a dirty-exit dialog isolates the form's Enter shortcut", async ({ page }) 
   await page.goto("/helix/transaction");
   await expect(page.getByRole("heading", { name: "Yeni İşlem" })).toBeVisible();
   await page.getByRole("textbox", { name: "Tutar · TRY" }).fill("125,00");
-  await pickOption(page, "Kategori", /Market/);
+  await pickOption(page, "Kalem", /Market/);
 
   await page.getByRole("button", { name: "Geri", exact: true }).click();
   const dialogTitle = page.getByRole("heading", { name: "Kaydedilmemiş değişiklikler var" });
@@ -262,7 +262,7 @@ test("dirty drafts guard browser unload and same-screen context changes", async 
   await expect(page).not.toHaveURL(/\/helix\/bulk-entry$/);
 
   await page.goto("/helix/settings/categories");
-  const newCategory = page.getByRole("textbox", { name: "Kategori adı" });
+  const newCategory = page.getByRole("textbox", { name: "Kalem adı" });
   await newCategory.fill("Yeni taslak");
   await page.getByRole("button", { name: "Düzenle · Market", exact: true }).click();
   await expect(dialogTitle).toHaveCount(0);
@@ -280,13 +280,13 @@ test("Enter belongs to the focused control, not the form's primary save", async 
 
   const amount = page.getByRole("textbox", { name: "Tutar · TRY" });
   await amount.fill("250,00");
-  await pickOption(page, "Kategori", /Market/);
+  await pickOption(page, "Kalem", /Market/);
 
   // 1 · The secondary action: Enter must not also run the primary Save and close the screen.
   await page.getByRole("button", { name: "Kaydet ve Yeni Ekle", exact: true }).focus();
   await page.keyboard.press("Enter");
   await expect(page).toHaveURL(/\/helix\/transaction$/);
-  const notice = page.getByText("İşlem kaydedildi.");
+  const notice = page.getByText(/Market · .*250,00/u);
   await expect(notice).toBeVisible();
   await expect(amount).toHaveValue("");
   // A cleared field alone reads as discarded input: the confirmation must be announced.
@@ -313,7 +313,7 @@ test("Enter belongs to the focused control, not the form's primary save", async 
 
   // 4 · The documented shortcut still works from a single-line field.
   await page.getByRole("radio", { name: "Gider", exact: true }).click();
-  await pickOption(page, "Kategori", /Market/);
+  await pickOption(page, "Kalem", /Market/);
   await amount.fill("99,00");
   await amount.focus();
   await page.keyboard.press("Enter");

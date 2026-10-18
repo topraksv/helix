@@ -49,7 +49,6 @@ import { scheduleSync } from "../../sync/engine";
 import { Amount, Badge, Body, Button, Card, DataStateNotice, DisclosureChevron, Divider, Eyebrow, HeroCard, ListRow, MetricStrip, Row, Screen, SectionHeader, Segmented, Skeleton, Spread, STATUS_W } from "../../ui/components";
 import { Collapse, useScreenFocus, useValueFlash } from "../../ui/motion-primitives";
 import { Bars, ChartFrame, Donut, distributionDonutData, useSeriesColors } from "../../ui/charts";
-import { CalendarSheet } from "../../ui/calendar";
 import { ExpectedAmountSheet } from "../../ui/expected-amount-sheet";
 import { BrandMark } from "../../ui/brand";
 import { FirstRunTour } from "../../ui/tour";
@@ -458,15 +457,21 @@ function useDashboardData() {
 
 type DashboardData = ReturnType<typeof useDashboardData>;
 
-/** Marking an expected payment paid on the day it was paid, or entering a variable bill's amount first. */
+/**
+ * Marking an expected payment paid in one tap, or entering a variable bill's
+ * amount first. The tap records the due day (today, for one not yet due) and
+ * offers Geri Al; a different day is an edit of the record it wrote. The
+ * calendar it used to open first made the commonest answer cost two taps.
+ */
 function useExpectedActions(data: DashboardData) {
   const { userId, today, selfPersonId, subscriptionById, incomeById } = data;
   const undo = useUndo();
   const operationGuard = useOperationGuard();
-  const [paying, setPaying] = React.useState<Expected | null>(null);
   const [amountEditing, setAmountEditing] = React.useState<Expected | null>(null);
   const [confirmingId, setConfirmingId] = React.useState<string | null>(null);
-  const open = (e: Expected) => (needsVariableAmountEntry(e, subscriptionById) ? setAmountEditing(e) : setPaying(e));
+  const open = (e: Expected) => (needsVariableAmountEntry(e, subscriptionById)
+    ? setAmountEditing(e)
+    : void confirm(e, e.dueDate <= today ? (e.dueDate as ISODate) : today));
   const confirm = (e: Expected, paidOn: ISODate) => operationGuard.run(async () => {
     if (!selfPersonId) return;
     setConfirmingId(e.id);
@@ -492,16 +497,6 @@ function useExpectedActions(data: DashboardData) {
   });
   const sheets = (
     <>
-      {/* "When did you pay?" — records the actual paid day, so an early or manual
-          payment realizes on that date. Future days disabled. */}
-      {paying ? (
-        <CalendarSheet
-          value={paying.dueDate <= today ? (paying.dueDate as ISODate) : today}
-          max={today}
-          onSelect={(iso) => void confirm(paying, iso)}
-          onClose={() => setPaying(null)}
-        />
-      ) : null}
       {amountEditing ? (
         <ExpectedAmountSheet
           currency={amountEditing.currency}
@@ -654,7 +649,7 @@ function BalanceHero({ data, wide, showForecast, onToggleForecast }: { data: Das
               ]}
             />
           </View>
-          {/* One door per destination: the warning card above already opens reconciliation. */}
+          {/* One door per destination: the warning card above already opens Bekleyenler. */}
           <Row style={{ marginTop: spacing.lg }}>
             <View style={{ flex: 1 }}>
               <Button icon={Plus} label={tr.cashflow.addTransaction} onPress={() => router.push("/transaction")} />
@@ -1003,7 +998,7 @@ export default function DashboardScreen() {
       {/* Shown only while payments are actually overdue, derived from live data,
           so it clears itself the moment the last item is confirmed. */}
       {late.length > 0 ? (
-        <Card tone="warning" onPress={() => router.push("/reconciliation")}>
+        <Card tone="warning" onPress={() => router.push("/attention")}>
           <Row>
             <History accessible={false} size={20} color={palette.warning} />
             <View style={{ flex: 1 }}>

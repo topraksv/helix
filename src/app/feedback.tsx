@@ -112,7 +112,6 @@ export default function FeedbackScreen() {
         ? tr.feedback.rejected.tooShort(FEEDBACK_MESSAGE_MIN, trimmed.length)
         : tr.feedback.rejected.tooLong(FEEDBACK_MESSAGE_MAX, trimmed.length)
     : null;
-  const canSend = rejection === null && !busy;
   const usedBytes = feedbackImagesBytes(images.map((image) => ({ byteLength: image.bytes.byteLength })));
   const full = images.length >= MAX_FEEDBACK_IMAGES;
   // The example cycles only while the field is empty — a placeholder nobody can
@@ -396,7 +395,7 @@ export default function FeedbackScreen() {
             icon={Send}
             label={busy ? tr.feedback.sending : tr.feedback.send}
             onPress={() => void submit()}
-            disabled={!canSend}
+            disabled={busy}
             loading={busy}
           />
         </View>

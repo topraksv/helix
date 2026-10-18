@@ -447,8 +447,9 @@ function AuthFormCard({ form, wide, onOpenNotice }: { form: AuthForm; wide: bool
         {/* Under a failure, which may be ours: the report needs no account. */}
         {form.error ? <AuthLink label={tr.auth.reportProblem} onPress={() => router.push({ pathname: "/feedback", params: { email: form.email.trim() } })} /> : null}
         {form.canResend ? <AuthLink label={tr.auth.resendCode} onPress={() => void form.resend()} /> : null}
-        {mode === "signIn" ? <AuthLink label={tr.auth.forgotPassword} onPress={form.showForgot} /> : null}
+        {/* The way to an account first: someone new looks for it, someone locked out reads on. */}
         <AuthLink label={text.other} onPress={form.switchMode} disabled={form.busy} />
+        {mode === "signIn" ? <AuthLink label={tr.auth.forgotPassword} onPress={form.showForgot} /> : null}
       </View>
       <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm, justifyContent: "center", marginTop: spacing.sm }}>
         <CloudOff accessible={false} size={14} color={palette.textSecondary} />

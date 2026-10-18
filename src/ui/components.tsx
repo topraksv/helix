@@ -75,7 +75,7 @@ export {
   useLedeAlignment,
 } from "./primitives";
 
-export { Field, InlineEditRow, MoneyField, MonthStepper, Toggle, ToggleRow } from "./fields";
+export { Field, FieldError, InlineEditRow, MoneyField, MonthStepper, Toggle, ToggleRow } from "./fields";
 export { ChipPicker, ChoiceTile, Segmented, Select, SelectionGrid } from "./selection-controls";
 
 /**

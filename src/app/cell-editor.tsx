@@ -80,6 +80,7 @@ function CellEditor({ month, categoryId }: { month: string; categoryId: string }
   const undo = useUndo();
   const { palette } = useTheme();
   const [entryRaw, setEntryRaw] = useState("");
+  const [attempted, setAttempted] = useState(false);
   const [noteDraft, setNoteDraft] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const operationGuard = useOperationGuard();
@@ -119,7 +120,9 @@ function CellEditor({ month, categoryId }: { month: string; categoryId: string }
 
   const addEntry = async () => {
     const selfId = persons.find((p) => p.isSelf)?.id;
-    if (!selfId || !category || entryMinor == null || entryMinor === 0) return;
+    if (!selfId || !category) return;
+    // Ekle stays live: a press with nothing readable marks the field.
+    if (entryMinor == null || entryMinor === 0) return setAttempted(true);
     await operationGuard.run(async () => {
       setBusy(true);
       try {
@@ -146,6 +149,7 @@ function CellEditor({ month, categoryId }: { month: string; categoryId: string }
         });
         scheduleSync(userId);
         setEntryRaw("");
+        setAttempted(false);
       } catch {
         void appAlert(tr.errors.saveFailed, tr.errors.title);
       } finally {
@@ -213,6 +217,7 @@ function CellEditor({ month, categoryId }: { month: string; categoryId: string }
             value={entryRaw}
             onChangeMinor={(raw) => setEntryRaw(raw)}
             placeholder={useRotatingPlaceholder(tr.placeholders.amount)}
+            error={attempted && (entryMinor == null || entryMinor === 0) ? tr.required.amount : null}
             expression
           />
           {entryMinor != null && isExpression ? (
@@ -223,7 +228,6 @@ function CellEditor({ month, categoryId }: { month: string; categoryId: string }
           <Button
             label={tr.common.add}
             onPress={() => void addEntry()}
-            disabled={entryMinor == null || entryMinor === 0}
             loading={busy}
           />
         </Card>

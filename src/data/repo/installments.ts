@@ -273,13 +273,17 @@ async function writePlanWithSchedule(
   let resolvedInput = input;
   let cardCycle: CardCycle | null = null;
   if (input.kind === "card_installment") {
+    // An instalment purchase paid by hand ("elden") sits on a cash or bank
+    // source and keeps its own payment day. It still names a source: a plan of
+    // this kind without one is refused by every client's sync and backup check.
     const source = await livePaymentSource(userId, input.paymentSourceId);
     const candidate = { statementDay: source?.statement_day, dueDay: source?.due_day };
-    if (!source || source.type !== "credit_card" || !isValidCardCycle(candidate)) {
-      throw new CreditCardCycleRequiredError();
+    if (!source) throw new CreditCardCycleRequiredError();
+    if (source.type === "credit_card") {
+      if (!isValidCardCycle(candidate)) throw new CreditCardCycleRequiredError();
+      cardCycle = candidate;
+      resolvedInput = { ...input, dueDay: candidate.dueDay };
     }
-    cardCycle = candidate;
-    resolvedInput = { ...input, dueDay: candidate.dueDay };
   } else if (input.paymentSourceId && !(await livePaymentSource(userId, input.paymentSourceId))) {
     throw new Error("Installment payment source does not exist");
   }

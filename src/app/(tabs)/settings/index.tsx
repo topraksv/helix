@@ -380,11 +380,8 @@ export default function SettingsScreen() {
         }
         return;
       }
-      const proceed = await appConfirm(tr.auth.signOut, tr.auth.signOutSignatureDescription, {
-        confirmLabel: tr.auth.signOut,
-        operation: "sign-out",
-      });
-      if (!proceed) return;
+      // No question when nothing is at stake: signing out of a synced account
+      // loses nothing, and the session layer refuses when something would be.
       // The session layer owns the flush and refuses to wipe rows the cloud
       // never received; this screen owns the only thing it cannot decide —
       // whether the user accepts losing them.
@@ -399,7 +396,7 @@ export default function SettingsScreen() {
         const proceed = await appConfirm(tr.auth.signOutPendingTitle, tr.auth.signOutPendingWarn(pending, documents.count, documents.verified), {
           confirmLabel: tr.auth.signOutAnyway,
           danger: true,
-          operation: "sign-out",
+          operation: "local-sign-out",
         });
         if (!proceed) return;
         setLifecycleIntent("sign-out");

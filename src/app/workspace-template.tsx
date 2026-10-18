@@ -53,7 +53,8 @@ export default function WorkspaceTemplateModal() {
   const selected = missing.filter((c) => !excluded.includes(c.name));
 
   const add = async () => {
-    if (selected.length === 0) return;
+    if (busy) return;
+    if (selected.length === 0) return void appAlert(tr.required.pick, tr.errors.title);
     await operationGuard.run(async () => {
       setBusy(true);
       try {
@@ -89,7 +90,7 @@ export default function WorkspaceTemplateModal() {
                   searchable
                   countLabel={tr.computed.selectedCount(selected.length)}
                 />
-                <Button label={tr.template.addSelected(selected.length)} onPress={() => void add()} loading={busy} disabled={selected.length === 0} />
+                <Button label={tr.template.addSelected(selected.length)} onPress={() => void add()} loading={busy} />
               </>
             )}
           </View>

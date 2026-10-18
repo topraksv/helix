@@ -73,7 +73,12 @@ describe("what the inbox shows", () => {
 describe("what the owner already decided", () => {
   it("removes a dismissed item outright", () => {
     const state: AttentionState = { ...EMPTY_ATTENTION_STATE, dismissed: ["gone"] };
-    expect(buildAttentionInbox([candidate({ id: "gone" })], state, TODAY)).toEqual([]);
+    expect(buildAttentionInbox([candidate({ id: "gone", target: { kind: "subscription", id: "gone" } })], state, TODAY)).toEqual([]);
+  });
+
+  it("keeps an expected payment a stored dismissal names, since only paying or skipping settles it", () => {
+    const state: AttentionState = { ...EMPTY_ATTENTION_STATE, dismissed: ["expected:late"] };
+    expect(buildAttentionInbox([candidate({ id: "expected:late", kind: "late" })], state, TODAY).map((item) => item.id)).toEqual(["expected:late"]);
   });
 
   it("hides a snoozed item until its day", () => {

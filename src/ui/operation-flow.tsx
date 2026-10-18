@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { Animated, Easing, Platform, StyleSheet, Text, View } from "react-native";
 import Check from "lucide-react-native/icons/check";
-import CheckCircle2 from "lucide-react-native/icons/circle-check";
 import CircleAlert from "lucide-react-native/icons/circle-alert";
 import KeyRound from "lucide-react-native/icons/key-round";
 import LogOut from "lucide-react-native/icons/log-out";
@@ -30,7 +29,7 @@ export type OperationFlowKind =
   | "reactivate";
 
 /** The kinds a dialog is ever opened with. */
-export type DialogOperation = Extract<OperationFlowKind, "sign-out" | "local-sign-out" | "delete" | "freeze">;
+export type DialogOperation = Extract<OperationFlowKind, "local-sign-out" | "delete" | "freeze">;
 
 type Tone = "primary" | "secondary" | "success" | "warning" | "destructive";
 type Visual = readonly [LucideIcon, Tone];
@@ -196,8 +195,6 @@ export function OperationFlow({
 
 function operationEyebrow(kind: DialogOperation): string {
   switch (kind) {
-    case "sign-out":
-      return tr.auth.signOutSignatureEyebrow;
     case "local-sign-out":
       return tr.auth.localSignOutDialogEyebrow;
     case "freeze":
@@ -348,7 +345,6 @@ export function OperationDialogHeader({
   testID: string;
 }) {
   const { palette } = useTheme();
-  const color = palette[operationVisuals[kind][1]];
   const eyebrow = operationEyebrow(kind);
 
   return (
@@ -356,20 +352,7 @@ export function OperationDialogHeader({
       testID={testID}
       style={{ width: "100%" }}
     >
-      {kind === "sign-out" ? (
-        <>
-          <DialogHeading icon={LogOut} eyebrow={eyebrow} title={title} color={color} />
-          <DialogMessage label={tr.auth.signOutDialogSection} message={message} color={color} />
-          <DialogPlan>
-            <DialogFact icon={CheckCircle2} label={tr.auth.signOutDialogAccountTitle} detail={tr.auth.signOutDialogAccountDetail} color={palette.success} />
-            <DialogFact icon={RefreshCw} label={tr.auth.signOutDialogReturnTitle} detail={tr.auth.signOutDialogReturnDetail} color={color} />
-          </DialogPlan>
-          <View style={{ marginTop: spacing.md, gap: spacing.sm }}>
-            <DialogStep index="1" icon={LogOut} title={tr.auth.signOutDialogStepSessionTitle} detail={tr.auth.signOutDialogStepSessionDetail} color={color} />
-            <DialogStep index="2" icon={KeyRound} title={tr.auth.signOutDialogStepReturnTitle} detail={tr.auth.signOutDialogStepReturnDetail} color={palette.primary} last />
-          </View>
-        </>
-      ) : kind === "local-sign-out" ? (
+      {kind === "local-sign-out" ? (
         <>
           <DialogHeading icon={LogOut} eyebrow={eyebrow} title={title} color={palette.destructive} shape="square" />
           <DialogMessage label={tr.auth.localSignOutDialogSection} message={message} color={palette.destructive} tone="danger" />

@@ -76,7 +76,7 @@ function fieldAccessoryPressStyle(palette: Palette) {
 
 /** One live-region contract for validation errors across shared fields. */
 
-function FieldError({ message }: { message?: string | null }) {
+export function FieldError({ message }: { message?: string | null }) {
   const { palette } = useTheme();
   const { style: shakeStyle, shake } = useShake();
   // A refusal that only fades in is easy to miss on a long form: the message

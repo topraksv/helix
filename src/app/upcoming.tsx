@@ -96,7 +96,7 @@ export default function UpcomingScreen() {
     && isVariableSubscriptionOccurrence({ kind: item.sourceType, refId: item.refId }, subscriptionById);
 
   const openItem = (item: UpcomingTimelineItem) => {
-    if (item.status === "late") return router.push("/reconciliation");
+    if (item.status === "late") return router.push("/attention");
     if (isVariableSubscription(item)) return setEditingAmount(item);
     if (item.kind === "transaction") return router.push({ pathname: "/transaction", params: { id: item.refId } });
     if (item.sourceType === "subscription") return router.push({ pathname: "/subscription-form", params: { id: item.refId } });
