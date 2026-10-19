@@ -91,6 +91,8 @@ describe("workbook round trip", () => {
     const bytes = await composeWorkbook({ years: twoYears, subscriptions: [], investments: [] });
     const book = XLSX.read(bytes, { type: "array" });
     expect(book.SheetNames.slice(0, 2)).toEqual(["Mali Tablo 2025", "Mali Tablo 2026"]);
+    // Named, not anonymous: Excel's properties and a file manager's preview show it.
+    expect(book.Props?.Title).toBe("Helix");
     const parsed = await parseWorkbookBytes(bytes);
     expect(parsed.sheets.map((sheet) => sheet.year)).toEqual([2025, 2026]);
   });

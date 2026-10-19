@@ -319,6 +319,11 @@ describe("importing the same workbook twice", () => {
       expect(setting("opening_balance_minor")).toBeNull();
     });
 
+    it("refuses a record that lists its rows but lost its notes", async () => {
+      corrupt(2026, JSON.stringify({ transactions: [] }));
+      await expect(importSheets(USER, request("add"))).rejects.toBeInstanceOf(ImportBatchUnreadableError);
+    });
+
     it("names every year it cannot read, oldest first", async () => {
       corrupt(2026, "{ not json");
       corrupt(2025, "{ not json");

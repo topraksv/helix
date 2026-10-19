@@ -593,6 +593,15 @@ describe("dated balance declarations", () => {
     expect(chain([income], [], null).balanceStatedThrough).toBeNull();
   });
 
+  it("is stated through a declaration made today, and never by a movement", () => {
+    expect(chain([income], [{ ...declaration, date: today }]).balanceStatedThrough).toBe(today);
+    expect(chain([income], [{ date: "2026-03-15", amountMinor: 10_00 }, declaration]).balanceStatedThrough).toBe("2026-02-28");
+  });
+
+  it("starts at the configured month when every record comes after it", () => {
+    expect(chain([march], []).startMonth).toBe("2026-01");
+  });
+
   it("opens from a declaration dated before the anchor and still holds the anchor's own month", () => {
     const early = { id: "jan-close", date: "2026-01-31" as ISODate, amountMinor: 0, declaredMinor: 1000_00 };
     const built = chain([income], [early], "2026-03", 5000_00);

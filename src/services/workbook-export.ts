@@ -75,8 +75,9 @@ async function writeWorkbook(sheets: [name: string, grid: string[][], notes?: Le
   const xlsx = await import("xlsx");
   const book = xlsx.utils.book_new();
   // A named workbook rather than an anonymous one: the owner sees this in
-  // Excel's properties and in a file manager's preview.
-  book.Props = { Title: "Helix", Application: "Helix" };
+  // Excel's properties and in a file manager's preview. No Application: the
+  // writer stamps its own name over it.
+  book.Props = { Title: "Helix" };
   for (const [name, grid, notes = []] of sheets) xlsx.utils.book_append_sheet(book, toSheet(xlsx, grid, notes), name);
   return new Uint8Array(xlsx.write(book, { bookType: "xlsx", type: "array" }) as ArrayBuffer);
 }

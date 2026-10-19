@@ -189,10 +189,13 @@ export default function CashflowScreen() {
   const [pinnedByMode, setPinnedByMode] = useState<Record<PinMode, string | null>>({ rows: null, columns: null });
   const [tableAreaH, setTableAreaH] = useState(0);
   const [tableAreaW, setTableAreaW] = useState(0);
-  // Rounded, so a sub-pixel layout report cannot rebuild the grid.
+  // Rounded, so a sub-pixel layout report cannot rebuild the grid. A zero report is the
+  // tab hidden under a form (web lays it out as display:none): taking it unmounted the
+  // grid on every form open and rebuilt every cell on the way back.
   const onTableAreaLayout = React.useCallback((event: LayoutChangeEvent) => {
     const height = Math.round(event.nativeEvent.layout.height);
     const width = Math.round(event.nativeEvent.layout.width);
+    if (height === 0 || width === 0) return;
     setTableAreaH((current) => (current === height ? current : height));
     setTableAreaW((current) => (current === width ? current : width));
   }, []);
@@ -903,7 +906,14 @@ const MatrixTable = React.memo(function MatrixTable({
   }, [columns, year, router]);
 
   // One stable dispatcher for every cell; a per-cell closure would defeat MatrixCell's memo.
+  // What a press resolves against is read when it happens, not captured: every ledger
+  // write re-derives `columns`, and a dispatcher keyed on it re-rendered every cell.
+  const cellTargets = React.useRef({ columns, adjustmentByMonth, openBreakdown });
+  React.useLayoutEffect(() => {
+    cellTargets.current = { columns, adjustmentByMonth, openBreakdown };
+  });
   const onCellPress = React.useCallback((columnKey: string, month: MonthKey) => {
+    const { columns, adjustmentByMonth, openBreakdown } = cellTargets.current;
     const c = columns.find((col) => col.key === columnKey);
     if (!c) return;
     if (c.categoryId) {
@@ -917,7 +927,7 @@ const MatrixTable = React.memo(function MatrixTable({
     }
     if (c.system) return;
     openBreakdown(c.key); // computed column cell → its breakdown
-  }, [columns, adjustmentByMonth, router, openBreakdown]);
+  }, [router]);
 
   /** Hold anything on the grid to mark it. The gesture carries the target, so the sheet never asks which cell and no colour control sits on the grid. */
   const openColorSheet = React.useCallback(
@@ -926,10 +936,10 @@ const MatrixTable = React.memo(function MatrixTable({
     [],
   );
   const onCellLongPress = React.useCallback((columnKey: string, month: MonthKey) => {
-    const column = columns.find((col) => col.key === columnKey);
+    const column = cellTargets.current.columns.find((col) => col.key === columnKey);
     if (!column) return;
     openColorSheet("cell", column.categoryId ?? column.key, month, `${monthLabel(month)} · ${column.label}`);
-  }, [columns, openColorSheet]);
+  }, [openColorSheet]);
   const onItemLongPress = React.useCallback((key: string) => {
     const column = columns.find((col) => col.key === key);
     if (!column) return;

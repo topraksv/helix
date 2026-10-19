@@ -160,9 +160,23 @@ export async function runMaintenance(userId: string): Promise<void> {
 
 async function runMaintenanceInner(userId: string): Promise<void> {
   const today = todayISO();
-  const sqlite = await getSqliteAsync();
+  await collapseSelfPersons(userId);
+  await netMismatchedRefunds(userId);
+  await removeCardInstalmentColumnOnce(userId);
+  // Link only rows with real date information; a legacy card row with neither a purchase nor a
+  // payment date is left alone, since guessing would rewrite financial history.
+  await repairCardStatementLinks(userId, today);
+  // A dependent goes with the row it belongs to.
+  await tombstoneOrphans(userId);
+  // The repairs above run first: what follows reads the rows they correct.
+  await realizeDueTransactions(userId, today);
+  const subs = await generateMissingExpected(userId, today);
+  await confirmAutoPayAndMarkLate(userId, today, subs);
+}
 
-  // 0) Collapse duplicate "self" persons: keep the oldest, remap references, tombstone the rest.
+/** Collapse duplicate "self" persons: keep the oldest, remap references, tombstone the rest. */
+async function collapseSelfPersons(userId: string): Promise<void> {
+  const sqlite = await getSqliteAsync();
   const selves = await sqlite.getAllAsync<{ id: string }>(
     `SELECT id FROM persons WHERE user_id = ? AND is_self = 1 AND deleted_at IS NULL ORDER BY created_at ASC`,
     [userId],
@@ -186,9 +200,11 @@ async function runMaintenanceInner(userId: string): Promise<void> {
       await writeRows(userId, repairWrites, false);
     }
   }
+}
 
-  // 0b) A refund stored as income +100 in an expense category becomes expense -100: same balance
-  // effect, but every category and chart nets it consistently.
+/** A refund stored as income +100 in an expense category becomes expense -100: same balance effect, but every category and chart nets it consistently. */
+async function netMismatchedRefunds(userId: string): Promise<void> {
+  const sqlite = await getSqliteAsync();
   const mismatched = await sqlite.getAllAsync<Record<string, unknown> & { category_kind: "expense" | "income" }>(
     `SELECT t.*, c.kind AS category_kind
      FROM transactions t
@@ -212,9 +228,11 @@ async function runMaintenanceInner(userId: string): Promise<void> {
       false,
     );
   }
+}
 
-  // 0c) One-time removal of the auto-created "KK Taksit" column, guarded by a synced flag so it
-  // never resurrects on another device. The user's own computed columns are untouched.
+/** One-time removal of the auto-created "KK Taksit" column, guarded by a synced flag so it never resurrects on another device. The user's own computed columns are untouched. */
+async function removeCardInstalmentColumnOnce(userId: string): Promise<void> {
+  const sqlite = await getSqliteAsync();
   const ccRemoved = await sqlite.getAllAsync<{ value: string }>(
     `SELECT value FROM settings WHERE user_id = ? AND key = 'cc_column_removed' AND deleted_at IS NULL`,
     [userId],
@@ -228,15 +246,11 @@ async function runMaintenanceInner(userId: string): Promise<void> {
     if (live.length > 0) await softDelete(userId, "computed_columns", ccId);
     await writeSetting(userId, "cc_column_removed", true);
   }
+}
 
-  // 0d) Link only rows with real date information; a legacy card row with neither a purchase nor a
-  // payment date is left alone, since guessing would rewrite financial history.
-  await repairCardStatementLinks(userId, today);
-
-  // 0e) A dependent goes with the row it belongs to.
-  await tombstoneOrphans(userId);
-
-  // 1) §2.2 — pending transactions whose effective date arrived become realized.
+/** §2.2 — pending transactions whose effective date arrived become realized. */
+async function realizeDueTransactions(userId: string, today: ISODate): Promise<void> {
+  const sqlite = await getSqliteAsync();
   const due = await sqlite.getAllAsync<Record<string, unknown>>(
     `SELECT * FROM transactions WHERE user_id = ? AND status = 'pending' AND effective_date <= ? AND deleted_at IS NULL`,
     [userId, today],
@@ -274,7 +288,7 @@ async function runMaintenanceInner(userId: string): Promise<void> {
     }
   }
 
-  // 1b) A coming foreign-currency instalment follows the last known rate until its own day fixes it
+  // A coming foreign-currency instalment follows the last known rate until its own day fixes it
   // above, or its statement is paid against.
   const comingForeign = await sqlite.getAllAsync<Record<string, unknown>>(
     `SELECT * FROM transactions
@@ -289,8 +303,11 @@ async function runMaintenanceInner(userId: string): Promise<void> {
     repriced.push({ table: "transactions", row: { ...fromDbShape("transactions", row), ...billed } });
   }
   if (repriced.length > 0) await writeRows(userId, repriced, false);
+}
 
-  // 2) Generate missing expected items (subscriptions + recurring incomes).
+/** Generate missing expected items (subscriptions + recurring incomes); returns the subscriptions it read, which auto-pay reads too. */
+async function generateMissingExpected(userId: string, today: ISODate): Promise<Record<string, unknown>[]> {
+  const sqlite = await getSqliteAsync();
   const subs = await sqlite.getAllAsync<Record<string, unknown>>(
     `SELECT s.*, p.is_self FROM subscriptions s
      JOIN persons p ON p.id = s.person_id AND p.user_id = s.user_id AND p.deleted_at IS NULL
@@ -367,8 +384,12 @@ async function runMaintenanceInner(userId: string): Promise<void> {
     for (const draft of drafts) writes.push(await expectedPaymentWrite(userId, draft));
     await writeRows(userId, writes, false);
   }
+  return subs;
+}
 
-  // 3) Late marking + auto-pay confirmations.
+/** Late marking + auto-pay confirmations. */
+async function confirmAutoPayAndMarkLate(userId: string, today: ISODate, subs: Record<string, unknown>[]): Promise<void> {
+  const sqlite = await getSqliteAsync();
   const pendingRows = await sqlite.getAllAsync<ExpectedRow>(
     `SELECT * FROM expected_payments WHERE user_id = ? AND status = 'pending' AND deleted_at IS NULL`,
     [userId],

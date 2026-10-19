@@ -247,7 +247,10 @@ describe("undo callbacks are owned everywhere", () => {
   /** A wrapper that catches its own failure resolves, so the bar reports success and drops its retry: pass the repository call straight through. */
   it("lets a failed revert or unskip reach the snackbar instead of swallowing it", () => {
     const text = readFileSync(join(ROOT, "src/app/attention.tsx"), "utf8");
-    expect(text).toMatch(/undo\.show\([^;]*revertExpected\(userId, e\.id\)/s);
+    // A confirmation's undo is the shared one Durum uses too.
+    const shared = readFileSync(join(ROOT, "src/ui/save-result.ts"), "utf8");
+    expect(shared).toMatch(/\.show\([^;]*revertExpected\(userId, expected\.id\)/s);
+    expect(text).toContain("confirmExpectedPayment(");
     expect(text).toMatch(/undo\.show\([^;]*unskipExpected\(userId, e\.id\)/s);
   });
 

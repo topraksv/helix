@@ -201,6 +201,9 @@ describe("reading a whole statement", () => {
     const base = { period: PERIOD, date: "2026-08-12" as const, amountMinor: 100, installmentNo: null };
     expect(statementImportKey({ ...base, description: "Migros  Market" }))
       .toBe(statementImportKey({ ...base, description: "MIGROS MARKET" }));
+    // The stored format: a changed separator or field orphans every key already imported.
+    expect(statementImportKey({ ...base, description: "  Migros \t Market " })).toBe("stmt|2026-08|2026-08-12|migros market|100|");
+    expect(statementImportKey({ ...base, description: "Teknosa", installmentNo: 3 })).toBe("stmt|2026-08|2026-08-12|teknosa|100|3");
   });
 });
 
@@ -330,6 +333,14 @@ describe("what the review already knows about a candidate", () => {
       { id: "tx-9", amountTryMinor: -123_456, effectiveDate: "2026-08-13", importKey: null },
     ]);
     expect(verdicts.get(candidate.importKey)).toEqual({ state: "similar", existingId: "tx-9", dayGap: 1 });
+  });
+
+  it("asks about a hand-entered row three days off and no further, and never about an imported one", () => {
+    const row = (effectiveDate: string, importKey: string | null = null) =>
+      ({ id: "tx-9", amountTryMinor: -123_456, effectiveDate, importKey });
+    expect(review([row("2026-08-15")]).get(candidate.importKey)).toEqual({ state: "similar", existingId: "tx-9", dayGap: 3 });
+    expect(review([row("2026-08-16")]).get(candidate.importKey)).toEqual({ state: "new" });
+    expect(review([row("2026-08-12", "stmt|other")]).get(candidate.importKey)).toEqual({ state: "new" });
   });
 
   /** A card charge is due weeks after it was bought; the statement prints the day it was bought. */
@@ -817,6 +828,13 @@ describe("fitting a statement line to a column the owner already has", () => {
 
   it("uses the owner's own heading when the merchant prints it", () => {
     expect(matchStatementCategory("MIGROS MARKET", columns("Kira", "Market"))).toBe("c1");
+    // A heading no vocabulary knows, at the four characters it takes.
+    expect(matchStatementCategory("PELT AVM", columns("Kira", "Pelt"))).toBe("c1");
+    expect(matchStatementCategory("PEL AVM", columns("Kira", "Pel"))).toBeNull();
+  });
+
+  it("finds the concept even where no merchant alias names it", () => {
+    expect(matchStatementCategory("MERKEZ ECZANE", columns("Kira", "Sağlık"))).toBe("c1");
   });
 
   it("reads the heading through Turkish casing, in either direction", () => {

@@ -312,14 +312,16 @@ export function buildLedger(input: LedgerInput): MonthLedger[] {
     let plannedTransfer = 0;
     let uncategorized = 0;
     const byCategory = new Map<string, Minor>();
+    const book = (categoryId: string | null | undefined, amount: Minor) => {
+      if (categoryId) byCategory.set(categoryId, (byCategory.get(categoryId) ?? 0) + amount);
+      else uncategorized += amount;
+    };
     for (const tx of counted) {
       const flow = financialFlow(tx);
       if (flow.type === "income") income += flow.amountTryMinor;
       else if (flow.type === "expense") expense += flow.amountTryMinor;
       else transfer += flow.amountTryMinor;
-      if (tx.categoryId) {
-        byCategory.set(tx.categoryId, (byCategory.get(tx.categoryId) ?? 0) + flow.amountTryMinor);
-      } else uncategorized += flow.amountTryMinor;
+      book(tx.categoryId, flow.amountTryMinor);
     }
     // One pass, one classification: whatever lands in a category cell is also
     // counted in the planned totals, so a cell can never show an amount that
@@ -329,9 +331,7 @@ export function buildLedger(input: LedgerInput): MonthLedger[] {
       if (flow.type === "income") plannedIncome += flow.amountTryMinor;
       else if (flow.type === "expense") plannedExpense += flow.amountTryMinor;
       else plannedTransfer += flow.amountTryMinor;
-      if (tx.categoryId) {
-        byCategory.set(tx.categoryId, (byCategory.get(tx.categoryId) ?? 0) + flow.amountTryMinor);
-      } else uncategorized += flow.amountTryMinor;
+      book(tx.categoryId, flow.amountTryMinor);
     }
     // An expectation is planned the way a pending row is, and in its rule's
     // category, so the month close carries what "Ay sonu tahmini" counts and
@@ -339,9 +339,7 @@ export function buildLedger(input: LedgerInput): MonthLedger[] {
     for (const item of expectedByMonth.get(month) ?? []) {
       if (item.direction === "in") plannedIncome += item.amountTryMinor;
       else plannedExpense += item.amountTryMinor;
-      if (item.categoryId) {
-        byCategory.set(item.categoryId, (byCategory.get(item.categoryId) ?? 0) + item.amountTryMinor);
-      } else uncategorized += item.amountTryMinor;
+      book(item.categoryId, item.amountTryMinor);
     }
     const statics = staticByMonth.get(month) ?? [];
     let adjustment = statics.reduce((sum, adj) => sum + adj.amountMinor, 0);

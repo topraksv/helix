@@ -27,7 +27,7 @@ describe("what the owner calls the two balance columns", () => {
   });
 
   it("refuses anything that is not an object of that shape", () => {
-    for (const value of [null, undefined, 3, "Ay Sonu", [stored], { ...stored, showOpening: "evet" }]) {
+    for (const value of [null, undefined, 3, "Ay Sonu", [stored], { ...stored, showOpening: "evet" }, { ...stored, openingLabel: 5 }, { ...stored, closingLabel: ["Ay Sonu"] }]) {
       expect(parseBalanceColumns(value)).toBeNull();
     }
   });

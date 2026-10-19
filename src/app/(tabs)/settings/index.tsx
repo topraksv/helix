@@ -37,7 +37,7 @@ import Users from "lucide-react-native/icons/users";
 import Wallet from "lucide-react-native/icons/wallet";
 import Wrench from "lucide-react-native/icons/wrench";
 import type { LucideIcon } from "lucide-react-native";
-import { DELETE_DOCUMENTS_REMAIN, SIGN_OUT_PENDING_CHANGES, useSession } from "../../../auth/session";
+import { SIGN_OUT_PENDING_CHANGES, useSession } from "../../../auth/session";
 import { useSettingsMapState, settingValue, useSyncDeadLettersState, useUserId } from "../../../data/hooks";
 import { combineLiveStates } from "../../../data/live-state";
 import { asyncFieldState } from "../../../domain/form-state";
@@ -67,8 +67,8 @@ import { formatMinorCompact } from "../../../domain/money";
 import { readPickedText } from "../../../services/picked-file";
 import { DelayedLoadingIndicator } from "../../../ui/loading-indicator";
 import { OperationFlow } from "../../../ui/operation-flow";
-import { settleNegativeBalanceHint } from "../../../ui/negative-balance-hint";
-import { clearLifecycleIntent, setLifecycleIntent } from "../../../ui/lifecycle-intent";
+import { restoreWithoutNegativeBalanceHint } from "../../../ui/negative-balance-hint";
+import { clearLifecycleIntent, setLifecycleIntent, useAccountDeletion } from "../../../ui/lifecycle-intent";
 
 /**
  * The device's own name for its biometric lock, asked of the hardware. The
@@ -316,7 +316,7 @@ function AccountActionRow({
 
 export default function SettingsScreen() {
   const userId = useUserId();
-  const { signOut, deleteAccount } = useSession();
+  const { signOut } = useSession();
   const settingsState = useSettingsMapState();
   const settingsData = combineLiveStates([settingsState]);
   const deadLettersState = useSyncDeadLettersState();
@@ -486,11 +486,10 @@ export default function SettingsScreen() {
       );
       if (signal.aborted) throw signal.reason;
       const bundle = parseExportBundleText(content);
-      await settleNegativeBalanceHint();
-      const result = await importBundle(userId, bundle, {
+      const result = await restoreWithoutNegativeBalanceHint(() => importBundle(userId, bundle, {
         signal,
         onProgress: report,
-      });
+      }));
       const message =
         result.skipped > 0
           ? `${tr.settings.importSuccess(result.imported)} ${tr.errors.importSkippedRows(result.skipped)}`
@@ -500,33 +499,7 @@ export default function SettingsScreen() {
     });
   };
 
-  const [deleting, setDeleting] = useState(false);
-  const handleDeleteAccount = async () => {
-    if (deleting) return;
-    const accepted = await appConfirm(tr.account.deleteConfirm1Title, tr.account.deleteConfirm1Body, {
-      confirmLabel: tr.common.delete,
-      danger: true,
-      operation: "delete",
-    });
-    if (!accepted) return;
-    setLifecycleIntent("delete");
-    setDeleting(true);
-    try {
-      let error = await deleteAccount();
-      if (error === DELETE_DOCUMENTS_REMAIN) {
-        clearLifecycleIntent();
-        if (!(await appConfirm(tr.account.deleteDocumentsTitle, tr.account.deleteDocumentsBody, { confirmLabel: tr.account.deleteAnyway, danger: true, operation: "delete" }))) return;
-        setLifecycleIntent("delete");
-        error = await deleteAccount({ force: true });
-      }
-      if (error) {
-        clearLifecycleIntent();
-        void appAlert(error, tr.errors.title);
-      }
-    } finally {
-      setDeleting(false);
-    }
-  };
+  const { deleting, deleteAccount: handleDeleteAccount } = useAccountDeletion();
 
   const syncStateColor =
     sync.state === "idle" ? palette.success : sync.state === "error" ? palette.error : palette.warning;

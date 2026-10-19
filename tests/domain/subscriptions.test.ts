@@ -245,6 +245,10 @@ describe("variable subscription amounts", () => {
     expect(result.monthlyTryMinor).toBe(1_450_00);
   });
 
+  it("does not count a fixed rule at zero, which is a stated amount", () => {
+    expect(subscriptionCostSummary([variable({ amountMode: "fixed" as const })], [], TODAY).unknownAmountCount).toBe(0);
+  });
+
   it("does not count a cancelled variable rule", () => {
     expect(
       subscriptionCostSummary([variable({ isActive: false })], [], TODAY).unknownAmountCount,

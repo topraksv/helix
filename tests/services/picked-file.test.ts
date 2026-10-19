@@ -130,4 +130,31 @@ describe("picked file limits", () => {
     await expect(readPickedBytes(asset as never, 10, "Dosya çok büyük.")).rejects.toThrow("Dosya çok büyük.");
     expect(arrayBuffer).toHaveBeenCalledOnce();
   });
+  it("reads a file of exactly the limit, whatever size the picker could not state", async () => {
+    const bytes = new TextEncoder().encode("0123456789");
+    const asset = (size: unknown) => ({
+      uri: "blob:workbook",
+      name: "workbook.xlsx",
+      size,
+      file: { size: bytes.byteLength, arrayBuffer: vi.fn(async () => bytes.buffer) },
+    });
+    for (const size of [10, null, Number.NaN, Number.POSITIVE_INFINITY]) {
+      await expect(readPickedBytes(asset(size) as never, 10, "Dosya çok büyük."), String(size)).resolves.toEqual(bytes);
+    }
+  });
+
+  it("names a web fallback the browser could not read, rather than reading its error page", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("gone", { status: 404 })));
+    await expect(readPickedBytes({ uri: "blob:gone", name: "gone.xlsx" } as never, 10, "Dosya çok büyük."))
+      .rejects.toThrow("Selected file could not be read (404)");
+  });
+
+  it("reads a native file through Expo, not the browser", async () => {
+    platform.os = "ios";
+    nativeFile.size = 2;
+    nativeFile.bytes.mockResolvedValueOnce(new Uint8Array([123, 125]));
+    await expect(readPickedText({ uri: "file:///backup.json", name: "backup.json" } as never, 10, "Yedek çok büyük.", "Geçersiz yedek."))
+      .resolves.toBe("{}");
+    expect(nativeFile.text).toHaveBeenCalledOnce();
+  });
 });

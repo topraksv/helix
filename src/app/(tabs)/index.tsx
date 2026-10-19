@@ -40,7 +40,8 @@ import {
   useUserId,
 } from "../../data/hooks";
 import { combineLiveStates } from "../../data/live-state";
-import { confirmExpected, FxRateUnavailableError, revertExpected, setExpectedAmount } from "../../data/repo";
+import { setExpectedAmount } from "../../data/repo";
+import { confirmExpectedPayment } from "../../ui/save-result";
 import { MARKET_SYMBOLS } from "../../domain/investment-catalog";
 import { retryMarkets, useMarkets } from "../../services/markets";
 import { lookupRate, useFxRates } from "../../services/fx-fetch";
@@ -475,25 +476,9 @@ function useExpectedActions(data: DashboardData) {
   const confirm = (e: Expected, paidOn: ISODate) => operationGuard.run(async () => {
     if (!selfPersonId) return;
     setConfirmingId(e.id);
-    try {
-      const sub = subscriptionById.get(e.refId);
-      const income = incomeById.get(e.refId);
-      await confirmExpected(userId, e.id, {
-        personId: sub?.personId ?? income?.personId ?? selfPersonId,
-        categoryId: sub?.categoryId ?? income?.categoryId ?? null,
-        paidOn,
-      });
-      scheduleSync(userId);
-      undo.show(`${data.nameOf(e)} ✓`, () => revertExpected(userId, e.id).then(() => scheduleSync(userId)));
-    } catch (err) {
-      if (err instanceof FxRateUnavailableError) void appAlert(tr.errors.fxUnavailable, undefined, { tone: "error" });
-      else {
-        devError("confirm", err);
-        void appAlert(tr.errors.saveFailed, undefined, { tone: "error" });
-      }
-    } finally {
-      setConfirmingId(null);
-    }
+    const rule = subscriptionById.get(e.refId) ?? incomeById.get(e.refId);
+    await confirmExpectedPayment({ userId, expected: e, name: data.nameOf(e), selfPersonId, rule, paidOn });
+    setConfirmingId(null);
   });
   const sheets = (
     <>

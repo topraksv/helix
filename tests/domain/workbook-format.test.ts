@@ -155,6 +155,14 @@ describe("workbook format", () => {
     expect(grid[2]).toEqual(["Şubat 2026", "", "8800,00"]);
   });
 
+  it("leaves out a total whose month is not one of the twelve", () => {
+    expect(buildLedgerGrids([
+      { item: "Kira", month: "2026-00", minor: 100 },
+      { item: "Kira", month: "2026-13", minor: 100 },
+      { item: "Kira", month: "2026-05", minor: 100 },
+    ])).toEqual([[2026, [["", "Kira"], ["Mayıs 2026", "1,00"]], []]]);
+  });
+
   it("puts the months in calendar order however they arrive", () => {
     const grid = buildLedgerGrids([
       { item: "Market", month: "2026-03", minor: 300 },
@@ -395,6 +403,9 @@ describe("reading the record sheets back", () => {
     expect(readMoney("-5,00")).toBe(-500);
     expect(readMoney("12.345")).toBe(1234500);
     expect(readMoney("on lira")).toBeUndefined();
+    // Only a bare number is a retyped decimal: beside a symbol the dot may be Turkish grouping.
+    expect(readMoney("12.50")).toBe(1250);
+    expect(readMoney("₺12.50")).toBeUndefined();
     expect(readDate("5.3.2026")).toBe("2026-03-05");
     expect(readDate("2026-03-05")).toBe("2026-03-05");
     expect(readDate("30.02.2026")).toBeUndefined();

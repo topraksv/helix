@@ -30,8 +30,8 @@ import { isValidCellParams } from "../domain/route-params";
 import { installmentDisplayTitle } from "../domain/installments";
 import { formatMinorCompact, parseAmountExpression } from "../domain/money";
 import { categoryTableEntryType, signedBalanceEffectOf } from "../domain/transactions";
-import { transactionDateText } from "../ui/transaction-date";
-import { dateLabel, monthLabel, tr } from "../i18n/tr";
+import { transactionRowDetail } from "../ui/transaction-date";
+import { monthLabel, tr } from "../i18n/tr";
 import { scheduleSync } from "../sync/engine";
 import { Amount, Body, Button, Card, DataGateScreen, DataStateNotice, Divider, EmptyState, Field, MoneyField, PanelHeader, Row, Screen, SectionHeader } from "../ui/components";
 import { ExpectationRow, TransactionRow, transactionBadge } from "../ui/transaction-row";
@@ -306,12 +306,7 @@ function CellEditor({ month, categoryId }: { month: string; categoryId: string }
           return (
             <TransactionRow
               installmentTitle={installmentTitle}
-              dateText={
-                transactionDateText(t) +
-                (t.installmentNo ? `  ·  ${tr.installments.nthInstallment(t.installmentNo)}` : "") +
-                (t.isAggregate ? `  ·  ${tr.bulk.aggregateBadge}` : "") +
-                (t.settledOn ? `  ·  ${tr.cashflow.statementPaidOn(dateLabel(t.settledOn))}` : "")
-              }
+              dateText={transactionRowDetail(t)}
               note={t.note}
               pending={t.status === "pending"}
               hasDocuments={documented.has(t.id)}

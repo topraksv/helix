@@ -197,6 +197,7 @@ describe("adding a subscription never moves the current balance", () => {
     expect(balanceNow()).toBe(OPENING_MINOR - baseInput.amountMinor);
     expect(autoConfirmedFlag(), "the owner confirmed this one").toBe(0);
     expect(liveTransactions()[0]!.fx_rate, "a lira row converted at no rate carries none").toBeNull();
+    expect(liveTransactions()[0], "one charge, not a month's aggregate, and not typed by hand").toMatchObject({ is_aggregate: 0, origin: "expected", type: "expense" });
   });
 
   it("does not touch the balance for a recurring rule whose next charge is in the future", async () => {

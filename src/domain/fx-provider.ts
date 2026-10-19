@@ -57,7 +57,7 @@ export function parseTcmbRates(xml: string): ProviderRateBatch {
     const unit = Number(/<Unit>([^<]*)<\/Unit>/.exec(block)?.[1]);
     const selling = Number(/<ForexSelling>([\d.]+)<\/ForexSelling>/.exec(block)?.[1]);
     const rateTry = selling / unit;
-    if (!Number.isInteger(unit) || unit <= 0 || !Number.isFinite(rateTry) || rateTry <= 0 || rateTry > 1_000_000) continue;
+    if (!Number.isInteger(unit) || !Number.isFinite(rateTry) || rateTry <= 0 || rateTry > 1_000_000) continue;
     rates.push({ currency: currency as ProviderRate["currency"], rateTry });
   }
   if (rates.length === 0) throw new Error("TCMB response has no supported rates");
@@ -73,8 +73,8 @@ export function parseOpenExchangeRates(value: unknown): ProviderRateBatch {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Invalid FX response");
   const data = value as Record<string, unknown>;
   if (data.result !== "success") throw new Error("FX provider reported a failure");
-  const published = typeof data.time_last_update_unix === "number" ? data.time_last_update_unix : null;
-  const rateDate = published != null && Number.isFinite(published) && published > 0
+  const published = data.time_last_update_unix;
+  const rateDate = typeof published === "number" && Number.isFinite(published) && published > 0
     ? calendarDate(new Date(published * 1000).toISOString().slice(0, 10))
     : null;
   if (!rateDate || !data.rates || typeof data.rates !== "object" || Array.isArray(data.rates)) {
@@ -83,7 +83,7 @@ export function parseOpenExchangeRates(value: unknown): ProviderRateBatch {
   const rawRates = data.rates as Record<string, unknown>;
   const rates = FETCHED_FX_CURRENCIES.flatMap((currency) => {
     const perTry = rawRates[currency];
-    if (typeof perTry !== "number" || !Number.isFinite(perTry) || perTry <= 0) return [];
+    if (typeof perTry !== "number") return [];
     const rateTry = 1 / perTry;
     return Number.isFinite(rateTry) && rateTry > 0 && rateTry <= 1_000_000 ? [{ currency, rateTry }] : [];
   });

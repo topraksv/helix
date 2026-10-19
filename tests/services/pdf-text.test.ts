@@ -368,6 +368,17 @@ describe("refusing what it cannot read, with a reason", () => {
     expect(result).toEqual({ ok: true, text: "ILK SATIR\nSON SATIR", pageCount: 1 });
   });
 
+  /** A direct `/Length` ends the stream there; one that points at another object cannot be read, so the stream runs to `endstream`. */
+  it("reads a stream to its declared length, or to endstream when the length is a reference", async () => {
+    const stream = (length: string) => plainPdf(`4 0 obj\n<< ${length} >>\nstream\nBT (REAL) Tj ET\nBT (JUNK) Tj ET\nendstream\nendobj\n`);
+    const own = "BT (REAL) Tj ET".length;
+    for (const length of [`/Length ${own}`, `/Length  ${own}`]) {
+      expect(await extractPdfText(stream(length)), length).toEqual({ ok: true, text: "REAL", pageCount: expect.any(Number) });
+    }
+    const referenced = await extractPdfText(stream("/Length 9  0 R"));
+    expect(referenced.ok && referenced.text.split("\n")).toEqual(["REAL", "JUNK"]);
+  });
+
   it("bounds what a single stream may expand to", async () => {
     const bomb = deflateSync(Buffer.alloc(2_000_000, 0x41));
     const parts: Buffer[] = [

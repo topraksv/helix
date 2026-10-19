@@ -33,10 +33,10 @@ function recoveryMarkerFile(): File {
 }
 
 function validRecoveryNotice(value: unknown): value is DatabaseRecoveryNotice {
-  if (typeof value !== "object" || value == null) return false;
+  // A primitive has none of these fields, so only null and undefined need refusing first.
+  if (value == null) return false;
   const notice = value as Partial<DatabaseRecoveryNotice>;
-  return typeof notice.recoveredAt === "number"
-    && Number.isSafeInteger(notice.recoveredAt)
+  return Number.isSafeInteger(notice.recoveredAt)
     && (notice.preservedFileName == null || typeof notice.preservedFileName === "string")
     && (notice.platform === "native" || notice.platform === "web");
 }

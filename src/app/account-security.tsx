@@ -13,7 +13,7 @@ import Eraser from "lucide-react-native/icons/eraser";
 import RotateCcw from "lucide-react-native/icons/rotate-ccw";
 import Snowflake from "lucide-react-native/icons/snowflake";
 import Trash from "lucide-react-native/icons/trash";
-import { DELETE_DOCUMENTS_REMAIN, useSession, type EmailChangeCodes } from "../auth/session";
+import { useSession, type EmailChangeCodes } from "../auth/session";
 import { performAccountFreeze, type AccountFreezePhase } from "../auth/freeze";
 import { useUserId } from "../data/hooks";
 import { pendingSyncChangeCount, setAccountFrozen } from "../data/repo";
@@ -28,7 +28,7 @@ import { scheduleSync, syncNow } from "../sync/engine";
 import { isSupabaseConfigured } from "../sync/supabase";
 import { WorkspaceGrid } from "../ui/workspace-layout";
 import { OperationFlow } from "../ui/operation-flow";
-import { clearLifecycleIntent, setLifecycleIntent } from "../ui/lifecycle-intent";
+import { clearLifecycleIntent, setLifecycleIntent, useAccountDeletion } from "../ui/lifecycle-intent";
 import { DelayedLoadingIndicator } from "../ui/loading-indicator";
 import { isValidNewPassword } from "../domain/input";
 
@@ -41,7 +41,7 @@ export default function AccountSecurityScreen() {
 }
 
 function CloudAccountSecurityScreen() {
-  const { email, verifyPassword, changePassword, signOut, deleteAccount } = useSession();
+  const { email, verifyPassword, changePassword, signOut } = useSession();
   const userId = useUserId();
   const router = useRouter();
   const operationGuard = useOperationGuard();
@@ -52,7 +52,8 @@ function CloudAccountSecurityScreen() {
   const [pwBusy, setPwBusy] = useState(false);
   const [freezing, setFreezing] = useState(false);
   const [freezePhase, setFreezePhase] = useState<AccountFreezePhase | null>(null);
-  const [deleting, setDeleting] = useState(false);
+  const { deleting, deleteAccount: handleDeleteAccount } = useAccountDeletion(() =>
+    confirmWithPassword(verifyPassword, { body: tr.account.deletePasswordBody, confirmLabel: tr.account.deleteConfirm, operation: "delete" }));
   const [cardDrafts, setCardDrafts] = useState({ email: false, reset: false });
   const draftIn = (card: keyof typeof cardDrafts) => (dirty: boolean) => setCardDrafts((held) => (held[card] === dirty ? held : { ...held, [card]: dirty }));
   const { allowExit } = useDirtyExitGuard(Boolean(currentPassword || newPassword) || cardDrafts.email || cardDrafts.reset);
@@ -86,35 +87,6 @@ function CloudAccountSecurityScreen() {
     }
   };
 
-  const handleDeleteAccount = async () => {
-    if (deleting) return;
-    const accepted = await appConfirm(tr.account.deleteConfirm1Title, tr.account.deleteConfirm1Body, {
-      confirmLabel: tr.common.delete,
-      danger: true,
-      operation: "delete",
-    });
-    if (!accepted) return;
-    if (!(await confirmWithPassword(verifyPassword, { body: tr.account.deletePasswordBody, confirmLabel: tr.account.deleteConfirm, operation: "delete" }))) return;
-    setLifecycleIntent("delete");
-    setDeleting(true);
-    try {
-      let error = await deleteAccount();
-      if (error === DELETE_DOCUMENTS_REMAIN) {
-        clearLifecycleIntent();
-        if (!(await appConfirm(tr.account.deleteDocumentsTitle, tr.account.deleteDocumentsBody, { confirmLabel: tr.account.deleteAnyway, danger: true, operation: "delete" }))) return;
-        setLifecycleIntent("delete");
-        error = await deleteAccount({ force: true });
-      }
-      if (error) {
-        clearLifecycleIntent();
-        void appAlert(error, tr.errors.title);
-      }
-    } finally {
-      // The intent outlives the call so the waiting screen can name the
-      // operation the user actually confirmed.
-      setDeleting(false);
-    }
-  };
 
   // Confirmation and re-authentication run inside the guard, so a second press cannot arm a second freeze while the first still asks for the password.
   const freezeAccount = () =>

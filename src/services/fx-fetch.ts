@@ -29,7 +29,7 @@ const MAX_RATE_RESPONSE_BYTES = 1_000_000;
 async function boundedFetchText(url: string, signal?: AbortSignal): Promise<string> {
   const controller = new AbortController();
   const abort = () => controller.abort();
-  signal?.addEventListener("abort", abort, { once: true });
+  signal?.addEventListener("abort", abort);
   const timer = setTimeout(abort, FETCH_TIMEOUT_MS);
   try {
     if (signal?.aborted) throw new Error("Aborted");

@@ -29,9 +29,9 @@ import { scheduleSync } from "../../../sync/engine";
 import { installmentDisplayTitle } from "../../../domain/installments";
 import { formatMinorCompact } from "../../../domain/money";
 import { signedBalanceEffectOf } from "../../../domain/transactions";
-import { transactionDateText } from "../../../ui/transaction-date";
+import { transactionRowDetail } from "../../../ui/transaction-date";
 import { CategoryIcon } from "../../../ui/category-icon";
-import { dateLabel, monthLabel, tr } from "../../../i18n/tr";
+import { monthLabel, tr } from "../../../i18n/tr";
 import { Amount, Body, Button, Card, DataGateScreen, DataStateNotice, DisclosureChevron, EmptyState, Field, Heading, Row, Screen, Spread } from "../../../ui/components";
 import { useDrawIn } from "../../../ui/motion-primitives";
 import { ExpectationRow, TransactionRow, transactionBadge } from "../../../ui/transaction-row";
@@ -399,13 +399,7 @@ export default function MonthDetailScreen() {
           <View style={groupSurface}>
             <TransactionRow
               installmentTitle={installmentTitle}
-              dateText={
-                transactionDateText(t) +
-                (t.installmentNo ? `  ·  ${tr.installments.nthInstallment(t.installmentNo)}` : "") +
-                (t.isAggregate ? `  ·  ${tr.bulk.aggregateBadge}` : "") +
-                (t.settledOn ? `  ·  ${tr.cashflow.statementPaidOn(dateLabel(t.settledOn))}` : "") +
-                (!selfIds.has(t.personId) ? `  ·  ${personName.get(t.personId) ?? ""}` : "")
-              }
+              dateText={transactionRowDetail(t, selfIds.has(t.personId) ? null : personName.get(t.personId) ?? "")}
               note={t.note}
               pending={t.status === "pending"}
               hasDocuments={documented.has(t.id)}

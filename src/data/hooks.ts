@@ -306,6 +306,18 @@ export function useInvestmentOperationsState() {
   return useLiveTable(s.investmentOperations, "investment_operations", [asc(s.investmentOperations.operationDate), asc(s.investmentOperations.id)]);
 }
 
+/** Everything the wallet's figures are drawn from, answered together: the investments screen and its correction read the same six. */
+export function useInvestmentWorkspaceState() {
+  const profilesState = useInvestmentProfilesState();
+  const productsState = useInvestmentProductsState();
+  const operationsState = useInvestmentOperationsState();
+  const transactionsState = useAllTransactionsState();
+  const categoriesState = useInvestmentCategoriesState();
+  const personsState = usePersonsState();
+  const group = combineLiveStates([profilesState, productsState, operationsState, transactionsState, categoriesState, personsState]);
+  return { profilesState, productsState, operationsState, transactionsState, categoriesState, personsState, ...group };
+}
+
 /** Local-only sync quarantine; userId scopes the shared subscription lifecycle. */
 export function useSyncDeadLettersState() {
   const userId = useUserId();

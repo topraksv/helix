@@ -64,11 +64,11 @@ export function isValidItemParams(col: unknown, year: unknown, kind: unknown): I
   const id = singleParam(col);
   if (!id) return null;
   const yearText = singleParam(year);
-  if (yearText === null || !/^\d{4}$/.test(yearText)) return null;
+  if (!/^\d{4}$/.test(String(yearText))) return null;
   const parsed = Number(yearText);
   if (parsed < MIN_YEAR || parsed > MAX_YEAR) return null;
   const kindText = singleParam(kind);
-  if (kindText === null || !(ITEM_KINDS as readonly string[]).includes(kindText)) return null;
+  if (!(ITEM_KINDS as readonly string[]).includes(String(kindText))) return null;
   return { col: id, year: parsed, kind: kindText as ItemKind };
 }
 

@@ -14,17 +14,7 @@ import {
   deleteInvestmentOperation,
   restoreInvestmentOperation,
 } from "../../../data/repo";
-import {
-  useAllTransactionsState,
-  useInvestmentCategoriesState,
-  useInvestmentOperationsState,
-  useInvestmentProductsState,
-  useInvestmentProfilesState,
-  useInvestmentWalletSnapshot,
-  usePersonsState,
-  useUserId,
-} from "../../../data/hooks";
-import { combineLiveStates } from "../../../data/live-state";
+import { useInvestmentWalletSnapshot, useInvestmentWorkspaceState, useUserId } from "../../../data/hooks";
 import { INVESTMENT_ASSET_TYPES, type InvestmentAssetType } from "../../../domain/investments";
 import { formatMinorCompact } from "../../../domain/money";
 import { todayISO } from "../../../domain/dates";
@@ -243,13 +233,7 @@ export default function InvestmentsScreen() {
   const [productFilter, setProductFilter] = useState<"all" | InvestmentAssetType>("all");
   const { palette } = useTheme();
   const colors = useSeriesColors();
-  const profilesState = useInvestmentProfilesState();
-  const productsState = useInvestmentProductsState();
-  const operationsState = useInvestmentOperationsState();
-  const transactionsState = useAllTransactionsState();
-  const categoriesState = useInvestmentCategoriesState();
-  const personsState = usePersonsState();
-  const { status, ready, retry } = combineLiveStates([profilesState, productsState, operationsState, transactionsState, categoriesState, personsState]);
+  const { profilesState, productsState, operationsState, transactionsState, categoriesState, personsState, status, ready, retry } = useInvestmentWorkspaceState();
   const profile = profilesState.data[0];
   const selfPersonIds = useMemo(
     () => new Set(personsState.data.filter((person) => person.isSelf).map((person) => person.id)),

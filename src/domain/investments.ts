@@ -329,8 +329,9 @@ export function buildInvestmentState(input: {
   const products = [...states.values()]
     .map<InvestmentProductState>((state) => {
       const quantity = state.quantityAtoms == null ? null : formatInvestmentQuantityAtoms(state.quantityAtoms);
-      const averageCostMinor = state.quantityAtoms != null && state.quantityAtoms > 0n
-        ? Number(roundedDivision(BigInt(state.costMinor) * QUANTITY_FACTOR, state.quantityAtoms))
+      const heldAtoms = state.quantityAtoms ?? 0n;
+      const averageCostMinor = heldAtoms > 0n
+        ? Number(roundedDivision(BigInt(state.costMinor) * QUANTITY_FACTOR, heldAtoms))
         : null;
       const realizedProfitLossMinor = Number(state.realizedProfitLossMinor);
       if (!Number.isSafeInteger(realizedProfitLossMinor)) {

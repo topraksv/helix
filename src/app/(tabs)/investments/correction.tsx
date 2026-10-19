@@ -5,16 +5,7 @@ import Landmark from "lucide-react-native/icons/landmark";
 import TriangleAlert from "lucide-react-native/icons/triangle-alert";
 import { Redirect, Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { removeInvestmentProductHistory } from "../../../data/repo";
-import {
-  useAllTransactionsState,
-  useInvestmentCategoriesState,
-  useInvestmentOperationsState,
-  useInvestmentProductsState,
-  useInvestmentProfilesState,
-  usePersonsState,
-  useUserId,
-} from "../../../data/hooks";
-import { combineLiveStates } from "../../../data/live-state";
+import { useInvestmentWorkspaceState, useUserId } from "../../../data/hooks";
 import { todayISO } from "../../../domain/dates";
 import { InvestmentDomainError } from "../../../domain/investments";
 import { formatMinorCompact } from "../../../domain/money";
@@ -40,20 +31,7 @@ export default function InvestmentCorrectionScreen() {
   const userId = useUserId();
   const operationGuard = useOperationGuard();
   const { palette } = useTheme();
-  const profilesState = useInvestmentProfilesState();
-  const productsState = useInvestmentProductsState();
-  const operationsState = useInvestmentOperationsState();
-  const transactionsState = useAllTransactionsState();
-  const categoriesState = useInvestmentCategoriesState();
-  const personsState = usePersonsState();
-  const { status, ready, retry } = combineLiveStates([
-    profilesState,
-    productsState,
-    operationsState,
-    transactionsState,
-    categoriesState,
-    personsState,
-  ]);
+  const { profilesState, productsState, operationsState, transactionsState, categoriesState, personsState, status, ready, retry } = useInvestmentWorkspaceState();
   const [selectedTransferIds, setSelectedTransferIds] = useState<Set<string>>(() => new Set());
   const [busy, setBusy] = useState(false);
   // SQLite subscriptions may publish the tombstone before the awaited write

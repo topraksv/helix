@@ -217,6 +217,7 @@ describe("external FX provider validation", () => {
       '<Tarih_Date Date="07/18/2026"><Currency><ForexSelling>40</ForexSelling></Currency></Tarih_Date>',
       '<Tarih_Date Date="07/18/2026"><Currency Foo="bar"><ForexSelling>40</ForexSelling></Currency></Tarih_Date>',
       '<Tarih_Date Date="07/18/2026"><Currency CurrencyCode="USD"><Unit>0</Unit><ForexSelling>40</ForexSelling></Currency></Tarih_Date>',
+      '<Tarih_Date Date="07/18/2026"><Currency CurrencyCode="USD"><Unit>-100</Unit><ForexSelling>40</ForexSelling></Currency></Tarih_Date>',
       '<Tarih_Date Date="07/18/2026"><Currency CurrencyCode="USD"><Unit>1</Unit></Currency></Tarih_Date>',
       '<Tarih_Date Date="07/18/2026"><Currency CurrencyCode="USD"><Unit>1</Unit><ForexSelling>1000001</ForexSelling></Currency></Tarih_Date>',
     ]) expect(() => parseTcmbRates(xml)).toThrow("TCMB response has no supported rates");

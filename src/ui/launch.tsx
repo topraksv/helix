@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Animated, Easing, Platform, StyleSheet, type ViewStyle } from "react-native";
+import Constants, { ExecutionEnvironment } from "expo-constants";
 import * as SplashScreen from "expo-splash-screen";
 
 import { tr } from "../i18n/tr";
@@ -15,9 +16,12 @@ import { motion, useTheme } from "./theme";
  * names an icon drawable whether or not an image is given). A splash showing
  * the finished symbol handed over to this mark starting from nothing, so the
  * owner saw the logo twice. Expo Go shows the app icon in its place, which no
- * setting reaches.
+ * setting reaches, so there the icon is the one mark: the splash holds until the
+ * root is ready and the app shows without a drawing after it.
  */
 const MARK_HEIGHT = 130;
+
+const SPLASH_SHOWS_ICON = Constants.executionEnvironment === ExecutionEnvironment.StoreClient;
 
 /** Draw, rest and dissolve; slower than `motion.draw` so the launch is seen. */
 const LAUNCH = { draw: 2000, rest: 300, fade: 400 } as const;
@@ -37,9 +41,11 @@ export function Launch({ settled, onGone }: { settled: boolean; onGone: () => vo
   const [drawable, setDrawable] = useState(false);
   const [held, setHeld] = useState(false);
   const [opacity] = useState(() => new Animated.Value(1));
-  const leaving = settled && (held || reducedMotion);
+  const still = reducedMotion || SPLASH_SHOWS_ICON;
+  const leaving = settled && (held || still);
 
   useEffect(() => {
+    if (SPLASH_SHOWS_ICON) return;
     let live = true;
     // A rejected chunk still ends the wait: the ground alone is the splash
     // without its symbol, and the app behind it is what matters.
@@ -66,7 +72,7 @@ export function Launch({ settled, onGone }: { settled: boolean; onGone: () => vo
     // Again, directly: unmounting cancels the frame above, and a native splash
     // left up over a ready app is an app that looks dead.
     hideSplash();
-    if (reducedMotion) {
+    if (still) {
       onGone();
       return;
     }
@@ -87,7 +93,7 @@ export function Launch({ settled, onGone }: { settled: boolean; onGone: () => vo
       if (finished) onGone();
     });
     return () => animation.stop();
-  }, [leaving, reducedMotion, opacity, onGone]);
+  }, [leaving, still, opacity, onGone]);
 
   return (
     <Animated.View
@@ -107,7 +113,7 @@ export function Launch({ settled, onGone }: { settled: boolean; onGone: () => vo
         },
         Platform.OS === "web"
           ? ({
-              opacity: leaving && !reducedMotion ? 0 : 1,
+              opacity: leaving && !still ? 0 : 1,
               transitionProperty: "opacity",
               transitionDuration: `${LAUNCH.fade}ms`,
               transitionTimingFunction: motion.webEase,

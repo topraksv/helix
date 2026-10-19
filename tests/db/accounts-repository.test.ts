@@ -957,6 +957,21 @@ describe("accounts repository persistence", () => {
     expect(row("payment_sources", "cash").deleted_at).toBe(NOW);
   });
 
+  it("keeps each pending hand-paid instalment in its own month when the plan moves onto a card", async () => {
+    seedSource("cash", "cash");
+    seedSource("card", "credit_card", { statementDay: 25, dueDay: 5 });
+    seedPlan("hand-plan", { kind: "card_installment", sourceId: "cash", dueDay: 12 });
+    seedTransaction("paid-2", { sourceId: "cash", effectiveDate: "2026-08-12", status: "realized" });
+    seedTransaction("due-3", { sourceId: "cash", effectiveDate: "2026-09-12" });
+    harness.db!.prepare("UPDATE transactions SET installment_plan_id = 'hand-plan', installment_no = CASE id WHEN 'paid-2' THEN 2 ELSE 3 END").run();
+
+    await reassignAndDeletePaymentSource(USER, "cash", "card");
+    expect(row("installment_plans", "hand-plan")).toMatchObject({ payment_source_id: "card", due_day: 5, start_month: "2026-07" });
+    // The third instalment stays September's, on the card's due day; the paid one is history and keeps its day.
+    expect(row("transactions", "due-3")).toMatchObject({ payment_source_id: "card", effective_date: "2026-09-05", status: "pending" });
+    expect(row("transactions", "paid-2")).toMatchObject({ payment_source_id: "card", effective_date: "2026-08-12", status: "realized" });
+  });
+
   it("relinks pending card expenses by purchase, old period, or due date while preserving historical rows", async () => {
     seedSource("old-card", "credit_card", { statementDay: 25, dueDay: 5 });
     seedSource("new-card", "credit_card", { statementDay: 20, dueDay: 10 });

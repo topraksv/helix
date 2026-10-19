@@ -30,7 +30,8 @@ import {
   useUserId,
 } from "../data/hooks";
 import { combineLiveStates } from "../data/live-state";
-import { confirmExpected, FxRateUnavailableError, revertExpected, setAttentionState, skipExpected, unskipExpected } from "../data/repo";
+import { setAttentionState, skipExpected, unskipExpected } from "../data/repo";
+import { confirmExpectedPayment } from "../ui/save-result";
 import { addDaysISO, todayISO, yearOf } from "../domain/dates";
 import { formatMinorCompact } from "../domain/money";
 import { balanceDeclarationDrift, parseBalanceDeclaration } from "../domain/balance-declaration";
@@ -182,28 +183,9 @@ export default function AttentionScreen() {
   const confirm = (e: Expected, actual?: number) => operationGuard.run(async () => {
     if (!selfPersonId) return;
     setBusyId(`expected:${e.id}`);
-    try {
-      const sub = subscriptionById.get(e.refId);
-      const income = incomeById.get(e.refId);
-      await confirmExpected(userId, e.id, {
-        personId: sub?.personId ?? income?.personId ?? selfPersonId,
-        categoryId: sub?.categoryId ?? income?.categoryId ?? null,
-        actualAmountMinor: actual,
-      });
-      scheduleSync(userId);
-      openEditor(null);
-      // Straight through, so a failed revert rejects and the bar keeps its
-      // retry instead of clearing as though it had worked.
-      undo.show(`${nameOf(e)} ✓`, () => revertExpected(userId, e.id).then(() => scheduleSync(userId)));
-    } catch (err) {
-      if (err instanceof FxRateUnavailableError) void appAlert(tr.errors.fxUnavailable, undefined, { tone: "error" });
-      else {
-        devError("attention.confirm", err);
-        void appAlert(tr.errors.saveFailed, undefined, { tone: "error" });
-      }
-    } finally {
-      setBusyId(null);
-    }
+    const rule = subscriptionById.get(e.refId) ?? incomeById.get(e.refId);
+    if (await confirmExpectedPayment({ userId, expected: e, name: nameOf(e), selfPersonId, rule, actualAmountMinor: actual })) openEditor(null);
+    setBusyId(null);
   });
 
   /** A skip is a real write: guarded, reported, and undoable, since it is otherwise silent. */

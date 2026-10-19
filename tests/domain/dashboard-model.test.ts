@@ -151,6 +151,11 @@ describe("expected variable spending", () => {
     expect(model.expectedVariableMinor).toBe(700_00);
   });
 
+  it("takes the mean of the two middle months when the count is even", () => {
+    const model = buildWith([monthly("2026-05", "05", 500_00, "may"), monthly("2026-06", "05", 700_00, "jun")]);
+    expect(model.expectedVariableMinor).toBe(600_00);
+  });
+
   it("expects nothing more once a month has already cost more than usual", () => {
     const history = [
       monthly("2026-05", "05", 500_00, "may"),

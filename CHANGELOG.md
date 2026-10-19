@@ -6,7 +6,7 @@ defterinde yazılıdır ve bu depoya dahil değildir.
 
 Notlar kısa tutulur: ne değişti, tek cümle. Sebebi ve ölçümü commit'te.
 
-## 1.9.8
+## 1.9.9
 
 ### Patch Changes
 
@@ -14,17 +14,25 @@ Notlar kısa tutulur: ne değişti, tek cümle. Sebebi ve ölçümü commit'te.
 - Ödeme Onayı ekranı Bekleyenler'e katıldı: beklenen ödemeler orada Ödendi, Tutarı Düzelt, Ertele ve Atla ile kapanıyor.
 - Durum'daki yaklaşan ödeme tek dokunuşla ödendi sayılıyor ve geri alınabiliyor.
 - Kaydet düğmeleri eksik alanda sönmüyor; dokununca eksik alan kırmızıyla gösteriliyor.
-- ₺0'dan başlayıp ilk kayıtlarda eksiye düşen bakiye için bir kez gerçek bakiyeyi yazma önerisi çıkıyor.
+- ₺0'dan başlayıp ilk kayıtlarda eksiye düşen bakiye için bir kez gerçek bakiyeyi yazma önerisi çıkıyor. Yedekten geri yüklenen hesapta bu öneri çıkmıyor.
 - Taksit her giderde seçilebiliyor; kartsız taksit kendi ödeme gününe yazılıyor.
 - Kalem ve ödeme yöntemi formdan çıkmadan ekleniyor.
 - Yatırım alışında serbest bakiye yetmezse Mali Tablo'dan para eklenebiliyor, satış tutarı Mali Tablo'ya aktarılabiliyor.
 - Kategorisiz kayıtlar "Belirtilmedi" adıyla gösteriliyor; Mali Tablo görünüm adları sadeleşti, telefon "Tek ay" ile açılıyor.
 - Giriş ekranında "Yeni hesap oluştur" üstte; kod e-postası için gereksiz klasörü hatırlatılıyor.
 - Senkronize hesapta çıkış soru sormadan yapılıyor; gönderilmemiş kayıt varsa uyarıyor.
-- Nokta tuşlu klavyede yazılan nokta ondalık ayırıcı sayılıyor; "45.9" artık 459 TL olmuyor.
-- Deneme süresi biten yıllık aboneliğin ilk ödeme tarihi doğru hesaplanıyor.
 - Yatırım işlemine iki kez hızlı dokunmak kaydı iki kez yazmıyor; yatırıma para eklemek, adı ya da türü değiştirilmiş "Yatırım" kalemini ezmiyor.
 - Taksit planı olan ödeme yöntemi silinirken plan ekstre günleri eksik bir karta taşınamıyor.
+- Mali Tablo'da bir kayıttan sonra tablo baştan kurulmuyor; yalnız rakamı değişen hücreler yeniden çiziliyor.
+- Expo Go'da açılışta logo iki kez görünmüyor: Expo Go'nun gösterdiği simgeden sonra ikinci bir çizim gelmiyor.
+- İç düzen: Ödendi onayı, hesap silme, işlem satırı ayrıntısı ve yatırım ekranlarının veri okuması tek yerde; açılış bakımı adım adım ayrıldı.
+
+## 1.9.8
+
+### Patch Changes
+
+- Nokta tuşlu klavyede yazılan nokta ondalık ayırıcı sayılıyor; "45.9" artık 459 TL olmuyor.
+- Deneme süresi biten yıllık aboneliğin ilk ödeme tarihi doğru hesaplanıyor.
 - Silinmiş bir yatırım ürünü yeniden kaydedilemiyor.
 - Birkaç ekranda kayıttan sonra eşitleme başlamıyordu; artık başlıyor.
 - Web'de piyasa verisi doğrudan alınamayınca yedek yoldan da geliyor.

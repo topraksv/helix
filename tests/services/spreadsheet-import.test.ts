@@ -284,6 +284,12 @@ describe("formulaColumnSigns", () => {
   it("finds nothing in a formula that references no cell", () => {
     expect(signs("=500+300+700")).toEqual({});
   });
+
+  it("reads absolute and two-letter references, and skips another sheet's", () => {
+    expect(signs("=$B$2-C2")).toEqual({ 1: 1, 2: -1 });
+    expect(signs("=AA2-AB2")).toEqual({ 26: 1, 27: -1 });
+    expect(signs("='Gelir-Gider 2025'!M13+B2")).toEqual({ 1: 1 });
+  });
 });
 
 describe("parseSheet — contiguous block", () => {
@@ -619,6 +625,24 @@ describe("extractDueDay", () => {
     expect(extractDueDay("Ev Kredisi")).toEqual({ label: "Ev Kredisi", dueDay: null });
     expect(extractDueDay("Araba/ Ulaşım")).toEqual({ label: "Araba/ Ulaşım", dueDay: null });
     expect(extractDueDay("2024 Bütçe")).toEqual({ label: "2024 Bütçe", dueDay: null }); // 2024 > 31
+  });
+
+  it("takes a day only from 1 to 31, at both ends of a range", () => {
+    expect(extractDueDay("Kira 1")).toEqual({ label: "Kira", dueDay: 1 });
+    expect(extractDueDay("Kira 31")).toEqual({ label: "Kira", dueDay: 31 });
+    expect(extractDueDay("Kira 01-31")).toEqual({ label: "Kira", dueDay: 31 });
+    for (const label of ["Kira 00", "Kira 32", "Kira 00-15", "Kira 15-00", "Kira 32-15", "Kira 15-32"]) {
+      expect(extractDueDay(label), label).toEqual({ label, dueDay: null });
+    }
+  });
+
+  it("reads a day only at the very end, after a space, beside a name with a letter", () => {
+    expect(extractDueDay("Kira 25-10")).toEqual({ label: "Kira", dueDay: 25 });
+    expect(extractDueDay("Kira 05 - 15")).toEqual({ label: "Kira", dueDay: 15 });
+    expect(extractDueDay("  Kira 05 ")).toEqual({ label: "Kira", dueDay: 5 });
+    for (const label of ["Kira 05-15x", "Kira 05x", "Kira05", "12 05-15", "12 05"]) {
+      expect(extractDueDay(label), label).toEqual({ label, dueDay: null });
+    }
   });
 });
 

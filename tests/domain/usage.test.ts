@@ -26,6 +26,12 @@ describe("screenKey", () => {
     expect(screenKey("/person/[id]")).toBe("person");
   });
 
+  it("keeps a screen name that only contains digits or a date", () => {
+    expect(screenKey("/settings/v2")).toBe("settings.v2");
+    expect(screenKey("/report/x2026-09")).toBe("report.x2026-09");
+    expect(screenKey("/report/2026-09-1")).toBe("report.2026-09-1");
+  });
+
   it("drops the query string, which is where parameters hide", () => {
     expect(screenKey("/transaction?id=42&amount=1999")).toBe("transaction");
     expect(screenKey("/(tabs)/cash-flow/item?month=2026-09")).toBe("tabs.cash-flow.item");

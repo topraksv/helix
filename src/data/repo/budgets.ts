@@ -35,7 +35,7 @@ export async function upsertCategoryBudget(
 ): Promise<string> {
   if (!isMonthKey(input.month)) throw new Error("Invalid budget month");
   if (input.amountMinor <= 0) throw new Error("Budget amount must be positive");
-  assertSupportedMinorAmount(input.amountMinor, false);
+  assertSupportedMinorAmount(input.amountMinor);
   const sqlite = await getSqliteAsync();
   const category = await sqlite.getFirstAsync<{ id: string }>(
     `SELECT id FROM categories
