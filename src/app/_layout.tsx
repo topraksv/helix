@@ -549,8 +549,12 @@ function RootLayoutInner({ launching, onSettled }: { launching: boolean; onSettl
   useNotificationTapRouting(ready, userId, locked === false, (route) =>
     router.push(route as Parameters<typeof router.push>[0]));
 
+  // A redirect only comes with the wait view, so no Stack is mounted and the
+  // action lands on `__root`. A replace there gives `__root` a new key and
+  // remounts this whole tree, boot and launch screen included: the mark drew
+  // twice. A navigate to the same name keeps the key.
   useEffect(() => {
-    if (guard.redirect) router.replace(guard.redirect);
+    if (guard.redirect) router.navigate(guard.redirect);
   }, [guard.redirect, router]);
 
   // Whether this render draws the page and nothing on it: the wait before the

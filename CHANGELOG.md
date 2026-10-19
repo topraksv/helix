@@ -24,7 +24,7 @@ Notlar kısa tutulur: ne değişti, tek cümle. Sebebi ve ölçümü commit'te.
 - Yatırım işlemine iki kez hızlı dokunmak kaydı iki kez yazmıyor; yatırıma para eklemek, adı ya da türü değiştirilmiş "Yatırım" kalemini ezmiyor.
 - Taksit planı olan ödeme yöntemi silinirken plan ekstre günleri eksik bir karta taşınamıyor.
 - Mali Tablo'da bir kayıttan sonra tablo baştan kurulmuyor; yalnız rakamı değişen hücreler yeniden çiziliyor.
-- Expo Go'da açılışta logo iki kez görünmüyor: Expo Go'nun gösterdiği simgeden sonra ikinci bir çizim gelmiyor.
+- Açılış logosu yalnız ilk açılışta ve bir kez çiziliyor; webde giriş ekranına yönlenirken ikinci kez çizilmiyor, Expo Go'da da görünüyor.
 - İç düzen: Ödendi onayı, hesap silme, işlem satırı ayrıntısı ve yatırım ekranlarının veri okuması tek yerde; açılış bakımı adım adım ayrıldı.
 
 ## 1.9.8

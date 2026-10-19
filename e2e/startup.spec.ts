@@ -3,6 +3,7 @@
 // `scripts/check-web-budget.mjs` bounds the bytes; this bounds what the browser does with them.
 
 import { expect, test } from "@playwright/test";
+import { tr } from "../src/i18n/tr";
 import { isolateExternalData, onboard } from "./helpers";
 
 const FIRST_CONTENTFUL_PAINT_BUDGET_MS = 6_000;
@@ -46,6 +47,33 @@ test("opens within its measured startup budget @cross-browser", async ({ page },
   expect(initialScriptBytes, "scripts fetched before the first screen").toBeLessThan(INITIAL_SCRIPT_BUDGET_BYTES);
   // A zero would pass every ceiling above while proving nothing.
   expect(initialScriptBytes, "resource timing available").toBeGreaterThan(500_000);
+});
+
+// `/` redirects to sign-in on a cold start. A redirect that replaced `__root` remounted the root
+// layout, and the launch screen drew its mark a second time. Only a drawing carries masks.
+test.describe("launch", () => {
+  test.use({ contextOptions: { reducedMotion: "no-preference" } });
+
+  test("draws the mark once across the cold-start redirect", async ({ page }) => {
+    await page.addInitScript((label) => {
+      const drawn = new WeakSet<Element>();
+      let count = 0;
+      (window as unknown as { launchDrawings: () => number }).launchDrawings = () => count;
+      new MutationObserver(() => {
+        for (const svg of document.querySelectorAll("svg")) {
+          const screen = svg.closest(`[role="progressbar"][aria-label="${label}"]`);
+          if (screen && svg.querySelector("mask") && !drawn.has(screen)) {
+            drawn.add(screen);
+            count += 1;
+          }
+        }
+      }).observe(document, { childList: true, subtree: true });
+    }, tr.dataState.loading);
+    await page.goto("/helix/");
+    await expect(page.getByRole("heading", { name: "Hoş geldin", exact: true })).toBeVisible();
+    await expect(page.getByRole("progressbar", { name: tr.dataState.loading })).toHaveCount(0);
+    expect(await page.evaluate(() => (window as unknown as { launchDrawings: () => number }).launchDrawings())).toBe(1);
+  });
 });
 
 // Asserts the STATE, not timing (a long-task threshold on CI is a coin toss): `useWarmRoute`
