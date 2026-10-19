@@ -6,9 +6,9 @@
       "timeout": 0,
       "survived": 6,
       "noCoverage": 0,
-      "cost": 1478,
-      "measuredOn": "c2d2153d875708587565c7f934fd369e43867845",
-      "measuredDate": "2026-10-17"
+      "cost": 1355,
+      "measuredOn": "59969dd5ac2ef8264d5e82a5252831bcc02d383c",
+      "measuredDate": "2026-10-19"
     },
     "src/auth/email-flows.ts": {
       "score": 100,
@@ -16,9 +16,9 @@
       "timeout": 0,
       "survived": 0,
       "noCoverage": 0,
-      "cost": 412,
-      "measuredOn": "c2d2153d875708587565c7f934fd369e43867845",
-      "measuredDate": "2026-10-17"
+      "cost": 354,
+      "measuredOn": "59969dd5ac2ef8264d5e82a5252831bcc02d383c",
+      "measuredDate": "2026-10-19"
     },
     "src/auth/freeze.ts": {
       "score": 97.5,
@@ -26,8 +26,9 @@
       "timeout": 0,
       "survived": 0,
       "noCoverage": 1,
-      "measuredOn": "15eec246708bf0bfdcdfe62fad678d2243d1b6b2",
-      "measuredDate": "2026-10-12"
+      "cost": 120,
+      "measuredOn": "59969dd5ac2ef8264d5e82a5252831bcc02d383c",
+      "measuredDate": "2026-10-19"
     },
     "src/auth/login-history.ts": {
       "score": 70,
@@ -35,9 +36,9 @@
       "timeout": 0,
       "survived": 3,
       "noCoverage": 0,
-      "cost": 1206,
-      "measuredOn": "c2d2153d875708587565c7f934fd369e43867845",
-      "measuredDate": "2026-10-17"
+      "cost": 2077,
+      "measuredOn": "59969dd5ac2ef8264d5e82a5252831bcc02d383c",
+      "measuredDate": "2026-10-19"
     },
     "src/auth/session.ts": {
       "score": 96.54,
@@ -45,9 +46,9 @@
       "timeout": 0,
       "survived": 16,
       "noCoverage": 0,
-      "cost": 17401,
-      "measuredOn": "c2d2153d875708587565c7f934fd369e43867845",
-      "measuredDate": "2026-10-17"
+      "cost": 22279,
+      "measuredOn": "59969dd5ac2ef8264d5e82a5252831bcc02d383c",
+      "measuredDate": "2026-10-19"
     },
     "src/auth/sign-out.ts": {
       "score": 100,
@@ -56,28 +57,28 @@
       "survived": 0,
       "noCoverage": 0,
       "cost": 772,
-      "measuredOn": "c2d2153d875708587565c7f934fd369e43867845",
-      "measuredDate": "2026-10-17"
+      "measuredOn": "59969dd5ac2ef8264d5e82a5252831bcc02d383c",
+      "measuredDate": "2026-10-19"
     },
     "src/auth/verification-brake.ts": {
       "score": 100,
-      "killed": 22,
-      "timeout": 1,
+      "killed": 23,
+      "timeout": 0,
       "survived": 0,
       "noCoverage": 0,
-      "cost": 3587,
-      "measuredOn": "15eec246708bf0bfdcdfe62fad678d2243d1b6b2",
-      "measuredDate": "2026-10-12"
+      "cost": 3239,
+      "measuredOn": "59969dd5ac2ef8264d5e82a5252831bcc02d383c",
+      "measuredDate": "2026-10-19"
     },
     "src/data/repo/accounts.ts": {
-      "score": 99.49,
-      "killed": 387,
+      "score": 99.51,
+      "killed": 405,
       "timeout": 0,
       "survived": 0,
       "noCoverage": 2,
-      "cost": 5919,
-      "measuredOn": "15eec246708bf0bfdcdfe62fad678d2243d1b6b2",
-      "measuredDate": "2026-10-12"
+      "cost": 6105,
+      "measuredOn": "59969dd5ac2ef8264d5e82a5252831bcc02d383c",
+      "measuredDate": "2026-10-19"
     },
     "src/data/repo/attachments.ts": {
       "score": 100,
@@ -85,18 +86,19 @@
       "timeout": 0,
       "survived": 0,
       "noCoverage": 0,
-      "measuredOn": "15eec246708bf0bfdcdfe62fad678d2243d1b6b2",
-      "measuredDate": "2026-10-12"
+      "cost": 164,
+      "measuredOn": "59969dd5ac2ef8264d5e82a5252831bcc02d383c",
+      "measuredDate": "2026-10-19"
     },
     "src/data/repo/budgets.ts": {
       "score": 95.05,
-      "killed": 268,
-      "timeout": 1,
+      "killed": 269,
+      "timeout": 0,
       "survived": 14,
       "noCoverage": 0,
-      "cost": 14835,
-      "measuredOn": "15eec246708bf0bfdcdfe62fad678d2243d1b6b2",
-      "measuredDate": "2026-10-12"
+      "cost": 11293,
+      "measuredOn": "59969dd5ac2ef8264d5e82a5252831bcc02d383c",
+      "measuredDate": "2026-10-19"
     },
     "src/data/repo/categories.ts": {
       "score": 100,
@@ -104,9 +106,9 @@
       "timeout": 0,
       "survived": 0,
       "noCoverage": 0,
-      "cost": 1014,
-      "measuredOn": "15eec246708bf0bfdcdfe62fad678d2243d1b6b2",
-      "measuredDate": "2026-10-12"
+      "cost": 390,
+      "measuredOn": "59969dd5ac2ef8264d5e82a5252831bcc02d383c",
+      "measuredDate": "2026-10-19"
     },
     "src/data/repo/cell-notes.ts": {
       "score": 100,
@@ -114,9 +116,9 @@
       "timeout": 0,
       "survived": 0,
       "noCoverage": 0,
-      "cost": 160,
-      "measuredOn": "15eec246708bf0bfdcdfe62fad678d2243d1b6b2",
-      "measuredDate": "2026-10-12"
+      "cost": 172,
+      "measuredOn": "59969dd5ac2ef8264d5e82a5252831bcc02d383c",
+      "measuredDate": "2026-10-19"
     },
     "src/data/repo/computed.ts": {
       "score": 100,
@@ -124,8 +126,9 @@
       "timeout": 0,
       "survived": 0,
       "noCoverage": 0,
-      "measuredOn": "15eec246708bf0bfdcdfe62fad678d2243d1b6b2",
-      "measuredDate": "2026-10-12"
+      "cost": 145,
+      "measuredOn": "59969dd5ac2ef8264d5e82a5252831bcc02d383c",
+      "measuredDate": "2026-10-19"
     },
     "src/data/repo/errors.ts": {
       "score": 83.87,
@@ -133,17 +136,19 @@
       "timeout": 0,
       "survived": 5,
       "noCoverage": 0,
-      "measuredOn": "15eec246708bf0bfdcdfe62fad678d2243d1b6b2",
-      "measuredDate": "2026-10-12"
+      "cost": 2379,
+      "measuredOn": "59969dd5ac2ef8264d5e82a5252831bcc02d383c",
+      "measuredDate": "2026-10-19"
     },
     "src/data/repo/expected.ts": {
       "score": 85.63,
-      "killed": 273,
-      "timeout": 1,
+      "killed": 274,
+      "timeout": 0,
       "survived": 46,
       "noCoverage": 0,
-      "measuredOn": "15eec246708bf0bfdcdfe62fad678d2243d1b6b2",
-      "measuredDate": "2026-10-12"
+      "cost": 24146,
+      "measuredOn": "59969dd5ac2ef8264d5e82a5252831bcc02d383c",
+      "measuredDate": "2026-10-19"
     },
     "src/data/repo/import-plan.ts": {
       "score": 100,
@@ -151,28 +156,29 @@
       "timeout": 0,
       "survived": 0,
       "noCoverage": 0,
-      "cost": 1784,
-      "measuredOn": "15eec246708bf0bfdcdfe62fad678d2243d1b6b2",
-      "measuredDate": "2026-10-12"
+      "cost": 1748,
+      "measuredOn": "59969dd5ac2ef8264d5e82a5252831bcc02d383c",
+      "measuredDate": "2026-10-19"
     },
     "src/data/repo/imports.ts": {
       "score": 74.51,
-      "killed": 719,
-      "timeout": 3,
+      "killed": 720,
+      "timeout": 2,
       "survived": 240,
       "noCoverage": 7,
-      "measuredOn": "15eec246708bf0bfdcdfe62fad678d2243d1b6b2",
-      "measuredDate": "2026-10-12"
+      "cost": 48137,
+      "measuredOn": "59969dd5ac2ef8264d5e82a5252831bcc02d383c",
+      "measuredDate": "2026-10-19"
     },
     "src/data/repo/installments.ts": {
-      "score": 82.9,
-      "killed": 509,
+      "score": 84.07,
+      "killed": 517,
       "timeout": 0,
-      "survived": 104,
+      "survived": 97,
       "noCoverage": 1,
-      "cost": 57995,
-      "measuredOn": "15eec246708bf0bfdcdfe62fad678d2243d1b6b2",
-      "measuredDate": "2026-10-12"
+      "cost": 59342,
+      "measuredOn": "59969dd5ac2ef8264d5e82a5252831bcc02d383c",
+      "measuredDate": "2026-10-19"
     },
     "src/data/repo/investment-validation.ts": {
       "score": 100,
@@ -180,28 +186,29 @@
       "timeout": 0,
       "survived": 0,
       "noCoverage": 0,
-      "cost": 8450,
-      "measuredOn": "15eec246708bf0bfdcdfe62fad678d2243d1b6b2",
-      "measuredDate": "2026-10-12"
+      "cost": 8173,
+      "measuredOn": "59969dd5ac2ef8264d5e82a5252831bcc02d383c",
+      "measuredDate": "2026-10-19"
     },
     "src/data/repo/investments.ts": {
-      "score": 77.41,
-      "killed": 209,
+      "score": 81.74,
+      "killed": 291,
       "timeout": 0,
-      "survived": 60,
+      "survived": 64,
       "noCoverage": 1,
-      "measuredOn": "15eec246708bf0bfdcdfe62fad678d2243d1b6b2",
-      "measuredDate": "2026-10-12"
+      "cost": 5178,
+      "measuredOn": "59969dd5ac2ef8264d5e82a5252831bcc02d383c",
+      "measuredDate": "2026-10-19"
     },
     "src/data/repo/maintenance.ts": {
-      "score": 73.46,
-      "killed": 260,
-      "timeout": 3,
+      "score": 73.9,
+      "killed": 269,
+      "timeout": 0,
       "survived": 94,
       "noCoverage": 1,
-      "cost": 37588,
-      "measuredOn": "15eec246708bf0bfdcdfe62fad678d2243d1b6b2",
-      "measuredDate": "2026-10-12"
+      "cost": 31521,
+      "measuredOn": "59969dd5ac2ef8264d5e82a5252831bcc02d383c",
+      "measuredDate": "2026-10-19"
     },
     "src/data/repo/matrix-colors.ts": {
       "score": 96.88,
@@ -209,9 +216,9 @@
       "timeout": 0,
       "survived": 1,
       "noCoverage": 0,
-      "cost": 306,
-      "measuredOn": "15eec246708bf0bfdcdfe62fad678d2243d1b6b2",
-      "measuredDate": "2026-10-12"
+      "cost": 278,
+      "measuredOn": "59969dd5ac2ef8264d5e82a5252831bcc02d383c",
+      "measuredDate": "2026-10-19"
     },
     "src/data/repo/onboarding.ts": {
       "score": 99.51,
@@ -219,9 +226,9 @@
       "timeout": 0,
       "survived": 1,
       "noCoverage": 0,
-      "cost": 9842,
-      "measuredOn": "2dfd961e796adae19287463070ac50f0ed295b60",
-      "measuredDate": "2026-10-12"
+      "cost": 14473,
+      "measuredOn": "59969dd5ac2ef8264d5e82a5252831bcc02d383c",
+      "measuredDate": "2026-10-19"
     },
     "src/data/repo/reset.ts": {
       "score": 92.7,
@@ -229,9 +236,9 @@
       "timeout": 1,
       "survived": 26,
       "noCoverage": 0,
-      "cost": 11807,
-      "measuredOn": "15eec246708bf0bfdcdfe62fad678d2243d1b6b2",
-      "measuredDate": "2026-10-12"
+      "cost": 12397,
+      "measuredOn": "59969dd5ac2ef8264d5e82a5252831bcc02d383c",
+      "measuredDate": "2026-10-19"
     },
     "src/data/repo/rule-validation.ts": {
       "score": 100,
@@ -239,9 +246,9 @@
       "timeout": 0,
       "survived": 0,
       "noCoverage": 0,
-      "cost": 23,
-      "measuredOn": "0c2881fade9362f7d22692880634afe8e92c4b8c",
-      "measuredDate": "2026-08-20"
+      "cost": 415,
+      "measuredOn": "59969dd5ac2ef8264d5e82a5252831bcc02d383c",
+      "measuredDate": "2026-10-19"
     },
     "src/data/repo/rules.ts": {
       "score": 83.15,
@@ -249,9 +256,9 @@
       "timeout": 0,
       "survived": 61,
       "noCoverage": 0,
-      "cost": 34749,
-      "measuredOn": "15eec246708bf0bfdcdfe62fad678d2243d1b6b2",
-      "measuredDate": "2026-10-12"
+      "cost": 35496,
+      "measuredOn": "59969dd5ac2ef8264d5e82a5252831bcc02d383c",
+      "measuredDate": "2026-10-19"
     },
     "src/data/repo/settings.ts": {
       "score": 100,
@@ -259,9 +266,9 @@
       "timeout": 0,
       "survived": 0,
       "noCoverage": 0,
-      "cost": 49,
-      "measuredOn": "15eec246708bf0bfdcdfe62fad678d2243d1b6b2",
-      "measuredDate": "2026-10-12"
+      "cost": 150,
+      "measuredOn": "59969dd5ac2ef8264d5e82a5252831bcc02d383c",
+      "measuredDate": "2026-10-19"
     },
     "src/data/repo/statement-import.ts": {
       "score": 82.99,
@@ -270,27 +277,28 @@
       "survived": 30,
       "noCoverage": 3,
       "cost": 2678,
-      "measuredOn": "15eec246708bf0bfdcdfe62fad678d2243d1b6b2",
-      "measuredDate": "2026-10-12"
+      "measuredOn": "59969dd5ac2ef8264d5e82a5252831bcc02d383c",
+      "measuredDate": "2026-10-19"
     },
     "src/data/repo/transactions.ts": {
-      "score": 98.22,
-      "killed": 331,
+      "score": 98.25,
+      "killed": 337,
       "timeout": 0,
       "survived": 6,
       "noCoverage": 0,
-      "cost": 865,
-      "measuredOn": "15eec246708bf0bfdcdfe62fad678d2243d1b6b2",
-      "measuredDate": "2026-10-12"
+      "cost": 4891,
+      "measuredOn": "59969dd5ac2ef8264d5e82a5252831bcc02d383c",
+      "measuredDate": "2026-10-19"
     },
     "src/db/client.ts": {
-      "score": 96.65,
-      "killed": 171,
-      "timeout": 2,
-      "survived": 6,
-      "noCoverage": 0,
-      "measuredOn": "d3be2e3cda6fbbdc1db1928fd1f94e3bd3247ed7",
-      "measuredDate": "2026-09-19"
+      "score": 97.78,
+      "killed": 176,
+      "timeout": 0,
+      "survived": 3,
+      "noCoverage": 1,
+      "cost": 1039,
+      "measuredOn": "59969dd5ac2ef8264d5e82a5252831bcc02d383c",
+      "measuredDate": "2026-10-19"
     },
     "src/db/ids.ts": {
       "score": 90.32,
@@ -298,8 +306,9 @@
       "timeout": 0,
       "survived": 5,
       "noCoverage": 1,
-      "measuredOn": "15eec246708bf0bfdcdfe62fad678d2243d1b6b2",
-      "measuredDate": "2026-10-12"
+      "cost": 7471,
+      "measuredOn": "59969dd5ac2ef8264d5e82a5252831bcc02d383c",
+      "measuredDate": "2026-10-19"
     },
     "src/db/migrate.ts": {
       "score": 88.89,
@@ -308,8 +317,8 @@
       "survived": 5,
       "noCoverage": 1,
       "cost": 238,
-      "measuredOn": "15eec246708bf0bfdcdfe62fad678d2243d1b6b2",
-      "measuredDate": "2026-10-12"
+      "measuredOn": "59969dd5ac2ef8264d5e82a5252831bcc02d383c",
+      "measuredDate": "2026-10-19"
     },
     "src/db/mutations.ts": {
       "score": 82.45,
@@ -317,9 +326,9 @@
       "timeout": 1,
       "survived": 31,
       "noCoverage": 12,
-      "cost": 21007,
-      "measuredOn": "c2d2153d875708587565c7f934fd369e43867845",
-      "measuredDate": "2026-10-17"
+      "cost": 22947,
+      "measuredOn": "59969dd5ac2ef8264d5e82a5252831bcc02d383c",
+      "measuredDate": "2026-10-19"
     },
     "src/domain/analytics.ts": {
       "score": 99.27,
@@ -327,9 +336,9 @@
       "timeout": 0,
       "survived": 1,
       "noCoverage": 0,
-      "cost": 1325,
-      "measuredOn": "15eec246708bf0bfdcdfe62fad678d2243d1b6b2",
-      "measuredDate": "2026-10-12"
+      "cost": 1139,
+      "measuredOn": "59969dd5ac2ef8264d5e82a5252831bcc02d383c",
+      "measuredDate": "2026-10-19"
     },
     "src/domain/app-guard.ts": {
       "score": 100,
@@ -338,8 +347,8 @@
       "survived": 0,
       "noCoverage": 0,
       "cost": 747,
-      "measuredOn": "c2d2153d875708587565c7f934fd369e43867845",
-      "measuredDate": "2026-10-17"
+      "measuredOn": "59969dd5ac2ef8264d5e82a5252831bcc02d383c",
+      "measuredDate": "2026-10-19"
     },
     "src/domain/attachments.ts": {
       "score": 88.96,
@@ -347,18 +356,19 @@
       "timeout": 0,
       "survived": 14,
       "noCoverage": 4,
-      "cost": 24851,
-      "measuredOn": "15eec246708bf0bfdcdfe62fad678d2243d1b6b2",
-      "measuredDate": "2026-10-12"
+      "cost": 23688,
+      "measuredOn": "59969dd5ac2ef8264d5e82a5252831bcc02d383c",
+      "measuredDate": "2026-10-19"
     },
     "src/domain/attention.ts": {
-      "score": 95.12,
-      "killed": 117,
+      "score": 95.28,
+      "killed": 121,
       "timeout": 0,
       "survived": 6,
       "noCoverage": 0,
-      "measuredOn": "15eec246708bf0bfdcdfe62fad678d2243d1b6b2",
-      "measuredDate": "2026-10-12"
+      "cost": 8659,
+      "measuredOn": "59969dd5ac2ef8264d5e82a5252831bcc02d383c",
+      "measuredDate": "2026-10-19"
     },
     "src/domain/balance-declaration.ts": {
       "score": 95.89,
@@ -366,18 +376,19 @@
       "timeout": 0,
       "survived": 3,
       "noCoverage": 0,
-      "cost": 4497,
-      "measuredOn": "15eec246708bf0bfdcdfe62fad678d2243d1b6b2",
-      "measuredDate": "2026-10-12"
+      "cost": 4337,
+      "measuredOn": "59969dd5ac2ef8264d5e82a5252831bcc02d383c",
+      "measuredDate": "2026-10-19"
     },
     "src/domain/balance.ts": {
-      "score": 98.11,
-      "killed": 312,
+      "score": 98.29,
+      "killed": 344,
       "timeout": 0,
       "survived": 4,
       "noCoverage": 2,
-      "measuredOn": "eec6f35fac7a81c207727fe0eca3d83adf3013fd",
-      "measuredDate": "2026-09-23"
+      "cost": 10641,
+      "measuredOn": "59969dd5ac2ef8264d5e82a5252831bcc02d383c",
+      "measuredDate": "2026-10-19"
     },
     "src/domain/brand-marks.ts": {
       "score": 100,
@@ -385,9 +396,9 @@
       "timeout": 0,
       "survived": 0,
       "noCoverage": 0,
-      "cost": 1644,
-      "measuredOn": "c2d2153d875708587565c7f934fd369e43867845",
-      "measuredDate": "2026-10-17"
+      "cost": 7524,
+      "measuredOn": "59969dd5ac2ef8264d5e82a5252831bcc02d383c",
+      "measuredDate": "2026-10-19"
     },
     "src/domain/budgets.ts": {
       "score": 100,
@@ -395,8 +406,9 @@
       "timeout": 0,
       "survived": 0,
       "noCoverage": 0,
-      "measuredOn": "15eec246708bf0bfdcdfe62fad678d2243d1b6b2",
-      "measuredDate": "2026-10-12"
+      "cost": 23,
+      "measuredOn": "59969dd5ac2ef8264d5e82a5252831bcc02d383c",
+      "measuredDate": "2026-10-19"
     },
     "src/domain/calculator.ts": {
       "score": 91.39,
@@ -404,9 +416,9 @@
       "timeout": 0,
       "survived": 24,
       "noCoverage": 2,
-      "cost": 14584,
-      "measuredOn": "15eec246708bf0bfdcdfe62fad678d2243d1b6b2",
-      "measuredDate": "2026-10-12"
+      "cost": 16852,
+      "measuredOn": "59969dd5ac2ef8264d5e82a5252831bcc02d383c",
+      "measuredDate": "2026-10-19"
     },
     "src/domain/card-statements.ts": {
       "score": 92.98,
@@ -414,9 +426,9 @@
       "timeout": 0,
       "survived": 17,
       "noCoverage": 0,
-      "cost": 9270,
-      "measuredOn": "15eec246708bf0bfdcdfe62fad678d2243d1b6b2",
-      "measuredDate": "2026-10-12"
+      "cost": 9651,
+      "measuredOn": "59969dd5ac2ef8264d5e82a5252831bcc02d383c",
+      "measuredDate": "2026-10-19"
     },
     "src/domain/cash-flow-matrix.ts": {
       "score": 98.67,
@@ -429,13 +441,13 @@
     },
     "src/domain/category-icons.ts": {
       "score": 100,
-      "killed": 79,
-      "timeout": 3,
+      "killed": 81,
+      "timeout": 1,
       "survived": 0,
       "noCoverage": 0,
-      "cost": 15288,
-      "measuredOn": "15eec246708bf0bfdcdfe62fad678d2243d1b6b2",
-      "measuredDate": "2026-10-12"
+      "cost": 13928,
+      "measuredOn": "59969dd5ac2ef8264d5e82a5252831bcc02d383c",
+      "measuredDate": "2026-10-19"
     },
     "src/domain/computed-columns.ts": {
       "score": 73.17,
@@ -443,17 +455,19 @@
       "timeout": 0,
       "survived": 43,
       "noCoverage": 1,
-      "measuredOn": "15eec246708bf0bfdcdfe62fad678d2243d1b6b2",
-      "measuredDate": "2026-10-12"
+      "cost": 6243,
+      "measuredOn": "59969dd5ac2ef8264d5e82a5252831bcc02d383c",
+      "measuredDate": "2026-10-19"
     },
     "src/domain/dashboard.ts": {
-      "score": 96.67,
+      "score": 97.21,
       "killed": 174,
       "timeout": 0,
-      "survived": 6,
+      "survived": 5,
       "noCoverage": 0,
-      "measuredOn": "eec6f35fac7a81c207727fe0eca3d83adf3013fd",
-      "measuredDate": "2026-09-23"
+      "cost": 1650,
+      "measuredOn": "59969dd5ac2ef8264d5e82a5252831bcc02d383c",
+      "measuredDate": "2026-10-19"
     },
     "src/domain/dates.ts": {
       "score": 99.43,
@@ -461,8 +475,9 @@
       "timeout": 0,
       "survived": 1,
       "noCoverage": 0,
-      "measuredOn": "15eec246708bf0bfdcdfe62fad678d2243d1b6b2",
-      "measuredDate": "2026-10-12"
+      "cost": 6152,
+      "measuredOn": "59969dd5ac2ef8264d5e82a5252831bcc02d383c",
+      "measuredDate": "2026-10-19"
     },
     "src/domain/diagnostics.ts": {
       "score": 88.19,
@@ -470,9 +485,9 @@
       "timeout": 0,
       "survived": 17,
       "noCoverage": 0,
-      "cost": 6051,
-      "measuredOn": "15eec246708bf0bfdcdfe62fad678d2243d1b6b2",
-      "measuredDate": "2026-10-12"
+      "cost": 5863,
+      "measuredOn": "59969dd5ac2ef8264d5e82a5252831bcc02d383c",
+      "measuredDate": "2026-10-19"
     },
     "src/domain/expected.ts": {
       "score": 98.68,
@@ -480,9 +495,9 @@
       "timeout": 1,
       "survived": 3,
       "noCoverage": 0,
-      "cost": 7685,
-      "measuredOn": "15eec246708bf0bfdcdfe62fad678d2243d1b6b2",
-      "measuredDate": "2026-10-12"
+      "cost": 8172,
+      "measuredOn": "59969dd5ac2ef8264d5e82a5252831bcc02d383c",
+      "measuredDate": "2026-10-19"
     },
     "src/domain/feedback.ts": {
       "score": 98.13,
@@ -490,8 +505,9 @@
       "timeout": 2,
       "survived": 2,
       "noCoverage": 0,
-      "measuredOn": "15eec246708bf0bfdcdfe62fad678d2243d1b6b2",
-      "measuredDate": "2026-10-12"
+      "cost": 1663,
+      "measuredOn": "59969dd5ac2ef8264d5e82a5252831bcc02d383c",
+      "measuredDate": "2026-10-19"
     },
     "src/domain/form-state.ts": {
       "score": 100,
@@ -500,18 +516,18 @@
       "survived": 0,
       "noCoverage": 0,
       "cost": 118,
-      "measuredOn": "15eec246708bf0bfdcdfe62fad678d2243d1b6b2",
-      "measuredDate": "2026-10-12"
+      "measuredOn": "59969dd5ac2ef8264d5e82a5252831bcc02d383c",
+      "measuredDate": "2026-10-19"
     },
     "src/domain/fx-provider.ts": {
-      "score": 94.51,
-      "killed": 258,
+      "score": 98.68,
+      "killed": 225,
       "timeout": 0,
-      "survived": 15,
+      "survived": 3,
       "noCoverage": 0,
-      "cost": 8692,
-      "measuredOn": "93f59856f33f8646f00e988daacb8bddbf3dc29b",
-      "measuredDate": "2026-08-24"
+      "cost": 7262,
+      "measuredOn": "59969dd5ac2ef8264d5e82a5252831bcc02d383c",
+      "measuredDate": "2026-10-19"
     },
     "src/domain/fx.ts": {
       "score": 100,
@@ -519,9 +535,9 @@
       "timeout": 0,
       "survived": 0,
       "noCoverage": 0,
-      "cost": 2898,
-      "measuredOn": "15eec246708bf0bfdcdfe62fad678d2243d1b6b2",
-      "measuredDate": "2026-10-12"
+      "cost": 2500,
+      "measuredOn": "59969dd5ac2ef8264d5e82a5252831bcc02d383c",
+      "measuredDate": "2026-10-19"
     },
     "src/domain/input.ts": {
       "score": 100,
@@ -529,17 +545,19 @@
       "timeout": 0,
       "survived": 0,
       "noCoverage": 0,
-      "measuredOn": "15eec246708bf0bfdcdfe62fad678d2243d1b6b2",
-      "measuredDate": "2026-10-12"
+      "cost": 928,
+      "measuredOn": "59969dd5ac2ef8264d5e82a5252831bcc02d383c",
+      "measuredDate": "2026-10-19"
     },
     "src/domain/installments.ts": {
-      "score": 98.82,
-      "killed": 252,
+      "score": 98.95,
+      "killed": 376,
       "timeout": 0,
-      "survived": 3,
+      "survived": 4,
       "noCoverage": 0,
-      "measuredOn": "cd2b1f65973b1d657f5860ec50d1b9015e8349a4",
-      "measuredDate": "2026-09-21"
+      "cost": 11801,
+      "measuredOn": "59969dd5ac2ef8264d5e82a5252831bcc02d383c",
+      "measuredDate": "2026-10-19"
     },
     "src/domain/investment-catalog.ts": {
       "score": 98.72,
@@ -547,28 +565,29 @@
       "timeout": 0,
       "survived": 1,
       "noCoverage": 0,
-      "measuredOn": "15eec246708bf0bfdcdfe62fad678d2243d1b6b2",
-      "measuredDate": "2026-10-12"
+      "cost": 13507,
+      "measuredOn": "59969dd5ac2ef8264d5e82a5252831bcc02d383c",
+      "measuredDate": "2026-10-19"
     },
     "src/domain/investment-projection.ts": {
-      "score": 97.14,
-      "killed": 34,
+      "score": 97.62,
+      "killed": 41,
       "timeout": 0,
       "survived": 1,
       "noCoverage": 0,
-      "cost": 91,
-      "measuredOn": "15eec246708bf0bfdcdfe62fad678d2243d1b6b2",
-      "measuredDate": "2026-10-12"
+      "cost": 118,
+      "measuredOn": "59969dd5ac2ef8264d5e82a5252831bcc02d383c",
+      "measuredDate": "2026-10-19"
     },
     "src/domain/investments.ts": {
-      "score": 98.87,
-      "killed": 350,
+      "score": 99.14,
+      "killed": 344,
       "timeout": 0,
-      "survived": 4,
+      "survived": 3,
       "noCoverage": 0,
-      "cost": 8137,
-      "measuredOn": "dc9686a35190aef09ea7be5161bfa5bc3a118575",
-      "measuredDate": "2026-09-04"
+      "cost": 7072,
+      "measuredOn": "59969dd5ac2ef8264d5e82a5252831bcc02d383c",
+      "measuredDate": "2026-10-19"
     },
     "src/domain/logo-domain.ts": {
       "score": 97.66,
@@ -576,9 +595,9 @@
       "timeout": 2,
       "survived": 4,
       "noCoverage": 0,
-      "cost": 11412,
-      "measuredOn": "c2d2153d875708587565c7f934fd369e43867845",
-      "measuredDate": "2026-10-17"
+      "cost": 9316,
+      "measuredOn": "59969dd5ac2ef8264d5e82a5252831bcc02d383c",
+      "measuredDate": "2026-10-19"
     },
     "src/domain/market.ts": {
       "score": 100,
@@ -586,8 +605,9 @@
       "timeout": 0,
       "survived": 0,
       "noCoverage": 0,
-      "measuredOn": "15eec246708bf0bfdcdfe62fad678d2243d1b6b2",
-      "measuredDate": "2026-10-12"
+      "cost": 8733,
+      "measuredOn": "59969dd5ac2ef8264d5e82a5252831bcc02d383c",
+      "measuredDate": "2026-10-19"
     },
     "src/domain/matrix-colors.ts": {
       "score": 89.54,
@@ -595,18 +615,19 @@
       "timeout": 0,
       "survived": 16,
       "noCoverage": 0,
-      "cost": 12632,
-      "measuredOn": "15eec246708bf0bfdcdfe62fad678d2243d1b6b2",
-      "measuredDate": "2026-10-12"
+      "cost": 12167,
+      "measuredOn": "59969dd5ac2ef8264d5e82a5252831bcc02d383c",
+      "measuredDate": "2026-10-19"
     },
     "src/domain/matrix-preferences.ts": {
-      "score": 93.44,
-      "killed": 57,
+      "score": 98.11,
+      "killed": 52,
       "timeout": 0,
-      "survived": 4,
+      "survived": 1,
       "noCoverage": 0,
-      "measuredOn": "f4aca7d7251d8bc6230ab9e6786e0a544e674f3e",
-      "measuredDate": "2026-09-09"
+      "cost": 258,
+      "measuredOn": "59969dd5ac2ef8264d5e82a5252831bcc02d383c",
+      "measuredDate": "2026-10-19"
     },
     "src/domain/money.ts": {
       "score": 93.91,
@@ -614,9 +635,9 @@
       "timeout": 0,
       "survived": 22,
       "noCoverage": 0,
-      "cost": 29596,
-      "measuredOn": "c2d2153d875708587565c7f934fd369e43867845",
-      "measuredDate": "2026-10-17"
+      "cost": 25833,
+      "measuredOn": "59969dd5ac2ef8264d5e82a5252831bcc02d383c",
+      "measuredDate": "2026-10-19"
     },
     "src/domain/notifications.ts": {
       "score": 98.92,
@@ -624,9 +645,9 @@
       "timeout": 0,
       "survived": 1,
       "noCoverage": 0,
-      "cost": 2170,
-      "measuredOn": "15eec246708bf0bfdcdfe62fad678d2243d1b6b2",
-      "measuredDate": "2026-10-12"
+      "cost": 1650,
+      "measuredOn": "59969dd5ac2ef8264d5e82a5252831bcc02d383c",
+      "measuredDate": "2026-10-19"
     },
     "src/domain/onboarding.ts": {
       "score": 88.89,
@@ -634,8 +655,9 @@
       "timeout": 0,
       "survived": 1,
       "noCoverage": 0,
-      "measuredOn": "bac1cd3f15e43c32916b994140dcd6c3ddb11e97",
-      "measuredDate": "2026-09-09"
+      "cost": 17,
+      "measuredOn": "59969dd5ac2ef8264d5e82a5252831bcc02d383c",
+      "measuredDate": "2026-10-19"
     },
     "src/domain/privacy.ts": {
       "score": 100,
@@ -644,8 +666,8 @@
       "survived": 0,
       "noCoverage": 0,
       "cost": 16,
-      "measuredOn": "15eec246708bf0bfdcdfe62fad678d2243d1b6b2",
-      "measuredDate": "2026-10-12"
+      "measuredOn": "59969dd5ac2ef8264d5e82a5252831bcc02d383c",
+      "measuredDate": "2026-10-19"
     },
     "src/domain/provenance.ts": {
       "score": 100,
@@ -653,8 +675,9 @@
       "timeout": 0,
       "survived": 0,
       "noCoverage": 0,
-      "measuredOn": "15eec246708bf0bfdcdfe62fad678d2243d1b6b2",
-      "measuredDate": "2026-10-12"
+      "cost": 3,
+      "measuredOn": "59969dd5ac2ef8264d5e82a5252831bcc02d383c",
+      "measuredDate": "2026-10-19"
     },
     "src/domain/recurrence.ts": {
       "score": 94.79,
@@ -662,18 +685,19 @@
       "timeout": 0,
       "survived": 5,
       "noCoverage": 0,
-      "measuredOn": "15eec246708bf0bfdcdfe62fad678d2243d1b6b2",
-      "measuredDate": "2026-10-12"
+      "cost": 2743,
+      "measuredOn": "59969dd5ac2ef8264d5e82a5252831bcc02d383c",
+      "measuredDate": "2026-10-19"
     },
     "src/domain/route-params.ts": {
-      "score": 96.97,
-      "killed": 64,
+      "score": 100,
+      "killed": 57,
       "timeout": 0,
-      "survived": 2,
+      "survived": 0,
       "noCoverage": 0,
-      "cost": 389,
-      "measuredOn": "bac1cd3f15e43c32916b994140dcd6c3ddb11e97",
-      "measuredDate": "2026-09-09"
+      "cost": 342,
+      "measuredOn": "59969dd5ac2ef8264d5e82a5252831bcc02d383c",
+      "measuredDate": "2026-10-19"
     },
     "src/domain/save-summary.ts": {
       "score": 100,
@@ -682,8 +706,8 @@
       "survived": 0,
       "noCoverage": 0,
       "cost": 155,
-      "measuredOn": "15eec246708bf0bfdcdfe62fad678d2243d1b6b2",
-      "measuredDate": "2026-10-12"
+      "measuredOn": "59969dd5ac2ef8264d5e82a5252831bcc02d383c",
+      "measuredDate": "2026-10-19"
     },
     "src/domain/serial-queue.ts": {
       "score": 100,
@@ -691,9 +715,9 @@
       "timeout": 0,
       "survived": 0,
       "noCoverage": 0,
-      "cost": 1220,
-      "measuredOn": "15eec246708bf0bfdcdfe62fad678d2243d1b6b2",
-      "measuredDate": "2026-10-12"
+      "cost": 1261,
+      "measuredOn": "59969dd5ac2ef8264d5e82a5252831bcc02d383c",
+      "measuredDate": "2026-10-19"
     },
     "src/domain/settings.ts": {
       "score": 97.44,
@@ -701,28 +725,29 @@
       "timeout": 0,
       "survived": 3,
       "noCoverage": 0,
-      "measuredOn": "15eec246708bf0bfdcdfe62fad678d2243d1b6b2",
-      "measuredDate": "2026-10-12"
+      "cost": 8225,
+      "measuredOn": "59969dd5ac2ef8264d5e82a5252831bcc02d383c",
+      "measuredDate": "2026-10-19"
     },
     "src/domain/statement-import.ts": {
-      "score": 81.33,
-      "killed": 460,
-      "timeout": 6,
-      "survived": 107,
+      "score": 84.12,
+      "killed": 482,
+      "timeout": 0,
+      "survived": 91,
       "noCoverage": 0,
-      "cost": 214265,
-      "measuredOn": "15eec246708bf0bfdcdfe62fad678d2243d1b6b2",
-      "measuredDate": "2026-10-12"
+      "cost": 230588,
+      "measuredOn": "59969dd5ac2ef8264d5e82a5252831bcc02d383c",
+      "measuredDate": "2026-10-19"
     },
     "src/domain/subscriptions.ts": {
-      "score": 97.26,
-      "killed": 142,
+      "score": 97.53,
+      "killed": 158,
       "timeout": 0,
       "survived": 4,
       "noCoverage": 0,
-      "cost": 5154,
-      "measuredOn": "c74ef5673070c2c16a3f021e5a8d6d9296f1ca63",
-      "measuredDate": "2026-08-24"
+      "cost": 5431,
+      "measuredOn": "59969dd5ac2ef8264d5e82a5252831bcc02d383c",
+      "measuredDate": "2026-10-19"
     },
     "src/domain/transaction-draft.ts": {
       "score": 92.31,
@@ -731,8 +756,8 @@
       "survived": 4,
       "noCoverage": 0,
       "cost": 274,
-      "measuredOn": "15eec246708bf0bfdcdfe62fad678d2243d1b6b2",
-      "measuredDate": "2026-10-12"
+      "measuredOn": "59969dd5ac2ef8264d5e82a5252831bcc02d383c",
+      "measuredDate": "2026-10-19"
     },
     "src/domain/transaction-search.ts": {
       "score": 97.75,
@@ -740,8 +765,9 @@
       "timeout": 0,
       "survived": 2,
       "noCoverage": 0,
-      "measuredOn": "15eec246708bf0bfdcdfe62fad678d2243d1b6b2",
-      "measuredDate": "2026-10-12"
+      "cost": 297,
+      "measuredOn": "59969dd5ac2ef8264d5e82a5252831bcc02d383c",
+      "measuredDate": "2026-10-19"
     },
     "src/domain/transactions.ts": {
       "score": 100,
@@ -749,8 +775,9 @@
       "timeout": 0,
       "survived": 0,
       "noCoverage": 0,
-      "measuredOn": "15eec246708bf0bfdcdfe62fad678d2243d1b6b2",
-      "measuredDate": "2026-10-12"
+      "cost": 615,
+      "measuredOn": "59969dd5ac2ef8264d5e82a5252831bcc02d383c",
+      "measuredDate": "2026-10-19"
     },
     "src/domain/types.ts": {
       "score": 100,
@@ -758,9 +785,9 @@
       "timeout": 0,
       "survived": 0,
       "noCoverage": 0,
-      "cost": 2379,
-      "measuredOn": "15eec246708bf0bfdcdfe62fad678d2243d1b6b2",
-      "measuredDate": "2026-10-12"
+      "cost": 2520,
+      "measuredOn": "59969dd5ac2ef8264d5e82a5252831bcc02d383c",
+      "measuredDate": "2026-10-19"
     },
     "src/domain/undo-outcome.ts": {
       "score": 100,
@@ -768,8 +795,9 @@
       "timeout": 0,
       "survived": 0,
       "noCoverage": 0,
-      "measuredOn": "15eec246708bf0bfdcdfe62fad678d2243d1b6b2",
-      "measuredDate": "2026-10-12"
+      "cost": 10,
+      "measuredOn": "59969dd5ac2ef8264d5e82a5252831bcc02d383c",
+      "measuredDate": "2026-10-19"
     },
     "src/domain/upcoming.ts": {
       "score": 98.69,
@@ -778,18 +806,18 @@
       "survived": 2,
       "noCoverage": 0,
       "cost": 976,
-      "measuredOn": "15eec246708bf0bfdcdfe62fad678d2243d1b6b2",
-      "measuredDate": "2026-10-12"
+      "measuredOn": "59969dd5ac2ef8264d5e82a5252831bcc02d383c",
+      "measuredDate": "2026-10-19"
     },
     "src/domain/usage.ts": {
-      "score": 76.81,
-      "killed": 106,
+      "score": 80.45,
+      "killed": 107,
       "timeout": 0,
-      "survived": 31,
+      "survived": 25,
       "noCoverage": 1,
-      "cost": 8008,
-      "measuredOn": "0d9b2db231ba2d1344b544f9ed592ef91ddb5b5e",
-      "measuredDate": "2026-09-20"
+      "cost": 7733,
+      "measuredOn": "59969dd5ac2ef8264d5e82a5252831bcc02d383c",
+      "measuredDate": "2026-10-19"
     },
     "src/domain/user-error.ts": {
       "score": 94.44,
@@ -797,8 +825,9 @@
       "timeout": 0,
       "survived": 1,
       "noCoverage": 0,
-      "measuredOn": "15eec246708bf0bfdcdfe62fad678d2243d1b6b2",
-      "measuredDate": "2026-10-12"
+      "cost": 420,
+      "measuredOn": "59969dd5ac2ef8264d5e82a5252831bcc02d383c",
+      "measuredDate": "2026-10-19"
     },
     "src/domain/user-id.ts": {
       "score": 100,
@@ -806,9 +835,9 @@
       "timeout": 0,
       "survived": 0,
       "noCoverage": 0,
-      "cost": 2329,
-      "measuredOn": "c2d2153d875708587565c7f934fd369e43867845",
-      "measuredDate": "2026-10-17"
+      "cost": 2239,
+      "measuredOn": "59969dd5ac2ef8264d5e82a5252831bcc02d383c",
+      "measuredDate": "2026-10-19"
     },
     "src/domain/web-security.ts": {
       "score": 97.3,
@@ -817,8 +846,8 @@
       "survived": 1,
       "noCoverage": 0,
       "cost": 44,
-      "measuredOn": "15eec246708bf0bfdcdfe62fad678d2243d1b6b2",
-      "measuredDate": "2026-10-12"
+      "measuredOn": "59969dd5ac2ef8264d5e82a5252831bcc02d383c",
+      "measuredDate": "2026-10-19"
     },
     "src/domain/workbook-format-guard.ts": {
       "score": 91.67,
@@ -826,17 +855,19 @@
       "timeout": 0,
       "survived": 1,
       "noCoverage": 0,
-      "measuredOn": "15eec246708bf0bfdcdfe62fad678d2243d1b6b2",
-      "measuredDate": "2026-10-12"
+      "cost": 1699,
+      "measuredOn": "59969dd5ac2ef8264d5e82a5252831bcc02d383c",
+      "measuredDate": "2026-10-19"
     },
     "src/domain/workbook-format.ts": {
-      "score": 98.58,
-      "killed": 347,
-      "timeout": 0,
-      "survived": 5,
+      "score": 98.67,
+      "killed": 442,
+      "timeout": 3,
+      "survived": 6,
       "noCoverage": 0,
-      "measuredOn": "ceef54830870fe3bb73a22b1f1fb9d3599e4dbcd",
-      "measuredDate": "2026-09-15"
+      "cost": 14889,
+      "measuredOn": "59969dd5ac2ef8264d5e82a5252831bcc02d383c",
+      "measuredDate": "2026-10-19"
     },
     "src/domain/year-columns.ts": {
       "score": 95.83,
@@ -844,8 +875,9 @@
       "timeout": 0,
       "survived": 2,
       "noCoverage": 0,
-      "measuredOn": "15eec246708bf0bfdcdfe62fad678d2243d1b6b2",
-      "measuredDate": "2026-10-12"
+      "cost": 912,
+      "measuredOn": "59969dd5ac2ef8264d5e82a5252831bcc02d383c",
+      "measuredDate": "2026-10-19"
     },
     "src/services/attachment-store.ts": {
       "score": 80.77,
@@ -854,17 +886,18 @@
       "survived": 15,
       "noCoverage": 0,
       "cost": 1371,
-      "measuredOn": "15eec246708bf0bfdcdfe62fad678d2243d1b6b2",
-      "measuredDate": "2026-10-12"
+      "measuredOn": "59969dd5ac2ef8264d5e82a5252831bcc02d383c",
+      "measuredDate": "2026-10-19"
     },
     "src/services/attachment-store.web.ts": {
       "score": 76.98,
-      "killed": 89,
-      "timeout": 8,
+      "killed": 97,
+      "timeout": 0,
       "survived": 22,
       "noCoverage": 7,
-      "measuredOn": "15eec246708bf0bfdcdfe62fad678d2243d1b6b2",
-      "measuredDate": "2026-10-12"
+      "cost": 3631,
+      "measuredOn": "59969dd5ac2ef8264d5e82a5252831bcc02d383c",
+      "measuredDate": "2026-10-19"
     },
     "src/services/backup-remap.ts": {
       "score": 65.37,
@@ -872,9 +905,9 @@
       "timeout": 1,
       "survived": 79,
       "noCoverage": 28,
-      "cost": 12494,
-      "measuredOn": "15eec246708bf0bfdcdfe62fad678d2243d1b6b2",
-      "measuredDate": "2026-10-12"
+      "cost": 12436,
+      "measuredOn": "59969dd5ac2ef8264d5e82a5252831bcc02d383c",
+      "measuredDate": "2026-10-19"
     },
     "src/services/backup-validation.ts": {
       "score": 71.73,
@@ -882,37 +915,39 @@
       "timeout": 0,
       "survived": 271,
       "noCoverage": 79,
-      "cost": 68547,
-      "measuredOn": "15eec246708bf0bfdcdfe62fad678d2243d1b6b2",
-      "measuredDate": "2026-10-12"
+      "cost": 96397,
+      "measuredOn": "59969dd5ac2ef8264d5e82a5252831bcc02d383c",
+      "measuredDate": "2026-10-19"
     },
     "src/services/device-preferences.ts": {
-      "score": 80,
-      "killed": 32,
+      "score": 100,
+      "killed": 43,
       "timeout": 0,
-      "survived": 4,
-      "noCoverage": 4,
-      "measuredOn": "ceef54830870fe3bb73a22b1f1fb9d3599e4dbcd",
-      "measuredDate": "2026-09-15"
+      "survived": 0,
+      "noCoverage": 0,
+      "cost": 9301,
+      "measuredOn": "59969dd5ac2ef8264d5e82a5252831bcc02d383c",
+      "measuredDate": "2026-10-19"
     },
     "src/services/diagnostics.ts": {
       "score": 63.92,
-      "killed": 60,
-      "timeout": 2,
+      "killed": 62,
+      "timeout": 0,
       "survived": 32,
       "noCoverage": 3,
-      "measuredOn": "15eec246708bf0bfdcdfe62fad678d2243d1b6b2",
-      "measuredDate": "2026-10-12"
+      "cost": 4707,
+      "measuredOn": "59969dd5ac2ef8264d5e82a5252831bcc02d383c",
+      "measuredDate": "2026-10-19"
     },
     "src/services/export-import.ts": {
       "score": 89.73,
-      "killed": 162,
-      "timeout": 4,
+      "killed": 166,
+      "timeout": 0,
       "survived": 15,
       "noCoverage": 4,
-      "cost": 2260,
-      "measuredOn": "15eec246708bf0bfdcdfe62fad678d2243d1b6b2",
-      "measuredDate": "2026-10-12"
+      "cost": 2179,
+      "measuredOn": "59969dd5ac2ef8264d5e82a5252831bcc02d383c",
+      "measuredDate": "2026-10-19"
     },
     "src/services/feedback.ts": {
       "score": 100,
@@ -920,18 +955,19 @@
       "timeout": 0,
       "survived": 0,
       "noCoverage": 0,
-      "measuredOn": "15eec246708bf0bfdcdfe62fad678d2243d1b6b2",
-      "measuredDate": "2026-10-12"
+      "cost": 775,
+      "measuredOn": "59969dd5ac2ef8264d5e82a5252831bcc02d383c",
+      "measuredDate": "2026-10-19"
     },
     "src/services/fx-fetch.ts": {
-      "score": 87.67,
-      "killed": 128,
+      "score": 88.81,
+      "killed": 127,
       "timeout": 0,
-      "survived": 16,
+      "survived": 14,
       "noCoverage": 2,
-      "cost": 7507,
-      "measuredOn": "d3be2e3cda6fbbdc1db1928fd1f94e3bd3247ed7",
-      "measuredDate": "2026-09-19"
+      "cost": 7694,
+      "measuredOn": "59969dd5ac2ef8264d5e82a5252831bcc02d383c",
+      "measuredDate": "2026-10-19"
     },
     "src/services/kv.ts": {
       "score": 88.89,
@@ -939,8 +975,9 @@
       "timeout": 0,
       "survived": 3,
       "noCoverage": 0,
-      "measuredOn": "15eec246708bf0bfdcdfe62fad678d2243d1b6b2",
-      "measuredDate": "2026-10-12"
+      "cost": 62,
+      "measuredOn": "59969dd5ac2ef8264d5e82a5252831bcc02d383c",
+      "measuredDate": "2026-10-19"
     },
     "src/services/logger.ts": {
       "score": 56.67,
@@ -948,8 +985,9 @@
       "timeout": 0,
       "survived": 10,
       "noCoverage": 16,
-      "measuredOn": "15eec246708bf0bfdcdfe62fad678d2243d1b6b2",
-      "measuredDate": "2026-10-12"
+      "cost": 178,
+      "measuredOn": "59969dd5ac2ef8264d5e82a5252831bcc02d383c",
+      "measuredDate": "2026-10-19"
     },
     "src/services/markets.ts": {
       "score": 65.12,
@@ -957,8 +995,9 @@
       "timeout": 0,
       "survived": 80,
       "noCoverage": 10,
-      "measuredOn": "15eec246708bf0bfdcdfe62fad678d2243d1b6b2",
-      "measuredDate": "2026-10-12"
+      "cost": 26552,
+      "measuredOn": "59969dd5ac2ef8264d5e82a5252831bcc02d383c",
+      "measuredDate": "2026-10-19"
     },
     "src/services/notifications.ts": {
       "score": 98.15,
@@ -967,37 +1006,38 @@
       "survived": 3,
       "noCoverage": 0,
       "cost": 849,
-      "measuredOn": "15eec246708bf0bfdcdfe62fad678d2243d1b6b2",
-      "measuredDate": "2026-10-12"
+      "measuredOn": "59969dd5ac2ef8264d5e82a5252831bcc02d383c",
+      "measuredDate": "2026-10-19"
     },
     "src/services/pdf-text.ts": {
-      "score": 64.3,
-      "killed": 802,
-      "timeout": 41,
-      "survived": 412,
+      "score": 65.68,
+      "killed": 825,
+      "timeout": 36,
+      "survived": 394,
       "noCoverage": 56,
-      "cost": 67329,
-      "measuredOn": "15eec246708bf0bfdcdfe62fad678d2243d1b6b2",
-      "measuredDate": "2026-10-12"
+      "cost": 68528,
+      "measuredOn": "59969dd5ac2ef8264d5e82a5252831bcc02d383c",
+      "measuredDate": "2026-10-19"
     },
     "src/services/picked-file.ts": {
-      "score": 54.23,
-      "killed": 74,
+      "score": 58.22,
+      "killed": 82,
       "timeout": 3,
-      "survived": 52,
-      "noCoverage": 13,
-      "cost": 608,
-      "measuredOn": "bac1cd3f15e43c32916b994140dcd6c3ddb11e97",
-      "measuredDate": "2026-09-09"
+      "survived": 47,
+      "noCoverage": 14,
+      "cost": 766,
+      "measuredOn": "59969dd5ac2ef8264d5e82a5252831bcc02d383c",
+      "measuredDate": "2026-10-19"
     },
     "src/services/spreadsheet-import.ts": {
-      "score": 72.23,
-      "killed": 894,
-      "timeout": 19,
-      "survived": 341,
-      "noCoverage": 10,
-      "measuredOn": "15eec246708bf0bfdcdfe62fad678d2243d1b6b2",
-      "measuredDate": "2026-10-12"
+      "score": 74.84,
+      "killed": 933,
+      "timeout": 13,
+      "survived": 310,
+      "noCoverage": 8,
+      "cost": 83114,
+      "measuredOn": "59969dd5ac2ef8264d5e82a5252831bcc02d383c",
+      "measuredDate": "2026-10-19"
     },
     "src/services/usage.ts": {
       "score": 86.44,
@@ -1005,17 +1045,19 @@
       "timeout": 0,
       "survived": 6,
       "noCoverage": 2,
-      "measuredOn": "15eec246708bf0bfdcdfe62fad678d2243d1b6b2",
-      "measuredDate": "2026-10-12"
+      "cost": 2424,
+      "measuredOn": "59969dd5ac2ef8264d5e82a5252831bcc02d383c",
+      "measuredDate": "2026-10-19"
     },
     "src/services/workbook-export.ts": {
-      "score": 77.14,
-      "killed": 75,
+      "score": 79.81,
+      "killed": 77,
       "timeout": 6,
-      "survived": 24,
+      "survived": 21,
       "noCoverage": 0,
-      "measuredOn": "15eec246708bf0bfdcdfe62fad678d2243d1b6b2",
-      "measuredDate": "2026-10-12"
+      "cost": 40609,
+      "measuredOn": "59969dd5ac2ef8264d5e82a5252831bcc02d383c",
+      "measuredDate": "2026-10-19"
     },
     "src/sync/attachment-mirror.ts": {
       "score": 74.01,
@@ -1024,8 +1066,8 @@
       "survived": 45,
       "noCoverage": 14,
       "cost": 2932,
-      "measuredOn": "15eec246708bf0bfdcdfe62fad678d2243d1b6b2",
-      "measuredDate": "2026-10-12"
+      "measuredOn": "59969dd5ac2ef8264d5e82a5252831bcc02d383c",
+      "measuredDate": "2026-10-19"
     },
     "src/sync/engine.ts": {
       "score": 85.42,
@@ -1033,9 +1075,9 @@
       "timeout": 6,
       "survived": 78,
       "noCoverage": 8,
-      "cost": 24402,
-      "measuredOn": "c2d2153d875708587565c7f934fd369e43867845",
-      "measuredDate": "2026-10-17"
+      "cost": 25144,
+      "measuredOn": "59969dd5ac2ef8264d5e82a5252831bcc02d383c",
+      "measuredDate": "2026-10-19"
     },
     "src/sync/merge-policy.ts": {
       "score": 80.13,
@@ -1043,9 +1085,9 @@
       "timeout": 0,
       "survived": 27,
       "noCoverage": 4,
-      "cost": 8887,
-      "measuredOn": "15eec246708bf0bfdcdfe62fad678d2243d1b6b2",
-      "measuredDate": "2026-10-12"
+      "cost": 9154,
+      "measuredOn": "59969dd5ac2ef8264d5e82a5252831bcc02d383c",
+      "measuredDate": "2026-10-19"
     },
     "src/sync/outbound-validation.ts": {
       "score": 65.38,
@@ -1053,9 +1095,9 @@
       "timeout": 0,
       "survived": 35,
       "noCoverage": 19,
-      "cost": 2306,
-      "measuredOn": "15eec246708bf0bfdcdfe62fad678d2243d1b6b2",
-      "measuredDate": "2026-10-12"
+      "cost": 2370,
+      "measuredOn": "59969dd5ac2ef8264d5e82a5252831bcc02d383c",
+      "measuredDate": "2026-10-19"
     },
     "src/sync/secure-chunked-storage.ts": {
       "score": 77.27,
@@ -1063,9 +1105,9 @@
       "timeout": 3,
       "survived": 17,
       "noCoverage": 3,
-      "cost": 154,
-      "measuredOn": "15eec246708bf0bfdcdfe62fad678d2243d1b6b2",
-      "measuredDate": "2026-10-12"
+      "cost": 150,
+      "measuredOn": "59969dd5ac2ef8264d5e82a5252831bcc02d383c",
+      "measuredDate": "2026-10-19"
     },
     "src/sync/session-epoch.ts": {
       "score": 70,
@@ -1073,9 +1115,9 @@
       "timeout": 0,
       "survived": 20,
       "noCoverage": 1,
-      "cost": 2060,
-      "measuredOn": "15eec246708bf0bfdcdfe62fad678d2243d1b6b2",
-      "measuredDate": "2026-10-12"
+      "cost": 2232,
+      "measuredOn": "59969dd5ac2ef8264d5e82a5252831bcc02d383c",
+      "measuredDate": "2026-10-19"
     },
     "src/sync/status.ts": {
       "score": 93.75,
@@ -1083,8 +1125,9 @@
       "timeout": 0,
       "survived": 1,
       "noCoverage": 0,
-      "measuredOn": "15eec246708bf0bfdcdfe62fad678d2243d1b6b2",
-      "measuredDate": "2026-10-12"
+      "cost": 3148,
+      "measuredOn": "59969dd5ac2ef8264d5e82a5252831bcc02d383c",
+      "measuredDate": "2026-10-19"
     },
     "src/sync/supabase.ts": {
       "score": 100,
@@ -1093,8 +1136,8 @@
       "survived": 0,
       "noCoverage": 0,
       "cost": 76,
-      "measuredOn": "c2d2153d875708587565c7f934fd369e43867845",
-      "measuredDate": "2026-10-17"
+      "measuredOn": "59969dd5ac2ef8264d5e82a5252831bcc02d383c",
+      "measuredDate": "2026-10-19"
     },
     "src/sync/tombstone-policy.ts": {
       "score": 91.67,
@@ -1102,9 +1145,9 @@
       "timeout": 0,
       "survived": 1,
       "noCoverage": 0,
-      "cost": 758,
-      "measuredOn": "15eec246708bf0bfdcdfe62fad678d2243d1b6b2",
-      "measuredDate": "2026-10-12"
+      "cost": 505,
+      "measuredOn": "59969dd5ac2ef8264d5e82a5252831bcc02d383c",
+      "measuredDate": "2026-10-19"
     }
   }
 }

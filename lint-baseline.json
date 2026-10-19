@@ -1,7 +1,7 @@
 {
-  "total": 165,
+  "total": 164,
   "rules": {
-    "complexity": 72,
+    "complexity": 71,
     "react-hooks/refs": 71,
     "react-hooks/set-state-in-effect": 17,
     "react-hooks/preserve-manual-memoization": 3,
