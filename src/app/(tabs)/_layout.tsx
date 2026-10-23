@@ -1,4 +1,5 @@
 import { Tabs } from "expo-router";
+import { Platform } from "react-native";
 import ChartPie from "lucide-react-native/icons/chart-pie";
 import Landmark from "lucide-react-native/icons/landmark";
 import RefreshCw from "lucide-react-native/icons/refresh-cw";
@@ -11,12 +12,17 @@ import { NegativeBalanceHint } from "../../ui/negative-balance-hint";
 import { TabBar } from "../../ui/tab-bar";
 import { useTheme } from "../../ui/theme";
 
+// On the web, popping a blurred stack is a `history.go(-1)` that expo-router 58
+// waits 100 ms for; a slower popstate (Firefox) is then taken as Back and the
+// app returns to the tab just left. Phones keep the pop.
+const POP_ON_BLUR = Platform.OS !== "web" || undefined;
+
 const TAB_SCREENS = [
   { name: "index", label: tr.tabs.dashboard, Icon: ChartPie, popToTopOnBlur: undefined },
-  { name: "cash-flow", label: tr.tabs.cashflow, Icon: WalletCards, popToTopOnBlur: true },
+  { name: "cash-flow", label: tr.tabs.cashflow, Icon: WalletCards, popToTopOnBlur: POP_ON_BLUR },
   { name: "subscriptions", label: tr.tabs.subscriptions, Icon: RefreshCw, popToTopOnBlur: undefined },
   { name: "investments", label: tr.tabs.investments, Icon: Landmark, popToTopOnBlur: undefined },
-  { name: "settings", label: tr.tabs.settings, Icon: Settings, popToTopOnBlur: true },
+  { name: "settings", label: tr.tabs.settings, Icon: Settings, popToTopOnBlur: POP_ON_BLUR },
 ];
 
 export default function TabsLayout() {
