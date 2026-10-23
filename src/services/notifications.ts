@@ -6,6 +6,8 @@
 
 import { Platform } from "react-native";
 import * as Notifications from "expo-notifications";
+// Named, not through the namespace: eslint-plugin-import cannot follow expo-notifications 58's re-exported enums.
+import { AndroidImportance, IosAuthorizationStatus } from "expo-notifications";
 import { getSqliteAsync } from "../db/client";
 import { readSetting } from "../db/mutations";
 import { addDaysISO, todayISO } from "../domain/dates";
@@ -42,16 +44,16 @@ Notifications.setNotificationHandler({
 function permissionGranted(status: Notifications.NotificationPermissionsStatus): boolean {
   if (Platform.OS !== "ios") return status.granted;
   const ios = status.ios?.status;
-  return ios === Notifications.IosAuthorizationStatus.AUTHORIZED ||
-    ios === Notifications.IosAuthorizationStatus.PROVISIONAL ||
-    ios === Notifications.IosAuthorizationStatus.EPHEMERAL;
+  return ios === IosAuthorizationStatus.AUTHORIZED ||
+    ios === IosAuthorizationStatus.PROVISIONAL ||
+    ios === IosAuthorizationStatus.EPHEMERAL;
 }
 
 async function ensureAndroidChannel(): Promise<void> {
   if (Platform.OS !== "android") return;
   await Notifications.setNotificationChannelAsync(ANDROID_CHANNEL_ID, {
     name: tr.settings.notifications,
-    importance: Notifications.AndroidImportance.DEFAULT,
+    importance: AndroidImportance.DEFAULT,
   });
 }
 
