@@ -23,7 +23,8 @@ import {
   type StyleProp,
   type TextInputProps,
   type ViewStyle,
-  } from "react-native";
+  type ViewInstance,
+} from "react-native";
 import AlertCircle from "lucide-react-native/icons/circle-alert";
 import CalculatorIcon from "lucide-react-native/icons/calculator";
 import Check from "lucide-react-native/icons/check";
@@ -304,7 +305,7 @@ export function MoneyField({
   // screen was typed into 156px boxes with half the row left empty beside them.
   const roomy = useContentWidth() >= 900;
   const [calcOpen, setCalcOpen] = useState(false);
-  const calculatorTriggerRef = useRef<View>(null);
+  const calculatorTriggerRef = useRef<ViewInstance>(null);
   const display = formatMoneyInputLive(value);
   // One read, so the number shown and the reason given cannot disagree. An
   // unfinished expression and an amount too large to store are different

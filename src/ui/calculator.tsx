@@ -5,7 +5,17 @@
  */
 
 import React, { useEffect, useRef, useState } from "react";
-import { Modal, Platform, Pressable, ScrollView, Text, View, useWindowDimensions } from "react-native";
+import {
+  Modal,
+  Platform,
+  Pressable,
+  ScrollView,
+  Text,
+  View,
+  useWindowDimensions,
+  type ScrollViewInstance,
+  type ViewInstance,
+} from "react-native";
 import Delete from "lucide-react-native/icons/delete";
 import { CALC_START, feedbackOf, formatNumber, keyFrom, press as pressKey, previewOf, resultOf, shownOf, type CalcKey } from "../domain/calculator";
 import { formatMinorCompact, majorToMinor } from "../domain/money";
@@ -32,7 +42,7 @@ const KEYS: CalcKey[][] = [
 const kbStack: object[] = [];
 
 function CalculatorLine({ text, color, main = false }: { text: string; color: string; main?: boolean }) {
-  const scrollRef = useRef<ScrollView>(null);
+  const scrollRef = useRef<ScrollViewInstance>(null);
   return (
     <ScrollView
       ref={scrollRef}
@@ -217,7 +227,7 @@ export function CalculatorModal({
 }: {
   onClose: () => void;
   onResult: (major: number) => void;
-  returnFocusRef?: React.RefObject<View | null>;
+  returnFocusRef?: React.RefObject<ViewInstance | null>;
 }) {
   const { palette } = useTheme();
   const reducedMotion = useReducedMotion();

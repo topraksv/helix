@@ -290,7 +290,7 @@ function CellEditor({ month, categoryId }: { month: string; categoryId: string }
         automaticallyAdjustContentInsets={false}
         showsVerticalScrollIndicator={false}
         ListHeaderComponent={header}
-        ListEmptyComponent={cellExpected.length > 0 ? null : <EmptyState title={tr.cashflow.emptyMonth} />}
+        ListEmptyComponent={cellExpected.length > 0 ? undefined : <EmptyState title={tr.cashflow.emptyMonth} />}
         ListFooterComponent={cellExpected.length > 0 ? (
           <View>
             {cellTx.length > 0 ? <Divider flush /> : null}
@@ -298,7 +298,7 @@ function CellEditor({ month, categoryId }: { month: string; categoryId: string }
               <ExpectationRow key={item.id} item={item} onEdit={() => openRule(item)} divider={index < cellExpected.length - 1} />
             ))}
           </View>
-        ) : null}
+        ) : undefined}
         renderItem={({ item: t, index }) => {
           const installmentTitle = t.installmentPlanId
             ? installmentDisplayTitle(planTitle.get(t.installmentPlanId), t.note, tr.installments.plan)

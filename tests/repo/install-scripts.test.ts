@@ -76,10 +76,4 @@ describe("install-time code execution", () => {
     // cannot pass while proving nothing.
     expect(packagesWithInstallScripts(), "install-time code differs from the allowlist").toEqual(ALLOWED);
   });
-
-  /** The root postinstall; a tree installed without it ships the blank-tab bug on native. */
-  it("installs dependencies with their upstream fixes applied", () => {
-    expect(readFileSync("node_modules/expo-router/build/react-navigation/bottom-tabs/views/BottomTabView.js", "utf8"))
-      .toContain("lastUpdate.animating");
-  });
 });

@@ -9,7 +9,6 @@
  */
 
 import { useEffect } from "react";
-import { InteractionManager, Platform } from "react-native";
 import { useNavigation } from "expo-router";
 import type { NavigationProp } from "expo-router/react-navigation";
 
@@ -48,21 +47,14 @@ export function useWarmRoute(route: WarmableRoute): void {
     let timer: ReturnType<typeof setTimeout> | null = null;
     const later = () => { timer = setTimeout(warm, WARMUP_DELAY_MS); };
 
-    const idle = (globalThis as { requestIdleCallback?: (cb: () => void, options?: { timeout: number }) => number })
-      .requestIdleCallback;
-    // Native has no idle callback; the interaction queue is the closest thing,
-    // and the delay after it keeps the warm-up clear of the first-run tour.
-    const handle = Platform.OS === "web" || !InteractionManager
-      ? null
-      : InteractionManager.runAfterInteractions(later);
-    if (!handle) {
-      if (idle) idle(warm, { timeout: WARMUP_DELAY_MS * 2 });
-      else later();
-    }
+    const idle = (globalThis as { requestIdleCallback?: (cb: () => void) => number }).requestIdleCallback;
+    // React Native 0.88 removed `InteractionManager` in favour of the idle
+    // callback; the delay after it keeps the warm-up clear of the first-run tour.
+    if (idle) idle(later);
+    else later();
 
     return () => {
       cancelled = true;
-      handle?.cancel();
       if (timer) clearTimeout(timer);
     };
   }, [navigation, route]);

@@ -314,7 +314,9 @@ test("the FX provider is called once per session, not once per entry point", asy
   await page.getByRole("tab", { name: "Durum" }).click();
   await expect(page.getByRole("tab", { name: "Durum", selected: true })).toBeVisible();
   await page.getByRole("tab", { name: "Ayarlar" }).click();
-  // The settings stack keeps its child on blur, so returning is itself the repeat visit.
+  // Settings pops to its root on blur (`popToTopOnBlur`), so opening tools again is the repeat visit.
+  await expect(page.getByRole("heading", { name: "Ayarlar", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: /^Hızlı Hesaplamalar/ }).click();
   await expect(page.getByRole("heading", { name: "Hesap Makinesi", exact: true })).toBeVisible();
   const repeatVisitObservationStartedAt = Date.now();
   await expect.poll(

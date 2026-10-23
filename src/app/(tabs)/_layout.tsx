@@ -41,7 +41,7 @@ export default function TabsLayout() {
           headerShown: false,
           // A tab change is a change of place; a hard cut reads as a repaint.
           // `fade`, not `shift`: the tabs are peers, not a sequence. On native it
-          // relies on expo/expo#49778, applied by `scripts/patch-dependencies.mjs`.
+          // relies on expo/expo#49778, in expo-router from SDK 58.
           // The navigator ignores Reduce Motion, so it is applied here.
           animation: reducedMotion ? "none" : "fade",
           // A keyboard is an editing state, not navigation. Hiding the floating

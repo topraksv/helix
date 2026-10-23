@@ -1,7 +1,19 @@
 /** One bounded bar along the bottom at every width; translucent unless Reduce Transparency. Press and scrub go through the navigator's `tabPress`, so listeners can cancel. */
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { Animated, Keyboard, PanResponder, Platform, Pressable, Text, View, useWindowDimensions, type ViewStyle } from "react-native";
+import {
+  Animated,
+  Keyboard,
+  PanResponder,
+  Platform,
+  Pressable,
+  Text,
+  View,
+  useWindowDimensions,
+  type ViewStyle,
+  type TextInstance,
+  type ViewInstance,
+} from "react-native";
 import type { BottomTabBarProps } from "expo-router/js-tabs";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useReducedMotion, useReduceTransparency } from "./motion";
@@ -62,7 +74,7 @@ function useKeyboardShown(): boolean {
   return shown;
 }
 
-export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
+export function TabBar({ state, descriptors, emitter, navigateToTab }: BottomTabBarProps) {
   const { palette, scheme } = useTheme();
   const insets = useSafeAreaInsets();
   const keyboardShown = useKeyboardShown();
@@ -82,17 +94,19 @@ export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
   // Dragging across the bar scrubs through the tabs. The geometry and the
   // current index are read from refs so the responder can be created once:
   // rebuilding it per render would drop an in-flight gesture.
-  const barRef = useRef<View>(null);
+  const barRef = useRef<ViewInstance>(null);
   const barBox = useRef({ x: 0, y: 0, width: 0, height: 0 });
-  const latest = useRef({ routes: state.routes, index: state.index });
-  latest.current = { routes: state.routes, index: state.index };
+  // The navigator rebuilds `navigateToTab` with each render's routes and params,
+  // so the once-built responder reads it here rather than keeping the first.
+  const latest = useRef({ routes: state.routes, index: state.index, emitter, navigateToTab });
+  latest.current = { routes: state.routes, index: state.index, emitter, navigateToTab };
 
   const goToIndex = (index: number) => {
-    const { routes, index: current } = latest.current;
+    const { routes, index: current, emitter: events, navigateToTab: navigate } = latest.current;
     const route = routes[index];
     if (!route || index === current) return;
-    const event = navigation.emit({ type: "tabPress", target: route.key, canPreventDefault: true });
-    if (!event.defaultPrevented) navigation.navigate(route.name, route.params);
+    const event = events.emit({ type: "tabPress", target: route.key, canPreventDefault: true });
+    if (!event.defaultPrevented) navigate(route.key);
   };
 
   // Dragging across the bar scrubs through the tabs, so the box is measured in
@@ -143,7 +157,7 @@ export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
           goToIndex(Math.min(Math.max(slot, 0), count - 1));
         },
       }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- created once on purpose; live values come from refs
+    // Created once on purpose; live values come from refs.
     [],
   );
 
@@ -183,10 +197,8 @@ export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
         accessibilityLabel={options.tabBarAccessibilityLabel}
         onPress={() => {
           // Navigate only if no listener cancelled tabPress, or popToTopOnBlur and the haptic are lost.
-          const event = navigation.emit({ type: "tabPress", target: route.key, canPreventDefault: true });
-          if (!focused && !event.defaultPrevented) {
-            navigation.navigate(route.name, route.params);
-          }
+          const event = emitter.emit({ type: "tabPress", target: route.key, canPreventDefault: true });
+          if (!focused && !event.defaultPrevented) navigateToTab(route.key);
         }}
         // Fill and outline belong to the travelling selection below; a tab owns
         // only its own ink, its weight and its answer to a press.
@@ -310,7 +322,7 @@ function TabLabel({ id, label, focused, hidden, slotWidth, onMeasure }: {
   onMeasure: (id: string, width: number) => void;
 }) {
   const { palette } = useTheme();
-  const ref = useRef<Text>(null);
+  const ref = useRef<TextInstance>(null);
   useLayoutEffect(() => {
     const measured = measureLabelText(ref.current as unknown as HTMLElement | null);
     if (measured.width > 0) onMeasure(id, measured.wrapped ? tooWide(slotWidth) : measured.width);

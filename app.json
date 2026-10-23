@@ -2,7 +2,7 @@
   "expo": {
     "name": "Helix",
     "slug": "helix",
-    "version": "1.9.9",
+    "version": "2.0.0",
     "orientation": "default",
     "icon": "./assets/icon.png",
     "scheme": "helix",
@@ -106,7 +106,7 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
-      "expo-router",
+      ["expo-router", { "asyncRoutes": { "web": false } }],
       [
         "expo-splash-screen",
         {

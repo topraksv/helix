@@ -22,6 +22,7 @@ import {
   type TextStyle,
   type ViewProps,
   type ViewStyle,
+  type TextInstance,
 } from "react-native";
 import ChevronDown from "lucide-react-native/icons/chevron-down";
 import type { LucideIcon } from "lucide-react-native";
@@ -398,7 +399,7 @@ function Figure({
   const fitKey = `${settled}|${scale}|${width}|${fontScale}|${initialSize}`;
   const [fit, setFit] = useState({ key: fitKey, size: initialSize });
   const fittedSize = fit.key === fitKey ? fit.size : initialSize;
-  const textRef = useRef<Text>(null);
+  const textRef = useRef<TextInstance>(null);
   const availableWidth = useRef(0);
   const intrinsicWidth = useRef(0);
   // The caller named a font size, so it has already decided what fits.

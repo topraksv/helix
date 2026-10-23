@@ -17,6 +17,7 @@ function fixture(bundle = "console.log('ok');") {
   const js = join(root, "_expo", "static", "js", "web");
   mkdirSync(js, { recursive: true });
   writeFileSync(join(js, "entry-test.js"), bundle);
+  writeFileSync(join(root, "index.html"), '<script src="/_expo/static/js/web/entry-test.js" defer></script>');
   return { root, js };
 }
 
@@ -50,7 +51,7 @@ describe("web release budget", () => {
     const result = check(root);
     expect(result.status, result.stderr).toBe(0);
     expect(result.stdout).toContain("pictureBytes: 1000 bytes");
-    expect(result.stdout).toContain("totalExport: 18 bytes");
+    expect(result.stdout).toContain("totalExport: 82 bytes");
   });
 
   it("rejects source-map files and bundle references", () => {

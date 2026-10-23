@@ -45,7 +45,7 @@ function recordDatabaseRecovery(notice: DatabaseRecoveryNotice): void {
   volatileRecoveryNotice = notice;
   if (Platform.OS === "web") return;
   try {
-    recoveryMarkerFile().write(JSON.stringify(notice));
+    recoveryMarkerFile().writeSync(JSON.stringify(notice));
   } catch {
     // The in-memory marker still guarantees a notice in this launch. A marker
     // write must never replace the successfully opened fresh database with a

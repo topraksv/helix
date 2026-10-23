@@ -13,7 +13,6 @@ import {
   Animated,
   Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -21,6 +20,7 @@ import {
   type LayoutChangeEvent,
   type StyleProp,
   type ViewStyle,
+  type ScrollViewInstance,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useScrollToTop, useSegments } from "expo-router";
@@ -129,7 +129,7 @@ export function Screen({
    */
   width?: ContentWidth;
   /** Access to the vertical scroller for explicit workflow navigation. */
-  scrollRef?: React.RefObject<ScrollView | null>;
+  scrollRef?: React.RefObject<ScrollViewInstance | null>;
   /**
    * A long read with no controls in it: makes the scroll region focusable on web so a keyboard can move it. Set only where true; elsewhere it is a stray tab stop.
    */
@@ -143,7 +143,7 @@ export function Screen({
   // The arrival event is not React state: changing it would render the whole page just to restart an entrance.
   const visitStore = useScreenVisitController();
   // The navigator's own hook resolves nested stacks and a listener that called preventDefault; outside a tab navigator it is a no-op.
-  const ownScrollRef = useRef<ScrollView>(null);
+  const ownScrollRef = useRef<ScrollViewInstance>(null);
   const activeScrollRef = scrollRef ?? ownScrollRef;
   useScrollToTop(activeScrollRef);
   // Opt-in: an effect in the most-used primitive would solve a problem few screens have; e2e/visual-a11y.spec.ts catches the next one.

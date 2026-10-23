@@ -1,7 +1,7 @@
 /** Pure policy for hiding sensitive finance UI from snapshots/embedding. */
 export function shouldCoverSensitiveUi(
   platform: string,
-  appState: string,
+  appState: string | null | undefined,
   framed: boolean,
   hasSensitiveContent = true,
 ): boolean {

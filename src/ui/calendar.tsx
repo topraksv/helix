@@ -4,7 +4,7 @@
  */
 
 import React, { useRef, useState } from "react";
-import { Modal, Pressable, StyleSheet, Text, View } from "react-native";
+import { Modal, Pressable, StyleSheet, Text, View, type ViewInstance } from "react-native";
 import CalendarDays from "lucide-react-native/icons/calendar-days";
 import ChevronLeft from "lucide-react-native/icons/chevron-left";
 import ChevronRight from "lucide-react-native/icons/chevron-right";
@@ -38,7 +38,7 @@ function CalendarSheet({
   min?: ISODate;
   /** Latest selectable day (inclusive). Days after it render disabled. */
   max?: ISODate;
-  returnFocusRef?: React.RefObject<View | null>;
+  returnFocusRef?: React.RefObject<ViewInstance | null>;
 }) {
   const { palette } = useTheme();
   const reducedMotion = useReducedMotion();
@@ -158,7 +158,7 @@ export function DateField({
 }) {
   const { palette } = useTheme();
   const [open, setOpen] = useState(false);
-  const triggerRef = useRef<View>(null);
+  const triggerRef = useRef<ViewInstance>(null);
   return (
     <View style={{ marginBottom: spacing.md }}>
       {label ? <Label>{label}</Label> : null}

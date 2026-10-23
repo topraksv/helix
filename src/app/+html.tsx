@@ -1,4 +1,4 @@
-import { ScrollViewStyleReset } from "expo-router/html";
+import { ScrollViewStyleReset, useServerDocumentContext } from "expo-router/html";
 import type { PropsWithChildren } from "react";
 import { tr } from "../i18n/tr";
 import { darkPalette, lightPalette } from "../ui/theme";
@@ -40,8 +40,12 @@ const STRUCTURED_DATA = {
  * `children` already contains the root <div id="root" />.
  */
 export default function Root({ children }: PropsWithChildren) {
+  // From SDK 58 the export renders this document through React and hands the
+  // bundle's scripts and react-native-web's styles to it here; a root that
+  // drops them exports a page that never boots.
+  const { htmlAttributes, bodyAttributes, headNodes, bodyNodes } = useServerDocumentContext();
   return (
-    <html lang="tr">
+    <html lang="tr" {...htmlAttributes}>
       <head>
         <meta charSet="utf-8" />
         <meta httpEquiv="X-UA-Compatible" content="IE=edge" />
@@ -159,8 +163,12 @@ export default function Root({ children }: PropsWithChildren) {
               "window.addEventListener('load',function(){navigator.serviceWorker.register('/helix/sw.js',{scope:'/helix/'}).catch(function(){});});}",
           }}
         />
+        {headNodes}
       </head>
-      <body>{children}</body>
+      <body {...bodyAttributes}>
+        {children}
+        {bodyNodes}
+      </body>
     </html>
   );
 }

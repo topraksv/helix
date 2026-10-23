@@ -1,7 +1,15 @@
 /** Mali Tablo: the ledger matrix, pivotable, with a phone month-focused mode. */
 
 import React, { useMemo, useRef, useState } from "react";
-import { Pressable, ScrollView, StyleSheet, Text, View, type LayoutChangeEvent } from "react-native";
+import {
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+  type LayoutChangeEvent,
+  type ScrollViewInstance,
+} from "react-native";
 import { useRouter, useScrollToTop } from "expo-router";
 import ArrowDownRight from "lucide-react-native/icons/arrow-down-right";
 import ArrowLeftRight from "lucide-react-native/icons/arrow-left-right";
@@ -202,8 +210,8 @@ export default function CashflowScreen() {
   // Starts open on desktop; a close is remembered per device so the guide is not re-taught.
   const [showTableDetails, setShowTableDetails] = useState(() => shouldStartTableDetailsOpen(contentWidth));
   // The tab's repeat-press behavior needs the active month-focused scroller.
-  const monthFocusScrollRef = React.useRef<ScrollView>(null);
-  const tableRef = useRef<ScrollView>(null);
+  const monthFocusScrollRef = React.useRef<ScrollViewInstance>(null);
+  const tableRef = useRef<ScrollViewInstance>(null);
   React.useEffect(() => {
     void kv.get("helix.matrix.mode").then((v) => {
       setHasSavedMode(Boolean(v));
@@ -800,7 +808,7 @@ const MatrixTable = React.memo(function MatrixTable({
   colors: ReturnType<typeof useMatrixColorsState>["data"];
   /** What the owner calls each mark hue. Account-wide, never per cell. */
   colorLabels: MatrixColorLabels | null;
-  scrollRef: React.RefObject<ScrollView | null>;
+  scrollRef: React.RefObject<ScrollViewInstance | null>;
 }) {
   const router = useRouter();
   const { palette } = useTheme();

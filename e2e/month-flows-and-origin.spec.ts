@@ -7,7 +7,7 @@ test.beforeEach(async ({ context }) => isolateExternalData(context));
 
 /** A future-dated expense: month mode, `months` steps forward from today. */
 async function addPlannedExpense(page: Page, months: number, amount: string): Promise<void> {
-  await page.getByRole("tab", { name: "Mali Tablo" }).click();
+  await openCashFlow(page);
   await page.getByRole("button", { name: "İşlem Ekle" }).first().click();
   await expect(page.getByRole("heading", { name: "Yeni İşlem" })).toBeVisible();
   await page.getByRole("textbox", { name: "Tutar · TRY" }).fill(amount);

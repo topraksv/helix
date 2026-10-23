@@ -124,5 +124,5 @@ export async function writeAttachmentBytes(storedName: string, bytes: Uint8Array
   // `overwrite` rather than a prior existence check: a partially written file
   // from an interrupted download must be replaced, not appended to.
   file.create({ intermediates: true, overwrite: true });
-  file.write(bytes);
+  await file.write(bytes);
 }

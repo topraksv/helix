@@ -25,6 +25,7 @@ import {
   View,
   type StyleProp,
   type ViewStyle,
+  type ViewInstance,
 } from "react-native";
 import Check from "lucide-react-native/icons/check";
 import Minus from "lucide-react-native/icons/minus";
@@ -125,7 +126,7 @@ export function Select<T extends string>({
   const insets = useSafeAreaInsets();
   const reducedMotion = useReducedMotion();
   const [open, setOpen] = useState(false);
-  const triggerRef = useRef<View>(null);
+  const triggerRef = useRef<ViewInstance>(null);
   const modalTitleRef = useModalAccessibility(open, triggerRef);
   const current = options.find((o) => o.value === value)
     ?? (selectedOption?.value === value ? selectedOption : undefined);

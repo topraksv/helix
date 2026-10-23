@@ -197,7 +197,8 @@ export function useNavigationAcrossLock(locked: boolean | null, navigatorShown: 
   useEffect(
     () =>
       navigation.addListener("state", (event) => {
-        // The unmount itself reports no state; that is the moment to remember.
+        // From SDK 58 the unmount reports a reseeded state, not none; parking
+        // happens in the commit that unmounts, before that state arrives.
         if (event.data.state) last.current = event.data.state as RootState;
       }),
     [navigation],
@@ -217,7 +218,8 @@ export function useNavigationAcrossLock(locked: boolean | null, navigatorShown: 
     const root = navigation.getRootState();
     const state = parked.current;
     parked.current = null;
-    if (root) navigation.resetRoot({ ...state, key: root.key });
+    // SDK 58's container ref has no `resetRoot`; a reset keyed to the root navigator replaces its whole tree.
+    if (root) navigation.reset({ ...state, key: root.key });
   }, [locked, navigatorShown, navigation]);
 }
 
@@ -315,7 +317,7 @@ export function useForegroundSync(ready: boolean, userId: string | null, unlocke
       void syncNow(userId);
       timer = setInterval(() => void syncNow(userId), 30_000);
     };
-    const update = (state: string) => state === "active" ? start() : stop();
+    const update = (state: string | null | undefined) => state === "active" ? start() : stop();
     update(AppState.currentState);
     const subscription = AppState.addEventListener("change", update);
     return () => {
@@ -331,7 +333,7 @@ export function useMarketLifecycle(ready: boolean, userId: string | null, unlock
       disconnectMarkets();
       return;
     }
-    const update = (state: string) => {
+    const update = (state: string | null | undefined) => {
       if (state === "active") connectMarkets();
       else suspendMarkets();
     };

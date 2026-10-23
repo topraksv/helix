@@ -6,6 +6,12 @@ defterinde yazılıdır ve bu depoya dahil değildir.
 
 Notlar kısa tutulur: ne değişti, tek cümle. Sebebi ve ölçümü commit'te.
 
+## 2.0.0
+
+### Major Changes
+
+- Uygulama Expo SDK 58'e geçti: telefonda Expo Go'yu güncellemen gerekiyor (App Store'da 58.0.5 ve sonrası); eski Expo Go uygulamayı açmıyor.
+
 ## 1.9.9
 
 ### Patch Changes

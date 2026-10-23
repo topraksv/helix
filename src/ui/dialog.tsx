@@ -12,7 +12,17 @@
  */
 
 import React, { useState, type ReactNode } from "react";
-import { Modal, Platform, Pressable, StyleSheet, Text, TextInput, View, useWindowDimensions } from "react-native";
+import {
+  Modal,
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+  useWindowDimensions,
+  type ViewInstance,
+} from "react-native";
 import { create } from "zustand";
 import { Button, FadeIn } from "./components";
 import { circle, font, radius, spacing, themeShadow, type, useTheme } from "./theme";
@@ -200,7 +210,7 @@ function DialogShell({
   title: string;
   message: string;
   messageGap: number;
-  titleRef: React.RefObject<View | null>;
+  titleRef: React.RefObject<ViewInstance | null>;
   onDismiss: () => void;
   operation?: DialogOperation;
   children: React.ReactNode;

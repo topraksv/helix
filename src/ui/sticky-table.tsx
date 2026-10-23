@@ -12,7 +12,19 @@
  */
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { Platform, Pressable, ScrollView, Text, View, type LayoutChangeEvent, type NativeSyntheticEvent, type NativeScrollEvent, type ViewProps } from "react-native";
+import {
+  Platform,
+  Pressable,
+  ScrollView,
+  Text,
+  View,
+  type LayoutChangeEvent,
+  type NativeSyntheticEvent,
+  type NativeScrollEvent,
+  type ViewProps,
+  type ScrollViewInstance,
+  type ViewInstance,
+} from "react-native";
 import Pin from "lucide-react-native/icons/pin";
 import type { LucideIcon } from "lucide-react-native";
 import { selectionTap } from "./haptics";
@@ -97,7 +109,7 @@ function stickyCellId(rowKey: string, columnKey: string): ViewProps {
   return { dataSet: { stickyCell: `${rowKey}\u0000${columnKey}` } } as unknown as ViewProps;
 }
 
-function getNode(ref: React.RefObject<ScrollView | null>): HTMLElement | null {
+function getNode(ref: React.RefObject<ScrollViewInstance | null>): HTMLElement | null {
   return (ref.current as unknown as { getScrollableNode?: () => HTMLElement } | null)?.getScrollableNode?.() ?? null;
 }
 
@@ -106,9 +118,9 @@ const WEB_SCROLL_SETTLE_MS = 140;
 
 /** Web-only pan, keyboard scroll and snap-to-cell: react-native-web does not implement `snapToInterval`, and a half-covered cell reads as a different amount. */
 function useWebInteractions(
-  vRef: React.RefObject<ScrollView | null>,
-  bodyHRef: React.RefObject<ScrollView | null>,
-  headerHRef: React.RefObject<ScrollView | null>,
+  vRef: React.RefObject<ScrollViewInstance | null>,
+  bodyHRef: React.RefObject<ScrollViewInstance | null>,
+  headerHRef: React.RefObject<ScrollViewInstance | null>,
   rowHeight: number,
   cellWidth: number,
 ) {
@@ -228,7 +240,7 @@ function headerChrome(
 
 /** Arrow-key navigation and a single tab stop; DOM-driven so a keypress does not re-render every cell. */
 function useGridKeyboard(
-  gridRef: React.RefObject<View | null>,
+  gridRef: React.RefObject<ViewInstance | null>,
   rowCount: number,
   columnCount: number,
 ): void {
@@ -351,14 +363,14 @@ export function StickyTable({
   /** Explicit viewport height; when omitted the table flexes to fill. */
   height?: number;
   /** The table's vertical scroller, so a tab press can return it to the top. */
-  scrollRef?: React.RefObject<ScrollView | null>;
+  scrollRef?: React.RefObject<ScrollViewInstance | null>;
 }) {
   const { palette } = useTheme();
-  const gridRef = useRef<View>(null);
-  const ownVRef = useRef<ScrollView>(null);
+  const gridRef = useRef<ViewInstance>(null);
+  const ownVRef = useRef<ScrollViewInstance>(null);
   const vRef = scrollRef ?? ownVRef;
-  const bodyHRef = useRef<ScrollView>(null);
-  const headerHRef = useRef<ScrollView>(null);
+  const bodyHRef = useRef<ScrollViewInstance>(null);
+  const headerHRef = useRef<ScrollViewInstance>(null);
   const [bodyW, setBodyW] = useState(0);
   const [tableW, setTableW] = useState(0);
   // Fit cells to the measured table minus the label rail, never to the body scroller: a pinned column would make the width depend on itself. See `fittedCellWidth`.

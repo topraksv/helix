@@ -74,7 +74,7 @@ describe("release contract", () => {
    *
    * So the two must move together. A store build profile alone does not
    * move them: with no `updates.url` and no channel, expo-updates is off in the
-   * binary and it runs the bundle it shipped with (Expo SDK 57 docs), so the
+   * binary and it runs the bundle it shipped with (Expo SDK 58 docs), so the
    * TestFlight build and the Expo Go channel share this repository safely. The
    * moment a binary can take an update — an `updates` URL, a profile's
    * channel, an EAS workflow — the policy has to become `fingerprint` BEFORE
@@ -89,7 +89,7 @@ describe("release contract", () => {
     expect(app.expo.ios.bundleIdentifier).toBe("com.toprak.helix");
     expect(app.expo.android.package).toBe("com.toprak.helix");
     expect(app.expo.android.allowBackup).toBe(false);
-    expect(packageJson.dependencies.expo).toMatch(/^~57\./);
+    expect(packageJson.dependencies.expo).toMatch(/^~58\./);
     expect(eas.cli.version).toBe("24.8.0");
     expect(eas.cli.appVersionSource).toBe("remote");
     expect(eas.build.production).toMatchObject({ autoIncrement: true });
@@ -200,7 +200,7 @@ describe("release contract", () => {
    * A server render has no database, and three files have to agree on that.
    *
    * `web.output` is "static", so every route is rendered once in Node. Left
-   * alone that pass drags the whole SQLite driver — and on SDK 57 its Web
+   * alone that pass drags the whole SQLite driver — and on SDK 58 its Web
    * Worker, which Metro then cannot chunk for a server bundle — into a render
    * that could never open a database anyway. `metro.config.js` substitutes the
    * stub, the stub says what it answers with, and the mutation gate excludes it

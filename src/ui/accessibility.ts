@@ -1,11 +1,17 @@
 /** Shared focus behavior for modal surfaces and scroll regions. */
 
 import { useEffect, useRef, type RefObject } from "react";
-import { AccessibilityInfo, findNodeHandle, Platform, type ScrollView, type View } from "react-native";
+import {
+  AccessibilityInfo,
+  findNodeHandle,
+  Platform,
+  type ScrollViewInstance,
+  type ViewInstance,
+} from "react-native";
 import { devWarning } from "../services/logger";
 import { pushOverlay } from "./keyboard";
 
-type FocusTarget = View;
+type FocusTarget = ViewInstance;
 
 function moveAccessibilityFocus(target: FocusTarget | null): void {
   if (!target) return;
@@ -34,8 +40,8 @@ export function useModalAccessibility(
   returnFocusRef?: RefObject<FocusTarget | null>,
   focusKey?: unknown,
   focusHeading = true,
-): RefObject<View | null> {
-  const titleRef = useRef<View>(null);
+): RefObject<ViewInstance | null> {
+  const titleRef = useRef<ViewInstance>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -105,7 +111,7 @@ export function useModalAccessibility(
  * library guarantees; `findNodeHandle` is the fallback for a ref that has been
  * forwarded through a wrapper which does not re-expose it.
  */
-function scrollableNode(instance: ScrollView | null): HTMLElement | null {
+function scrollableNode(instance: ScrollViewInstance | null): HTMLElement | null {
   if (Platform.OS !== "web" || instance == null || typeof document === "undefined") return null;
   const candidate = instance as unknown as { getScrollableNode?: () => unknown };
   const node = typeof candidate.getScrollableNode === "function"
@@ -118,7 +124,7 @@ function scrollableNode(instance: ScrollView | null): HTMLElement | null {
 const SCROLL_FOCUS_MARK = "data-helix-scroll-focus";
 
 /** Makes a text-only scroll region keyboard-reachable on web; set by readable screens only, and only while it overflows with nothing focusable inside. */
-export function useKeyboardReachableScroller(ref: RefObject<ScrollView | null>, enabled: boolean): void {
+export function useKeyboardReachableScroller(ref: RefObject<ScrollViewInstance | null>, enabled: boolean): void {
   useEffect(() => {
     // Checked before touching the DOM: most screens are not `readable` and must pay nothing. The cleanup below undoes a stop when `enabled` goes false.
     if (!enabled || Platform.OS !== "web") return;

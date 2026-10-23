@@ -1096,7 +1096,6 @@ describe("navigation says that it moved", () => {
     // itself, which made this the one motion Reduce Motion never reached.
     expect(tabs).toContain('animation: reducedMotion ? "none" : "fade"');
     expect(tabs).toContain("useReducedMotion()");
-    expect(read("scripts/patch-dependencies.mjs")).toContain("expo/expo#49778");
   });
 
   it("slides a pushed page in the direction its back gesture already implies", () => {

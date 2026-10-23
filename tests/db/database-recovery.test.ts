@@ -44,7 +44,7 @@ vi.mock("expo-file-system", () => {
       harness.files.delete(this.path);
       harness.contents.delete(this.path);
     }
-    write(content: string) {
+    writeSync(content: string) {
       if (harness.failFiles) throw new Error("file system unavailable");
       harness.files.add(this.path);
       harness.contents.set(this.path, content);

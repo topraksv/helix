@@ -9,7 +9,7 @@
  */
 
 import { useEffect, useRef, useState } from "react";
-import { ScrollView, Text, View } from "react-native";
+import { ScrollView, Text, View, type ScrollViewInstance } from "react-native";
 import { useRouter } from "expo-router";
 import * as DocumentPicker from "expo-document-picker";
 import CheckCircle2 from "lucide-react-native/icons/circle-check";
@@ -558,7 +558,7 @@ export default function ImportWizardModal() {
   /** Which column the month-opening figure comes from; `null` is whatever the heading rule decided. */
   const [openingColumn, setOpeningColumn] = useState<string | null>(null);
   const [committing, setCommitting] = useState(false);
-  const scrollRef = useRef<ScrollView>(null);
+  const scrollRef = useRef<ScrollViewInstance>(null);
   const operation = useTrackedOperation();
   const busy = operation.state.active;
   const { confirmDiscard } = useDirtyExitGuard(workbook != null && done == null && !busy);

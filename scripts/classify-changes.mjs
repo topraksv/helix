@@ -29,8 +29,6 @@ export const CI_EXECUTED_SCRIPTS = [
   "scripts/check-web-budget.mjs",
   "scripts/classify-changes.mjs",
   "scripts/export-e2e-web.mjs",
-  // `npm ci` runs it as `postinstall`: it rewrites what every job builds.
-  "scripts/patch-dependencies.mjs",
   // Started by `playwright.config.ts`, not by a `run:`.
   "scripts/serve-web-export.mjs",
   // Loaded by `stryker.config.mjs` as the mutation gate's runner.
@@ -93,16 +91,12 @@ const NO_APP_IMPACT = [
   /^assets\/brand\/horizontal-(?:light|dark)\.png$/,
 ];
 
-/**
- * Checked here but never published as Pages or Expo Go application bytes.
- * `patch-dependencies.mjs` is the exception under `scripts/`: it edits
- * `node_modules` on every install, so it ships like the lockfile does.
- */
+/** Checked here but never published as Pages or Expo Go application bytes. */
 const NOT_SHIPPED = [
   /^e2e\//,
   /^tests\//,
   /^\.github\//,
-  /^scripts\/(?!patch-dependencies\.mjs$)/,
+  /^scripts\//,
   /^supabase\//,
   /^plugins\//,
   /^(lint|mutation)-baseline\.json$/,
@@ -142,7 +136,6 @@ const AFFECTS_MOBILE_UPDATE = [
   /^(babel|metro)\.config\.js$/,
   /^tsconfig\.json$/,
   /^\.npmrc$/,
-  /^scripts\/patch-dependencies\.mjs$/,
 ];
 
 /** The same, plus what only the web export or its budget check reads. */

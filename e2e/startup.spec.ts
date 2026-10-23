@@ -33,7 +33,8 @@ test("opens within its measured startup budget @cross-browser", async ({ page },
     performance
       .getEntriesByType("resource")
       .filter((entry): entry is PerformanceResourceTiming => entry.entryType === "resource")
-      .filter((entry) => entry.initiatorType === "script")
+      // SDK 58 preloads the bundle from <head>, so its initiator is the link, not the script tag.
+      .filter((entry) => /\/_expo\/static\/js\/.+\.js$/.test(entry.name))
       .reduce((total, entry) => total + (entry.decodedBodySize || entry.transferSize || 0), 0),
   );
 
