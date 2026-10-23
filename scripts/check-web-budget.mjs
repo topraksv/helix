@@ -53,7 +53,7 @@ const SCANNED = new Set([".js", ".css", ".html", ".json", ".txt", ".xml", ".svg"
 const texts = await Promise.all(files
   .filter((file) => SCANNED.has(extname(file.path)))
   .map(async (file) => ({ file, body: await readFile(file.path, "utf8") })));
-// From SDK 58 the root page loads its route's chunks beside the entry, so the first visit downloads every script it names.
+// The first visit downloads every script index.html names: the entry alone while async routes stay off, its route's chunks too if they return.
 const shell = texts.find(({ file }) => relative(root, file.path) === "index.html")?.body ?? "";
 const firstLoad = javaScript.filter((file) => shell.includes(`/${relative(root, file.path)}"`));
 const sourceMapReferences = texts
@@ -124,8 +124,8 @@ if (entry && process.argv.includes("--require-supabase-config")) {
       console.error("EXPO_PUBLIC_SUPABASE_URL must be a bare HTTPS Supabase project origin.");
       process.exitCode = 1;
     }
-    // SDK 58 splits routes on the web, so the value lives in whichever shared chunk the client landed in.
-    const inlined = texts.some(({ file, body }) => extname(file.path) === ".js" && body.includes(supabaseUrl));
+    // The client is created at boot, so the value must be in what the first visit loads, not in a worker or a lazy chunk.
+    const inlined = texts.some(({ file, body }) => firstLoad.includes(file) && body.includes(supabaseUrl));
     console.log(`supabaseConfigInlined: ${inlined} (expected true)`);
     if (!inlined) {
       console.error("The export carries no Supabase configuration. Re-export with --clear.");

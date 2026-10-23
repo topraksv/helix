@@ -95,7 +95,7 @@ export async function saveFile(filename: string, content: string | Uint8Array<Ar
   const file = new File(Paths.cache, filename);
   if (file.exists) file.delete();
   file.create();
-  file.writeSync(content);
+  await file.write(content);
   return file.uri;
 }
 

@@ -63,12 +63,24 @@ describe("web release budget", () => {
     expect(result.stderr).toContain("Public source-map references found");
   });
 
+  // SDK 58 renders +html.tsx through React: a root that drops the server
+  // document's nodes exports a page that never boots.
+  it("rejects an index.html that does not load the entry bundle", () => {
+    const { root } = fixture();
+    writeFileSync(join(root, "index.html"), '<div id="root"></div>');
+    const result = check(root);
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("No Expo entry bundle that index.html loads");
+  });
+
   // Metro's transform cache is shared by `expo export` and `eas update` and its
   // key ignores EXPO_PUBLIC_* values, so a cache left by the local-only E2E
   // export yields a bundle with no Supabase configuration — sign-in and sync
   // silently gone, invisible to every other budget metric.
   it("rejects a production export that lost its Supabase configuration", () => {
-    const { root } = fixture("console.log('no config here');");
+    const { root, js } = fixture("console.log('no config here');");
+    // A chunk the page never loads cannot configure the client the entry creates.
+    writeFileSync(join(js, "worker-test.js"), "var u='https://example.supabase.co';");
     const result = check(root, ["--require-supabase-config"], {
       env: { EXPO_PUBLIC_SUPABASE_URL: "https://example.supabase.co" },
     });

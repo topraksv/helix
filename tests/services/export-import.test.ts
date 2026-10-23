@@ -21,7 +21,7 @@ vi.mock("expo-file-system", () => ({
     get exists() { return dependencies.existing.has(this.uri); }
     delete() { dependencies.files.push(`delete ${this.uri}`); }
     create() { dependencies.files.push(`create ${this.uri}`); }
-    writeSync(content: unknown) { dependencies.files.push(`write ${this.uri} ${typeof content === "string" ? content : `${(content as Uint8Array).length} bytes`}`); }
+    async write(content: unknown) { dependencies.files.push(`write ${this.uri} ${typeof content === "string" ? content : `${(content as Uint8Array).length} bytes`}`); }
   },
   Paths: { cache: "cache" },
 }));
