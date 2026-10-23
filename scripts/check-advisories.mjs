@@ -14,14 +14,6 @@ const ACKNOWLEDGED = [
     expectedPaths: ["expo", "expo-updates"],
     reason: "No patched release (RSA PKCS#1 v1.5 signature verification). Carried only by Node tooling: @expo/cli, and @expo/code-signing-certificates, which expo-updates uses for code signing that app.json does not configure. Absent from the web export.",
   },
-  {
-    id: "GHSA-mrhx-c7xc-m3w5",
-    package: "zod",
-    checkedOn: "2026-10-24",
-    recheckAfter: "2026-12-01",
-    expectedPaths: ["expo"],
-    reason: "Patched only in zod 4.6.6; zod 3 has no fixed release. The one zod 3 copy is @expo/cli's, validating this repository's own config in Node; every zod 4 copy is 4.6.7. Absent from the web export.",
-  },
 ];
 
 // Dependencies installed outside the npm registry, which `npm audit` and Dependabot cannot see; `reviewed` is what was read and found not to apply.
