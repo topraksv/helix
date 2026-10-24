@@ -240,7 +240,7 @@ describe("reading the fonts a statement's text is set in", () => {
     expect(result).toEqual({ ok: true, text: "MARKET", pageCount: 1 });
   });
 
-  it("refuses a font name that means two different fonts on two pages", async () => {
+  it("reads a font name by each page's own fonts when two pages mean two fonts by it", async () => {
     const result = await extractPdfText(pdfOf({
       1: CATALOG,
       2: "<< /Type /Pages /Kids [3 0 R 9 0 R] /Count 2 >>",
@@ -253,7 +253,91 @@ describe("reading the fonts a statement's text is set in", () => {
       9: page(10, "/F1 7 0 R"),
       10: ["", "BT /F1 10 Tf 40 800 Td <0001> Tj ET"],
     }));
-    expect(result).toEqual({ ok: false, reason: "unmapped_font" });
+    expect(result.ok && result.text.split("\n").filter(Boolean)).toEqual(["M", "Z"]);
+  });
+
+  it("spaces Word's words by their widths when the size is in Tm and Tf says 1", async () => {
+    const font = "<< /Type /Font /Subtype /TrueType /BaseFont /Arial /FirstChar 65 /LastChar 68 /Widths [500 500 500 500] >>";
+    const words = (gap: number) => `BT /F1 1 Tf 10 0 0 10 40 800 Tm (AB) Tj ET BT /F1 1 Tf 10 0 0 10 ${50 + gap} 800 Tm (CD) Tj ET`;
+    const read = async (gap: number) => {
+      const result = await extractPdfText(pdfOf({ 1: CATALOG, 2: "<< /Type /Pages /Kids [3 0 R] /Count 1 >>", 3: page(4, "/F1 5 0 R"), 4: ["", words(gap)], 5: font }));
+      return result.ok && result.text.trim();
+    };
+    expect(await read(0), "AB ends at 50 only if its 5-unit glyphs are scaled by Tm").toBe("ABCD");
+    expect(await read(4)).toBe("AB CD");
+  });
+
+  it("reads a form no page names alone in file order, and leaves any other stream no page shows unread", async () => {
+    const result = await extractPdfText(pdfOf({
+      1: CATALOG,
+      2: "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+      3: page(7, "/F1 5 0 R"),
+      4: ["/Type /XObject /Subtype /Form", "BT /F1 10 Tf 40 700 Td (FORM) Tj ET"],
+      5: "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+      6: ["/Length1 40", "BT /F1 10 Tf 40 700 Td (FONT PROGRAM) Tj ET"],
+      7: ["", "BT /F1 10 Tf 40 800 Td (KEPT) Tj ET"],
+    }));
+    expect(result.ok && result.text.split("\n").filter(Boolean)).toEqual(["FORM", "KEPT"]);
+  });
+
+  it("draws a page's streams with one text state, with the fonts its page tree hands down, and each stream once", async () => {
+    const result = await extractPdfText(pdfOf({
+      1: CATALOG,
+      2: "<< /Type /Pages /Kids [11 0 R 12 0 R] /Count 3 >>",
+      3: "<< /Type /Page /Parent 11 0 R /Contents [4 0 R 6 0 R] >>",
+      4: ["", "BT /F1 10 Tf 40 800 Td <0001> Tj ET"],
+      5: glyphFont(7),
+      6: ["", "BT 40 780 Td <0002> Tj ET"],
+      7: toUnicode({ "0001": "M", "0002": "G" }),
+      8: "<< /Type /Page /Parent 14 0 R /Contents 9 0 R >>",
+      9: "[10 0 R 15 0 R]",
+      10: ["", "BT /F1 10 Tf 40 800 Td <0001> Tj ET"],
+      11: "<< /Type /Pages /Parent 2 0 R /Kids [3 0 R 17 0 R] /Resources << /Font << /F1 5 0 R >> >> >>",
+      12: "<< /Type /Pages /Parent 2 0 R /Kids [14 0 R] /Resources << /Font << /F1 13 0 R >> >> >>",
+      13: glyphFont(16),
+      14: "<< /Type /Pages /Parent 12 0 R /Kids [8 0 R] >>",
+      15: ["", "BT 40 780 Td <0001> Tj ET"],
+      16: toUnicode({ "0001": "Z" }),
+      17: "<< /Type /Page /Parent 11 0 R /Contents 4 0 R >>",
+      18: "<< /Type /Page /Parent 11 0 R /Contents 99 0 R >>",
+    }));
+    expect(result.ok && result.text.split("\n").filter(Boolean)).toEqual(["M", "G", "Z", "Z"]);
+  });
+
+  /** Each gap is 2.9 or 3.1 units, either side of a space: an advance read wrong by any amount moves one across. */
+  describe("text placed by position", () => {
+    const read = async (fonts: Record<number, string | [string, string]>, content: string) => {
+      const result = await extractPdfText(pdfOf({ 1: CATALOG, 2: "<< /Type /Pages /Kids [3 0 R] /Count 1 >>", 3: page(4, "/F1 5 0 R /F2 8 0 R"), 4: ["", content], ...fonts }));
+      return result.ok ? result.text : result.reason;
+    };
+
+    it("advances by a simple font's widths from its first code, and moves the line by Td and TD", async () => {
+      const font = { 5: "<< /Type /Font /Subtype /TrueType /FirstChar 65 /Widths 9 0 R >>", 9: "[500 1000]" };
+      expect(await read(font, "BT /F1 10 Tf 0 700 Td (AB) Tj 17.9 0 Td (A) Tj 8.1 0 Td (B) Tj 0 -20 TD (A) Tj ET")).toBe("ABA B\nA");
+    });
+
+    it("advances by a glyph font's /W, as a list and as a range, and by /DW or 1000 for a code it does not list", async () => {
+      const result = await read({
+        5: "<< /Type /Font /Subtype /Type0 /Encoding /Identity-H /ToUnicode 6 0 R /DescendantFonts [7 0 R] >>",
+        6: toUnicode({ "0001": "A", "0002": "B", "0003": "C", "0004": "D", "0009": "E" }),
+        7: "<< /Type /Font /Subtype /CIDFontType2 /DW 250 /W [1 [500 1000] 3 4 2000] >>",
+        8: "<< /Type /Font /Subtype /Type0 /Encoding /Identity-H /ToUnicode 6 0 R /DescendantFonts [10 0 R] >>",
+        10: "<< /Type /Font /Subtype /CIDFontType2 /W [1 [500]] >>",
+      }, "BT /F1 10 Tf 0 700 Td <0001> Tj 8.1 0 Td <0002> Tj 12.9 0 Td <0003> Tj 23.1 0 Td <0004> Tj 22.9 0 Td <0009> Tj 5.6 0 Td <0001> Tj /F2 10 Tf 1 0 0 1 0 600 Tm <0002> Tj 12.9 0 Td <0001> Tj ET");
+      expect(result).toBe("A BC DE A\nBA");
+    });
+
+    it("adds Tc to every glyph and Tw to every space, scales by Tz, takes TJ's kerning off, and moves by Tm's scale", async () => {
+      const widths = Array.from({ length: 34 }, (_, index) => (index === 0 ? 250 : index === 33 ? 500 : 0)).join(" ");
+      const result = await read({ 5: `<< /Type /Font /Subtype /TrueType /FirstChar 32 /Widths [${widths}] >>` }, [
+        "BT /F1 10 Tf 0 700 Td 2 Tc (AA) Tj 16.9 0 Td (A) Tj",
+        "0 Tc 5 Tw 1 0 0 1 0 600 Tm (A A) Tj 20.4 0 Td (A) Tj",
+        "0 Tw 50 Tz 1 0 0 1 0 500 Tm (AA) Tj 8.1 0 Td (A) Tj",
+        "100 Tz 1 0 0 1 0 400 Tm [(A) -500 (A)] TJ 17.9 0 Td (A) Tj",
+        "/F1 1 Tf 10 0 0 10 0 300 Tm (A) Tj 0.81 0 Td (A) Tj 0 -1 Td (A) Tj ET",
+      ].join(" "));
+      expect(result.split("\n")).toEqual(["AAA", "A AA", "AA A", "AAA", "A A", "A"]);
+    });
   });
 });
 

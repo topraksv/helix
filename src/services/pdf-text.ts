@@ -100,6 +100,10 @@ function declaredLength(dictionary: string): number | null {
 interface PdfStreams {
   /** Page content, in file order. */
   content: string[];
+  /** The object number each content stream is, by the same index. */
+  owners: number[];
+  /** Whether each is a form XObject, drawn on a page from outside its `/Contents`. */
+  forms: boolean[];
   /** Every `ToUnicode` CMap, in file order. */
   cmaps: string[];
   /** The same CMaps by the object number a font names them with. */
@@ -132,7 +136,7 @@ const GLYPH_DRAWING = /^\s*(?:-?[\d.]+\s+){2}d0\b|^\s*(?:-?[\d.]+\s+){6}d1\b/;
  * Found by `>>` followed by `stream`, not the bare word: embedded font and image data contain it, and inflating those fed garbage to the inflater.
  */
 function contentStreams(bytes: Uint8Array, haystack: string, Unzlib: UnzlibCtor): PdfStreams {
-  const found: PdfStreams = { content: [], cmaps: [], cmapByObject: new Map(), glyphs: new Map(), packed: [] };
+  const found: PdfStreams = { content: [], owners: [], forms: [], cmaps: [], cmapByObject: new Map(), glyphs: new Map(), packed: [] };
   let total = 0;
   const budget = { left: MAX_INFLATED_BYTES };
   const opener = />>\s*stream\r?\n?/g;
@@ -171,6 +175,8 @@ function contentStreams(bytes: Uint8Array, haystack: string, Unzlib: UnzlibCtor)
       found.cmapByObject.set(owner, text);
     } else {
       found.content.push(text);
+      found.owners.push(owner);
+      found.forms.push(/\/Subtype\s*\/Form\b/.test(dictionary));
     }
   }
   return found;
@@ -227,6 +233,36 @@ interface FontDecoder {
   unnamed?: boolean;
   /** Advance per code at size 1, for a font whose text is placed by position. */
   widths?: Map<number, number>;
+  /** The advance of a code `widths` does not list. */
+  defaultWidth?: number;
+}
+
+/** A font's advances at size 1, from `/Widths` or, for a Type0 font, its descendant's `/W`; none when it states none. */
+function fontWidths(body: string, bodies: Map<number, string>): Pick<FontDecoder, "widths" | "defaultWidth"> {
+  const numbers = (text: string) => (text.match(/-?\d*\.?\d+/g) ?? []).map(Number);
+  const descendant = /(\d+)\s+\d+\s+R/.exec(entryValue(body, "DescendantFonts", bodies))?.[1];
+  if (descendant == null) {
+    const advances = numbers(entryValue(body, "Widths", bodies));
+    if (advances.length === 0) return {};
+    const first = Number(/\/FirstChar\s+(\d+)/.exec(body)?.[1] ?? 0);
+    return { widths: new Map(advances.map((advance, index) => [first + index, advance / 1000])) };
+  }
+  const font = bodies.get(Number(descendant)) ?? "";
+  const widths = new Map<number, number>();
+  // `c [w1 w2 …]` gives codes from c on; `first last w` one advance to a range.
+  const tokens = entryValue(font, "W", bodies).slice(1, -1).match(/\[[^\]]*\]|-?\d*\.?\d+/g) ?? [];
+  for (let index = 0; index + 1 < tokens.length && widths.size < MAX_CMAP_ENTRIES;) {
+    const first = Number(tokens[index]);
+    if (tokens[index + 1]!.startsWith("[")) {
+      numbers(tokens[index + 1]!).forEach((advance, offset) => widths.set(first + offset, advance / 1000));
+      index += 2;
+    } else {
+      const last = Math.min(Number(tokens[index + 1]), first + MAX_CMAP_ENTRIES);
+      for (let code = first; code <= last; code += 1) widths.set(code, Number(tokens[index + 2]) / 1000);
+      index += 3;
+    }
+  }
+  return { widths, defaultWidth: Number(/\/DW\s+(-?\d*\.?\d+)/.exec(font)?.[1] ?? 1000) / 1000 };
 }
 
 /** EBCDIC code page 037, the codes a mainframe page format (AFP) sets Latin text in. */
@@ -296,11 +332,26 @@ function connectedParts(pixels: Set<number>, width: number): number[][] {
   return parts;
 }
 
-/** A dictionary entry's value: the object it references, or the value written in place. */
+/** The `<< … >>` or `[ … ]` that opens at `at`, what it nests included; empty when it never closes. */
+function enclosedAt(text: string, at: number): string {
+  const [open, close] = text.startsWith("<<", at) ? ["<<", ">>"] : ["[", "]"];
+  let depth = 0;
+  for (let index = at; index < text.length; index += 1) {
+    if (text.startsWith(open, index)) depth += 1;
+    else if (text.startsWith(close, index)) depth -= 1;
+    else continue;
+    index += open.length - 1;
+    if (depth === 0) return text.slice(at, index + 1);
+  }
+  return "";
+}
+
+/** A dictionary entry's value: the object it references, or the dictionary or array written in place; empty when it is absent. */
 function entryValue(body: string, key: string, bodies: Map<number, string>): string {
   const reference = new RegExp(`/${key}\\s+(\\d+)\\s+\\d+\\s+R`).exec(body);
   if (reference) return bodies.get(Number(reference[1])) ?? "";
-  return new RegExp(`/${key}\\s*(<<[^>]*>>|\\[[^\\]]*\\])`).exec(body)?.[1] ?? "";
+  const inline = new RegExp(`/${key}\\s*(?=<<|\\[)`).exec(body);
+  return inline ? enclosedAt(body, inline.index + inline[0].length) : "";
 }
 
 interface AfpFont {
@@ -364,8 +415,8 @@ function afpDecoders(fonts: AfpFont[], drawings: Map<number, string>): FontDecod
   });
 }
 
-/** The font object each resource name selects, or null when one name means two fonts (page attribution is not walked). Each referenced dictionary is read once. */
-function fontObjectsByName(bodies: Map<number, string>): Map<string, number> | null {
+/** Every name a font dictionary gives an object, in file order. Each referenced dictionary is read once. */
+function fontEntries(bodies: Map<number, string>): [string, number][] {
   const dictionaries: string[] = [];
   const referenced = new Set<number>();
   for (const body of bodies.values()) {
@@ -373,48 +424,108 @@ function fontObjectsByName(bodies: Map<number, string>): Map<string, number> | n
     for (const reference of body.matchAll(/\/Font\s+(\d+)\s+\d+\s+R/g)) referenced.add(Number(reference[1]));
   }
   for (const object of referenced) dictionaries.push(bodies.get(object) ?? "");
+  return dictionaries.flatMap((dictionary) => [...dictionary.matchAll(/\/([^\s/[\]()<>{}%]+)\s+(\d+)\s+\d+\s+R/g)].map((entry) => [entry[1]!, Number(entry[2])] as [string, number]));
+}
+
+/** The font object each name selects across the document, or null when one name means two fonts: then only a page's own resources say which. */
+function fontObjectsByName(entries: [string, number][]): Map<string, number> | null {
   const fontByName = new Map<string, number>();
-  for (const dictionary of dictionaries) {
-    for (const entry of dictionary.matchAll(/\/([^\s/[\]()<>{}%]+)\s+(\d+)\s+\d+\s+R/g)) {
-      const known = fontByName.get(entry[1]!);
-      if (known != null && known !== Number(entry[2])) return null;
-      fontByName.set(entry[1]!, Number(entry[2]));
-    }
+  for (const [name, object] of entries) {
+    const known = fontByName.get(name);
+    if (known != null && known !== object) return null;
+    fontByName.set(name, object);
   }
   return fontByName;
 }
 
-/** The decoder each resource name selects, or null where `fontObjectsByName` refuses. Fonts and CMaps are read once however many names share them. */
-function resolveFonts(bodies: Map<number, string>, streams: PdfStreams): Map<string, FontDecoder> | null {
-  const fontByName = fontObjectsByName(bodies);
-  if (!fontByName) return null;
+/** Each font object's decoder. Fonts and CMaps are read once however many names and pages share them. */
+function fontDecoders(bodies: Map<number, string>, streams: PdfStreams, objects: Iterable<number>): Map<number, FontDecoder> {
+  const unique = [...new Set(objects)];
   const parsed = new Map<number, ToUnicodeMap>();
   const decoders = new Map<number, FontDecoder>();
-  const afp = [...new Set(fontByName.values())].flatMap((object) => {
+  const afp = unique.flatMap((object) => {
     const font = afpFont(bodies.get(object) ?? "", bodies);
     return font ? [[object, font] as const] : [];
   });
   afpDecoders(afp.map(([, font]) => font), streams.glyphs).forEach((decoder, index) => decoders.set(afp[index]![0], decoder));
-  const fonts = new Map<string, FontDecoder>();
-  for (const [name, object] of fontByName) {
-    let decoder = decoders.get(object);
-    if (!decoder) {
-      const body = bodies.get(object) ?? "";
-      const reference = /\/ToUnicode\s+(\d+)\s+\d+\s+R/.exec(body);
-      const cmapObject = reference ? Number(reference[1]) : -1;
-      const cmap = streams.cmapByObject.get(cmapObject);
-      if (cmap != null && !parsed.has(cmapObject)) parsed.set(cmapObject, parseToUnicode(cmap));
-      const toUnicode = parsed.get(cmapObject) ?? null;
-      decoder = {
-        cid: /\/Subtype\s*\/Type0\b/.test(body) || /\/Encoding\s*\/Identity-[HV]\b/.test(body),
-        toUnicode,
-        unnamed: toUnicode == null && /\/Subtype\s*\/Type3\b/.test(body),
-      };
-      decoders.set(object, decoder);
-    }
-    fonts.set(name, decoder);
+  for (const object of unique) {
+    if (decoders.has(object)) continue;
+    const body = bodies.get(object) ?? "";
+    const reference = /\/ToUnicode\s+(\d+)\s+\d+\s+R/.exec(body);
+    const cmapObject = reference ? Number(reference[1]) : -1;
+    const cmap = streams.cmapByObject.get(cmapObject);
+    if (cmap != null && !parsed.has(cmapObject)) parsed.set(cmapObject, parseToUnicode(cmap));
+    const toUnicode = parsed.get(cmapObject) ?? null;
+    decoders.set(object, {
+      cid: /\/Subtype\s*\/Type0\b/.test(body) || /\/Encoding\s*\/Identity-[HV]\b/.test(body),
+      toUnicode,
+      unnamed: toUnicode == null && /\/Subtype\s*\/Type3\b/.test(body),
+      ...fontWidths(body, bodies),
+    });
   }
-  return fonts;
+  return decoders;
+}
+
+const named = (fontByName: Map<string, number>, decoders: Map<number, FontDecoder>) =>
+  new Map([...fontByName].map(([name, object]) => [name, decoders.get(object)!] as const));
+
+/** Bounds a page tree that names itself as its parent. */
+const MAX_TREE_DEPTH = 32;
+
+/**
+ * A page as it is drawn: its content streams in order, which share one text
+ * state, so a font a first stream selects shows a second's strings; and the
+ * fonts its own resources name, inherited down the page tree. Word writes `/F1`
+ * on every page for a different font each time.
+ */
+interface Page {
+  contents: number[];
+  fonts: Map<string, number> | null;
+}
+
+function pagesOf(bodies: Map<number, string>): Page[] {
+  const pages: Page[] = [];
+  for (const body of bodies.values()) {
+    if (!/\/Type\s*\/Page\b/.test(body)) continue;
+    const listed = /\/Contents\s*(\[[^\]]*\]|(\d+)\s+\d+\s+R)/.exec(body);
+    const array = listed?.[2] != null ? bodies.get(Number(listed[2])) ?? "" : "";
+    const contents = [...((/^\s*\[/.test(array) ? array : listed?.[1]) ?? "").matchAll(/(\d+)\s+\d+\s+R/g)].map((reference) => Number(reference[1]));
+    let fonts: Map<string, number> | null = null;
+    let node: string | undefined = body;
+    for (let depth = 0; node != null && depth < MAX_TREE_DEPTH; depth += 1) {
+      if (/\/Resources\b/.test(node)) {
+        const dictionary = entryValue(entryValue(node, "Resources", bodies), "Font", bodies);
+        fonts = new Map([...dictionary.matchAll(/\/([^\s/[\]()<>{}%]+)\s+(\d+)\s+\d+\s+R/g)].map((entry) => [entry[1]!, Number(entry[2])]));
+        break;
+      }
+      const parent = /\/Parent\s+(\d+)\s+\d+\s+R/.exec(node);
+      node = parent ? bodies.get(Number(parent[1])) : undefined;
+    }
+    pages.push({ contents, fonts });
+  }
+  return pages;
+}
+
+/**
+ * What is read as one: a page's streams joined, with the page's fonts, and each
+ * form no page names alone, with the document's; in file order. Once a page is
+ * found, a stream that is neither is a font program or a cross-reference table,
+ * whose bytes would be read as strings; with none found, every stream is read.
+ */
+function readingUnits(streams: PdfStreams, pages: Page[], decoders: Map<number, FontDecoder>, documentFonts: Map<string, FontDecoder> | null) {
+  const indexOf = new Map(streams.owners.map((owner, index) => [owner, index]));
+  const claimed = new Set<number>();
+  const units: { first: number; text: string; fonts: Map<string, FontDecoder> | null }[] = [];
+  for (const page of pages) {
+    const indexes = page.contents.map((object) => indexOf.get(object));
+    if (indexes.length === 0 || indexes.some((index) => index == null || claimed.has(index))) continue;
+    for (const index of indexes) claimed.add(index!);
+    units.push({ first: Math.min(...(indexes as number[])), text: indexes.map((index) => streams.content[index!]).join("\n"), fonts: page.fonts ? named(page.fonts, decoders) : documentFonts });
+  }
+  streams.content.forEach((text, index) => {
+    if (!claimed.has(index) && (claimed.size === 0 || streams.forms[index])) units.push({ first: index, text, fonts: documentFonts });
+  });
+  return units.sort((a, b) => a.first - b.first);
 }
 
 /**
@@ -551,7 +662,7 @@ function hexBytes(hex: string): string {
 }
 
 /** A string, a name, an array bracket, a number (group 1) or a text operator (group 2). */
-const TEXT_TOKEN = /\((?:\\.|[^\\()])*\)|<[0-9A-Fa-f\s]*>|\/[^\s/[\]()<>{}%]+|\[|\]|(-?\d*\.?\d+)|(T[JjdDfmz*]|ET|'|")/g;
+const TEXT_TOKEN = /\((?:\\.|[^\\()])*\)|<[0-9A-Fa-f\s]*>|\/[^\s/[\]()<>{}%]+|\[|\]|(-?\d*\.?\d+)|(T[JjdDfmz*cw]|ET|'|")/g;
 
 interface TextOperation {
   operator: string;
@@ -579,16 +690,25 @@ function* textOperations(stream: string): Generator<TextOperation> {
 }
 
 /** The strings an operation shows, decoded, and their advance at `scale`; null in a font it cannot name. */
-function shownText(strings: TextOperation["strings"], font: FontDecoder | null, scale: number): { text: string; advance: number } | null {
+function shownText(strings: TextOperation["strings"], font: FontDecoder | null, scale: number): { text: string; advance: number; glyphs: number; spaces: number } | null {
   let text = "";
   let advance = 0;
+  let glyphs = 0;
+  let spaces = 0;
+  const step = font?.cid ? 2 : 1;
   for (const { raw, hex } of strings) {
     const shown = decodeShown(raw, font, hex);
     if (shown == null) return null;
     text += shown;
-    for (const character of raw) advance += (font?.widths?.get(character.charCodeAt(0)) ?? 0) * scale;
+    for (let index = 0; index < raw.length; index += step) {
+      const code = step === 2 ? (raw.charCodeAt(index) << 8) | raw.charCodeAt(index + 1) : raw.charCodeAt(index);
+      advance += (font?.widths?.get(code) ?? font?.defaultWidth ?? 0) * scale;
+      glyphs += 1;
+      // Word spacing is the single-byte space's alone (PDF 32000 9.3.3).
+      if (step === 1 && code === 32) spaces += 1;
+    }
   }
-  return { text, advance };
+  return { text, advance, glyphs, spaces };
 }
 
 /**
@@ -619,29 +739,55 @@ interface TextRun {
   x: number;
   y: number;
   end: number;
+  size: number;
   text: string;
 }
 
 /**
- * A page that sets each glyph group at an absolute position (`Tm` then `Td`),
- * read back as rows: by height, then left to right. Stream order says nothing
- * about reading order there.
+ * A page that sets each glyph group at a position, read back as rows: by
+ * height, then left to right, a gap wider than a space's share of the size
+ * being a space. Stream order says nothing about reading order there. `Td` and
+ * `Tm` move the line's start; what is shown moves the pen along it by its
+ * advance, its `TJ` kerning and its `Tc` and `Tw` spacing (PDF 32000 9.4.4).
  */
+/** Where the pen is and what it writes with, as `positionedText` walks a stream. */
+interface Pen {
+  font: FontDecoder | null;
+  size: number;
+  scale: number;
+  charSpacing: number;
+  wordSpacing: number;
+  lineX: number;
+  lineY: number;
+  x: number;
+  // `Tm`'s own scale, its a and d: Word sets `1 Tf` and the size in the matrix, which then scales every move and advance.
+  matrixA: number;
+  matrixD: number;
+}
+
+/** What one operator changes of the pen; showing text moves it in `positionedText`. */
+function penAfter(pen: Pen, operator: string, numbers: number[], name: string, fonts: Map<string, FontDecoder>): void {
+  const [last = 0, beforeLast = 0] = numbers.slice(-2).reverse();
+  if (operator === "Tf") [pen.font, pen.size] = [fonts.get(name) ?? null, last];
+  else if (operator === "Tz") pen.scale = last / 100;
+  else if (operator === "Tc") pen.charSpacing = last;
+  else if (operator === "Tw") pen.wordSpacing = last;
+  else if (operator === "Tm") [pen.matrixA, pen.matrixD, pen.lineX, pen.lineY, pen.x] = [numbers.at(-6) ?? 1, numbers.at(-3) ?? 1, beforeLast, last, beforeLast];
+  else if (operator === "Td" || operator === "TD") [pen.lineX, pen.lineY, pen.x] = [pen.lineX + beforeLast * pen.matrixA, pen.lineY + last * pen.matrixD, pen.lineX + beforeLast * pen.matrixA];
+}
+
 function positionedText(stream: string, fonts: Map<string, FontDecoder>): string | null {
   const runs: TextRun[] = [];
-  let font: FontDecoder | null = null;
-  let size = 0;
-  let scale = 1;
-  let [x, y] = [0, 0];
+  const pen: Pen = { font: null, size: 0, scale: 1, charSpacing: 0, wordSpacing: 0, lineX: 0, lineY: 0, x: 0, matrixA: 1, matrixD: 1 };
   for (const { operator, numbers, name, strings } of textOperations(stream)) {
-    const shown = shownText(strings, font, size * scale);
+    const scaled = pen.size * pen.scale;
+    const shown = shownText(strings, pen.font, scaled);
     if (!shown) return null;
-    if (shown.text) runs.push({ x, y, end: x + shown.advance, text: shown.text });
-    const [last = 0, beforeLast = 0] = numbers.slice(-2).reverse();
-    if (operator === "Tf") [font, size] = [fonts.get(name) ?? null, last];
-    else if (operator === "Tz") scale = last / 100;
-    else if (operator === "Tm") [x, y] = [beforeLast, last];
-    else if (operator === "Td" || operator === "TD") [x, y] = [x + beforeLast, y + last];
+    const kerning = operator === "TJ" ? (numbers.reduce((sum, value) => sum + value, 0) / 1000) * scaled : 0;
+    const advance = (shown.advance + (shown.glyphs * pen.charSpacing + shown.spaces * pen.wordSpacing) * pen.scale - kerning) * pen.matrixA;
+    if (shown.text) runs.push({ x: pen.x, y: pen.lineY, end: pen.x + advance, size: pen.size * pen.matrixD, text: shown.text });
+    pen.x += advance;
+    penAfter(pen, operator, numbers, name, fonts);
   }
   return rowsOf(runs);
 }
@@ -706,11 +852,16 @@ export async function extractPdfText(bytes: Uint8Array): Promise<PdfTextResult> 
 
   // Each `Tf` picks its font's own CMap; otherwise the single document CMap serves; several or none is refused, not guessed.
   const usesGlyphIds = /\/Encoding\s*\/Identity-[HV]/.test(document) || /\/Subtype\s*\/Type0/.test(document);
-  const fonts = resolveFonts(objectBodies(raw, streams.packed), streams);
+  const bodies = objectBodies(raw, streams.packed);
+  const entries = fontEntries(bodies);
+  const pages = pagesOf(bodies);
+  const decoders = fontDecoders(bodies, streams, [...entries.map(([, object]) => object), ...pages.flatMap((page) => [...(page.fonts?.values() ?? [])])]);
+  const byName = fontObjectsByName(entries);
+  const units = readingUnits(streams, pages, decoders, byName ? named(byName, decoders) : null);
   // Once, not per stream: re-parsing a full CMap per stream was seconds.
   const fallback = documentFont(usesGlyphIds, streams.cmaps);
-  const positioned = (stream: string) => [...stream.matchAll(/\/([^\s/[\]()<>{}%]+)\s+[-\d.]+\s+Tf/g)].some((m) => fonts?.get(m[1]!)?.widths);
-  const shown = streams.content.map((stream) => positioned(stream) ? positionedText(stream, fonts!) : showText(stream, fonts, fallback));
+  const positioned = ({ text, fonts }: (typeof units)[number]) => [...text.matchAll(/\/([^\s/[\]()<>{}%]+)\s+[-\d.]+\s+Tf/g)].some((m) => fonts?.get(m[1]!)?.widths);
+  const shown = units.map((unit) => positioned(unit) ? positionedText(unit.text, unit.fonts!) : showText(unit.text, unit.fonts, fallback));
   if (shown.some((stream) => stream == null)) return { ok: false, reason: "unmapped_font" };
 
   const text = shown
