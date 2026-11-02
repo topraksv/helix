@@ -14,6 +14,8 @@ import { getSqliteAsync, withTransaction } from "./client";
 import { SYNCED_TABLES, type SyncedTableName } from "./schema";
 import type { AnySettingKey } from "../domain/settings";
 import { deterministicId, naturalKeys } from "./ids";
+import { clampToInputLimit, isInputWithinLimit } from "../domain/input";
+import { commentBeyondInstalments } from "../services/spreadsheet-import";
 import { convertOutboundRow, outboundPolicy } from "../sync/outbound-validation";
 import { resolveTombstoneVersion } from "../sync/tombstone-policy";
 
@@ -320,6 +322,19 @@ export async function requeueSyncDeadLetter(
     [dead.row_id, userId],
   );
   if (!current) return "missing";
+  // An imported note written past the limit is the one row a retry can mend:
+  // the editor refuses to open-and-save it, so nothing else ever could. Which
+  // cards the import took as information only is not stored, so a line goes
+  // only when a live plan carries its name: one that became no plan is its only record.
+  if (table === "cell_notes" && current.deleted_at == null && !isInputWithinLimit(current.body as string, "note")) {
+    const titles = await sqlite.getAllAsync<{ title: string }>(
+      "SELECT title FROM installment_plans WHERE user_id = ? AND deleted_at IS NULL",
+      [userId],
+    );
+    const planned = new Set(titles.map((row) => row.title.toLocaleLowerCase("tr-TR")));
+    const body = current.body as string;
+    current.body = commentBeyondInstalments(body, [], (name) => planned.has(name.toLocaleLowerCase("tr-TR"))) ?? clampToInputLimit(body, "note");
+  }
   // A copy: `convertOutboundRow` coerces the row it is handed.
   if (!convertOutboundRow(table, { ...current }, outboundPolicy(table)).ok) return "unrepairable";
 

@@ -35,9 +35,7 @@ export function liveMarketSymbol(currency: string): "USDTRY" | "EURTRY" | null {
  * Where the live prices come from. They are DERIVED from public exchange
  * order-book data (an ounce of gold in lira, and the lira itself, with the
  * legal gold content of each coin) rather than copied from a dealer's price
- * list. Gold lands above the dealer's selling price by the dealer's own
- * margin, which is why these tiles say what gold is WORTH rather than what one
- * shop will sell it for.
+ * list, so a tile tracks the boards without ever equalling one of them.
  *
  * `data-api.binance.vision` is the endpoint the exchange publishes for public
  * market data alone: no key, and the only candidate that sends CORS headers,
@@ -58,15 +56,29 @@ const TROY_OUNCE_GRAMS = 31.1035;
 
 /**
  * Fine gold each Turkish coin legally contains, in grams: the mint's own
- * specification, so it can be used freely. No jeweller's making charge is
- * added: a premium is one shop's margin on one day, and freezing it into the
- * app would quote a price no one offered.
+ * specification, so it can be used freely.
  */
 export const COIN_FINE_GRAMS: Readonly<Record<string, number>> = {
   CEYREK_YENI: 1.6042,
   TEK_YENI: 6.4168,
   ATA_YENI: 6.6152,
 };
+
+/**
+ * Each coin's buy and sell over its fine gold at the gram's selling price, in
+ * basis points. One premium for every coin missed Harem's board by up to 0,8%:
+ * a dealer prices each coin on its own, and buys coins back across a far
+ * narrower spread than the gram. Measured as ratios of Harem's published board
+ * (2 November 2026, 12:50; the 1 November çeyrek gives the same ratio to the
+ * lira); the app never reads a board. Recalibrating means editing these numbers.
+ */
+const COIN_PREMIUM_BP: Readonly<Record<string, { buy: number; sell: number }>> = {
+  CEYREK_YENI: { buy: 73, sell: 160 },
+  TEK_YENI: { buy: 73, sell: 120 },
+  ATA_YENI: { buy: 34, sell: 79 },
+};
+const coinFactor = (code: string, side: "buy" | "sell") =>
+  COIN_FINE_GRAMS[code]! * (1 + COIN_PREMIUM_BP[code]![side] / 10_000);
 
 /** One side of an order book: what it is bid at, and what it is offered at. */
 interface BookQuote {
@@ -146,8 +158,9 @@ export function parseMarketBooks(payload: unknown): MarketBooks | null {
  * well under its "Satış". Each figure is a published Turkish counter spread,
  * not a number taken off anyone's price list:
  *
- *   - **Gold.** A jeweller's gram spread of 1,2–1,8%; a large dealer sits at
- *     the tight end, so 1,25%. (Banks' paper-gold spread is a different product.)
+ *   - **Gold.** A jeweller's gram spread of 1,0–1,8%; Harem's gram board read
+ *     1,06% (2 November 2026), so 1,06%. (Banks' paper-gold spread is a
+ *     different product.)
  *   - **Dollar.** Free-market boards, about 0,22%.
  *   - **Euro.** About 0,42%: wider because the euro reaches lira through two
  *     legs, which is also how the ask is composed.
@@ -155,7 +168,7 @@ export function parseMarketBooks(payload: unknown): MarketBooks | null {
  * Recalibrating means editing these three numbers.
  */
 export const DEALER_MARGIN_BP: Readonly<Record<"metal" | "usd" | "eur", number>> = {
-  metal: 125,
+  metal: 106,
   usd: 22,
   eur: 42,
 };
@@ -182,8 +195,8 @@ export function deriveMarketQuotes(books: MarketBooks): DerivedQuote[] {
     { code: "USDTRY", buyTry: dealerBidTry(usdSell, DEALER_MARGIN_BP.usd), sellTry: usdSell },
     { code: "EURTRY", buyTry: dealerBidTry(eurSell, DEALER_MARGIN_BP.eur), sellTry: eurSell },
   ];
-  for (const [code, fineGrams] of Object.entries(COIN_FINE_GRAMS)) {
-    quotes.push({ code, buyTry: gramBid * fineGrams, sellTry: gramAsk * fineGrams });
+  for (const code of Object.keys(COIN_FINE_GRAMS)) {
+    quotes.push({ code, buyTry: gramAsk * coinFactor(code, "buy"), sellTry: gramAsk * coinFactor(code, "sell") });
   }
   return quotes.filter((quote) => validMarketQuote(quote.buyTry, quote.sellTry));
 }
@@ -222,8 +235,7 @@ export function marketHistorySource(code: string): MarketHistorySource | null {
   if (code === "USDTRY") return { symbols: ["USDTTRY"], factor: 1 };
   if (code === "EURTRY") return { symbols: ["EURUSDT", "USDTTRY"], factor: 1 };
   if (code === "ALTIN") return { symbols: ["PAXGTRY"], factor: 1 / TROY_OUNCE_GRAMS };
-  const fineGrams = COIN_FINE_GRAMS[code];
-  return fineGrams === undefined ? null : { symbols: ["PAXGTRY"], factor: fineGrams / TROY_OUNCE_GRAMS };
+  return code in COIN_FINE_GRAMS ? { symbols: ["PAXGTRY"], factor: coinFactor(code, "sell") / TROY_OUNCE_GRAMS } : null;
 }
 
 /**

@@ -15,14 +15,15 @@ import { useUndo } from "./undo";
 
 export function showSaveResult(input: {
   name: string;
-  amountMinor: Minor;
+  /** Null while there is no figure yet: a variable bill with no estimate must not read as free. */
+  amountMinor: Minor | null;
   currency?: string;
   /** The second line, e.g. a balance before → after; null leaves the card one line. */
   detail?: string | null;
   undo?: (() => Promise<unknown>) | null;
   edit?: { label: string; run: () => void } | null;
 }): void {
-  const message = tr.saved.title(input.name, formatMinorCompact(Math.abs(input.amountMinor), input.currency));
+  const message = input.amountMinor == null ? input.name : tr.saved.title(input.name, formatMinorCompact(Math.abs(input.amountMinor), input.currency));
   const bar = useUndo.getState();
   if (!input.detail && !input.edit) {
     bar.show(message, input.undo ?? null);

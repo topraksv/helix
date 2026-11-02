@@ -52,7 +52,8 @@ describe("spreadsheet import planner", () => {
       { month: "2026-01", type: "income", status: "realized", items: 1 },
       { month: "2026-02", type: "expense", status: "pending", items: 2 },
     ]);
-    expect(cells[0]?.cellNote).toBe("Ev");
+    expect(cells[0]?.items[0]?.note).toBe("Ev");
+    expect(cells[0]?.cellNote).toBeNull();
   });
 
   it("produces no rows or columns for an unselected year", () => {
@@ -214,9 +215,8 @@ describe("spreadsheet import-plan boundaries", () => {
     it("takes the instalments back out of a column left empty", () => {
       const [entry] = plan(null, 100_00);
       expect(entry?.items).toEqual([{ amountMinor: -100_00, note: null, isAggregate: true }]);
-      // The comment survives on the cell, which is the only record of what the
-      // figure was made of.
-      expect(entry?.cellNote).toContain("Ürün");
+      // The plan carries the line, so repeating it on the cell says nothing new.
+      expect(entry?.cellNote).toBeNull();
     });
   });
 });

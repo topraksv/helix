@@ -1,28 +1,26 @@
 /** Subscription add/edit modal. Price edits append to price_history (spec §4.1). */
 
-import React, { useState } from "react";
+import { useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
-import ArrowRight from "lucide-react-native/icons/arrow-right";
 import BellRing from "lucide-react-native/icons/bell-ring";
 import CalendarClock from "lucide-react-native/icons/calendar-clock";
 import Repeat2 from "lucide-react-native/icons/repeat-2";
 import { Redirect, Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { CreditCardCycleRequiredError, deleteSubscriptionWithExpected, ensureSubscriptionCategory, upsertSubscription } from "../data/repo";
-import { useAnsweredForId, useCategoriesState, usePersonsState, useSourcesState, useSubscriptionsState, useUserId } from "../data/hooks";
+import { useAnsweredForId, useCategoriesState, usePersonsState, useSourcesState, useSubscriptionsState, useUserId, useYearCategories } from "../data/hooks";
 import { combineLiveStates } from "../data/live-state";
 import { classifyRecordId } from "../domain/route-params";
 import { advanceDueDate, dueDateInMonth, nextDueAfter } from "../domain/recurrence";
 import { isValidCardCycle } from "../domain/card-statements";
 import { normalizedMonthlyLoadMinor } from "../domain/analytics";
-import { currencyLabel } from "../domain/fx-provider";
-import { isMonthDay, monthKeyOf, todayISO, type ISODate } from "../domain/dates";
+import { isMonthDay, monthKeyOf, todayISO, yearOf, type ISODate } from "../domain/dates";
 import { formatMinorCompact, formatMinorInput } from "../domain/money";
 import { dateLabel, shortDateLabel, tr } from "../i18n/tr";
 import { scheduleSync } from "../sync/engine";
 import { categoryIconComponent } from "../ui/category-icon";
 import { Logo, PaymentSourceLogo } from "../ui/logo";
-import { CurrencyPicker } from "../ui/currency-picker";
-import { Amount, Body, Button, Card, ChipPicker, DataGateScreen, DataStateNotice, FadeIn, Field, FieldError, FieldNote, InlineDisclosure, Label, MoneyField, PanelHeader, Row, Screen, Select, Spread, Toggle } from "../ui/components";
+import { CurrencySelect } from "../ui/currency-picker";
+import { Amount, Body, Button, Card, ChipPicker, DataGateScreen, DataStateNotice, FadeIn, Field, FieldError, FieldNote, Label, MoneyField, PanelHeader, Row, Screen, Select, Spread, Toggle } from "../ui/components";
 import { useSubmitOnEnter } from "../ui/keyboard";
 import { appAlert } from "../ui/dialog";
 import { DateField } from "../ui/calendar";
@@ -120,41 +118,25 @@ function SubscriptionFormArtwork({
         </View>
       </View>
 
-      <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
-        {[nextDueDate, followingDueDate].map((date, index) => (
-          <React.Fragment key={index === 0 ? "next" : "following"}>
-            {index === 1 ? (
-              <FadeIn delay={90} style={{ flexDirection: "row", alignItems: "center", gap: 2 }}>
-                <View style={{ width: 10, height: StyleSheet.hairlineWidth, backgroundColor: palette.border }} />
-                <ArrowRight accessible={false} size={14} color={palette.primary} />
-                <View style={{ width: 10, height: StyleSheet.hairlineWidth, backgroundColor: palette.border }} />
-              </FadeIn>
-            ) : null}
-            <FadeIn
-              delay={index * 120}
-              style={{
-                flex: 1,
-                minWidth: 0,
-                minHeight: 58,
-                justifyContent: "center",
-                paddingHorizontal: spacing.sm,
-                paddingVertical: spacing.xs,
-                borderRadius: radius.md,
-                backgroundColor: index === 0 ? palette.primarySoft : palette.surfaceAlt,
-                borderWidth: StyleSheet.hairlineWidth,
-                borderColor: index === 0 ? palette.primary + "70" : palette.border,
-              }}
-            >
-              <Text style={[type.small, { color: palette.textSecondary, fontSize: type.micro.fontSize }]}>
-                {index === 0 ? tr.subs.nextCharge : tr.subs.followingCharge}
-              </Text>
-              <Text style={[type.label, { color: index === 0 ? palette.primaryText : palette.text, marginTop: 2 }]}>
-                {date ? shortDateLabel(date) : "—"}
-              </Text>
-            </FadeIn>
-          </React.Fragment>
-        ))}
-      </View>
+      {/* One date to read; the one after it is a note under it, not a second box to compare. */}
+      <FadeIn
+        style={{
+          minHeight: 58,
+          justifyContent: "center",
+          paddingHorizontal: spacing.md,
+          paddingVertical: spacing.sm,
+          borderRadius: radius.md,
+          backgroundColor: palette.primarySoft,
+          borderWidth: StyleSheet.hairlineWidth,
+          borderColor: palette.primary + "70",
+        }}
+      >
+        <Text style={[type.small, { color: palette.textSecondary }]}>{tr.subs.nextCharge}</Text>
+        <Text style={[type.label, { color: palette.primaryText, marginTop: 2 }]}>{nextDueDate ? dateLabel(nextDueDate) : "—"}</Text>
+        {followingDueDate ? (
+          <Text style={[type.small, { color: palette.textSecondary, marginTop: 2 }]}>{tr.subs.followingCharge(shortDateLabel(followingDueDate))}</Text>
+        ) : null}
+      </FadeIn>
 
       {/* A variable bill has no monthly or annual equivalent to state: the
           number in the field is a guess, and multiplying a guess by twelve
@@ -212,7 +194,6 @@ interface SubscriptionFields {
   amountMinor: number | null;
   amountMode: "fixed" | "variable";
   currency: string;
-  showCurrency: boolean;
   cycle: "monthly" | "yearly" | "custom";
   intervalStr: string;
   billingDayStr: string;
@@ -228,7 +209,7 @@ interface SubscriptionFields {
 }
 
 const NEW_SUBSCRIPTION: SubscriptionFields = {
-  name: "", amountRaw: "", amountMinor: null, amountMode: "fixed", currency: "TRY", showCurrency: false, cycle: "monthly",
+  name: "", amountRaw: "", amountMinor: null, amountMode: "fixed", currency: "TRY", cycle: "monthly",
   intervalStr: "1", billingDayStr: "1", yearlyRenewalDate: null, categoryId: null, sourceId: null, personChoice: null,
   isActive: true, autoPay: false, isTrial: false, trialDate: null, note: "",
 };
@@ -245,7 +226,6 @@ function initialSubscription(existing: ExistingSubscription | undefined): Subscr
     amountMinor: amountKnown ? existing.amountMinor : null,
     amountMode: existing.amountMode,
     currency: existing.currency,
-    showCurrency: existing.currency !== "TRY",
     cycle: existing.cycle,
     intervalStr: String(existing.intervalMonths),
     billingDayStr: String(existing.billingDay),
@@ -282,7 +262,7 @@ function useSubscriptionForm(existing: ExistingSubscription | undefined) {
   const patch = (next: Partial<SubscriptionFields>) => setFields((current) => ({ ...current, ...next }));
   const [busy, setBusy] = useState(false);
   const [showCategoryOffer, setShowCategoryOffer] = useState(false);
-  const { amountMinor: _parsed, showCurrency: _currencyShown, ...draft } = fields;
+  const { amountMinor: _parsed, ...draft } = fields;
   const { allowExit, confirmDiscard } = useDirtyExitGuard(useDraftDirty(JSON.stringify(draft), data.ready) && !busy);
 
   const { cycle, amountMode } = fields;
@@ -309,6 +289,7 @@ function useSubscriptionForm(existing: ExistingSubscription | undefined) {
     trial: fields.isTrial && fields.trialDate == null,
   };
   const expenseCategories = categoriesState.data.filter((category) => category.kind === "expense");
+  const yearCategories = useYearCategories(yearOf(todayISO()), fields.categoryId);
   const selectedCategoryId = expenseCategories.some((category) => category.id === fields.categoryId) ? fields.categoryId : null;
   const today = todayISO();
   const previewDueDate = cycle === "yearly" ? fields.yearlyRenewalDate : scheduleValid ? firstDueDate(today, billingDay, intervalMonths) : null;
@@ -326,9 +307,10 @@ function useSubscriptionForm(existing: ExistingSubscription | undefined) {
     const name = fields.name.trim();
     if (existing) return useUndo.getState().show(tr.saved.updated(name));
     showSaveResult({
-      name, amountMinor: fields.amountMinor ?? 0, currency: fields.currency,
+      name, amountMinor: fields.amountMinor || null, currency: fields.currency,
       detail: tr.saved.subscription(dateLabel(nextDueDate)),
       undo: () => deleteSubscriptionWithExpected(userId, savedId).then(() => scheduleSync(userId)),
+      edit: { label: tr.common.edit, run: () => router.push({ pathname: "/subscription-form", params: { id: savedId } }) },
     });
   };
 
@@ -350,7 +332,7 @@ function useSubscriptionForm(existing: ExistingSubscription | undefined) {
         personId: personId!,
         isActive: fields.isActive,
         trialEndDate: fields.isTrial ? fields.trialDate : null,
-        autoPay: amountMode === "variable" ? false : fields.autoPay,
+        autoPay: fields.autoPay,
         // Logos are derived from the name; a stored domain still serves as a favicon fallback.
         websiteDomain: existing?.websiteDomain || null,
         note: fields.note.trim() || null,
@@ -410,7 +392,7 @@ function useSubscriptionForm(existing: ExistingSubscription | undefined) {
   };
   return {
     existing, data, fields, patch, busy, valid, save, attempted, missing, scheduleErrors, acceptCategoryOffer, confirmDiscard, close, persons, sources, personId, sourceValid, userId,
-    expenseCategories, selectedCategoryId, showCategoryOffer, setShowCategoryOffer, previewDueDate, followingDueDate,
+    expenseCategories, yearCategories, selectedCategoryId, showCategoryOffer, setShowCategoryOffer, previewDueDate, followingDueDate,
   };
 }
 
@@ -456,7 +438,7 @@ function SubscriptionIdentityCard({ form }: { form: SubscriptionFormModel }) {
         label={tr.subs.variableAmount}
         hint={tr.subs.variableAmountHint}
         value={variable}
-        onChange={(value) => patch(value ? { amountMode: "variable", autoPay: false } : { amountMode: "fixed" })}
+        onChange={(value) => patch({ amountMode: value ? "variable" : "fixed" })}
       />
       <MoneyField
         label={`${variable ? tr.subs.estimatedAmountFieldLabel : tr.tx.amount} · ${fields.currency}`}
@@ -464,14 +446,9 @@ function SubscriptionIdentityCard({ form }: { form: SubscriptionFormModel }) {
         onChangeMinor={(amountRaw, amountMinor) => patch({ amountRaw, amountMinor })}
         error={form.attempted && form.missing.amount ? tr.required.amount : null}
       />
-      {fields.showCurrency ? (
-        <>
-          <Label>{tr.tx.currency}</Label>
-          <CurrencyPicker value={fields.currency} onChange={(currency) => patch({ currency })} />
-        </>
-      ) : (
-        <InlineDisclosure label={tr.tx.changeCurrency(currencyLabel(fields.currency))} expanded={false} onPress={() => patch({ showCurrency: true })} />
-      )}
+      <View style={{ alignItems: "flex-start", marginBottom: spacing.md }}>
+        <CurrencySelect testID="subscription-currency" value={fields.currency} onChange={(currency) => patch({ currency })} />
+      </View>
     </Card>
   );
 }
@@ -516,9 +493,9 @@ function SubscriptionScheduleCard({ form }: { form: SubscriptionFormModel }) {
         </FieldNote>
       )}
       <Select
-        label={tr.tx.category}
+        label={tr.tx.categoryQuestion("expense")}
         placeholder={form.expenseCategories.length > 0 ? tr.tx.categoryPlaceholder : tr.tx.categoryRequiredEmpty}
-        options={form.expenseCategories.map((category) => ({ value: category.id, label: category.name, icon: categoryIconComponent(category) }))}
+        options={form.yearCategories.filter((category) => category.kind === "expense").map((category) => ({ value: category.id, label: category.name, icon: categoryIconComponent(category) }))}
         value={form.selectedCategoryId}
         onChange={(categoryId) => {
           patch({ categoryId });
@@ -542,7 +519,7 @@ function SubscriptionScheduleCard({ form }: { form: SubscriptionFormModel }) {
         </View>
       ) : null}
       <Select
-        label={tr.tx.source}
+        label={tr.tx.sourceQuestionRecurring}
         placeholder={tr.tx.sourcePlaceholder}
         options={form.sources.map((s) => ({ value: s.id, label: s.name, icon: <PaymentSourceLogo name={s.name} type={s.type} logoRef={s.logoRef} size={SOURCE_MARK} /> }))}
         value={fields.sourceId}
@@ -582,7 +559,7 @@ function SubscriptionBehaviorCard({ form }: { form: SubscriptionFormModel }) {
           <Body>{tr.subs.autoPay}</Body>
           <Body muted>{variable ? tr.subs.variableAutoPayHint : tr.subs.autoPayHint}</Body>
         </View>
-        <Toggle label={tr.subs.autoPay} value={!variable && fields.autoPay} onValueChange={(autoPay) => patch({ autoPay })} disabled={variable} />
+        <Toggle label={tr.subs.autoPay} value={fields.autoPay} onValueChange={(autoPay) => patch({ autoPay })} />
       </Spread>
       <Spread style={{ marginBottom: spacing.lg }}>
         <Body>{tr.common.active}</Body>

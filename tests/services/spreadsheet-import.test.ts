@@ -11,6 +11,7 @@ import {
   parseSheetAmount,
   parseWorkbook,
   parseWorkbookBytes,
+  commentBeyondInstalments,
   planImportCell,
   type CellData,
   type ParsedSheet,
@@ -409,6 +410,22 @@ describe("planImportCell", () => {
     });
   });
 
+  it("labels a formula's parts in order from an amount-less comment of the same length", () => {
+    const plan = planImportCell(cd({
+      valueMinor: 120000,
+      formulaParts: [50000, 70000],
+      comment: "Market\nEczane",
+      commentParts: [{ label: "Market", amountMinor: null }, { label: "Eczane", amountMinor: null }],
+    }));
+    expect(plan).toEqual({
+      items: [
+        { amountMinor: 50000, note: "Market", isAggregate: false },
+        { amountMinor: 70000, note: "Eczane", isAggregate: false },
+      ],
+      cellNote: null,
+    });
+  });
+
   it("itemizes a formula without a comment, keeping any comment as a note", () => {
     const plan = planImportCell(cd({ valueMinor: 120000, formulaParts: [50000, 70000] }));
     expect(plan!.items.map((i) => i.amountMinor)).toEqual([50000, 70000]);
@@ -424,8 +441,8 @@ describe("planImportCell", () => {
       }),
     );
     expect(plan).toEqual({
-      items: [{ amountMinor: 120000, note: null, isAggregate: true }],
-      cellNote: "kaydedilmiş toplam",
+      items: [{ amountMinor: 120000, note: "kaydedilmiş toplam", isAggregate: true }],
+      cellNote: null,
     });
   });
 
@@ -439,11 +456,49 @@ describe("planImportCell", () => {
     ]);
   });
 
-  it("falls back to one aggregate row and parks a plain comment on the cell", () => {
+  it("feeds each comment line to the part holding its amount, leaving only the rest on the cell", () => {
+    const comment = "══ Öne Çıkan ══\nMazot 1.860\nMazot 1.860\nTatil 999\n\n══ Boş ══";
+    const plan = planImportCell(
+      cd({
+        valueMinor: 400000,
+        formulaParts: [186000, 28000, 186000],
+        comment,
+        commentParts: [
+          { label: "Mazot", amountMinor: 186000 },
+          { label: "Mazot", amountMinor: 186000 },
+          { label: "Tatil", amountMinor: 99900 },
+        ],
+      }),
+    );
+    expect(plan!.items.map((item) => item.note)).toEqual(["Mazot", null, "Mazot"]);
+    expect(plan!.cellNote).toBe("══ Öne Çıkan ══\nTatil 999");
+  });
+
+  it("leaves no cell note when every line found its amount, banners included", () => {
+    const parsed = asSheet(parseSheet([row("", "Fatura"), row("Ocak 2026", c(30, { f: "10+20", note: "══ Ev ══\nSu 10\nGaz 20" }))], "S"));
+    const plan = planImportCell(sheetCell(parsed, 0, 0));
+    expect(plan!.items.map((item) => item.note)).toEqual(["Su", "Gaz"]);
+    expect(plan!.cellNote).toBeNull();
+  });
+
+  it("never plans a note past the limit the push enforces", () => {
+    const long = "x".repeat(1500);
+    const plan = planImportCell(cd({ valueMinor: 100, comment: long }));
+    expect(plan!.items[0]!.note).toHaveLength(1000);
+    expect(plan!.items[0]!.note!.endsWith("…")).toBe(true);
+  });
+
+  it("states what a comment says beyond its plans, keeping an informational card's lines", () => {
+    const comment = "══ Kart ══\nDyson 2.777,67 7/9\nkargo geç geldi\n══ Bilgi ══\nOptik 100,00 1/3\n══ Dolu ══\nZara 333,33 3/3";
+    expect(commentBeyondInstalments(comment, ["Bilgi"])).toBe("══ Kart ══\nkargo geç geldi\n══ Bilgi ══\nOptik 100,00 1/3");
+    expect(commentBeyondInstalments("══ Kart ══\nDyson 2.777,67 7/9")).toBeNull();
+  });
+
+  it("puts a plain comment on the one aggregate row it describes", () => {
     const plan = planImportCell(cd({ valueMinor: 221676, comment: "beklenmedik masraf" }));
     expect(plan).toEqual({
-      items: [{ amountMinor: 221676, note: null, isAggregate: true }],
-      cellNote: "beklenmedik masraf",
+      items: [{ amountMinor: 221676, note: "beklenmedik masraf", isAggregate: true }],
+      cellNote: null,
     });
   });
 });
@@ -697,6 +752,14 @@ describe("collectInstallmentPlans", () => {
       ["2026-01", "══ Kart A ══\nMobilya  500,00  1/3\nMobilya  900,00  1/3"], // same name, different amount
     ]);
     expect(collectInstallmentPlans([sheet])).toHaveLength(2);
+  });
+
+  it("keeps two purchases on one schedule apart, and still one each across months", () => {
+    const sheet = taksitSheet("2026", [
+      ["2026-01", "══ Kart A ══\nKulaklık  500,00  1/3\nKılıf  500,00  1/3"],
+      ["2026-02", "══ Kart A ══\nKulaklık  500,00  2/3\nKılıf  500,00  2/3"],
+    ]);
+    expect(collectInstallmentPlans([sheet]).map((p) => p.name)).toEqual(["Kulaklık", "Kılıf"]);
   });
 
   it("excludes cards flagged informational", () => {

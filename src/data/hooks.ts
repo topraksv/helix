@@ -14,7 +14,8 @@ import { buildLedgerChain, ledgerChainEndYear, sliceLedgerYear, type LedgerBundl
 import type { classifyRecordId } from "../domain/route-params";
 import { projectInvestmentState } from "../domain/investment-projection";
 import type { InvestmentState } from "../domain/investments";
-import { todayISO, type ISODate, type MonthKey } from "../domain/dates";
+import { todayISO, yearOf, type ISODate, type MonthKey } from "../domain/dates";
+import { categoriesForYear, type YearLayouts } from "../domain/year-columns";
 import { autoConfirmedTransactionIds, plannedExpectations, type PlannedExpectation } from "../domain/expected";
 import { convertToTryMinor } from "../domain/fx";
 import type { TxLike } from "../domain/types";
@@ -760,6 +761,19 @@ export function useLedgerState(year: number): LiveValueResult<LedgerBundle | nul
 }
 
 /** What the two balance columns are called, and whether both are drawn; one hook so every screen agrees. */
+/** Categories a form offers for a day in `year`: that year's columns, then what is no column at all. */
+export function useYearCategories(year: number, keep?: string | null) {
+  const categories = useCategoriesState().data;
+  const transactions = useAllTransactionsState().data;
+  const settings = useSettingsMapState().data;
+  const columnYears = settingValue<Record<string, string[]>>(settings, "column_years", {});
+  const layouts = settingValue<YearLayouts>(settings, "year_layouts", {});
+  return useMemo(
+    () => categoriesForYear(categories, { columnYears, layouts, transactions, currentYear: yearOf(todayISO()) }, year, keep),
+    [categories, transactions, columnYears, layouts, year, keep],
+  );
+}
+
 export function useBalanceColumns(): { openingLabel: string; closingLabel: string; showOpening: boolean } {
   const settings = useSettingsMapState().data;
   const stored = settingValue<StoredBalanceColumns | null>(settings, "balance_columns", null);

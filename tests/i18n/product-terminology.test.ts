@@ -47,7 +47,7 @@ describe("canonical product terminology", () => {
       paymentMethods: "Ödeme Yöntemleri",
       recurringIncome: "Düzenli Gelir",
       recurringIncomes: "Düzenli Gelirler",
-      balanceAdjustment: "Bakiye Düzeltme",
+      balanceAdjustment: "Bakiyemi Düzelt",
       balanceAdjustments: "Bakiye Düzeltmeleri",
     });
   });

@@ -14,7 +14,7 @@ import { deleteRecurringIncomeWithExpected, restoreDeletedRule, upsertRecurringI
 import { scheduleSync } from "../../../sync/engine";
 import { shortDateLabel, tr } from "../../../i18n/tr";
 import { categoryIconComponent } from "../../../ui/category-icon";
-import { Body, Button, Card, CardList, ChipPicker, CardListSkeleton, DataGateScreen, DataStateNotice, EmptyState, FadeIn, Field, Label, MoneyField, PanelHeader, Row, Screen, SectionHeader, Select } from "../../../ui/components";
+import { Body, Button, Card, CardList, ChipPicker, CardListSkeleton, DataGateScreen, DataStateNotice, EmptyState, FadeIn, Field, Label, MoneyField, PanelHeader, Row, Screen, SectionHeader, Select, useScrollToForm } from "../../../ui/components";
 import { RuleRow } from "../../../ui/rule-row";
 import { useUndo } from "../../../ui/undo";
 import { font, radius, spacing, type, useTheme } from "../../../ui/theme";
@@ -172,7 +172,7 @@ function incomeFieldErrors(
   };
 }
 
-function useIncomeForm(incomes: Income[]) {
+function useIncomeForm(incomes: Income[], onEditStart: () => void) {
   const userId = useUserId();
   const operationGuard = useOperationGuard();
   // Persons and categories load live, so their defaults are derived.
@@ -235,6 +235,7 @@ function useIncomeForm(incomes: Income[]) {
     startEdit: (income: Income) => confirmDiscard(() => {
       setEditingId(income.id);
       setDraft(incomeDraftOf(income));
+      onEditStart();
     }),
   };
 }
@@ -307,7 +308,8 @@ export default function IncomeRulesScreen() {
   const categoriesState = useCategoriesState();
   const incomes = incomesState.data;
   const undo = useUndo();
-  const form = useIncomeForm(incomes);
+  const { scrollRef, scrollToForm } = useScrollToForm();
+  const form = useIncomeForm(incomes, scrollToForm);
   const { status, ready, retry } = combineLiveStates([incomesState, personsState, categoriesState]);
 
   const remove = async (income: Income) => {
@@ -322,7 +324,7 @@ export default function IncomeRulesScreen() {
 
   if (!ready) return <DataGateScreen status={status} retry={retry} skeleton={<CardListSkeleton />} />;
   return (
-    <Screen width="workspace">
+    <Screen width="workspace" scrollRef={scrollRef}>
       <DataStateNotice status={status} retry={retry} />
       <WorkspaceSplit
         testID="incomes-workspace"

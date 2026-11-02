@@ -7,6 +7,7 @@ import {
   MAX_INSTALLMENT_COUNT,
   planAmounts,
   ownsDueDay,
+  paidByToday,
   planDraft,
   planForSighting,
   planProgress,
@@ -299,12 +300,12 @@ describe("planDraft", () => {
   const TODAY = "2026-08-13";
   const card = { type: "credit_card", statementDay: 25, dueDay: 5 };
   const draft = (over: Partial<Parameters<typeof planDraft>[0]> = {}) => planDraft({
-    kind: "card_installment", title: "Telefon", amountMinor: 600_00, countText: "6", paidText: null, storedPaid: 0,
+    kind: "card_installment", title: "Telefon", amountMinor: 600_00, countText: "6",
     startChoice: null, existingStartMonth: null, card, dueDayText: "", today: TODAY, ...over,
   });
 
   it("starts a new card plan on the statement a purchase made today joins", () => {
-    expect(draft()).toMatchObject({ valid: true, count: 6, paid: 0, startMonth: "2026-09", resolvedStart: "2026-09", paidChanged: false, reschedule: false, dueDay: 5 });
+    expect(draft()).toMatchObject({ valid: true, count: 6, paid: 0, startMonth: "2026-09", reschedule: false, dueDay: 5 });
     expect(draft({ card: { ...card, statementDay: null } })).toMatchObject({ valid: false, cardSourceValid: false, startMonth: "2026-08" });
     expect(draft({ kind: "loan", card: null })).toMatchObject({ valid: true, startMonth: "2026-08", dueDay: null });
   });
@@ -313,7 +314,7 @@ describe("planDraft", () => {
     const cash = { type: "cash", statementDay: null, dueDay: null };
     expect(draft({ card: null })).toMatchObject({ valid: false, sourceChosen: false, cardSourceValid: true });
     // Nothing paid yet: no instalment may fall on or before today, so the first is the next due day.
-    expect(draft({ card: cash })).toMatchObject({ valid: true, sourceChosen: true, cardSourceValid: true, startMonth: "2026-09", resolvedStart: "2026-09", dueDay: 13 });
+    expect(draft({ card: cash })).toMatchObject({ valid: true, sourceChosen: true, cardSourceValid: true, startMonth: "2026-09", dueDay: 13 });
     expect(draft({ card: cash, dueDayText: "12" })).toMatchObject({ valid: true, dueDay: 12, startMonth: "2026-09" });
     expect(draft({ card: cash, dueDayText: "14" })).toMatchObject({ dueDay: 14, startMonth: "2026-08" });
     expect(draft({ card: cash, startChoice: "2026-05" })).toMatchObject({ startMonth: "2026-05" });
@@ -325,19 +326,26 @@ describe("planDraft", () => {
     expect(ownsDueDay("loan", null)).toBe(true);
   });
 
-  it("follows the month the owner picked", () => {
-    expect(draft({ startChoice: "2026-05" })).toMatchObject({ startMonth: "2026-05", resolvedStart: "2026-05" });
-    expect(draft({ startChoice: "2026-05", paidText: "0" }), "nothing paid moves nothing").toMatchObject({ paidChanged: false, resolvedStart: "2026-05" });
+  /** The owner picks the first month; the app counts what fell due by today, as the schedule will realize it. */
+  it("counts what the picked month says is already paid", () => {
+    expect(draft({ startChoice: "2026-05" })).toMatchObject({ startMonth: "2026-05", paid: 4, reschedule: false });
+    expect(draft({ startChoice: "2026-05", card: { ...card, dueDay: 14 } }), "this month's day is still ahead").toMatchObject({ paid: 3 });
+    expect(draft({ startChoice: "2026-05", card: { ...card, dueDay: 13 } }), "a day due today is paid").toMatchObject({ paid: 4 });
+    expect(draft({ startChoice: "2025-01" }), "never more than the count").toMatchObject({ paid: 6, valid: true });
+    expect(draft({ startChoice: "2025-01", countText: "x" }), "a corrupt count counts nothing").toMatchObject({ paid: 0, valid: false });
+    const edit = { existingStartMonth: "2026-04" as const, startChoice: "2026-04" as const };
+    expect(draft(edit)).toMatchObject({ paid: 5, reschedule: false });
+    expect(draft({ ...edit, startChoice: "2026-08" })).toMatchObject({ paid: 1, reschedule: true });
   });
 
-  /** "Already paid N" places the start; on an edit only once it is corrected. */
-  it("moves the start by what was already paid", () => {
-    expect(draft({ paidText: "2" })).toMatchObject({ paidChanged: true, resolvedStart: "2026-07" });
-    expect(draft({ paidText: "-1" }), "a new plan's count is a change only when something was paid").toMatchObject({ paidChanged: false });
-    const edit = { existingStartMonth: "2026-03" as const, startChoice: "2026-03" as const, storedPaid: 5 };
-    expect(draft({ ...edit })).toMatchObject({ paid: 5, paidChanged: false, resolvedStart: "2026-03", reschedule: false });
-    expect(draft({ ...edit, paidText: "5" })).toMatchObject({ paidChanged: false, reschedule: false });
-    expect(draft({ ...edit, paidText: "2" })).toMatchObject({ paidChanged: true, resolvedStart: "2026-07", reschedule: true });
+  it("counts by the schedule's own day", () => {
+    expect(paidByToday("2026-06", 6, 31, "2026-06-30")).toBe(1);
+    expect(paidByToday("2026-06", 6, 31, "2026-06-29")).toBe(0);
+    expect(paidByToday("2026-02", 6, 31, "2026-02-28"), "clamped to the month's last day").toBe(1);
+    expect(paidByToday("2026-06", 6, null, "2026-06-01"), "no day is the first").toBe(1);
+    expect(paidByToday("2026-06", 6, 0, "2026-06-01"), "a corrupt day is the first, as the schedule reads it").toBe(1);
+    expect(paidByToday("2026-06", 6, 40, "2026-07-01")).toBe(2);
+    expect(paidByToday("2026-06", 0, 1, "2027-01-01")).toBe(0);
   });
 
   it("takes a loan's own day, else its account's", () => {
@@ -348,21 +356,6 @@ describe("planDraft", () => {
     expect(draft({ dueDayText: "40" })).toMatchObject({ dueDayValid: true, dueDay: 5 });
   });
 
-  /** Validity is checked before the start is derived: `planDraft` runs unguarded in the form's hook body, so a throw here replaces the form with the error boundary. */
-  it("refuses corrupt input that also moves the start, rather than throwing on it", () => {
-    const edit = { existingStartMonth: "2026-03" as const, startChoice: "2026-03" as const, storedPaid: 5 };
-    for (const dueDayText of ["0", "32", "7.5", "x"]) {
-      expect(draft({ kind: "loan", dueDayText, paidText: "2" }), dueDayText)
-        .toMatchObject({ dueDayValid: false, valid: false, resolvedStart: "2026-08" });
-    }
-    for (const paidText of ["-1", "1.5", "x", "7"]) {
-      expect(draft({ ...edit, paidText }), paidText)
-        .toMatchObject({ valid: false, resolvedStart: "2026-03", reschedule: false });
-    }
-    expect(draft({ countText: "x", paidText: "2" }), "a corrupt count invalidates the paid count that reads it")
-      .toMatchObject({ valid: false, resolvedStart: "2026-09" });
-  });
-
   it("refuses what cannot be saved", () => {
     for (const over of [
       { title: "  " },
@@ -370,13 +363,9 @@ describe("planDraft", () => {
       { amountMinor: 0 },
       { countText: "0" },
       { countText: "601" },
-      { paidText: "-1" },
-      { paidText: "7" },
-      { paidText: "1.5" },
       { card: { ...card, dueDay: 32 } },
       { card: null },
     ]) expect(draft(over), JSON.stringify(over)).toMatchObject({ valid: false });
-    expect(draft({ paidText: "6" })).toMatchObject({ valid: true });
   });
 });
 

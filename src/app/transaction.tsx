@@ -2,12 +2,11 @@
  *  future-dated payments (§2.2) and inline installment plan creation. */
 
 import React, { useState } from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { Pressable, Text, View } from "react-native";
 import { Redirect, Stack, useLocalSearchParams, useRouter } from "expo-router";
 import ArrowDownLeft from "lucide-react-native/icons/arrow-down-left";
 import ArrowUpRight from "lucide-react-native/icons/arrow-up-right";
 import CalendarClock from "lucide-react-native/icons/calendar-clock";
-import SlidersHorizontal from "lucide-react-native/icons/sliders-horizontal";
 import TrendingUp from "lucide-react-native/icons/trending-up";
 import Undo2 from "lucide-react-native/icons/undo-2";
 import WalletCards from "lucide-react-native/icons/wallet-cards";
@@ -17,6 +16,7 @@ import {
   useAllTransactionsState,
   useAttachmentsState,
   useCategoriesState,
+  useYearCategories,
   useInvestmentCategoriesState,
   useInvestmentOperationsState,
   useInvestmentProductsState,
@@ -36,21 +36,20 @@ import { assertISODate, dayOf, isISODate, isMonthDay, lastDayOf, monthKeyOf, tod
 import { isValidCardCycle, statementForPurchase, statementPeriod } from "../domain/card-statements";
 import { formatMinorCompact, formatMinorInput } from "../domain/money";
 import { installmentSplitText } from "../ui/installment-text";
-import { currencyLabel } from "../domain/fx-provider";
-import { deriveStartMonth, isValidInstallmentCount } from "../domain/installments";
-import { lookupRate, useFxRates } from "../services/fx-fetch";
+import { deriveStartMonth, isValidInstallmentCount, paidByToday } from "../domain/installments";
+import { ensureFreshRates, lookupRate, useFxRates } from "../services/fx-fetch";
 import { categoryIconComponent } from "../ui/category-icon";
 import { PaymentSourceLogo } from "../ui/logo";
-import { CurrencyPicker } from "../ui/currency-picker";
 import { scheduleSync } from "../sync/engine";
 import { dateLabel, monthLabel, tr } from "../i18n/tr";
-import { Amount, Badge, Body, Button, Card, CardList, ChipPicker, ChoiceTile, DataGateScreen, DataStateNotice, Divider, Field, FieldNote, HeroCard, InlineDisclosure, Label, ListRow, MetricStrip, MoneyField, MonthStepper, PanelHeader, Row, Screen, SectionHeader, Select, Toggle } from "../ui/components";
+import { Amount, Body, Button, Card, CardList, ChipPicker, ChoiceTile, DataGateScreen, DataStateNotice, Divider, Field, FieldNote, HeroCard, Label, ListRow, MetricStrip, MoneyField, MonthStepper, PanelHeader, Screen, SectionHeader, Select } from "../ui/components";
 import { useSubmitOnEnter } from "../ui/keyboard";
 import { appAlert } from "../ui/dialog";
 import { DateField } from "../ui/calendar";
 import { kv } from "../services/kv";
 import { useRotatingPlaceholder } from "../ui/placeholders";
-import { radius, spacing, type, useTheme } from "../ui/theme";
+import { font, iconSize, radius, spacing, type, useTheme } from "../ui/theme";
+import { CurrencySelect, optionChipPressStyle } from "../ui/currency-picker";
 import { selectionTapIfChanged } from "../ui/haptics";
 import { navigateBack } from "../ui/navigation";
 import { buildSaveSummary, type SavedTransaction, type SaveSummary } from "../domain/save-summary";
@@ -425,8 +424,6 @@ function initialEntry(existing: ExistingTx | undefined, refundOf: ExistingTx | u
     amountMinor: existing ? Math.abs(existing.amountMinor) : null as number | null,
     isReversal: reversed || investmentRefund || refundOf != null,
     currency,
-    showCurrency: currency !== "TRY",
-    showAmountOptions: reversed || currency !== "TRY" || refundOf != null,
     categoryId: basis?.categoryId ?? null,
     sourceId: basis?.paymentSourceId ?? null,
     personChoice: basis?.personId ?? null,
@@ -438,7 +435,6 @@ function initialEntry(existing: ExistingTx | undefined, refundOf: ExistingTx | u
     note: existing?.note ?? "",
     installment: false,
     countStr: "2",
-    paidStr: "0",
     dueDayStr: "",
   };
 }
@@ -552,7 +548,7 @@ function useTransactionForm({ existing, refundOf, investmentRefund }: { existing
   const [busy, setBusy] = useState(false);
   // Only what a save would write: revealing the currency row or the amount
   // options changes nothing that could be lost, so it prompts about nothing.
-  const { showCurrency: _currencyShown, showAmountOptions: _optionsShown, amountMinor: _parsed, categoryId, sourceId, personChoice, ...written } = entry;
+  const { amountMinor: _parsed, categoryId, sourceId, personChoice, ...written } = entry;
   const { allowExit } = useDirtyExitGuard(useDraftDirty(JSON.stringify({ ...written, ...(isEdit ? { categoryId, sourceId, personChoice } : {}) }), data.ready) && !busy);
 
   useEntryDefaults({ fresh: !isEdit && !refundOf, ready: data.ready, entry, patch, categories, sources });
@@ -560,6 +556,11 @@ function useTransactionForm({ existing, refundOf, investmentRefund }: { existing
   useFxRates();
   const today = todayISO();
   const rate = lookupRate(userId, entry.currency, rateDateOf(entry, today));
+  // A missing or dated rate is fetched here, not left to the owner to go and find.
+  const rateMissing = entry.currency !== "TRY" && (rate == null || rate.isStale);
+  React.useEffect(() => {
+    if (rateMissing) ensureFreshRates(userId);
+  }, [rateMissing, userId]);
   // Editing a foreign-currency row must NOT silently re-price it at today's
   // rate — the transaction's TRY value was snapshotted when it occurred. So
   // while the currency and the day that priced it are unchanged, keep its
@@ -570,6 +571,7 @@ function useTransactionForm({ existing, refundOf, investmentRefund }: { existing
   // stored rate without the row having moved. A day the rate cache does not
   // reach keeps the stored rate rather than leaving the edit with none.
   const placedOn = entry.dateMode === "day" ? entry.dateStr : entry.monthKey;
+  const yearCategories = useYearCategories(Number(placedOn.slice(0, 4)) || yearOf(today), entry.categoryId);
   const [storedPlacement] = useState(placedOn);
   const keepsStoredRate = placedOn === storedPlacement || rate == null;
   const historicalRateTry = existing?.currency === entry.currency && entry.currency !== "TRY" && existing.fxRate && keepsStoredRate ? Number(existing.fxRate) : null;
@@ -598,15 +600,13 @@ function useTransactionForm({ existing, refundOf, investmentRefund }: { existing
     ? tr.tx.beforeWalletNote(dateLabel(walletStart))
     : null;
   const count = Number(entry.countStr);
-  const paid = Number(entry.paidStr);
   // Off a card ("elden") the plan keeps its own payment day: the one typed,
   // else the source's, else the purchase day.
   const onCard = selectedSource?.type === "credit_card";
   const typedDueDay = entry.dueDayStr.trim() === "" ? null : Number(entry.dueDayStr.trim());
   const handDueFallback = selectedSource?.dueDay ?? (!dateless && isISODate(entry.dateStr) ? dayOf(entry.dateStr) : null);
   const handDueValid = typedDueDay == null || isMonthDay(typedDueDay);
-  const installmentValid = !entry.installment || (isValidInstallmentCount(count) && count >= 2 && Number.isInteger(paid) && paid >= 0 && paid < count
-    && selectedSource != null && (onCard || handDueValid));
+  const installmentValid = !entry.installment || (isValidInstallmentCount(count) && count >= 2 && selectedSource != null && (onCard || handDueValid));
   // The rule itself is in `domain/transaction-draft.ts`, where a test can hold
   // it without a renderer. This screen owns the fields; that owns the answer.
   const saveable = resolveTransactionSave({
@@ -655,17 +655,23 @@ function useTransactionForm({ existing, refundOf, investmentRefund }: { existing
     return e instanceof RefundExceedsExpenseError && refundLink ? tr.tx.refundTooLarge(formatMinorCompact(e.remainingMinor, refundLink.currency)) : tr.errors.saveFailed;
   };
 
-  /** A purchase in instalments: on a card its plan starts on the statement the purchase joins, else where "already paid" places it. */
+  /**
+   * A purchase in instalments starts where its date puts it: on a card on the
+   * statement the purchase joins, off one on the first payment day after it.
+   * What fell due since is counted, not asked, so an old purchase needs only its date.
+   */
+  const planDueDay = onCard ? selectedSource.dueDay ?? null : typedDueDay ?? handDueFallback;
+  const planStart = !entry.installment || !dateValid || (!onCard && !handDueValid) ? null
+    : onCard ? monthKeyOf(cardStatementPreview?.dueDate ?? effectiveDate)
+    : deriveStartMonth(0, monthKeyOf(effectiveDate), planDueDay, effectiveDate);
+  const paidSoFar = planStart != null && isValidInstallmentCount(count) ? paidByToday(planStart, count, planDueDay, todayISO()) : 0;
   const writePlan = (fxRate: string | null) => {
-    const dueDay = onCard ? selectedSource.dueDay ?? null : typedDueDay ?? handDueFallback;
-    const firstMonth = cardStatementPreview ? monthKeyOf(cardStatementPreview.dueDate) : dateless ? entry.monthKey : monthKeyOf(entry.dateStr);
     return createInstallmentPlan(userId, {
       title: entry.note.trim() || tr.installments.defaultTitle(formatMinorCompact(saveable!.amountMinor, entry.currency)),
       kind: "card_installment", totalAmountMinor: saveable!.amountMinor, monthlyAmountMinor: null, installmentCount: count,
       currency: entry.currency, fxRate,
-      // Off a card nothing is due until a payment day passes, so "0 paid" starts after today, as "N paid" does.
-      startMonth: paid > 0 || !onCard ? deriveStartMonth(paid, monthKeyOf(todayISO()), dueDay, todayISO()) : firstMonth,
-      dueDay, paymentSourceId: sourceId, personId: saveable!.person.id, personIsSelf: saveable!.person.isSelf,
+      startMonth: planStart!,
+      dueDay: planDueDay, paymentSourceId: sourceId, personId: saveable!.person.id, personIsSelf: saveable!.person.isSelf,
       categoryId: saveable!.categoryId, note: entry.note.trim() || null, tryFactor: saveable!.rateTry,
     });
   };
@@ -752,9 +758,9 @@ function useTransactionForm({ existing, refundOf, investmentRefund }: { existing
   };
 
   return {
-    existing, refundOf, isEdit, data, entry, patch, busy, save, canSave, chooseEntryType, userId, selfId: persons.find((person) => person.isSelf)?.id ?? null,
+    yearCategories, existing, refundOf, isEdit, data, entry, patch, busy, save, canSave, chooseEntryType, userId, selfId: persons.find((person) => person.isSelf)?.id ?? null,
     categories, sources, persons, personId, historicalRateTry, rate, isCreditCardExpense, cardCycleValid, looksLikeCardBill,
-    attempted, missing, dateless, beforeWalletNote, installmentValid, onCard, handDueFallback, handDueValid, count, cardStatementPreview, refundLink, refundLeftMinor: leftMinor, refundProblem,
+    attempted, missing, dateless, beforeWalletNote, installmentValid, onCard, handDueFallback, handDueValid, count, paidSoFar, cardStatementPreview, refundLink, refundLeftMinor: leftMinor, refundProblem,
     tryMinor: previewTryMinor(entry.amountMinor, entry.isReversal, effectiveRateTry),
   };
 }
@@ -796,56 +802,42 @@ function EntryTypePicker({ form }: { form: TransactionFormModel }) {
   );
 }
 
-function ReversalToggle({ form }: { form: TransactionFormModel }) {
-  const { palette } = useTheme();
-  const { entryType, isReversal } = form.entry;
-  return (
-    <View
-      style={{
-        flexDirection: "row",
-        alignItems: "center",
-        gap: spacing.md,
-        backgroundColor: palette.surfaceAlt,
-        borderRadius: radius.md,
-        borderWidth: isReversal ? 1 : StyleSheet.hairlineWidth,
-        borderColor: isReversal ? palette.primary : palette.border,
-        padding: spacing.md,
-        marginBottom: spacing.md,
-      }}
-    >
-      <Undo2 accessible={false} size={20} color={isReversal ? palette.primary : palette.textSecondary} />
-      <View style={{ flex: 1 }}>
-        <Body style={{ color: isReversal ? palette.primaryText : palette.text }}>{tr.tx.reversalLabel(entryType)}</Body>
-        <Body muted style={{ fontSize: type.small.fontSize, marginTop: 2 }}>
-          {isReversal ? tr.tx.reversalHint(entryType) : tr.tx.refundToggleHint(entryType)}
-        </Body>
-      </View>
-      <Toggle label={tr.tx.reversalLabel(entryType)} value={isReversal} onValueChange={(v) => form.patch(v ? { isReversal: v, installment: false } : { isReversal: v })} />
-    </View>
-  );
-}
-
+/** One line under the amount, since most entries need neither: a refund switch and the currency, each opening only what it asks for. */
 function AmountOptions({ form }: { form: TransactionFormModel }) {
+  const { palette } = useTheme();
   const { entry, patch } = form;
-  if (!entry.showAmountOptions) {
-    return <InlineDisclosure icon={SlidersHorizontal} label={tr.tx.amountOptions(entry.entryType, entry.currency)} expanded={false} onPress={() => patch({ showAmountOptions: true })} />;
-  }
+  const { entryType, isReversal } = entry;
+  const canReverse = entryType !== "transfer" || (form.isEdit && isReversal);
+  const chipPressStyle = (selected: boolean) => optionChipPressStyle(palette, selected);
+  const ink = (selected: boolean) => (selected ? palette.primaryText : palette.text);
+  const hintStyle = { fontSize: type.small.fontSize, marginBottom: spacing.md };
   return (
     <>
-      {entry.entryType !== "transfer" || (form.isEdit && entry.isReversal) ? <ReversalToggle form={form} /> : null}
-      {entry.showCurrency ? (
-        <>
-          <Label>{tr.tx.currency}</Label>
-          <CurrencyPicker value={entry.currency} onChange={(currency) => patch({ currency })} />
-        </>
-      ) : (
-        <InlineDisclosure label={tr.tx.changeCurrency(currencyLabel(entry.currency))} expanded={false} onPress={() => patch({ showCurrency: true })} />
-      )}
+      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.sm, marginBottom: spacing.md }}>
+        {canReverse ? (
+          <Pressable
+            testID="transaction-reversal"
+            accessibilityRole="switch"
+            accessibilityLabel={tr.tx.reversalLabel(entryType)}
+            accessibilityState={{ checked: isReversal }}
+            aria-checked={isReversal}
+            onPress={() => patch(isReversal ? { isReversal: false } : { isReversal: true, installment: false })}
+            style={chipPressStyle(isReversal)}
+          >
+            <Undo2 accessible={false} size={iconSize.control} color={ink(isReversal)} />
+            <Text style={[type.label, { color: ink(isReversal), fontFamily: font.semibold }]}>{tr.tx.reversalLabel(entryType)}</Text>
+          </Pressable>
+        ) : null}
+        <CurrencySelect testID="transaction-currency" value={entry.currency} onChange={(currency) => patch({ currency })} />
+      </View>
+      {/* One size for every line under the chips, whichever of them speaks. */}
+      {isReversal ? <Body muted style={hintStyle}>{tr.tx.reversalHint(entryType)}</Body> : null}
       {entry.currency !== "TRY" ? (
-        <View style={{ marginBottom: spacing.md, alignItems: "flex-start" }}>
-          {form.tryMinor != null ? <Body muted>{tr.tx.tryEquivalent(formatMinorCompact(form.tryMinor))}</Body> : <Body muted>{tr.tx.rateNotFound}</Body>}
-          {!form.historicalRateTry && form.rate?.isStale ? <Badge text={`⚠ ${tr.tx.staleRate}`} tone="warning" /> : null}
-        </View>
+        <Body muted style={hintStyle}>
+          {form.tryMinor != null
+            ? `${tr.tx.tryEquivalent(formatMinorCompact(form.tryMinor))}${!form.historicalRateTry && form.rate?.isStale ? ` · ${tr.tx.staleRate}` : ""}`
+            : tr.tx.rateNotFound}
+        </Body>
       ) : null}
     </>
   );
@@ -856,7 +848,7 @@ function AssignmentFields({ form }: { form: TransactionFormModel }) {
   const router = useRouter();
   const { palette } = useTheme();
   const { entry, patch } = form;
-  const categoryOptions = form.categories
+  const categoryOptions = form.yearCategories
     .filter((category) => acceptsEntry(category, entry.entryType))
     .map((category) => ({ value: category.id, label: category.name, icon: categoryIconComponent(category) }));
   return (
@@ -865,7 +857,7 @@ function AssignmentFields({ form }: { form: TransactionFormModel }) {
       <SectionHeader>{tr.tx.assignment}</SectionHeader>
       <Select
         testID="transaction-category"
-        label={tr.tx.category}
+        label={tr.tx.categoryQuestion(entry.entryType)}
         placeholder={categoryOptions.length > 0 ? tr.tx.categoryPlaceholder : tr.tx.categoryRequiredEmpty}
         options={categoryOptions}
         value={entry.categoryId}
@@ -878,7 +870,7 @@ function AssignmentFields({ form }: { form: TransactionFormModel }) {
       />
       {entry.entryType !== "income" ? (
         <Select
-          label={tr.tx.source}
+          label={tr.tx.sourceQuestion}
           placeholder={tr.tx.sourcePlaceholder}
           options={form.sources.map((s) => ({ value: s.id, label: s.name, icon: <PaymentSourceLogo name={s.name} type={s.type} logoRef={s.logoRef} size={SOURCE_MARK} /> }))}
           value={entry.sourceId}
@@ -991,21 +983,14 @@ function InstallmentFields({ form }: { form: TransactionFormModel }) {
   );
 }
 
-/** Count and paid so far, and — paid by hand rather than on a card — the day each instalment falls due. */
+/** Count, what the purchase date says is paid so far, and — paid by hand rather than on a card — the day each instalment falls due. */
 function InstallmentDetails({ form }: { form: TransactionFormModel }) {
   const { palette } = useTheme();
   const { entry, patch } = form;
   const noSource = entry.sourceId == null;
   return (
     <>
-      <Row>
-        <View style={{ flex: 1 }}>
-          <Field label={tr.tx.installmentCount} value={entry.countStr} onChangeText={(countStr) => patch({ countStr })} keyboardType="number-pad" error={form.attempted && form.missing.count ? tr.required.count : null} />
-        </View>
-        <View style={{ flex: 1 }}>
-          <Field label={tr.tx.alreadyPaid} value={entry.paidStr} onChangeText={(paidStr) => patch({ paidStr })} keyboardType="number-pad" />
-        </View>
-      </Row>
+      <Field label={tr.tx.installmentCount} value={entry.countStr} onChangeText={(countStr) => patch({ countStr })} keyboardType="number-pad" error={form.attempted && form.missing.count ? tr.required.count : null} />
       {!form.onCard && !noSource ? (
         <FieldNote note={tr.tx.handInstallmentNote}>
           <Field
@@ -1020,6 +1005,7 @@ function InstallmentDetails({ form }: { form: TransactionFormModel }) {
       ) : null}
       {noSource ? <Body accessibilityRole="alert" style={{ color: palette.negative }}>{tr.tx.installmentNeedsSource}</Body> : null}
       {form.installmentValid && entry.amountMinor ? <Body muted>{installmentSplitText(entry.amountMinor, form.count, entry.currency)}</Body> : null}
+      {form.installmentValid && form.paidSoFar > 0 ? <Body muted>{tr.installments.paidSoFar(form.paidSoFar, form.count)}</Body> : null}
     </>
   );
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { INPUT_LIMITS, assertInputWithinLimit, isEmail, isInputWithinLimit, isValidNewPassword, textLength, utf8ByteLength } from "../../src/domain/input";
+import { INPUT_LIMITS, assertInputWithinLimit, clampToInputLimit, isEmail, isInputWithinLimit, isValidNewPassword, textLength, utf8ByteLength } from "../../src/domain/input";
 
 describe("shared input limits", () => {
   it.each(Object.entries(INPUT_LIMITS))("enforces the %s field boundary", (kind, limit) => {
@@ -46,5 +46,14 @@ describe("isEmail", () => {
     for (const typed of ["", "ayse", "ayse@", "ayse@ev", "@ev.com", "ayse@ev.", "ay se@ev.com", "x y@ev.com", "ayse@ev.com x", "ay@se@ev.com", "\"ayse\"@ev.com", "<ayse>@ev.com", "ayse@e v.com", "ayse@ev.c om"]) {
       expect(isEmail(typed), typed).toBe(false);
     }
+  });
+});
+
+describe("cutting what a file holds to the limit", () => {
+  it("keeps what fits and ends a cut at a word, never at a space", () => {
+    expect(clampToInputLimit("kısa", "note")).toBe("kısa");
+    const cut = clampToInputLimit(`${"a".repeat(998)} bb`, "note");
+    expect(cut).toBe(`${"a".repeat(998)}…`);
+    expect(isInputWithinLimit(clampToInputLimit("ş".repeat(5000), "note"), "note")).toBe(true);
   });
 });

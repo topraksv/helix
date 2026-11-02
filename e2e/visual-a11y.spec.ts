@@ -424,10 +424,10 @@ test("switches stay visible in both states and both themes", async ({ page }) =>
   for (const scheme of ["light", "dark"] as const) {
     await page.emulateMedia({ colorScheme: scheme });
     await page.goto("/helix/transaction");
-    await page.getByRole("button", { name: /Gider iadesi veya döviz/ }).click();
     const refund = page.getByRole("switch", { name: "Gider iadesi" });
     await expect(refund).toBeVisible();
-    const track = refund.locator("div").first();
+    // A chip now: its outline is the boundary a viewer sees.
+    const track = refund;
 
     for (const state of ["off", "on"] as const) {
       if (state === "on") await refund.click();
@@ -450,7 +450,7 @@ test("follow-up forms keep the quiet control system in both themes", async ({ pa
     { name: "transaction", route: "/helix/transaction", heading: "Yeni İşlem" },
     { name: "analytics", route: "/helix/cash-flow/analytics", heading: "Analiz" },
     { name: "payment-sources", route: "/helix/settings/payment-sources", heading: "Ödeme Yöntemleri" },
-    { name: "opening-balance", route: "/helix/opening-balance", heading: "Bakiye Düzeltme" },
+    { name: "opening-balance", route: "/helix/opening-balance", heading: "Bakiyemi Düzelt" },
   ];
   for (const scheme of ["light", "dark"] as const) {
     await page.emulateMedia({ colorScheme: scheme });
@@ -529,13 +529,13 @@ test("modal actions stay reachable in a short landscape viewport @cross-browser"
   await expect(calculatorTrigger).toBeFocused();
 
   await page.goto("/helix/transaction");
-  const categoryTrigger = page.getByRole("button", { name: "Kalem", exact: true });
+  const categoryTrigger = page.getByRole("button", { name: "Ne tür bir harcama?", exact: true });
   await categoryTrigger.scrollIntoViewIfNeeded();
   await categoryTrigger.click();
   const selectModal = page.locator('[aria-modal="true"]');
   await expect(selectModal).toBeVisible();
   await expect(selectModal).toBeInViewport({ ratio: 1 });
-  const selectHeading = selectModal.getByRole("heading", { name: "Kalem", exact: true });
+  const selectHeading = selectModal.getByRole("heading", { name: "Ne tür bir harcama?", exact: true });
   await expect(selectHeading).toBeInViewport({ ratio: 1 });
   const options = selectModal.getByRole("radiogroup");
   await expect(options).toBeInViewport();

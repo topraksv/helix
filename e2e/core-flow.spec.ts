@@ -99,11 +99,10 @@ test("an edit that moves a foreign-currency row to another day prices it at that
   await page.goto("/helix/cash-flow");
   await page.getByRole("button", { name: "İşlem Ekle" }).click();
   await page.getByRole("textbox", { name: "Tutar · TRY" }).fill("10,00");
-  await pickOption(page, "Kalem", /Market/);
+  await pickOption(page, "Ne tür bir harcama?", /Market/);
   await page.getByRole("textbox", { name: "Not" }).fill("Kur");
-  await page.getByRole("button", { name: /döviz · TRY/ }).click();
   await page.getByRole("button", { name: /· Değiştir$/ }).click();
-  await page.getByRole("radio", { name: /Dolar/ }).click();
+  await page.getByRole("radio", { name: /· USD$/ }).click();
   await expect(page.getByText(/^≈ .*400/)).toBeVisible();
   await page.getByRole("button", { name: "Kaydet", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Mali Tablo", exact: true })).toBeVisible();
@@ -225,7 +224,7 @@ test("saving reports its balance effect without refreshing the screen", async ({
 
   await page.getByRole("button", { name: /İşlem Ekle/ }).first().click();
   await page.getByRole("textbox", { name: "Tutar · TRY", exact: true }).fill("250");
-  await pickOption(page, "Kalem", "Market");
+  await pickOption(page, "Ne tür bir harcama?", "Market");
   await page.getByRole("button", { name: "Kaydet", exact: true }).click();
 
   const bar = page.getByRole("alert").first();
@@ -243,8 +242,7 @@ test("saving reports its balance effect without refreshing the screen", async ({
   // A refund adds to the balance, and the card says so rather than taking it off again.
   await page.getByRole("button", { name: /İşlem Ekle/ }).first().click();
   await page.getByRole("textbox", { name: "Tutar · TRY", exact: true }).fill("100");
-  await pickOption(page, "Kalem", "Market");
-  await page.getByRole("button", { name: "Gider iadesi veya döviz · TRY", exact: true }).click();
+  await pickOption(page, "Ne tür bir harcama?", "Market");
   await page.getByRole("switch", { name: "Gider iadesi" }).first().click();
   await page.getByRole("button", { name: "Kaydet", exact: true }).click();
   await expect(page.getByRole("alert").first()).toContainText(/Güncel bakiye .*250,00 → .*150,00/u);
@@ -279,7 +277,7 @@ test("a hand-started balance that goes negative asks once for the real figure", 
 
   await page.getByRole("button", { name: /İşlem Ekle/ }).first().click();
   await page.getByRole("textbox", { name: "Tutar · TRY", exact: true }).fill("250");
-  await pickOption(page, "Kalem", "Market");
+  await pickOption(page, "Ne tür bir harcama?", "Market");
   await page.getByRole("button", { name: "Kaydet", exact: true }).click();
 
   const dialog = page.locator('[aria-modal="true"]');
@@ -290,7 +288,7 @@ test("a hand-started balance that goes negative asks once for the real figure", 
   // Once: a second expense does not ask again.
   await page.goto("/helix/transaction");
   await page.getByRole("textbox", { name: "Tutar · TRY", exact: true }).fill("10");
-  await pickOption(page, "Kalem", "Market");
+  await pickOption(page, "Ne tür bir harcama?", "Market");
   await page.getByRole("button", { name: "Kaydet", exact: true }).click();
   await expect(page.getByText("Bakiyen şu an ekside", { exact: true })).toHaveCount(0);
 
@@ -500,7 +498,7 @@ test("the save confirmation opens the row it just saved, even when taken at once
 
   await page.getByRole("button", { name: /İşlem Ekle/u }).first().click();
   await page.getByRole("textbox", { name: "Tutar · TRY", exact: true }).fill("321");
-  await pickOption(page, "Kalem", "Market");
+  await pickOption(page, "Ne tür bir harcama?", "Market");
   await page.getByRole("button", { name: "Kaydet", exact: true }).click();
 
   const fired = await page.evaluate(async () => {
@@ -595,8 +593,8 @@ test("a card statement opens from Durum, takes a partial payment, and Back retur
   await page.goto("/helix/settings/payment-sources");
   await page.getByRole("radio", { name: "Kredi Kartı" }).click();
   await page.getByRole("textbox", { name: "Yöntem adı" }).fill("Deneme Kart");
-  await page.getByRole("textbox", { name: "Ekstre kesim günü" }).fill(String(statementDay));
-  await page.getByRole("textbox", { name: "Son ödeme günü" }).fill(String(statementDay + 1));
+  await pickOption(page, "Ekstre kesim günü", `Ayın ${statementDay}. günü`);
+  await pickOption(page, "Son ödeme günü", `Ayın ${statementDay + 1}. günü`);
   await page.getByRole("button", { name: "Ekle", exact: true }).click();
   await expect(page.getByText("Deneme Kart").first()).toBeVisible();
 
@@ -604,8 +602,8 @@ test("a card statement opens from Durum, takes a partial payment, and Back retur
   await openCashFlow(page);
   await page.getByRole("button", { name: "İşlem Ekle" }).click();
   await page.getByRole("textbox", { name: "Tutar · TRY" }).fill("1.000,00");
-  await pickOption(page, "Kalem", /Market/);
-  await pickOption(page, "Ödeme Yöntemi", /Deneme Kart/);
+  await pickOption(page, "Ne tür bir harcama?", /Market/);
+  await pickOption(page, "Nasıl ödedin?", /Deneme Kart/);
   await page.getByRole("button", { name: "Kaydet", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Mali Tablo", exact: true })).toBeVisible();
 

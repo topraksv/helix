@@ -41,10 +41,8 @@ test("canonical interactive primitives retain visible keyboard focus @cross-brow
   await expect(page.getByRole("heading", { name: "Yeni İşlem" })).toBeVisible();
   await expectKeyboardFocusVisible(page, page.getByRole("textbox", { name: "Tutar · TRY" }));
   await expectKeyboardFocusVisible(page, page.getByRole("radio", { name: "Gider", exact: true }));
-  const amountOptions = page.getByRole("button", { name: "Gider iadesi veya döviz · TRY", exact: true });
-  await expect(amountOptions).toHaveAttribute("aria-expanded", "false");
+  const amountOptions = page.getByTestId("transaction-currency");
   await expectKeyboardFocusVisible(page, amountOptions);
-  await page.keyboard.press("Enter");
   const refund = page.getByRole("switch", { name: "Gider iadesi" });
   await expect(refund).toBeVisible();
   await expectKeyboardFocusVisible(page, refund);
@@ -186,7 +184,7 @@ test("a dirty-exit dialog isolates the form's Enter shortcut", async ({ page }) 
   await page.goto("/helix/transaction");
   await expect(page.getByRole("heading", { name: "Yeni İşlem" })).toBeVisible();
   await page.getByRole("textbox", { name: "Tutar · TRY" }).fill("125,00");
-  await pickOption(page, "Kalem", /Market/);
+  await pickOption(page, "Ne tür bir harcama?", /Market/);
 
   await page.getByRole("button", { name: "Geri", exact: true }).click();
   const dialogTitle = page.getByRole("heading", { name: "Kaydedilmemiş değişiklikler var" });
@@ -280,7 +278,7 @@ test("Enter belongs to the focused control, not the form's primary save", async 
 
   const amount = page.getByRole("textbox", { name: "Tutar · TRY" });
   await amount.fill("250,00");
-  await pickOption(page, "Kalem", /Market/);
+  await pickOption(page, "Ne tür bir harcama?", /Market/);
 
   // 1 · The secondary action: Enter must not also run the primary Save and close the screen.
   await page.getByRole("button", { name: "Kaydet ve Yeni Ekle", exact: true }).focus();
@@ -296,7 +294,6 @@ test("Enter belongs to the focused control, not the form's primary save", async 
 
   // 2 · A switch flips instead of committing the entry.
   await amount.fill("120,00");
-  await page.getByRole("button", { name: "Gider iadesi veya döviz · TRY", exact: true }).click();
   const refund = page.getByRole("switch", { name: "Gider iadesi" }).first();
   const before = await refund.getAttribute("aria-checked");
   await refund.focus();
@@ -313,7 +310,7 @@ test("Enter belongs to the focused control, not the form's primary save", async 
 
   // 4 · The documented shortcut still works from a single-line field.
   await page.getByRole("radio", { name: "Gider", exact: true }).click();
-  await pickOption(page, "Kalem", /Market/);
+  await pickOption(page, "Ne tür bir harcama?", /Market/);
   await amount.fill("99,00");
   await amount.focus();
   await page.keyboard.press("Enter");

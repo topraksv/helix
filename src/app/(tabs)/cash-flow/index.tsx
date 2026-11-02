@@ -27,7 +27,7 @@ import Sigma from "lucide-react-native/icons/sigma";
 import TriangleAlert from "lucide-react-native/icons/triangle-alert";
 import { monthFlowTotals, type LedgerBundle } from "../../../domain/balance";
 import { buildCashFlowMatrixModel, type CashFlowMatrixColumn } from "../../../domain/cash-flow-matrix";
-import { orderLedgerCategories, resolveYearColumns } from "../../../domain/year-columns";
+import { orderLedgerCategories, resolveYearColumns, type YearLayouts } from "../../../domain/year-columns";
 import { monthKeyOf, monthOf, makeMonthKey, todayISO, yearOf, type MonthKey } from "../../../domain/dates";
 import { resolveMatrixMode, type MatrixMode } from "../../../domain/matrix-preferences";
 import { formatMinorCompact } from "../../../domain/money";
@@ -278,6 +278,7 @@ export default function CashflowScreen() {
 
   // Per-year columns (see domain/year-columns.ts for the resolution rules).
   const columnYears = useSettingValue<Record<string, string[]>>(settings, "column_years", {});
+  const yearLayouts = useSettingValue<YearLayouts>(settings, "year_layouts", {});
   const dataCats = useMemo(() => {
     const used = new Set<string>();
     bundle?.yearMonths.forEach((m) => m.byCategory.forEach((v, cid) => { if (v !== 0) used.add(cid); }));
@@ -285,8 +286,8 @@ export default function CashflowScreen() {
   }, [bundle]);
   const orderedCategories = useMemo(() => orderLedgerCategories(categories), [categories]);
   const columnCategories = useMemo(
-    () => resolveYearColumns(orderedCategories, columnYears, year, maxYear, dataCats),
-    [orderedCategories, columnYears, year, maxYear, dataCats],
+    () => resolveYearColumns(orderedCategories, columnYears, year, maxYear, dataCats, yearLayouts[String(year)]),
+    [orderedCategories, columnYears, yearLayouts, year, maxYear, dataCats],
   );
   // Every live category id — used to expose a repair link for legacy rows whose
   // category is missing, without inventing a special non-editable table column.

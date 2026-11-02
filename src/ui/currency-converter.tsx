@@ -13,7 +13,7 @@ import ArrowDownUp from "lucide-react-native/icons/arrow-down-up";
 import { formatMinorCompact } from "../domain/money";
 import { converterRate, crossConvertMinor } from "../domain/fx";
 import { ensureFreshRates, loadRateCache, lookupRate, useFxRates, type Currency } from "../services/fx-fetch";
-import { CurrencyPicker } from "./currency-picker";
+import { CurrencySelect } from "./currency-picker";
 import { marketLastKnownRateTry, useMarkets } from "../services/markets";
 import { useUserId } from "../data/hooks";
 import { clockOrDateTimeLabel, dateLabel, tr } from "../i18n/tr";
@@ -68,7 +68,9 @@ export function CurrencyConverter() {
           setMinor(m);
         }}
       />
-      <CurrencyPicker value={from} onChange={setFrom} />
+      <View style={{ alignItems: "flex-start", marginBottom: spacing.md }}>
+        <CurrencySelect value={from} onChange={setFrom} />
+      </View>
 
       <View style={{ alignItems: "center", marginVertical: spacing.xs }}>
         <Pressable
@@ -89,7 +91,9 @@ export function CurrencyConverter() {
       </View>
 
       <Label>{tr.calc.convertTo}</Label>
-      <CurrencyPicker value={to} onChange={setTo} />
+      <View style={{ alignItems: "flex-start" }}>
+        <CurrencySelect value={to} onChange={setTo} />
+      </View>
 
       <View
         style={{

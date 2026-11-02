@@ -30,7 +30,7 @@ import { formatMinorCompact } from "../../../domain/money";
 import { scheduleSync } from "../../../sync/engine";
 import { tr } from "../../../i18n/tr";
 import { categoryIconComponent } from "../../../ui/category-icon";
-import { Amount, Body, Button, Card, ChipPicker, CardListSkeleton, DataGateScreen, DataStateNotice, Divider, EmptyState, FadeIn, Field, FieldError, IconButton, Label, PanelHeader, Row, Screen, SelectionGrid, Spread, ToggleRow } from "../../../ui/components";
+import { Amount, Body, Button, Card, ChipPicker, CardListSkeleton, DataGateScreen, DataStateNotice, Divider, EmptyState, FadeIn, Field, FieldError, IconButton, Label, PanelHeader, Row, Screen, SelectionGrid, Spread, ToggleRow, useScrollToForm } from "../../../ui/components";
 import { DraggableList, ReorderGrip } from "../../../ui/draggable-list";
 import { useUndo } from "../../../ui/undo";
 import { interactionSurface } from "../../../ui/interaction";
@@ -206,10 +206,12 @@ export default function ComputedColumnsScreen({ header }: { header?: ReactNode }
     });
   };
 
+  const { scrollRef, scrollToForm } = useScrollToForm();
   const startEdit = (c: (typeof columns)[number]) => {
     confirmDiscard(() => {
       setEditingId(c.id);
       setName(c.name);
+      scrollToForm();
       try {
         const def = parseDefinition(JSON.parse(c.definition));
         setOp(def.op);
@@ -259,7 +261,7 @@ export default function ComputedColumnsScreen({ header }: { header?: ReactNode }
   }
 
   return (
-    <Screen scrollEnabled={!dragging} width="workspace">
+    <Screen scrollEnabled={!dragging} width="workspace" scrollRef={scrollRef}>
       {header}
       <DataStateNotice status={dataStatus} retry={retryData} />
       <WorkspaceSplit
@@ -302,7 +304,7 @@ export default function ComputedColumnsScreen({ header }: { header?: ReactNode }
           <Pressable
             key={value}
             accessibilityRole="radio"
-            accessibilityLabel={`${tr.computed.ops[value].title}. ${tr.computed.ops[value].description}`}
+            accessibilityLabel={`${tr.computed.ops[value].title}. ${tr.computed.ops[value].description} ${tr.computed.ops[value].example}`}
             aria-checked={selected}
             accessibilityState={{ checked: selected, selected }}
             onPress={() => {
@@ -310,8 +312,8 @@ export default function ComputedColumnsScreen({ header }: { header?: ReactNode }
               setOp(value);
             }}
             style={(state) => ({
-              flexBasis: "47%",
-              flexGrow: 1,
+              // One choice per row: each carries a worked example that a half-width tile would cut.
+              flexBasis: "100%",
               minWidth: 0,
               minHeight: 64,
               flexDirection: "row",
@@ -330,6 +332,7 @@ export default function ComputedColumnsScreen({ header }: { header?: ReactNode }
               <Text style={[type.body, { color: palette.text, fontFamily: font.semibold }]}>
                 {tr.computed.ops[value].title}
               </Text>
+              <Text style={[type.small, { color: palette.textSecondary }]}>{tr.computed.ops[value].example}</Text>
             </View>
           </Pressable>
         );

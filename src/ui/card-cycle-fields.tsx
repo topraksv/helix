@@ -14,8 +14,7 @@ import {
 } from "../domain/card-statements";
 import { MONTH_END_DAY, todayISO } from "../domain/dates";
 import { tr } from "../i18n/tr";
-import { Body, Row } from "./components";
-import { MonthDayField } from "./month-day-field";
+import { Body, Row, Select } from "./components";
 import { font, radius as badgeRadius, spacing, type, useTheme } from "./theme";
 
 /**
@@ -28,15 +27,6 @@ import { font, radius as badgeRadius, spacing, type, useTheme } from "./theme";
  */
 const CYCLE_CLOSING_SOON = 3;
 
-/**
- * The days offered as shortcuts.
- *
- * Statement days cluster on the multiples of five that banks actually issue,
- * and the month end has its own control below the row. Every other day stays
- * typeable in the field.
- */
-const CARD_CYCLE_QUICK_DAYS = [1, 5, 10, 15, 20, 25] as const;
-
 /** Every day either field can hold, so a refusal can be shown rather than hidden. */
 const ALL_MONTH_DAYS = Array.from({ length: MONTH_END_DAY }, (_, index) => index + 1);
 
@@ -44,6 +34,31 @@ export function cardCycleError(statementDay: number | null, dueDay: number | nul
   if (isCardCycleDayConflict(statementDay, dueDay)) return tr.sources.cycleSameDay;
   if (!isValidCardCycleGrace(statementDay, dueDay)) return tr.sources.cycleGraceInvalid(CARD_CYCLE_GRACE.max);
   return null;
+}
+
+/**
+ * One day, picked from one list. Quick-day chips, a month-end card and a typed
+ * field were three ways to say the same number, and a newcomer could not tell
+ * which one counted. A day that cannot pair with the other field is left out
+ * of the list, since a dropdown has no row to keep aligned.
+ */
+function CycleDaySelect({ label, value, onChange, refused, error }: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  refused: readonly number[];
+  error: string | null;
+}) {
+  return (
+    <Select<string>
+      label={label}
+      placeholder={tr.sources.cycleDayPlaceholder}
+      options={ALL_MONTH_DAYS.filter((day) => !refused.includes(day)).map((day) => ({ value: String(day), label: tr.sources.cycleDayOption(day) }))}
+      value={value.trim() === "" ? null : value}
+      onChange={onChange}
+      error={error}
+    />
+  );
 }
 
 export function CardCycleFields({
@@ -79,30 +94,26 @@ export function CardCycleFields({
     <>
       <Row style={{ alignItems: "flex-start" }}>
         <View style={{ flex: 1 }}>
-          <MonthDayField
+          <CycleDaySelect
             label={tr.sources.statementDay}
             value={statementDayValue}
             onChange={onStatementDayChange}
-            quickDays={CARD_CYCLE_QUICK_DAYS}
-            unavailableDays={refusedStatementDays}
-            unavailableHint={tr.sources.cycleGraceTaken}
+            refused={refusedStatementDays}
             error={error ?? (attempted && statementDay == null ? tr.required.day : null)}
           />
         </View>
         <View style={{ flex: 1 }}>
-          <MonthDayField
+          <CycleDaySelect
             label={tr.sources.dueDay}
             value={dueDayValue}
             onChange={onDueDayChange}
-            quickDays={CARD_CYCLE_QUICK_DAYS}
-            unavailableDays={refusedDueDays}
-            unavailableHint={tr.sources.cycleGraceTaken}
+            refused={refusedDueDays}
             error={error ?? (attempted && dueDay == null ? tr.required.day : null)}
           />
         </View>
       </Row>
-      <Body muted style={{ marginBottom: spacing.md }}>
-        {grace != null ? `${tr.sources.cycleGraceDays(grace)} · ${tr.sources.cycleHint}` : tr.sources.cycleHint}
+      <Body muted style={{ fontSize: type.small.fontSize, marginBottom: spacing.md }}>
+        {grace != null ? tr.sources.cycleExplained(statementDay!, dueDay!, grace) : tr.sources.cycleExample}
       </Body>
     </>
   );

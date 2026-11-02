@@ -1267,15 +1267,16 @@ describe("repository compatibility contract", () => {
     expect(dependencies.writeRows).not.toHaveBeenCalled();
   });
 
-  it("rejects a variable-amount subscription that also enables auto-pay", async () => {
+  it("keeps auto-pay on a variable-amount subscription", async () => {
     dependencies.getSqliteAsync.mockResolvedValue(ruleDb());
-    await expect(repository.upsertSubscription("user-1", subscriptionInput({
+    await repository.upsertSubscription("user-1", subscriptionInput({
       name: "Elektrik",
       amountMinor: 1_000_00,
       amountMode: "variable",
       autoPay: true,
-    }))).rejects.toThrow("Variable subscriptions cannot use auto-pay");
-    expect(dependencies.writeRows).not.toHaveBeenCalled();
+    }));
+    const writes = dependencies.writeRows.mock.calls.flatMap((call) => call[1] as { table: string; row: { autoPay?: boolean } }[]);
+    expect(writes.find((write) => write.table === "subscriptions")?.row.autoPay).toBe(true);
   });
 
   it("accepts a variable-amount subscription saved with no estimate at all", async () => {

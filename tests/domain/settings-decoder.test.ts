@@ -52,6 +52,21 @@ describe("synced settings runtime decoding", () => {
     expect(decodeSettingValue("balance_declared", "null", null)).toBeNull();
   });
 
+  it("reads a year's layout and falls back on any malformed part of it", () => {
+    const valid = { "2026": { order: ["a"], hidden: ["b"] }, "2025": { hidden: [] }, "2024": {} };
+    expect(decodeSettingValue("year_layouts", JSON.stringify(valid), {})).toEqual(valid);
+    const years = Object.fromEntries(Array.from({ length: 500 }, (_, index) => [String(1500 + index), {}]));
+    expect(Object.keys(decodeSettingValue("year_layouts", JSON.stringify(years), {}))).toHaveLength(500);
+    const safe = { safe: {} };
+    for (const bad of [
+      "null", "[]", "1", '{"x2026":{}}', '{"2026x":{}}', '{"2026":null}', '{"2026":1}',
+      '{"2026":{"order":"a"}}', '{"2026":{"hidden":[1]}}',
+      JSON.stringify({ ...years, "2000": {} }),
+    ]) {
+      expect(decodeSettingValue("year_layouts", bad, safe)).toEqual(safe);
+    }
+  });
+
   it("accepts collection maxima and rejects near-miss setting keys", () => {
     expect(decodeSettingValue("computed_columns_hidden", JSON.stringify(Array(10_000).fill("x")), [])).toHaveLength(10_000);
     const years = Object.fromEntries(Array.from({ length: 500 }, (_, index) => [String(1500 + index), []]));

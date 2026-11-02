@@ -148,6 +148,8 @@ export default function BulkEntryModal() {
                   <MoneyField
                     label={`${c.name} · ${c.kind === "income" ? tr.settings.kindIncome : tr.settings.kindExpense}`}
                     value={values[c.id]?.raw ?? ""}
+                    // The rotating examples ("1.250,00", "400+500") overflow a phone's inline box and read as cut text.
+                    placeholder={tr.placeholders.zeroAmount}
                     onChangeMinor={(raw, minor) => setValues((v) => ({ ...v, [c.id]: { raw, minor } }))}
                     error={attempted && values[c.id]?.raw.trim() && values[c.id]?.minor === null ? tr.bulk.invalidAmount : null}
                     inline

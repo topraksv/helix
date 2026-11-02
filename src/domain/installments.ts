@@ -182,10 +182,6 @@ interface PlanDraftInput {
   title: string;
   amountMinor: Minor | null;
   countText: string;
-  /** What the owner typed for "already paid", or null while untouched. */
-  paidText: string | null;
-  /** How many the plan's own rows say were paid; 0 for a new plan. */
-  storedPaid: number;
   startChoice: MonthKey | null;
   /** Null for a new plan. */
   existingStartMonth: MonthKey | null;
@@ -229,47 +225,40 @@ function draftStart(input: PlanDraftInput, due: { dueDay: number | null; dueDayV
   };
 }
 
-/** What was already paid, and whether the owner said so: on an edit only a corrected count moves the schedule. */
-function draftPaid(input: PlanDraftInput, count: number) {
-  const paid = Number(input.paidText ?? String(input.storedPaid));
-  const isEdit = input.existingStartMonth != null;
-  return {
-    paid,
-    paidChanged: isEdit ? paid !== input.storedPaid : paid > 0,
-    paidValid: Number.isInteger(paid) && paid >= 0 && paid <= count,
-  };
+/**
+ * How many of a plan's instalments fall on or before today, exactly as
+ * `generateSchedule` realizes them: the owner picks the first month and the app
+ * counts what is already paid, instead of asking for a number that could
+ * disagree with the month.
+ */
+export function paidByToday(startMonth: MonthKey, count: number, dueDay: number | null, today: ISODate): number {
+  const day = isMonthDay(dueDay ?? 1) ? (dueDay ?? 1) : 1;
+  let paid = 0;
+  while (paid < count) {
+    const month = addMonthsToKey(startMonth, paid);
+    if (clampDayToMonth(yearOf(month), monthOf(month), day) > today) break;
+    paid += 1;
+  }
+  return paid;
 }
 
-/**
- * What the plan form can save, and where the plan it saves starts. Starting a
- * card plan in the current month dated its first instalment on a due day already
- * past, which counted it as paid; "already paid N" places the start instead.
- */
+/** What the plan form can save, where the plan it saves starts, and how many of it are already paid. */
 export function planDraft(input: PlanDraftInput) {
   const count = Number(input.countText);
   const { dueDay, dueDayValid } = draftDueDay(input);
   const { sourceChosen, cardSourceValid, startMonth } = draftStart(input, { dueDay, dueDayValid });
-  const { paid, paidChanged, paidValid } = draftPaid(input, count);
-  // Derive only from input this function has already judged sound. `paid` and
-  // `dueDay` are read for validity two lines above and again in `valid` below;
-  // deriving between the two let exactly the values being refused reach
-  // `deriveStartMonth`, which fails closed on them by design. The month the
-  // form shows for a draft it will not save is the one it started from.
-  const derivable = paidChanged && paidValid && dueDayValid;
-  const resolvedStart = derivable ? deriveStartMonth(paid, monthKeyOf(input.today), dueDay, input.today) : startMonth;
+  const countValid = isValidInstallmentCount(count);
   const described = input.title.trim() !== "" && (input.amountMinor ?? 0) > 0;
   return {
     count,
-    paid,
+    paid: countValid ? paidByToday(startMonth, count, dueDay, input.today) : 0,
     startMonth,
-    resolvedStart,
-    paidChanged,
-    reschedule: input.existingStartMonth != null && resolvedStart !== input.existingStartMonth,
+    reschedule: input.existingStartMonth != null && startMonth !== input.existingStartMonth,
     dueDay,
     dueDayValid,
     sourceChosen,
     cardSourceValid,
-    valid: described && isValidInstallmentCount(count) && paidValid && sourceChosen && cardSourceValid && dueDayValid,
+    valid: described && countValid && sourceChosen && cardSourceValid && dueDayValid,
   };
 }
 

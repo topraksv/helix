@@ -166,7 +166,7 @@ export async function addMarketExpense(
   await page.getByRole("button", { name: "İşlem Ekle" }).click();
   await expect(page.getByRole("heading", { name: "Yeni İşlem" })).toBeVisible();
   await page.getByRole("textbox", { name: "Tutar · TRY" }).fill(amount);
-  await pickOption(page, "Kalem", category);
+  await pickOption(page, "Ne tür bir harcama?", category);
   await page.getByRole("textbox", { name: "Not" }).fill(note);
   const save = page.getByRole("button", { name: "Kaydet", exact: true });
   await expect(save).toBeEnabled();

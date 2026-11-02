@@ -28,7 +28,7 @@ import ReceiptText from "lucide-react-native/icons/receipt-text";
 import Trash from "lucide-react-native/icons/trash";
 import WalletCards from "lucide-react-native/icons/wallet-cards";
 import type { LucideIcon } from "lucide-react-native";
-import { Amount, Badge, Body, Button, Card, CardList, ChoiceTile, CardListSkeleton, DataGateScreen, DataStateNotice, EmptyState, Field, IconButton, PanelHeader, Row, Screen, SectionHeader, Spread, useLedeAlignment } from "../../../ui/components";
+import { Amount, Badge, Body, Button, Card, CardList, ChoiceTile, CardListSkeleton, DataGateScreen, DataStateNotice, EmptyState, Field, IconButton, PanelHeader, Row, Screen, SectionHeader, Spread, useLedeAlignment, useScrollToForm } from "../../../ui/components";
 import { ReferenceInUseCard } from "../../../ui/category-delete-sheet";
 import { useRotatingPlaceholder } from "../../../ui/placeholders";
 import { useUndo } from "../../../ui/undo";
@@ -159,7 +159,7 @@ type Source = ReturnType<typeof useSourcesState>["data"][number];
 type Busy = [boolean, (busy: boolean) => void];
 
 /** The add-or-edit form: its fields, whether it would change anything, and saving it. */
-function useSourceForm(sources: Source[], persons: { id: string; isSelf: boolean }[], [busy, setBusy]: Busy) {
+function useSourceForm(sources: Source[], persons: { id: string; isSelf: boolean }[], [busy, setBusy]: Busy, onEditStart: () => void) {
   const userId = useUserId();
   const operationGuard = useOperationGuard();
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -186,6 +186,7 @@ function useSourceForm(sources: Source[], persons: { id: string; isSelf: boolean
   const fill = (source: Source | null) => {
     setAttempted(false);
     setEditingId(source?.id ?? null);
+    if (source) onEditStart();
     setName(source?.name ?? "");
     setSourceType(source?.type ?? "credit_card");
     setPersonChoice(source?.personId ?? null);
@@ -402,12 +403,13 @@ export default function SourcesScreen() {
   const sources = sourcesState.data;
   const persons = personsState.data;
   const busy = useState(false);
-  const form = useSourceForm(sources, persons, busy);
+  const { scrollRef, scrollToForm } = useScrollToForm();
+  const form = useSourceForm(sources, persons, busy, scrollToForm);
   const removal = useSourceRemoval(sources, busy);
   const { status, ready, retry } = combineLiveStates([sourcesState, statementsState, transactionsState, personsState]);
   if (!ready) return <DataGateScreen status={status} retry={retry} skeleton={<CardListSkeleton />} />;
   return (
-    <Screen width="workspace">
+    <Screen width="workspace" scrollRef={scrollRef}>
       <DataStateNotice status={status} retry={retry} />
       <WorkspaceSplit
         testID="payment-sources-workspace"

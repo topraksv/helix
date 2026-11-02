@@ -193,7 +193,6 @@ export async function upsertSubscription(userId: string, input: SubscriptionInpu
   assertInputWithinLimit(input.note, "note");
   if (!isSupportedCurrency(input.currency)) throw new Error("Invalid subscription currency");
   if (amountMode !== "fixed" && amountMode !== "variable") throw new Error("Invalid subscription amount mode");
-  if (amountMode === "variable" && input.autoPay) throw new Error("Variable subscriptions cannot use auto-pay");
   // 0 is the deliberate "no estimate yet" sentinel for a variable bill; a fixed one always has a real price.
   assertSupportedMinorAmount(input.amountMinor, amountMode === "variable");
   if (amountMode === "variable" ? input.amountMinor < 0 : input.amountMinor <= 0) {
@@ -271,7 +270,7 @@ export async function upsertSubscription(userId: string, input: SubscriptionInpu
       // Re-saving an already-inactive subscription keeps its original cancellation date.
       canceledAt: input.isActive ? null : (previous?.canceled_at ?? nowIso()),
       trialEndDate: input.trialEndDate,
-      autoPay: amountMode === "variable" ? false : input.autoPay,
+      autoPay: input.autoPay,
       websiteDomain: input.websiteDomain,
       logoSource: "initials",
       logoRef: null,
@@ -292,7 +291,7 @@ export async function upsertSubscription(userId: string, input: SubscriptionInpu
         billingDay: input.billingDay,
         nextDueDate: input.nextDueDate,
         isActive: input.isActive,
-        autoPay: amountMode === "variable" ? false : input.autoPay,
+        autoPay: input.autoPay,
         personIsSelf: Boolean(person.is_self),
         trialEndDate: input.trialEndDate,
       },

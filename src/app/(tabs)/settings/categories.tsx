@@ -1,25 +1,30 @@
 /** Category & column management — the personalization core: names, kinds,
  *  column visibility all belong to the user (nothing is hardcoded). */
 
-import { useState, type ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { StyleSheet, View } from "react-native";
 import { useRouter } from "expo-router";
-import { useBalanceColumns, useCategoriesState, useUserId } from "../../../data/hooks";
+import { useAllTransactionsState, useBalanceColumns, useCategoriesState, useSettingsMapState, useSettingValue, useUserId } from "../../../data/hooks";
+import { todayISO, yearOf } from "../../../domain/dates";
+import { orderLedgerCategories, resolveYearColumns, type YearLayouts } from "../../../domain/year-columns";
 import { combineLiveStates } from "../../../data/live-state";
-import { categoryReferenceUsage, createCategory, deleteCategoryWithBudgets, reorderCategoryGroup, restoreCategoryWithBudgets, setBalanceColumns, updateCategory, type CategoryReferenceUsage } from "../../../data/repo";
+import { categoryReferenceUsage, createCategory, deleteCategoryWithBudgets, restoreCategoryWithBudgets, setBalanceColumns, setYearColumnOrder, setYearColumnShown, updateCategory, type CategoryReferenceUsage } from "../../../data/repo";
 import { CategoryIcon } from "../../../ui/category-icon";
 import { scheduleSync } from "../../../sync/engine";
 import { appAlert, appConfirm } from "../../../ui/dialog";
 import { tr } from "../../../i18n/tr";
 import ArrowDownLeft from "lucide-react-native/icons/arrow-down-left";
 import ArrowUpRight from "lucide-react-native/icons/arrow-up-right";
+import CalendarRange from "lucide-react-native/icons/calendar-range";
+import ChevronLeft from "lucide-react-native/icons/chevron-left";
+import ChevronRight from "lucide-react-native/icons/chevron-right";
 import Columns3 from "lucide-react-native/icons/columns-3";
 import Scale from "lucide-react-native/icons/scale";
 import LayoutTemplate from "lucide-react-native/icons/layout-template";
 import Pencil from "lucide-react-native/icons/pencil";
 import Plus from "lucide-react-native/icons/plus";
 import Trash from "lucide-react-native/icons/trash";
-import { Badge, Body, Button, Card, ChipPicker, CardListSkeleton, DataGateScreen, DataStateNotice, Divider, EmptyState, FadeIn, Field, IconButton, InlineEditRow, PanelHeader, Row, Screen, Spread, Toggle, ToggleRow } from "../../../ui/components";
+import { Badge, Body, Button, Card, ChipPicker, CardListSkeleton, DataGateScreen, DataStateNotice, Divider, EmptyState, FadeIn, Field, Heading, IconButton, InlineDisclosure, InlineEditRow, PanelHeader, Row, Screen, Spread, Toggle, ToggleRow } from "../../../ui/components";
 import { CategoryDeleteSheet, UNCATEGORIZED_CHOICE } from "../../../ui/category-delete-sheet";
 import { DraggableList, ReorderGrip } from "../../../ui/draggable-list";
 import { useRotatingPlaceholder } from "../../../ui/placeholders";
@@ -167,6 +172,10 @@ function CategoryLedgerMap({ expenseCount, incomeCount }: { expenseCount: number
   );
 }
 
+function isEditDirty(category: CategoryItem | null | undefined, name: string, investment: boolean): boolean {
+  return category != null && (name.trim() !== category.name || investment !== category.isTransfer);
+}
+
 export default function CategoriesScreen({ header }: { header?: ReactNode } = {}) {
   const userId = useUserId();
   const router = useRouter();
@@ -192,10 +201,7 @@ export default function CategoriesScreen({ header }: { header?: ReactNode } = {}
   // drag reorders instead of scrolling the page.
   const [dragging, setDragging] = useState(false);
   const editingCategory = editingId ? categories.find((category) => category.id === editingId) : null;
-  const editDraftDirty = Boolean(
-    editingCategory &&
-      (editName.trim() !== editingCategory.name || editInvestment !== editingCategory.isTransfer),
-  );
+  const editDraftDirty = isEditDirty(editingCategory, editName, editInvestment);
   const { confirmDiscard } = useDirtyExitGuard(name.trim() !== "" || editDraftDirty);
   const startEditing = (category: (typeof categories)[number]) => {
     confirmDiscard(() => {
@@ -205,6 +211,34 @@ export default function CategoriesScreen({ header }: { header?: ReactNode } = {}
     }, editDraftDirty);
   };
   const categoryPlaceholder = useRotatingPlaceholder(tr.placeholders.category);
+  // The table is arranged year by year; this screen edits the one chosen here.
+  const currentYear = yearOf(todayISO());
+  const [year, setYear] = useState(currentYear);
+  const settingsState = useSettingsMapState();
+  const transactions = useAllTransactionsState().data;
+  const columnYears = useSettingValue<Record<string, string[]>>(settingsState.data, "column_years", {});
+  const layouts = useSettingValue<YearLayouts>(settingsState.data, "year_layouts", {});
+  const { years, yearColumns, usedThisYear } = useMemo(() => {
+    const seen = new Set([currentYear, ...Object.keys(columnYears).map(Number)]);
+    const used = new Set<string>();
+    for (const row of transactions) {
+      const rowYear = yearOf(row.effectiveDate);
+      seen.add(rowYear);
+      if (rowYear === year && row.categoryId && row.amountTryMinor !== 0 && row.deletedAt == null) used.add(row.categoryId);
+    }
+    const sorted = [...seen].sort((a, b) => b - a);
+    return {
+      years: sorted,
+      usedThisYear: used,
+      yearColumns: resolveYearColumns(orderLedgerCategories(categories), columnYears, year, Math.max(currentYear, sorted[0]!), used, layouts[String(year)]),
+    };
+  }, [categories, columnYears, layouts, transactions, year, currentYear]);
+  const yearIndex = years.indexOf(year);
+  const pickYear = (next: number) => {
+    setYear(next);
+    setEditingId(null);
+  };
+  const [showOthers, setShowOthers] = useState(false);
   const { status: dataStatus, ready: dataReady, retry: retryData } = combineLiveStates([categoriesState]);
 
   const add = async () => {
@@ -212,7 +246,8 @@ export default function CategoriesScreen({ header }: { header?: ReactNode } = {}
     await operationGuard.run(async () => {
       setAdding(true);
       try {
-        await createCategory(userId, { name, kind, isTransfer: isInvestment, sortOrder: categories.length });
+        const created = await createCategory(userId, { name, kind, isTransfer: isInvestment, sortOrder: categories.length });
+        await setYearColumnShown(userId, year, created, true);
         scheduleSync(userId);
         setName("");
         setAttempted(false);
@@ -236,10 +271,23 @@ export default function CategoriesScreen({ header }: { header?: ReactNode } = {}
     }
   };
 
-  // Reuses the group's own sortOrder slots, so the other kind keeps its positions. sortOrder syncs.
   const applyOrder = async (kind: "expense" | "income", orderedIds: string[]) => {
-    await reorderCategoryGroup(userId, categories, kind, orderedIds);
+    await setYearColumnOrder(userId, year, orderedIds, yearColumns.filter((column) => column.kind !== kind).map((column) => column.id));
     scheduleSync(userId);
+  };
+
+  const showInYear = async (c: CategoryItem, shown: boolean) => {
+    if (!shown && usedThisYear.has(c.id)) {
+      undo.show(tr.settings.columnHasDataInYear(c.name, year), null, "warning");
+      return;
+    }
+    try {
+      if (shown && !c.isColumn) await updateCategory(userId, c, { isColumn: true });
+      await setYearColumnShown(userId, year, c.id, shown);
+      scheduleSync(userId);
+    } catch {
+      void appAlert(tr.errors.saveFailed, tr.errors.title);
+    }
   };
 
   const deleteCategory = async (c: CategoryItem, replacementChoice?: string | null) => {
@@ -360,8 +408,18 @@ export default function CategoriesScreen({ header }: { header?: ReactNode } = {}
                 title={tr.settings.categoriesEmptyTitle}
                 hint={tr.settings.categoriesEmptyHint}
               />
-            ) : (["expense", "income"] as const).map((k) => {
-              const group = categories.filter((c) => c.kind === k);
+            ) : (<>
+              <Card testID="categories-year">
+                <PanelHeader icon={CalendarRange} title={tr.settings.columnYearLabel} description={tr.settings.columnYearHint(year)} />
+                {/* A stepper, not a chip per year: imported history wrapped the chips into ragged rows. */}
+                <Spread>
+                  <IconButton icon={ChevronLeft} label={tr.common.previous} haptic="selection" disabled={yearIndex === years.length - 1} onPress={() => pickYear(years[yearIndex + 1]!)} />
+                  <Heading style={{ marginVertical: 0 }}>{year}</Heading>
+                  <IconButton icon={ChevronRight} label={tr.common.next} haptic="selection" disabled={yearIndex === 0} onPress={() => pickYear(years[yearIndex - 1]!)} />
+                </Spread>
+              </Card>
+              {(["expense", "income"] as const).map((k) => {
+              const group = yearColumns.filter((c) => c.kind === k);
               if (group.length === 0) return null;
               return (
                 <Card key={k}>
@@ -436,14 +494,37 @@ export default function CategoriesScreen({ header }: { header?: ReactNode } = {}
                         <IconButton icon={Trash} tone="danger" label={`${tr.common.delete} · ${c.name}`} haptic="none" onPress={() => void remove(c)} />
                       </Row>
                     </Spread>
-                    <ToggleRow name={c.name} text={tr.settings.columnVisible} value={c.isColumn} onValueChange={(v) => void update(c, { isColumn: v })} />
+                    <ToggleRow name={c.name} text={tr.settings.columnVisibleInYear(year)} value onValueChange={(v) => void showInYear(c, v)} />
                   </View>
                 )
               }
             />
                 </Card>
               );
-            })}
+              })}
+              {categories.length > yearColumns.length ? (
+                <>
+                  <InlineDisclosure
+                    label={tr.settings.columnsOutsideYear(categories.length - yearColumns.length, year)}
+                    expanded={showOthers}
+                    onPress={() => setShowOthers(!showOthers)}
+                  />
+                  {showOthers ? (
+                    <Card testID="categories-outside-year">
+                      {categories.filter((c) => !yearColumns.some((column) => column.id === c.id)).map((c) => (
+                        <Spread key={c.id} style={{ paddingVertical: spacing.xs }}>
+                          <Row gap={spacing.sm} style={{ flex: 1, alignItems: "center", paddingRight: spacing.sm }}>
+                            <CategoryIcon category={c} size={iconSize.control} />
+                            <Body style={{ flex: 1 }}>{c.name}</Body>
+                          </Row>
+                          <IconButton icon={Plus} label={`${tr.settings.columnAddToYear(year)} · ${c.name}`} onPress={() => void showInYear(c, true)} />
+                        </Spread>
+                      ))}
+                    </Card>
+                  ) : null}
+                </>
+              ) : null}
+            </>)}
           </View>
         )}
       />

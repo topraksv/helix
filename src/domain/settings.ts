@@ -17,6 +17,16 @@ function columnYears(value: unknown): value is Record<string, string[]> {
   return entries.length <= 500 && entries.every(([year, ids]) => /^\d{4}$/.test(year) && stringArray(ids));
 }
 
+function yearLayouts(value: unknown): value is Record<string, { order?: string[]; hidden?: string[] }> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const entries = Object.entries(value);
+  return entries.length <= 500 && entries.every(([year, layout]) =>
+    /^\d{4}$/.test(year)
+    && layout != null && typeof layout === "object"
+    && ((layout as { order?: unknown }).order === undefined || stringArray((layout as { order?: unknown }).order))
+    && ((layout as { hidden?: unknown }).hidden === undefined || stringArray((layout as { hidden?: unknown }).hidden)));
+}
+
 /**
  * Every settings key this app writes, beside the shape it may hold. `SettingKey`
  * derives from these entries, so a key with no validator is a compile error: an
@@ -29,6 +39,7 @@ const SETTING_VALIDATORS = {
   reminder_days: (value: unknown) => Number.isInteger(value) && (value as number) >= 0 && (value as number) <= 30,
   computed_columns_hidden: stringArray,
   column_years: columnYears,
+  year_layouts: yearLayouts,
   last_entry_at: (value: unknown) =>
     typeof value === "string" && isISODate(value.slice(0, 10)) && Number.isFinite(Date.parse(value)),
   balance_declared: (value: unknown) => parseBalanceDeclaration(value) !== null,

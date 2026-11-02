@@ -4,6 +4,7 @@ import { yearOf, type MonthKey } from "../../domain/dates";
 import type { Minor } from "../../domain/money";
 import type { TransactionType } from "../../domain/types";
 import {
+  commentBeyondInstalments,
   isColumnExcluded,
   planImportCell,
   type CellData,
@@ -51,6 +52,7 @@ function plannedCell(
   cell: CellData,
   covered: Minor,
   remainderNote: string | null,
+  informationalCards: readonly string[] | undefined,
 ): { items: PlannedSpreadsheetCell["items"]; cellNote: string | null } | null {
   if (covered === 0) {
     const planned = planImportCell(cell);
@@ -60,7 +62,7 @@ function plannedCell(
   if (remainder === 0) return null;
   return {
     items: [{ amountMinor: remainder, note: remainderNote, isAggregate: true }],
-    cellNote: cell.comment,
+    cellNote: cell.comment ? commentBeyondInstalments(cell.comment, informationalCards) : null,
   };
 }
 
@@ -81,6 +83,8 @@ export function buildSpreadsheetImportPlan(input: {
   instalmentTotal?: (month: MonthKey, label: string) => Minor;
   /** Note carried by that remainder row, so the figure can be accounted for. */
   remainderNote?: string;
+  /** Cards that became no plan: their comment lines are still the only record. */
+  informationalCards?: readonly string[];
 }): SpreadsheetImportPlan {
   const yearAllowed = (year: number) => !input.selectedYears || input.selectedYears.has(year);
   const resolved = input.sheets.flatMap((sheet) => {
@@ -121,6 +125,7 @@ export function buildSpreadsheetImportPlan(input: {
               cell,
               input.instalmentTotal?.(month, column.label) ?? 0,
               input.remainderNote ?? null,
+              input.informationalCards,
             );
             if (!planned) continue;
             const effectiveDate = `${month}-01`;

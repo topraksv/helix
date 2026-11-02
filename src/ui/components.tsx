@@ -100,6 +100,12 @@ function ScreenEntrance({ children, style }: { children: ReactNode; style?: Styl
 /** How far a screen rises as it arrives; 3pt read as nothing. */
 const SCREEN_ARRIVAL_RISE = 14;
 
+/** For a form above its own list: pressing a row's edit must visibly land on the form. */
+export function useScrollToForm() {
+  const scrollRef = useRef<ScrollViewInstance>(null);
+  return { scrollRef, scrollToForm: () => scrollRef.current?.scrollTo({ y: 0, animated: true }) };
+}
+
 export function Screen({
   children,
   scroll = true,

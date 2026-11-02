@@ -12,7 +12,7 @@ import { formatMinorCompact, formatMinorInput } from "../../../domain/money";
 import { tr } from "../../../i18n/tr";
 import { scheduleSync } from "../../../sync/engine";
 import { categoryIconComponent } from "../../../ui/category-icon";
-import { Body, Button, Card, CardList, CardListSkeleton, DataGateScreen, DataStateNotice, EmptyState, IconButton, MoneyField, MonthStepper, PanelHeader, Row, Screen, SectionHeader, SegmentBar, Select, Spread } from "../../../ui/components";
+import { Body, Button, Card, CardList, CardListSkeleton, DataGateScreen, DataStateNotice, EmptyState, IconButton, MoneyField, MonthStepper, PanelHeader, Row, Screen, SectionHeader, SegmentBar, Select, Spread, useScrollToForm } from "../../../ui/components";
 import { useDirtyExitGuard } from "../../../ui/dirty-exit";
 import { useOperationGuard } from "../../../ui/operation-guard";
 import { WorkspaceSplit } from "../../../ui/workspace-layout";
@@ -97,10 +97,12 @@ export default function BudgetsScreen() {
     setLoadedAmountRaw(loaded);
     setAmountMinor(minor);
   };
+  const { scrollRef, scrollToForm } = useScrollToForm();
   const startEdit = (budget: (typeof budgets)[number]) => {
     confirmDiscard(() => {
       setCategoryChoice(budget.categoryId);
       loadAmount(budget.amountMinor);
+      scrollToForm();
     });
   };
   const canSave = !!categoryId && amountMinor != null && amountMinor > 0;
@@ -135,7 +137,7 @@ export default function BudgetsScreen() {
   if (!dataReady) return <DataGateScreen status={dataStatus} retry={retryData} skeleton={<CardListSkeleton />} />;
 
   return (
-    <Screen width="workspace">
+    <Screen width="workspace" scrollRef={scrollRef}>
       <DataStateNotice status={dataStatus} retry={retryData} />
       <WorkspaceSplit
         testID="budgets-workspace"

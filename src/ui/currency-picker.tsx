@@ -1,104 +1,64 @@
 /**
- * The one currency control.
- *
- * TRY, USD and EUR are chips; the rest open `Select`'s own list through a chip-shaped trigger.
+ * The one currency control: a chip that opens the full list in one tap. A
+ * row of TRY/USD/EUR chips with an "other" chip beside it was a second way to
+ * choose the same thing, and the owner asked for one.
  *
  * Changing the selection never converts what the user typed. The amount is
  * theirs; only its currency changes.
  */
 
-import { Pressable, Text, View } from "react-native";
+import { Pressable, Text } from "react-native";
+import ChevronDown from "lucide-react-native/icons/chevron-down";
 import { Select } from "./components";
 import { SUPPORTED_CURRENCIES, type Currency } from "../services/fx-fetch";
 import { CURRENCY_INFO, currencyLabel } from "../domain/fx-provider";
 import { tr } from "../i18n/tr";
 import { interactionSurface } from "./interaction";
-import { controlSize, font, radius, spacing, type, useTheme } from "./theme";
+import { borderWidth, controlSize, font, iconSize, radius, spacing, type, useTheme, type Palette } from "./theme";
 
-/** Kept in front because together they are almost every entry in this app. */
-const PRIMARY = ["TRY", "USD", "EUR"] as const satisfies readonly Currency[];
-const isPrimaryCode = (code: string) => (PRIMARY as readonly string[]).includes(code);
-const OTHERS = SUPPORTED_CURRENCIES.filter((code) => !isPrimaryCode(code));
+/** A chip that states one choice of a form, lit while it differs from the default. */
+export const optionChipPressStyle = (palette: Palette, selected: boolean) => (state: Parameters<typeof interactionSurface>[1]) => ({
+  flexDirection: "row" as const,
+  alignItems: "center" as const,
+  gap: spacing.xs,
+  minHeight: controlSize.minimumTarget,
+  paddingHorizontal: spacing.md,
+  borderRadius: radius.md,
+  borderWidth: borderWidth.control,
+  borderColor: selected ? palette.primary : palette.border,
+  ...interactionSurface(palette, state, { base: selected ? palette.primarySoft : palette.surfaceAlt }),
+});
 
-export function CurrencyPicker({
-  value,
-  onChange,
-}: {
-  /**
-   * Deliberately a plain string: the column is free text, so a row written
-   * before this list existed can hold a code the app no longer offers. Such a
-   * value is shown as-is and left alone — quietly rewriting it would change
-   * what a stored amount means.
-   */
-  value: string;
-  onChange: (currency: Currency) => void;
-}) {
+/**
+ * The currency as a chip that is the dropdown itself: one tap lists every currency.
+ *
+ * `value` is deliberately a plain string: the column is free text, so a row
+ * written before this list existed can hold a code the app no longer offers.
+ * Such a value is shown as-is and left alone — quietly rewriting it would
+ * change what a stored amount means.
+ */
+export function CurrencySelect({ value, onChange, testID }: { value: string; onChange: (currency: Currency) => void; testID?: string }) {
   const { palette } = useTheme();
-  const isPrimary = isPrimaryCode(value);
-
-  const chip = (label: string, selected: boolean, onPress: () => void, hint?: string) => (
-    <Pressable
-      key={label}
-      accessibilityRole="radio"
-      aria-checked={selected}
-      accessibilityState={{ checked: selected, selected }}
-      accessibilityLabel={hint}
-      onPress={onPress}
-      style={(state) => ({
-        // Equal columns, so renaming the last chip on selection cannot wrap the row.
-        flex: 1,
-        minHeight: controlSize.minimumTarget,
-        justifyContent: "center",
-        alignItems: "center",
-        paddingHorizontal: spacing.sm,
-        borderRadius: radius.full,
-        ...interactionSurface(palette, state, { base: selected ? palette.primarySoft : palette.surfaceAlt }),
-      })}
-    >
-      <Text
-        style={[
-          type.label,
-          {
-            color: selected ? palette.primaryText : palette.text,
-            fontFamily: selected ? font.semibold : font.regular,
-            textAlign: "center",
-          },
-        ]}
-      >
-        {label}
-      </Text>
-    </Pressable>
-  );
-
+  const foreign = value !== "TRY";
+  const ink = foreign ? palette.primaryText : palette.text;
   return (
-    <View style={{ flexDirection: "row", gap: spacing.sm, marginBottom: spacing.md }}>
-      {PRIMARY.map((code) => chip(currencyLabel(code), value === code, () => onChange(code), CURRENCY_INFO[code].name))}
-      {/* `Select` renders its trigger inside a wrapper of its own, so the
-          fourth column has to be claimed out here or the chip's own `flex`
-          would only divide that intrinsic wrapper. */}
-      <View style={{ flex: 1 }}>
-        <Select<Currency>
-          label={tr.common.otherCurrencies}
-          placeholder={tr.common.otherCurrencies}
-          // Flag, name and code: the list is read by country far more often than
-          // by ISO code, and the code alone made a fourteen-row sheet unscannable.
-          options={OTHERS.map((code) => ({
-            value: code,
-            label: `${CURRENCY_INFO[code].name} · ${code}`,
-            icon: CURRENCY_INFO[code].flag,
-          }))}
-          value={isPrimary ? null : (value as Currency)}
-          onChange={onChange}
-          trigger={(open) =>
-            chip(
-              isPrimary ? `••• ${tr.common.other}` : currencyLabel(value),
-              !isPrimary,
-              open,
-              tr.common.otherCurrencies,
-            )
-          }
-        />
-      </View>
-    </View>
+    <Select<Currency>
+      label={tr.tx.currency}
+      options={SUPPORTED_CURRENCIES.map((code) => ({ value: code, label: `${CURRENCY_INFO[code].name} · ${code}`, icon: CURRENCY_INFO[code].flag }))}
+      value={value as Currency}
+      onChange={onChange}
+      trigger={(open) => (
+        <Pressable
+          testID={testID}
+          accessibilityRole="button"
+          accessibilityLabel={tr.tx.changeCurrency(currencyLabel(value))}
+          onPress={open}
+          style={optionChipPressStyle(palette, foreign)}
+        >
+          <Text style={[type.label, { color: ink, fontFamily: font.semibold }]}>{currencyLabel(value)}</Text>
+          <ChevronDown accessible={false} size={iconSize.control} color={ink} />
+        </Pressable>
+      )}
+    />
   );
 }

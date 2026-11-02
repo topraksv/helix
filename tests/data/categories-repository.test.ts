@@ -35,7 +35,6 @@ import { createPerson } from "../../src/data/repo/accounts";
 import {
   addTemplateCategories,
   createCategory,
-  reorderCategoryGroup,
   updateCategory,
 } from "../../src/data/repo/categories";
 import {
@@ -50,7 +49,8 @@ import {
   setupInvestments,
 } from "../../src/data/repo/investments";
 import { addTransaction } from "../../src/data/repo/transactions";
-import { fromDbShape } from "../../src/db/mutations";
+import { setYearColumnOrder, setYearColumnShown } from "../../src/data/repo/settings";
+import { fromDbShape, writeSetting } from "../../src/db/mutations";
 import { migrationStatements } from "../helpers";
 
 const USER = "category-user";
@@ -315,83 +315,6 @@ describe("category repository persistence", () => {
     expect(harness.db!.prepare("SELECT COUNT(*) AS n FROM outbox").get()).toEqual({ n: 0 });
   });
 
-  it("reorders only the requested group, preserves its slots and no-ops for an empty write set", async () => {
-    const expenseA = await createCategory(USER, { name: "Market", kind: "expense", isTransfer: false, sortOrder: 9 });
-    const expenseB = await createCategory(USER, { name: "Kira", kind: "expense", isTransfer: false, sortOrder: 4 });
-    const expenseC = await createCategory(USER, { name: "Sağlık", kind: "expense", isTransfer: false, sortOrder: 7 });
-    const income = await createCategory(USER, { name: "Maaş", kind: "income", isTransfer: false, sortOrder: 2 });
-    const inputRows = [expenseA, expenseB, expenseC, income].map(categoryInputRow);
-    clearOutbox();
-
-    await reorderCategoryGroup(USER, inputRows, "expense", [
-      expenseC,
-      expenseA,
-      expenseB,
-      income,
-      "unknown-category",
-    ]);
-
-    const stored = harness.db!.prepare(
-      "SELECT id, name, icon, sort_order FROM categories ORDER BY id",
-    ).all() as Record<string, unknown>[];
-    expect(stored).toEqual([
-      { id: expenseA, name: "Market", icon: "🛒", sort_order: 4 },
-      { id: expenseB, name: "Kira", icon: "🏠", sort_order: 7 },
-      { id: expenseC, name: "Sağlık", icon: "🩺", sort_order: 9 },
-      { id: income, name: "Maaş", icon: "💰", sort_order: 2 },
-    ]);
-    expect(categoryOutbox().map((row) => row.row_id)).toEqual([expenseC, expenseA, expenseB]);
-
-    clearOutbox();
-    await reorderCategoryGroup(USER, inputRows, "expense", [income, "unknown-category"]);
-    expect(harness.db!.prepare("SELECT COUNT(*) AS n FROM outbox").get()).toEqual({ n: 0 });
-
-    await reorderCategoryGroup(USER, inputRows, "expense", [
-      income,
-      "unknown-category",
-      "another-unknown-category",
-      expenseA,
-    ]);
-    expect(harness.db!.prepare("SELECT COUNT(*) AS n FROM outbox").get()).toEqual({ n: 0 });
-  });
-
-  it("rejects a reorder containing a foreign or tombstoned category atomically", async () => {
-    const ownedId = await createCategory(USER, {
-      name: "Market",
-      kind: "expense",
-      isTransfer: false,
-      sortOrder: 5,
-    });
-    harness.db!.prepare(
-      `INSERT INTO categories
-        (id, user_id, created_at, updated_at, deleted_at, tombstone_version,
-         name, kind, icon, color, sort_order, is_column, is_transfer)
-       VALUES (?, ?, ?, ?, NULL, 0, ?, 'expense', NULL, NULL, 30, 1, 0)`,
-    ).run("foreign-category", OTHER_USER, "2026-08-13T09:00:00.000Z", "2026-08-13T09:00:00.000Z", "Yabancı");
-    clearOutbox();
-    const ownedBefore = rawCategory(ownedId);
-
-    await expect(
-      reorderCategoryGroup(
-        USER,
-        [categoryInputRow(ownedId), categoryInputRow("foreign-category")],
-        "expense",
-        ["foreign-category", ownedId],
-      ),
-    ).rejects.toThrow("Cannot edit missing categories row");
-    expect(rawCategory(ownedId)).toEqual(ownedBefore);
-    expect(harness.db!.prepare("SELECT COUNT(*) AS n FROM outbox").get()).toEqual({ n: 0 });
-
-    harness.db!.prepare("UPDATE categories SET deleted_at = ? WHERE id = ?").run(
-      "2026-08-13T09:03:00.000Z",
-      ownedId,
-    );
-    await expect(
-      reorderCategoryGroup(USER, [categoryInputRow(ownedId)], "expense", [ownedId]),
-    ).rejects.toThrow("Cannot edit missing categories row");
-    expect(harness.db!.prepare("SELECT COUNT(*) AS n FROM outbox").get()).toEqual({ n: 0 });
-  });
-
   it("upserts templates with deterministic ids and exact supplied fields without duplicating rows", async () => {
     await addTemplateCategories(USER, [], 20);
     expect(harness.db!.prepare("SELECT COUNT(*) AS n FROM outbox").get()).toEqual({ n: 0 });
@@ -530,5 +453,33 @@ describe("category repository persistence", () => {
       `cell_notes:det:cellnote:${USER}:2026-08:${sourceId}`,
       `cell_notes:det:cellnote:${USER}:2026-08:${targetId}`,
     ]);
+  });
+
+  it("keeps a year's order and hiding to that year, and records a column shown there", async () => {
+    const setting = (key: string) => {
+      const row = harness.db!.prepare("SELECT value FROM settings WHERE user_id = ? AND key = ?").get(USER, key) as { value: string };
+      return JSON.parse(row.value);
+    };
+    await setYearColumnOrder(USER, 2025, ["b", "a"], ["income"]);
+    await setYearColumnShown(USER, 2026, "a", false);
+    expect(setting("year_layouts")).toEqual({ "2025": { order: ["b", "a", "income"] }, "2026": { hidden: ["a"] } });
+
+    await writeSetting(USER, "column_years", { "2026": ["b"] });
+    await setYearColumnShown(USER, 2026, "a", true);
+    expect(setting("year_layouts")["2026"].hidden).toEqual([]);
+    expect(setting("year_layouts")["2025"].order).toEqual(["b", "a", "income"]);
+    expect(setting("column_years")).toEqual({ "2026": ["b", "a"] });
+
+    await setYearColumnShown(USER, 2026, "a", true);
+    expect(setting("column_years")).toEqual({ "2026": ["b", "a"] });
+
+    // Hiding records nothing, unhiding one leaves the rest hidden, and ordering keeps what was hidden.
+    await setYearColumnShown(USER, 2026, "c", false);
+    await setYearColumnShown(USER, 2026, "d", false);
+    await setYearColumnShown(USER, 2026, "c", true);
+    await setYearColumnShown(USER, 2026, "e", false);
+    await setYearColumnOrder(USER, 2026, ["a"], []);
+    expect(setting("year_layouts")["2026"]).toEqual({ hidden: ["d", "e"], order: ["a"] });
+    expect(setting("column_years")).toEqual({ "2026": ["b", "a", "c"] });
   });
 });

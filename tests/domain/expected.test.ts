@@ -172,9 +172,11 @@ describe("state transitions", () => {
     expect(confirmable.map((e) => e.id)).toEqual(["auto-due"]);
   });
 
-  it("never auto-confirms a variable subscription before its actual amount is entered", () => {
-    const items = [expected({ refId: "sub-auto", amountIsEstimated: true, dueDate: "2026-07-05" })];
-    expect(findAutoConfirmable(items, new Map([["sub-auto", "2026-06-01"]]), "2026-07-05")).toEqual([]);
+  it("auto-confirms a variable subscription at its estimate, and waits while it has none", () => {
+    const rules = new Map([["sub-auto", "2026-06-01"]]);
+    const estimated = expected({ refId: "sub-auto", amountIsEstimated: true, dueDate: "2026-07-05" });
+    expect(findAutoConfirmable([estimated], rules, "2026-07-05")).toEqual([estimated]);
+    expect(findAutoConfirmable([{ ...estimated, amountMinor: 0 }], rules, "2026-07-05")).toEqual([]);
   });
 
   /**
@@ -447,7 +449,7 @@ describe("expected-item draft and boundary contract", () => {
     expect(findAutoConfirmable([
       dueRow({ id: "today", dueDate: "2026-07-18" }),
       dueRow({ id: "income", dueDate: "2026-07-18", kind: "recurring_income" }),
-      dueRow({ id: "estimated", dueDate: "2026-07-18", amountIsEstimated: true }),
+      dueRow({ id: "no-estimate", dueDate: "2026-07-18", amountIsEstimated: true, amountMinor: 0 }),
     ], new Map([["s", "2026-07-01"]]), "2026-07-18").map((row) => row.id)).toEqual(["today"]);
     expect(findAutoConfirmable([
       dueRow({ id: "late", dueDate: "2026-07-17", status: "late" }),

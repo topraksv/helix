@@ -266,7 +266,7 @@ function remapIdArray(value: unknown, idMap: ReadonlyMap<string, string>): unkno
 
 /**
  * Rewrite the ids embedded inside a `settings.value` JSON payload.
- * `column_years` (`src/domain/settings.ts`) holds category ids; the
+ * `column_years` and `year_layouts` (`src/domain/settings.ts`) hold category ids; the
  * `computed-columns.tsx` screen persists `computed_columns_hidden` as
  * computed-column ids under the same key name (also decoded there); and
  * `import_batch:<year>` (`src/data/repo/imports.ts`, NOT one of the fixed
@@ -275,14 +275,33 @@ function remapIdArray(value: unknown, idMap: ReadonlyMap<string, string>): unkno
  * spreadsheet import. A malformed value is left untouched: the existing
  * validator already rejects it, downstream, on its own terms.
  */
+function remapColumnYears(parsed: object, idMap: ReadonlyMap<string, string>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [year, ids] of Object.entries(parsed as Record<string, unknown>)) out[year] = remapIdArray(ids, idMap);
+  return out;
+}
+
+function remapYearLayouts(parsed: object, idMap: ReadonlyMap<string, string>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [year, layout] of Object.entries(parsed as Record<string, Record<string, unknown> | null>)) {
+    out[year] = layout && {
+      ...layout,
+      ...("order" in layout ? { order: remapIdArray(layout.order, idMap) } : {}),
+      ...("hidden" in layout ? { hidden: remapIdArray(layout.hidden, idMap) } : {}),
+    };
+  }
+  return out;
+}
+
+const YEAR_KEYED_REMAPS = new Map([["column_years", remapColumnYears], ["year_layouts", remapYearLayouts]]);
+
 function remapSettingsValue(key: string, value: string, idMap: ReadonlyMap<string, string>): string {
   try {
     const parsed: unknown = JSON.parse(value);
-    if (key === "column_years") {
+    const remapYears = YEAR_KEYED_REMAPS.get(key);
+    if (remapYears) {
       if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return value;
-      const out: Record<string, unknown> = {};
-      for (const [year, ids] of Object.entries(parsed as Record<string, unknown>)) out[year] = remapIdArray(ids, idMap);
-      return JSON.stringify(out);
+      return JSON.stringify(remapYears(parsed, idMap));
     }
     if (key === "computed_columns_hidden") {
       if (!Array.isArray(parsed)) return value;

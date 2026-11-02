@@ -127,7 +127,6 @@ export {
 export {
   addTemplateCategories,
   createCategory,
-  reorderCategoryGroup,
   updateCategory,
 } from "./repo/categories";
 
@@ -146,6 +145,8 @@ export {
   setAccountFrozen,
   setAttentionState,
   setBalanceColumns,
+  setYearColumnOrder,
+  setYearColumnShown,
   setBalanceDeclaration,
   setMatrixColorLabels,
   setPendingTableVisibility,

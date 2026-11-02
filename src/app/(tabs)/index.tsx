@@ -592,12 +592,14 @@ function BalanceHero({ data, wide, showForecast, onToggleForecast }: { data: Das
     );
   }
   const projected = model.projectedMinor;
+  // Nothing recorded yet: every figure reads ₺0, so the one door says what the first step is.
+  const firstRun = bundle.txLike.length === 0;
   return (
     <HeroCard>
       <View style={wide ? { flexDirection: "row", alignItems: "stretch" } : undefined}>
         <View style={wide ? { flex: 1, paddingRight: spacing.xl, justifyContent: "center" } : undefined}>
           <Row gap={spacing.sm} style={{ alignItems: "center" }}>
-            <Eyebrow color={heroInk}>{tr.dashboard.actualBalance}</Eyebrow>
+            <Eyebrow color={heroInk}>{`${tr.dashboard.actualBalance} · ${monthName(month)}`}</Eyebrow>
             {data.balanceDrift != null ? <BalanceDriftPill /> : null}
           </Row>
           <Amount
@@ -617,14 +619,14 @@ function BalanceHero({ data, wide, showForecast, onToggleForecast }: { data: Das
             ? { width: StyleSheet.hairlineWidth, backgroundColor: palette.border, marginHorizontal: spacing.xl }
             // The forecast row owns the space down to this line, so its hover ends ON
             // the rule; the full gap returns when that row is absent.
-            : { height: StyleSheet.hairlineWidth, backgroundColor: palette.border, marginTop: projected != null ? 0 : spacing.lg, marginBottom: spacing.lg }}
+            : { height: StyleSheet.hairlineWidth, backgroundColor: palette.border, marginTop: projected != null ? 0 : spacing.lg, marginBottom: spacing.sm }}
         />
         <View style={wide ? { flex: 1, paddingLeft: spacing.xl, justifyContent: "space-between" } : undefined}>
           <View>
-            <Eyebrow>{monthName(month)}</Eyebrow>
             <MetricStrip
               testID="dashboard-month-metrics"
-              style={{ marginTop: spacing.md }}
+              // On a phone the rule above already separates the strip; its own top rule drew a second line with an empty band between.
+              style={wide ? undefined : { borderTopWidth: 0, marginTop: 0 }}
               // The three figures share one line and shorten together on the
               // shared compact scale rather than dropping "Net değişim" a row.
               items={[
@@ -635,7 +637,13 @@ function BalanceHero({ data, wide, showForecast, onToggleForecast }: { data: Das
             />
           </View>
           {/* One door per destination: the warning card above already opens Bekleyenler. */}
-          <Row style={{ marginTop: spacing.lg }}>
+          {firstRun ? (
+            <View style={{ marginTop: spacing.lg }}>
+              <Body style={{ fontFamily: font.semibold }}>{tr.dashboard.firstExpense}</Body>
+              <Body muted>{tr.dashboard.firstExpenseHint}</Body>
+            </View>
+          ) : null}
+          <Row style={{ marginTop: firstRun ? spacing.sm : spacing.lg }}>
             <View style={{ flex: 1 }}>
               <Button icon={Plus} label={tr.cashflow.addTransaction} onPress={() => router.push("/transaction")} />
             </View>

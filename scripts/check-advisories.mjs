@@ -5,15 +5,18 @@ import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 
 // Each entry is a claim someone checked. Empty is allowed, and a stale entry fails as loudly as an unacknowledged advisory.
+// node-forge 1.4.0 carries six advisories that 1.4.1 (2026-10-27) fixes, still inside .npmrc's seven-day min-release-age.
+// npm names no root for them: every parent's range already admits the fixed release, so `npm audit fix` reaches it unforced.
+const NODE_FORGE_QUARANTINE =
+  "Fixed in node-forge 1.4.1, published 2026-10-27, so still inside .npmrc's seven-day min-release-age. Carried only by Node tooling: @expo/cli, and @expo/code-signing-certificates for code signing app.json does not configure. Absent from the web export. On the recheck day, move the lock to the fixed release and delete these entries.";
+
 const ACKNOWLEDGED = [
-  {
-    id: "GHSA-86w9-cpqp-85rv",
-    package: "node-forge",
-    checkedOn: "2026-10-02",
-    recheckAfter: "2026-12-01",
-    expectedPaths: ["expo", "expo-updates"],
-    reason: "No patched release (RSA PKCS#1 v1.5 signature verification). Carried only by Node tooling: @expo/cli, and @expo/code-signing-certificates, which expo-updates uses for code signing that app.json does not configure. Absent from the web export.",
-  },
+  { id: "GHSA-86w9-cpqp-85rv", package: "node-forge", checkedOn: "2026-11-02", recheckAfter: "2026-11-04", expectedPaths: [], reason: NODE_FORGE_QUARANTINE },
+  { id: "GHSA-7wch-p9px-956x", package: "node-forge", checkedOn: "2026-11-02", recheckAfter: "2026-11-04", expectedPaths: [], reason: NODE_FORGE_QUARANTINE },
+  { id: "GHSA-jc66-7q78-782g", package: "node-forge", checkedOn: "2026-11-02", recheckAfter: "2026-11-04", expectedPaths: [], reason: NODE_FORGE_QUARANTINE },
+  { id: "GHSA-8hrf-8g6f-7xwp", package: "node-forge", checkedOn: "2026-11-02", recheckAfter: "2026-11-04", expectedPaths: [], reason: NODE_FORGE_QUARANTINE },
+  { id: "GHSA-hqq3-7jhf-c5jx", package: "node-forge", checkedOn: "2026-11-02", recheckAfter: "2026-11-04", expectedPaths: [], reason: NODE_FORGE_QUARANTINE },
+  { id: "GHSA-5x38-2vff-x55p", package: "node-forge", checkedOn: "2026-11-02", recheckAfter: "2026-11-04", expectedPaths: [], reason: NODE_FORGE_QUARANTINE },
 ];
 
 // Dependencies installed outside the npm registry, which `npm audit` and Dependabot cannot see; `reviewed` is what was read and found not to apply.

@@ -126,7 +126,7 @@ test("a card's trailing action leaves the same gap as its first row", async ({ p
   // A future-dated expense gives the Upcoming card a row and its footer link.
   await page.getByRole("button", { name: "İşlem Ekle" }).first().click();
   await page.getByRole("textbox", { name: "Tutar · TRY" }).fill("750,00");
-  await pickOption(page, "Kalem", /Market/);
+  await pickOption(page, "Ne tür bir harcama?", /Market/);
   await page.getByRole("button", { name: "Ödeme günü" }).click();
   const days = await page.getByRole("button").evaluateAll((els) =>
     els.map((e) => e.getAttribute("aria-label")).filter((l): l is string => !!l && /^\d{1,2} .+ \d{4}$/u.test(l)));
@@ -446,7 +446,7 @@ test("deleting one of two identically-named columns still offers the other as a 
   await openCashFlow(page);
   await page.getByRole("button", { name: "İşlem Ekle", exact: true }).click();
   await page.getByRole("textbox", { name: "Tutar · TRY", exact: true }).fill("75,00");
-  await page.getByRole("button", { name: "Kalem", exact: true }).click();
+  await page.getByRole("button", { name: "Ne tür bir harcama?", exact: true }).click();
   await page.locator('[aria-modal="true"]').getByRole("radio", { name: "Market Alışverişi", exact: true }).first().click();
   await page.getByRole("button", { name: "Kaydet", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Mali Tablo", exact: true })).toBeVisible();
@@ -1030,11 +1030,12 @@ test("subscriptions explain recurrence and summarize the next payment path", asy
   await page.goto("/helix/subscription-form");
 
   await expect(page.getByRole("img", { name: /Aboneliğin kimliği.*Aylık.*Aylık karşılığı/ })).toBeVisible();
-  await expect(page.getByText("Sıradaki ödeme", { exact: true })).toBeVisible();
-  await expect(page.getByText("Sonraki tekrar", { exact: true })).toBeVisible();
+  // One date to read; the one after it is a note, not a second box.
+  await expect(page.getByText("Sonraki ödeme", { exact: true })).toBeVisible();
+  await expect(page.getByText(/^Ondan sonra: /u)).toBeVisible();
   await page.getByRole("textbox", { name: "Ad", exact: true }).fill("Müzik");
   await page.getByRole("textbox", { name: "Tutar · TRY", exact: true }).fill("199,90");
-  await pickOption(page, "Kalem", "Market");
+  await pickOption(page, "Ne tür bir harcama?", "Market");
   await page.getByRole("button", { name: "Kaydet", exact: true }).click();
 
   await expect(page.getByRole("heading", { name: "Abonelikler", exact: true })).toBeVisible();
@@ -1065,7 +1066,7 @@ test("variable subscriptions accept the invoice amount from the upcoming calenda
   await page.getByRole("textbox", { name: "Ad", exact: true }).fill("Elektrik");
   await page.getByRole("textbox", { name: "Tutar · TRY", exact: true }).fill("1.000,00");
   await page.getByRole("switch", { name: "Tutar her ay değişir", exact: true }).click();
-  await pickOption(page, "Kalem", "Market");
+  await pickOption(page, "Ne tür bir harcama?", "Market");
   await page.getByRole("button", { name: "Kaydet", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Abonelikler", exact: true })).toBeVisible();
   await page.goto("/helix/");
@@ -1094,7 +1095,7 @@ test("a variable subscription can be saved with no amount estimate at all", asyn
   await page.goto("/helix/subscription-form");
   await page.getByRole("textbox", { name: "Ad", exact: true }).fill("Doğalgaz");
   await page.getByRole("switch", { name: "Tutar her ay değişir", exact: true }).click();
-  await pickOption(page, "Kalem", "Market");
+  await pickOption(page, "Ne tür bir harcama?", "Market");
   await page.getByRole("button", { name: "Kaydet", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Abonelikler", exact: true })).toBeVisible();
   await expect(page.getByText("Tutar belirtilmedi", { exact: true }).first()).toBeVisible();
@@ -1164,7 +1165,7 @@ test("a declared balance is remembered, so the drift warning can fire", async ({
   await expect(page.getByRole("heading", { name: "Mali Tablo", exact: true })).toBeVisible();
   await page.getByRole("button", { name: "İşlem Ekle", exact: true }).click();
   await page.getByRole("textbox", { name: "Tutar · TRY", exact: true }).fill("250,00");
-  await pickOption(page, "Kalem", "Market");
+  await pickOption(page, "Ne tür bir harcama?", "Market");
   await page.getByRole("button", { name: "Kaydet", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Mali Tablo", exact: true })).toBeVisible();
 
@@ -1617,7 +1618,7 @@ test("the financial-table tools are one control, one row, at every width", async
   await expect(page.getByRole("button", { name: "İşlem Ekle", exact: true })).toBeVisible();
 
   // ONE toolbar at every width: it was six labelled buttons above a tablet and five 9px icon tiles below.
-  const toolRow = page.locator("text=/^(Kalemler|Taksitler|Analiz|Geçmiş Ay|Düzeltme)$/");
+  const toolRow = page.locator("text=/^(Kalemler|Taksitler|Analiz|Geçmiş Ay|Bakiyemi düzelt)$/");
   const measure = async () => {
     const tools = page.getByRole("button").filter({ has: toolRow });
     await expect(tools).toHaveCount(5);
@@ -2260,7 +2261,7 @@ test("disabled primary actions remain readable in every theme", async ({ page })
       await page.getByRole("radio", { name: scheme, exact: true }).click();
       // A save button is live for a missing field (docs/UI.md §4); the one-field prompt is the primary still disabled while empty.
       await page.goto("/helix/transaction");
-      await page.getByRole("button", { name: "Kalem", exact: true }).click();
+      await page.getByRole("button", { name: "Ne tür bir harcama?", exact: true }).click();
       await page.getByRole("button", { name: "Yeni kalem ekle", exact: true }).click();
       const add = page.getByRole("button", { name: "Ekle", exact: true });
       await expect(add).toBeDisabled();
@@ -2367,44 +2368,33 @@ test("a short boot wait never flashes a loading indicator", async ({ page, conte
   await expect(page.getByRole("button", { name: /Hemen Kullanmaya Başla/ })).toBeVisible();
 });
 
-// The unavailable day is disabled, not deleted: deleting it emptied the right chip row and raised its
-// input a control height. A chosen chip must not resize either (it is the widest label in a wrapping row).
-test("paired month-day fields keep one baseline when a day is taken", async ({ page }) => {
+// One list per day: a day that cannot pair with the other field is not offered, and the two fields keep one baseline.
+test("paired card-cycle days keep one baseline and offer only days that pair", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await onboard(page);
   await page.goto("/helix/settings/payment-sources");
   await page.getByRole("radio", { name: "Kredi Kartı" }).click();
 
-  const statement = page.getByRole("textbox", { name: "Ekstre kesim günü" });
-  const due = page.getByRole("textbox", { name: "Son ödeme günü" });
-  await expect(statement).toBeVisible();
-  await expect(due).toBeVisible();
-
+  const statement = page.getByRole("button", { name: "Ekstre kesim günü", exact: true });
+  const due = page.getByRole("button", { name: "Son ödeme günü", exact: true });
   const baselines = async () => {
     const [a, b] = await Promise.all([statement.boundingBox(), due.boundingBox()]);
     return { statement: Math.round(a!.y), due: Math.round(b!.y) };
   };
-  // Each field carries its own month-end radio, so no two radios share a label.
-  const statementEnd = page.getByRole("radio", { name: "Ekstre kesim günü · Ayın son günü", exact: true });
-  const dueEnd = page.getByRole("radio", { name: "Son ödeme günü · Ayın son günü", exact: true });
-  await expect(statementEnd).toHaveCount(1);
-  await expect(dueEnd).toHaveCount(1);
-  const widths = async () => Promise.all(
-    [statementEnd, dueEnd].map(async (chip) => Math.round((await chip.boundingBox())!.width)),
-  );
-
   const before = await baselines();
-  expect(before.statement, "the paired inputs start on one line").toBe(before.due);
-  const widthsBefore = await widths();
+  expect(before.statement, "the paired fields start on one line").toBe(before.due);
 
-  await statementEnd.click();
-  await expect(statementEnd).toHaveAttribute("aria-checked", "true");
-
+  await pickOption(page, "Ekstre kesim günü", "Ayın son günü");
   const after = await baselines();
-  expect(after.statement, "choosing a day keeps both inputs on one line").toBe(after.due);
-  expect(await widths(), "a chosen chip is the same size as an unchosen one").toEqual(widthsBefore);
+  expect(after.statement, "choosing a day keeps both fields on one line").toBe(after.due);
 
-  await expect(dueEnd).toHaveAttribute("aria-disabled", "true");
+  await due.click();
+  const modal = page.locator('[aria-modal="true"]');
+  // The same day cannot be both: the month end is gone from the due list, and a day that pairs is there.
+  await expect(modal.getByRole("radio", { name: "Ayın son günü", exact: true })).toHaveCount(0);
+  await expect(modal.getByRole("radio", { name: "Ayın 10. günü", exact: true })).toHaveCount(1);
+  await page.keyboard.press("Escape");
+  await expect(page.getByText(/^Ör\. kesim ayın 15\. günü/)).toBeVisible();
 });
 
 // The fill goes to the card's padding LESS `HOVER_GUTTER` (one spacing step, set in `interactionBleed`):
@@ -2414,7 +2404,7 @@ test("a held list row lights its card to a deliberate gutter, not to the glyph",
   await onboard(page);
   await page.goto("/helix/settings");
 
-  const row = page.getByRole("button", { name: /^Bakiye Düzeltme/ }).first();
+  const row = page.getByRole("button", { name: /^Bakiyemi Düzelt/ }).first();
   await expect(row).toBeVisible();
   const geometry = await row.evaluate((el) => {
     const box = el.getBoundingClientRect();

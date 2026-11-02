@@ -16,6 +16,7 @@
 import type * as XLSXTypes from "xlsx";
 import { tr } from "../i18n/tr";
 import { UserFacingError } from "../domain/user-error";
+import { clampToInputLimit } from "../domain/input";
 import { addMonthsToKey, todayISO, yearOf, type MonthKey } from "../domain/dates";
 import { MAX_INSTALLMENT_COUNT } from "../domain/installments";
 import { isSupportedMinorAmount, roundHalfAwayFromZero, type Minor } from "../domain/money";
@@ -358,7 +359,7 @@ function parseCommentParts(comment: string): { label: string; amountMinor: Minor
   return comment
     .split(/[\n;]+/)
     .map((l) => l.trim())
-    .filter(Boolean)
+    .filter((line) => line !== "" && !sectionBannerLabel(line))
     .map((line) => {
       const m = /^(.*\S)[\s:=]+([₺]?\s*-?\d[\d.,]*)\s*(?:tl|₺)?$/i.exec(line);
       const label = m?.[1];
@@ -433,7 +434,8 @@ export function parseSheet(grid: RawCell[][], sheetName: string): ParsedSheet | 
   // Column letters only mean anything in the sheet's own orientation.
   const roles = normalized === grid ? balanceFormulaRoles(body, header) : null;
   const columns: ParsedColumn[] = keepIdx.map((i) => {
-    const { label, dueDay } = extractDueDay(header[i]!);
+    const { label: heading, dueDay } = extractDueDay(header[i]!);
+    const label = clampToInputLimit(heading, "text");
     const role = roles?.get(i);
     return {
       label,
@@ -505,23 +507,80 @@ export function planImportCell(cell: CellData): CellPlan | null {
   }, 0);
   const formulaReconciles = formulaTotal != null && formulaTotal === value;
 
-  // 1) literal formula whose part count matches the comment lines → labeled items
-  if (formulaReconciles && fp && cp && cp.length === fp.length) {
-    return {
-      items: fp.map((amt, i) => ({ amountMinor: amt, note: cp[i]?.label || null, isAggregate: false })),
-      cellNote: null,
-    };
-  }
-  // 2) literal formula only → itemize (unlabeled); keep any comment as cell note
-  if (formulaReconciles && fp) {
-    return { items: fp.map((amt) => ({ amountMinor: amt, note: null, isAggregate: false })), cellNote: cell.comment };
-  }
+  // 1) literal formula → its parts, fed by the comment
+  if (formulaReconciles && fp) return itemizedFormula(fp, cp ?? [], cell.comment);
   // 3) labeled comment amounts that reconcile to the value → labeled items
-  if (labeled && labeled.reduce((s, p) => s + p.amountMinor!, 0) === value) {
-    return { items: labeled.map((p) => ({ amountMinor: p.amountMinor!, note: p.label || null, isAggregate: false })), cellNote: null };
+  if (labeled && labeled.length > 0 && labeled.reduce((s, p) => s + p.amountMinor!, 0) === value) {
+    return { items: labeled.map((p) => ({ amountMinor: p.amountMinor!, note: clampToInputLimit(p.label, "note"), isAggregate: false })), cellNote: null };
   }
-  // 4) opaque monthly total → one aggregate row, comment (if any) → cell note
-  return { items: [{ amountMinor: value, note: null, isAggregate: true }], cellNote: cell.comment };
+  // 4) one opaque monthly total: the comment is that amount's own note
+  return { items: [{ amountMinor: value, note: cell.comment ? commentWithout(cell.comment, () => false) : null, isAggregate: true }], cellNote: null };
+}
+
+const commentLineKey = (line: { label: string; amountMinor: Minor | null }) => `${line.amountMinor}|${line.label}`;
+
+/**
+ * Each comment line feeds the part holding its amount; an amount-less comment of
+ * the same length labels the parts in order. Only what no part took stays on the cell.
+ */
+function itemizedFormula(parts: readonly Minor[], lines: NonNullable<CellData["commentParts"]>, comment: string | null): CellPlan {
+  if (lines.length === parts.length && lines.every((line) => line.amountMinor == null)) {
+    return { items: parts.map((amountMinor, i) => ({ amountMinor, note: clampToInputLimit(lines[i]!.label, "note"), isAggregate: false })), cellNote: null };
+  }
+  const items: ImportItem[] = parts.map((amountMinor) => ({ amountMinor, note: null, isAggregate: false }));
+  const fed = new Map<string, number>();
+  for (const line of lines) {
+    const item = items.find((candidate) => candidate.note == null && candidate.amountMinor === line.amountMinor);
+    if (!item) continue;
+    item.note = clampToInputLimit(line.label, "note");
+    const key = commentLineKey(line);
+    fed.set(key, (fed.get(key) ?? 0) + 1);
+  }
+  const wasFed = (line: string) => {
+    const parsed = parseCommentParts(line);
+    if (parsed.length === 0 || parsed.some((part) => !fed.get(commentLineKey(part)))) return false;
+    for (const part of parsed) fed.set(commentLineKey(part), fed.get(commentLineKey(part))! - 1);
+    return true;
+  };
+  return { items, cellNote: comment ? commentWithout(comment, wasFed) : null };
+}
+
+/**
+ * A comment less the lines `drop` claims and the section banners left with
+ * nothing under them, cut to fit a note. `drop` is told which section it is in.
+ */
+function commentWithout(comment: string, drop: (line: string, section: string) => boolean): string | null {
+  const kept: string[] = [];
+  let section = "";
+  for (const raw of comment.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (line === "") continue;
+    const banner = sectionBannerLabel(line);
+    if (banner) section = banner;
+    if (banner || !drop(line, section)) kept.push(line);
+  }
+  const text = kept.filter((line, i) => !sectionBannerLabel(line) || (kept[i + 1] != null && !sectionBannerLabel(kept[i + 1]!))).join("\n");
+  return text === "" ? null : clampToInputLimit(text, "note");
+}
+
+/**
+ * What a comment says beyond the instalment plans rebuilt from it. Those lines
+ * are rows with their own card and number; repeating them on the cell pushed
+ * the note past its limit and the cloud refused it. An informational card
+ * became no plan, so its lines stay; `planned` keeps a line no plan by its name
+ * exists for, where the informational cards are no longer known.
+ */
+export function commentBeyondInstalments(
+  comment: string,
+  informationalCards: readonly string[] = [],
+  planned: (name: string) => boolean = () => true,
+): string | null {
+  const informational = new Set(informationalCards.map((name) => name.toLocaleLowerCase("tr-TR")));
+  return commentWithout(comment, (line, section) => {
+    const card = section.replace(/ℹ️|ℹ/g, "").trim().toLocaleLowerCase("tr-TR");
+    const notes = parseInstallmentComment(line);
+    return card !== "" && !informational.has(card) && notes.length > 0 && notes.every((note) => planned(note.name));
+  });
 }
 
 // --- installment comment parsing -------------------------------------------
@@ -627,7 +686,7 @@ export function parseInstallmentComment(comment: string): InstallmentNote[] {
     if (parts.length < 2) continue;
     const amount = parseSheetAmount(parts.at(-1));
     if (amount == null || amount <= 0) continue; // skip refunds/negatives + unparseable
-    const name = parts.slice(0, -1).join(" ");
+    const name = clampToInputLimit(parts.slice(0, -1).join(" "), "text");
     notes.push({ card, name, monthlyMinor: amount, paidNo, total });
   }
   return notes;
@@ -648,6 +707,7 @@ interface ImportInstallmentPlanSpec {
  * Reconstruct the distinct instalment plans across a workbook's comments, pure.
  * Deduped by SCHEDULE alone (monthly amount, count, start month), never by name:
  * a hand-kept workbook renames the same plan between sheets and a name key counted it twice.
+ * Two lines of one schedule in one cell are two purchases.
  * The longest name wins; cards flagged informational, excluded columns and unselected years are skipped.
  */
 export function collectInstallmentPlans(
@@ -667,10 +727,16 @@ export function collectInstallmentPlans(
         if (!allow(yearOf(month))) continue;
         const comment = sheet.cells[r]?.[index]?.comment;
         if (!comment) continue;
+        // One cell naming the same schedule twice holds two purchases; the nth of
+        // them is the nth in every other month's cell.
+        const inCell = new Map<string, number>();
         for (const note of parseInstallmentComment(comment)) {
           if (!note.card || informational.has(note.card.toLocaleLowerCase("tr-TR"))) continue;
           const startMonth = addMonthsToKey(month, -(note.paidNo - 1));
-          const key = `${note.monthlyMinor}|${note.total}|${startMonth}`;
+          const schedule = `${note.monthlyMinor}|${note.total}|${startMonth}`;
+          const nth = inCell.get(schedule) ?? 0;
+          inCell.set(schedule, nth + 1);
+          const key = `${schedule}|${nth}`;
           const seen = byKey.get(key);
           if (!seen) {
             byKey.set(key, { card: note.card, name: note.name, monthlyMinor: note.monthlyMinor, total: note.total, startMonth, columnLabel: col.label });

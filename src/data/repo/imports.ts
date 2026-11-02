@@ -569,6 +569,7 @@ export async function importSheets(userId: string, req: ImportRequest): Promise<
     // the workbook not having got there, not zero.
     instalmentTotal: (month, label) => (stated.cells.get(`${month}|${label}`) ? planTotals.get(`${month}|${label}`) ?? 0 : 0),
     remainderNote: tr.importer.columnRemainder,
+    informationalCards: req.informationalCards,
   });
   const cells = await cellWrites(userId, sheetPlan, req.selfId, today, batchFor);
 

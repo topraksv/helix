@@ -6,6 +6,27 @@ defterinde yazılıdır ve bu depoya dahil değildir.
 
 Notlar kısa tutulur: ne değişti, tek cümle. Sebebi ve ölçümü commit'te.
 
+## 2.0.1
+
+### Patch Changes
+
+- Değişken tutarlı otomatik ödemeli abonelik, vadesi gelince tahmini tutarıyla ödenmiş sayılıyor; tahmin yoksa bekliyor.
+- Abonelik kaydedilince alttaki şerit sonraki ödeme tarihini gösteriyor; abonelik formu tek tarih ("Sonraki ödeme") gösterip ondan sonrakini küçük not olarak yazıyor.
+- Bir kaydı düzenlemeye açınca sayfa forma kayıyor.
+- Ana sayfadaki bakiye kartında ay sonu tahmininin altındaki çift çizgi teke indi.
+- Mali Tablo'nun yıl yıl kolon düzeni yeni bir yıl seçiciyle düzenleniyor.
+- Analiz ekranı grafikle açılıyor.
+- İade ve döviz notları aynı yazı boyutunda; TRY'ye dokununca para birimi listesi doğrudan açılıyor; kur alınamayınca sade dille söyleniyor.
+- Excel içe aktarma hücre yorumlarını kalemlere dağıtıyor, kalanını notta tutuyor.
+- Çeyrek, yarım, tam ve Ata altın fiyatları kuyumcu fiyatlarına daha yakın hesaplanıyor.
+- Yeni İşlem'de alanlar soru gibi soruluyor ("Ne tür bir harcama?", "Nasıl ödedin?").
+- "Bakiye Düzeltme" artık "Bakiyemi Düzelt".
+- Hesaplanan kolonda her işlem türünün altında örnek hesap var.
+- Kartın kesim ve son ödeme günü listeden seçiliyor, altında örnekle açıklanıyor.
+- Taksitte ödenen taksit sayısı yazılmıyor; ilk taksit ayından ya da alış tarihinden uygulama hesaplıyor.
+- Hiç kayıt yokken ana sayfa ilk harcamanın nasıl ekleneceğini söylüyor.
+- Kişiler eşin ya da çocuğun harcamaları örneğiyle açıklanıyor.
+
 ## 2.0.0
 
 ### Major Changes

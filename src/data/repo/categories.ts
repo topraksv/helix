@@ -106,15 +106,6 @@ export async function reorderRows<Row extends { id: string; sortOrder: number }>
   }
 }
 
-export function reorderCategoryGroup(
-  userId: string,
-  categories: CategoryRow[],
-  kind: "expense" | "income",
-  orderedIds: string[],
-): Promise<void> {
-  return reorderRows(userId, "categories", categories.filter((category) => category.kind === kind), orderedIds);
-}
-
 export async function addTemplateCategories(
   userId: string,
   templates: TemplateCategory[],

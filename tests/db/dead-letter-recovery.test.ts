@@ -187,4 +187,48 @@ describe("forgetting a quarantine", () => {
     await discardSyncDeadLetter(1);
     expect(harness.db!.prepare("SELECT outbox_id AS id FROM sync_dead_letters").all()).toEqual([{ id: 2 }]);
   });
+
+  it("mends an imported note past the limit, dropping only what a live plan already says", async () => {
+    const id = "40000000-0000-4000-8000-000000000001";
+    const category = "50000000-0000-4000-8000-000000000001";
+    harness.db!.prepare(`INSERT INTO categories (id, user_id, created_at, updated_at, name, kind, sort_order, is_column, is_transfer) VALUES (?, ?, 'x', 'x', 'Kart', 'expense', 0, 1, 0)`).run(category, USER);
+    const plan = harness.db!.prepare(`INSERT INTO installment_plans (id, user_id, created_at, updated_at, deleted_at, title, kind, total_amount_minor, installment_count, start_month, person_id)
+      VALUES (?, ?, 'x', 'x', ?, ?, 'card_installment', 300000, 3, '2025-08', 'self')`);
+    for (let i = 0; i < 60; i += 1) plan.run(`60000000-0000-4000-8000-${String(i).padStart(12, "0")}`, USER, null, `alışveriş ${i}`);
+    // Deleted, it no longer says anything: its line stays.
+    plan.run("60000000-0000-4000-8000-000000000999", USER, "2026-01-02T00:00:00.000Z", "Eski");
+    const lines = Array.from({ length: 60 }, (_, i) => `Alışveriş ${i}   1.000,00   1/3`).join("\n");
+    // The import took "Bilgi" as information only; no plan carries its line, so it is the only record.
+    harness.db!.prepare(`INSERT INTO cell_notes (id, user_id, created_at, updated_at, month, category_id, body) VALUES (?, ?, '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z', '2025-08', ?, ?)`)
+      .run(id, USER, category, `══ Kart ══\n${lines}\nEski   100,00   1/3\nkargo geç geldi\n══ Bilgi ══\nOptik   100,00   1/3`);
+    insertDeadLetter(1, "cell_notes", id);
+
+    await expect(requeueSyncDeadLetter(USER, 1)).resolves.toBe("requeued");
+
+    const row = harness.db!.prepare("SELECT body FROM cell_notes WHERE id = ?").get(id) as { body: string };
+    expect(row.body).toBe("══ Kart ══\nEski   100,00   1/3\nkargo geç geldi\n══ Bilgi ══\nOptik   100,00   1/3");
+    expect(harness.db!.prepare("SELECT COUNT(*) AS n FROM sync_dead_letters").get()).toEqual({ n: 0 });
+    expect((harness.db!.prepare("SELECT COUNT(*) AS n FROM outbox WHERE table_name = 'cell_notes'").get() as { n: number }).n).toBe(1);
+  });
+
+  it("cuts a long note no plan explains, and leaves a deleted note's body alone", async () => {
+    const category = "50000000-0000-4000-8000-000000000002";
+    harness.db!.prepare(`INSERT INTO categories (id, user_id, created_at, updated_at, name, kind, sort_order, is_column, is_transfer) VALUES (?, ?, 'x', 'x', 'Kart', 'expense', 0, 1, 0)`).run(category, USER);
+    const note = (id: string, month: string, deletedAt: string | null) => {
+      harness.db!.prepare(`INSERT INTO cell_notes (id, user_id, created_at, updated_at, deleted_at, month, category_id, body) VALUES (?, ?, '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z', ?, ?, ?, ?)`)
+        .run(id, USER, deletedAt, month, category, "not ".repeat(400));
+    };
+    note("40000000-0000-4000-8000-000000000002", "2025-08", null);
+    note("40000000-0000-4000-8000-000000000003", "2025-09", "2026-02-01T00:00:00.000Z");
+    insertDeadLetter(1, "cell_notes", "40000000-0000-4000-8000-000000000002");
+    insertDeadLetter(2, "cell_notes", "40000000-0000-4000-8000-000000000003");
+
+    await expect(requeueSyncDeadLetter(USER, 1)).resolves.toBe("requeued");
+    await expect(requeueSyncDeadLetter(USER, 2)).resolves.toBe("requeued");
+
+    const body = (id: string) => (harness.db!.prepare("SELECT body FROM cell_notes WHERE id = ?").get(id) as { body: string }).body;
+    expect(body("40000000-0000-4000-8000-000000000002")).toBe(`${"not ".repeat(249)}not…`);
+    expect(body("40000000-0000-4000-8000-000000000003")).toBe("not ".repeat(400));
+  });
 });
+

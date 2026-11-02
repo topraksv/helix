@@ -633,6 +633,19 @@ export default function AnalysisScreen() {
   const header = (
     <View>
       <DataStateNotice status={dataStatus} retry={retryData} />
+      {/* The distribution gets the full width and the limits sit under it: a
+          ring, a legend and a trend line are read by comparing shapes. */}
+      {rows.length > 0 || donut.slices.length > 0 || donut.supplementalSlices.length > 0 ? (
+        <DistributionCard
+          narrow={narrow}
+          supportsTrend={shouldOfferTrendChart(contentWidth) && monthKeys.length >= 2 && !categoryFilter}
+          monthKeys={monthKeys}
+          categoryFilter={categoryFilter}
+          categoryName={categoryName(categoryFilter)}
+          distribution={donut}
+          bars={{ groups: barGroups, series: barSeries }}
+        />
+      ) : null}
       <View style={{ flexDirection: stackedFilters ? "column" : "row", alignItems: "stretch", gap: stackedFilters ? 0 : spacing.lg }}>
         <WindowCard
           range={range}
@@ -647,7 +660,8 @@ export default function AnalysisScreen() {
         <SearchCard search={search} sources={sourcesState.data} compact={compact} periodLabel={`${monthLabel(startMonth)} – ${monthLabel(endMonth)}`} onClear={clearSearch} style={paired} />
       </View>
       <MetricStrip
-        style={{ marginBottom: spacing.lg }}
+        // No rule: the block above is a card, so a rule here hangs between cards.
+        style={{ marginBottom: spacing.lg, borderTopWidth: 0 }}
         // A year of a real ledger can reach the compact scale; the Amount
         // primitive owns the fit ladder, so each total keeps its own line.
         items={[
@@ -672,19 +686,6 @@ export default function AnalysisScreen() {
             onPress={() => search.setShowAllResults(!search.showAllResults)}
           />
         </View>
-      ) : null}
-      {/* The distribution gets the full width and the limits sit under it: a
-          ring, a legend and a trend line are read by comparing shapes. */}
-      {rows.length > 0 || donut.slices.length > 0 || donut.supplementalSlices.length > 0 ? (
-        <DistributionCard
-          narrow={narrow}
-          supportsTrend={shouldOfferTrendChart(contentWidth) && monthKeys.length >= 2 && !categoryFilter}
-          monthKeys={monthKeys}
-          categoryFilter={categoryFilter}
-          categoryName={categoryName(categoryFilter)}
-          distribution={donut}
-          bars={{ groups: barGroups, series: barSeries }}
-        />
       ) : null}
       {/* Beside the chart rather than inside it: these rows hold an imported
           column equal to its file and are not spending, so the charts leave them out and say so here. */}

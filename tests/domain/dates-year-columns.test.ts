@@ -18,7 +18,7 @@ import {
   monthKeyOf,
   monthRange,
 } from "../../src/domain/dates";
-import { orderLedgerCategories, resolveYearColumns } from "../../src/domain/year-columns";
+import { categoriesForYear, orderLedgerCategories, resolveYearColumns } from "../../src/domain/year-columns";
 
 describe("addDaysISO", () => {
   it("adds and subtracts days without timezone drift", () => {
@@ -326,5 +326,48 @@ describe("isMonthKey guards route params against the throwing range helpers", ()
     // Direct values prove the guard's accept-set is safe to pass on.
     expect(lastDayOf("2026-02")).toBe("2026-02-28");
     expect(lastDayOf("2028-02")).toBe("2028-02-29"); // leap year
+  });
+});
+
+describe("a year's own layout", () => {
+  const col = (id: string, kind: "expense" | "income" = "expense") => ({ id, isColumn: true, kind, sortOrder: 0 });
+  const ids = (rows: { id: string }[]) => rows.map((row) => row.id);
+
+  it("orders only that year, inside each kind, leaving what it never placed behind", () => {
+    const cats = [col("a"), col("b"), col("c"), col("i", "income")];
+    expect(ids(resolveYearColumns(cats, {}, 2025, 2026, new Set(), { order: ["c", "i", "a"] }))).toEqual(["c", "a", "b", "i"]);
+    expect(ids(resolveYearColumns(cats, {}, 2026, 2026, new Set()))).toEqual(["a", "b", "c", "i"]);
+  });
+
+  it("hides a column in that year unless the year holds data under it", () => {
+    const cats = [col("a"), col("b")];
+    expect(ids(resolveYearColumns(cats, {}, 2025, 2026, new Set(), { hidden: ["a"] }))).toEqual(["b"]);
+    expect(ids(resolveYearColumns(cats, {}, 2025, 2026, new Set(["a"]), { hidden: ["a"] }))).toEqual(["a", "b"]);
+  });
+
+  it("offers a form only the day's year, keeping what is no column and what the row already holds", () => {
+    const cats = [col("old"), col("now"), { ...col("free"), isColumn: false }];
+    const context = { columnYears: { "2025": ["old"], "2026": ["now"] }, layouts: {}, transactions: [], currentYear: 2026 };
+    expect(ids(categoriesForYear(cats, context, 2026))).toEqual(["now", "free"]);
+    expect(ids(categoriesForYear(cats, context, 2025))).toEqual(["old", "free"]);
+    expect(ids(categoriesForYear(cats, context, 2026, "old"))).toEqual(["now", "free", "old"]);
+    expect(ids(categoriesForYear(cats, context, 2026, "now"))).toEqual(["now", "free"]);
+  });
+
+  it("leaves an unclaimed column to the latest year any row reaches, and counts data only in its own year", () => {
+    const cats = [col("old"), col("now"), col("loose")];
+    const context = { columnYears: { "2025": ["old"], "2026": ["now"] }, layouts: {}, currentYear: 2026 };
+    const row = (categoryId: string, effectiveDate: string) => ({ categoryId, effectiveDate, amountTryMinor: 5 });
+    expect(ids(categoriesForYear(cats, { ...context, transactions: [row("now", "2025-03-01")] }, 2026))).toEqual(["loose", "now"]);
+    expect(ids(categoriesForYear(cats, { ...context, transactions: [row("old", "2027-01-01"), row("now", "2025-03-01")] }, 2026))).toEqual(["now"]);
+  });
+
+  it("counts a year's data and a later year's existence from live rows only", () => {
+    const cats = [col("old"), col("now")];
+    const row = { categoryId: "old", effectiveDate: "2026-03-01", amountTryMinor: 5 };
+    const context = { columnYears: { "2025": ["old"], "2026": ["now"] }, layouts: {}, currentYear: 2026 };
+    expect(ids(categoriesForYear(cats, { ...context, transactions: [row] }, 2026))).toEqual(["now", "old"]);
+    expect(ids(categoriesForYear(cats, { ...context, transactions: [{ ...row, deletedAt: "x" }] }, 2026))).toEqual(["now"]);
+    expect(ids(categoriesForYear(cats, { ...context, transactions: [{ ...row, amountTryMinor: 0 }] }, 2026))).toEqual(["now"]);
   });
 });

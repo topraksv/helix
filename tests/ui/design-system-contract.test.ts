@@ -865,7 +865,7 @@ describe("product copy keeps one casing rule per role", () => {
 
   const FIELD_COMPONENTS = new Set([
     "Field", "Select", "MoneyField", "MonthDayField", "DateField",
-    "MonthStepper", "Toggle", "ChipPicker", "SelectionGrid", "CurrencyPicker",
+    "MonthStepper", "Toggle", "ChipPicker", "SelectionGrid",
   ]);
 
   /**

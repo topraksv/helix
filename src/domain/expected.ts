@@ -157,6 +157,11 @@ export function findLate(expected: ExpectedPaymentLike[], today: ISODate): Expec
   return expected.filter((e) => e.status === "pending" && e.dueDate < today);
 }
 
+/** A variable bill auto-pays at its estimate; with none yet there is no figure to record. */
+export function hasAutoPayAmount(e: Pick<ExpectedPaymentLike, "amountIsEstimated" | "amountMinor">): boolean {
+  return e.amountIsEstimated !== true || e.amountMinor > 0;
+}
+
 /**
  * Auto-pay items due on/before today are auto-confirmed (user can revert).
  *
@@ -185,7 +190,7 @@ export function findAutoConfirmable(
 ): ExpectedPaymentLike[] {
   return expected.filter((e) => {
     if (e.status !== "pending" || e.dueDate > today) return false;
-    if (e.kind !== "subscription" || e.amountIsEstimated === true) return false;
+    if (e.kind !== "subscription" || !hasAutoPayAmount(e)) return false;
     if (!autoPayRules.has(e.refId)) return false;
     const createdDay = autoPayRules.get(e.refId) ?? null;
     return createdDay == null || e.dueDate > createdDay;

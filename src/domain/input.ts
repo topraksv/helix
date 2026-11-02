@@ -47,6 +47,12 @@ export function assertInputWithinLimit(value: string | null | undefined, kind: I
   if (!isInputWithinLimit(value, kind)) throw new Error(`${kind} input exceeds its maximum length`);
 }
 
+/** What a file may hold has no input box to stop it: cut to the limit the push enforces, or the row is quarantined. */
+export function clampToInputLimit(value: string, kind: InputLimitKind): string {
+  if (isInputWithinLimit(value, kind)) return value;
+  return `${Array.from(value).slice(0, INPUT_LIMITS[kind] - 1).join("").trimEnd()}…`;
+}
+
 /** Count UTF-8 bytes without allocating another encoded copy of a large input. */
 export function utf8ByteLength(value: string): number {
   let bytes = 0;

@@ -184,6 +184,21 @@ describe("adding a subscription never moves the current balance", () => {
     expect(autoConfirmedFlag()).toBe(1);
   });
 
+  it("auto-pays a variable bill at its estimate, and leaves one without an estimate pending", async () => {
+    const id = await upsertSubscription(USER, { ...dueTodayInput(), autoPay: true, amountMode: "variable", amountMinor: 0 });
+    backdateSubscription(id, "2026-01-05T09:00:00.000Z");
+    await runMaintenance(USER);
+    expect(liveTransactions()).toEqual([]);
+    expect(balanceNow()).toBe(OPENING_MINOR);
+    expect(expectedRows()[0]?.status).toBe("pending");
+
+    await upsertSubscription(USER, { ...dueTodayInput(), id, autoPay: true, amountMode: "variable", amountMinor: 12_345 });
+    backdateSubscription(id, "2026-01-05T09:00:00.000Z");
+    await runMaintenance(USER);
+    expect(liveTransactions()).toHaveLength(1);
+    expect(balanceNow()).toBe(OPENING_MINOR - 12_345);
+  });
+
   it("records exactly one realized expense when the user confirms the occurrence", async () => {
     await upsertSubscription(USER, { ...dueTodayInput(), autoPay: true });
     await runMaintenance(USER);

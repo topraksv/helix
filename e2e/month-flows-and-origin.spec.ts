@@ -11,7 +11,7 @@ async function addPlannedExpense(page: Page, months: number, amount: string): Pr
   await page.getByRole("button", { name: "İşlem Ekle" }).first().click();
   await expect(page.getByRole("heading", { name: "Yeni İşlem" })).toBeVisible();
   await page.getByRole("textbox", { name: "Tutar · TRY" }).fill(amount);
-  await pickOption(page, "Kalem", /Market/);
+  await pickOption(page, "Ne tür bir harcama?", /Market/);
   await page.getByRole("radio", { name: "Sadece ay" }).click();
   for (let step = 0; step < months; step++) await page.getByRole("button", { name: "Sonraki" }).click();
   const save = page.getByRole("button", { name: "Kaydet", exact: true });
@@ -35,8 +35,16 @@ test("a future month focus states the planned flows behind its own total", async
   // …and so is the month-focused statement for the same month.
   await page.getByRole("tab", { name: "Mali Tablo" }).click();
   await page.getByRole("radio", { name: "Tek ay" }).click();
-  for (let step = 1; step <= 2; step++) {
-    await page.getByRole("button", { name: monthLabel(addMonthsToKey(currentMonthKey(), step)), exact: true }).click();
+  // The stepper stays inside the table's year, and a year change keeps the
+  // focused month: in November and December the planned month is next year's.
+  let shown = currentMonthKey();
+  if (planned.slice(0, 4) !== shown.slice(0, 4)) {
+    await page.getByRole("button", { name: planned.slice(0, 4), exact: true }).click();
+    shown = `${planned.slice(0, 4)}${shown.slice(4)}` as typeof shown;
+  }
+  while (shown !== planned) {
+    shown = addMonthsToKey(shown, shown < planned ? 1 : -1);
+    await page.getByRole("button", { name: monthLabel(shown), exact: true }).click();
   }
   await expect(page.getByRole("heading", { name: monthLabel(planned), exact: true })).toBeVisible();
   await expect(page.getByText("Gider", { exact: true })).toBeVisible();

@@ -270,7 +270,29 @@ describe("importing the same workbook twice", () => {
    * usually the only record of what the figure was made of, and losing it on
    * import loses the one thing a person could not reconstruct.
    */
-  it("keeps an unitemizable cell's comment as a note on that cell", async () => {
+  it("keeps on the cell only the comment lines no formula part took", async () => {
+    const itemized = (): ParsedSheet => {
+      const base = sheet();
+      return {
+        ...base,
+        cells: base.cells.map((row, index) =>
+          index === 0
+            ? [{ ...row[0]!, formulaParts: [1_000_00, 500_00], comment: "Kira 1.000\nfiş kayıp", commentParts: [{ label: "Kira", amountMinor: 1_000_00 }, { label: "fiş kayıp", amountMinor: null }] }, ...row.slice(1)]
+            : row),
+      };
+    };
+
+    await importSheets(USER, { sheets: [itemized()], excludedLabels: [OPENING_LABEL], selfId: "person-self", mode: "replace" });
+
+    const notes = harness.db!
+      .prepare(`SELECT month, body FROM cell_notes WHERE user_id = ? AND deleted_at IS NULL`)
+      .all(USER) as { month: string; body: string }[];
+    expect(notes).toEqual([{ month: "2026-01", body: "fiş kayıp" }]);
+    const fed = harness.db!.prepare(`SELECT note FROM transactions WHERE user_id = ? AND deleted_at IS NULL AND note = 'Kira'`).all(USER);
+    expect(fed).toHaveLength(1);
+  });
+
+  it("feeds an unitemizable cell's comment into the amount it explains", async () => {
     const noted = (): ParsedSheet => {
       const base = sheet();
       return {
@@ -287,7 +309,11 @@ describe("importing the same workbook twice", () => {
     const notes = harness.db!
       .prepare(`SELECT month, body FROM cell_notes WHERE user_id = ? AND deleted_at IS NULL`)
       .all(USER) as { month: string; body: string }[];
-    expect(notes).toEqual([{ month: "2026-01", body: "Market + eczane, fişler kayıp" }]);
+    expect(notes).toEqual([]);
+    const fed = harness.db!
+      .prepare(`SELECT note FROM transactions WHERE user_id = ? AND deleted_at IS NULL AND note = ?`)
+      .all(USER, "Market + eczane, fişler kayıp");
+    expect(fed).toHaveLength(1);
   });
 
   /**

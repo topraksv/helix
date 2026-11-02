@@ -7,14 +7,14 @@ describe("dirty form navigation contract", () => {
   /**
    * Revealing an optional section is not an edit.
    *
-   * Both money forms hide the currency row behind a "change currency" button
+   * Both money forms once hid the currency behind a "change currency" button
    * and tracked that button's own state in the draft snapshot, so opening the
-   * row and leaving asked the user to discard changes they had not made — two
-   * taps, nothing to lose. Disclosure state has no persisted counterpart, so it
-   * can never be the thing a discard would throw away.
+   * row and leaving asked the user to discard changes they had not made. The
+   * currency is a dropdown chip now; what stays out of the snapshot is the
+   * parsed amount, which the raw text already carries.
    */
   it.each(["src/app/transaction.tsx", "src/app/subscription-form.tsx"])(
-    "%s keeps disclosure state out of the draft snapshot",
+    "%s keeps derived state out of the draft snapshot",
     (file) => {
       const source = readFileSync(join(process.cwd(), file), "utf8");
       // The snapshot is the form's fields minus what a save does not write, taken
@@ -22,7 +22,8 @@ describe("dirty form navigation contract", () => {
       const split = /const \{([^}]*?)\.\.\.(\w+) \} = \w+;/.exec(source);
       expect(split, "the draft is the fields with the disclosure state taken out").not.toBeNull();
       const [, omitted, rest] = split!;
-      expect(omitted).toContain("showCurrency");
+      expect(omitted).toContain("amountMinor");
+      expect(source).not.toContain("showCurrency");
       expect(source).toMatch(new RegExp(`useDraftDirty\\(JSON\\.stringify\\((\\{ \\.\\.\\.)?${rest}\\b`));
     },
   );

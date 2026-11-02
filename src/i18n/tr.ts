@@ -42,9 +42,12 @@ export const productTerms = {
   paymentMethods: "Ödeme Yöntemleri",
   recurringIncome: "Düzenli Gelir",
   recurringIncomes: "Düzenli Gelirler",
-  balanceAdjustment: "Bakiye Düzeltme",
+  balanceAdjustment: "Bakiyemi Düzelt",
   balanceAdjustments: "Bakiye Düzeltmeleri",
 } as const;
+
+/** "ayın 15. günü", or "ayın son günü" for the month-end day. */
+const cycleDayPhrase = (day: number) => (day === 31 ? "ayın son günü" : `ayın ${day}. günü`);
 
 export const tr = {
   app: { name: productTerms.appName, tagline: "Nakit akışın, taksitlerin ve aboneliklerin tek yerde." },
@@ -157,7 +160,6 @@ export const tr = {
   // Also the footer labels: a screen reader must not name a screen the UI never calls that.
   tabs: { dashboard: "Durum", cashflow: productTerms.financialTable, subscriptions: "Abonelikler", investments: "Yatırımlar", settings: "Ayarlar" },
   common: {
-    otherCurrencies: "Hangi para birimi?",
     save: "Kaydet", cancel: "Vazgeç", delete: "Sil", edit: "Düzenle", add: "Ekle",
     undo: "Geri Al", deleted: "Silindi", search: "Ara", close: "Kapat", done: "Tamam",
     total: "Toplam", note: "Not", none: "Belirtilmedi", retry: "Tekrar dene",
@@ -590,7 +592,7 @@ export const tr = {
     openingBalance: "Bugünkü toplam bakiyen",
     openingHint: "Hesabındaki o anki toplam para. Başlangıç ayından bugüne kadar geçmiş de girersen, bu tutar başlangıç ayına geri hesaplanır.",
     personsTitle: "Kişiler",
-    personsHint: "Harcamalarını izlemek istediğin, bakiyeni etkilemeyecek kişiler ekleyebilirsin.",
+    personsHint: "Ör. eşinin ya da çocuğunun harcamalarını ayrı görmek istiyorsan onları ekle. Onların harcamaları senin bakiyenden düşmez.",
     me: "Ben",
     addPerson: "Kişi Ekle",
     sourcesTitle: productTerms.paymentMethods,
@@ -612,6 +614,8 @@ export const tr = {
     finishStart: "Kaydet ve Kullanmaya Başla",
   },
   dashboard: {
+    firstExpense: "İlk harcamanı ekle",
+    firstExpenseHint: "Henüz kayıt yok. Aşağıdaki düğmeye dokun, bugün ne harcadıysan tutarını ve ne için olduğunu yaz. Bakiye, grafik ve tahmin buradan dolmaya başlar.",
     greetingMorning: "Günaydın",
     greetingDay: "İyi günler",
     greetingEvening: "İyi akşamlar",
@@ -942,12 +946,12 @@ export const tr = {
     toolInstallments: "Taksitler",
     toolAnalysis: "Analiz",
     toolBulk: "Geçmiş Ay",
-    toolOpening: "Düzeltme",
+    toolOpening: "Bakiyemi düzelt",
   },
   tx: {
     amountDetails: "Tutar ve işlem türü",
     amountDetailsHint: "İşlemin bakiyedeki yönünü ve kaydedilecek tutarı belirle.",
-    assignment: "Sınıflandırma",
+    assignment: "Ayrıntılar",
     timing: "Zamanlama",
     timingHint: "İşlemin hangi ayda veya günde bakiyeye yansıyacağını seç.",
     completion: "Not ve kayıt",
@@ -955,20 +959,8 @@ export const tr = {
     edit: "İşlemi Düzenle",
     type: "Tür", expense: "Gider", income: "Gelir", transferInvest: "Yatırım",
     amount: "Tutar", currency: "Para Birimi",
-    amountOptions: (kind: "expense" | "income" | "transfer", currency: string) =>
-      kind === "expense"
-        ? `Gider iadesi veya döviz · ${currency}`
-        : kind === "income"
-          ? `Gelir geri ödemesi veya döviz · ${currency}`
-          : `Döviz seçeneği · ${currency}`,
     reversalLabel: (kind: "expense" | "income" | "transfer") =>
       kind === "expense" ? "Gider iadesi" : kind === "income" ? "Gelir geri ödemesi" : "Yatırımdan çekim",
-    refundToggleHint: (kind: "expense" | "income" | "transfer") =>
-      kind === "expense"
-        ? "Ödediğin bir tutar geri geldiyse bu seçeneği aç."
-        : kind === "income"
-          ? "Aldığın bir geliri geri verdiysen bu seçeneği aç."
-          : "Yatırımı bozup tutarı bakiyene aldıysan bu seçeneği aç.",
     reversalHint: (kind: "expense" | "income" | "transfer") =>
       kind === "expense"
         ? "Geri gelen tutar bakiyene eklenir; seçili kalemin giderini azaltır."
@@ -976,11 +968,15 @@ export const tr = {
           ? "Geri verdiğin tutar bakiyenden düşer; seçili kalemin gelirini azaltır."
           : "Çektiğin tutar bakiyene eklenir; yatırım toplamını azaltır.",
     tryEquivalent: (v: string) => `≈ ${v}`,
-    staleRate: "Kur güncel değil, son bilinen kur kullanıldı",
-    rateNotFound: "Kur bulunamadı. Önce internetle bir kez kur çek",
+    staleRate: "son bilinen kurla",
+    rateNotFound: "Kur alınıyor. İnternet yoksa bağlanınca kendiliğinden alınır; o zamana kadar kaydedemezsin.",
     singleCharge: "Tek Çekim",
     category: "Kalem", source: productTerms.paymentMethod, personExpense: "Kimin harcaması", personIncome: "Kimin geliri", personInvestment: "Kimin yatırımı", personSubscription: "Kimin aboneliği", personOwner: "Sahibi",
-    categoryPlaceholder: "Kalem seç", sourcePlaceholder: "Ödeme yöntemi seç",
+    // Asked as a question: "Kalem" and "Ödeme Yöntemi" are a ledger's words, not the person's.
+    categoryQuestion: (kind: "expense" | "income" | "transfer") =>
+      kind === "expense" ? "Ne tür bir harcama?" : kind === "income" ? "Ne tür bir gelir?" : "Ne tür bir yatırım?",
+    sourceQuestion: "Nasıl ödedin?", sourceQuestionRecurring: "Nasıl ödüyorsun?",
+    categoryPlaceholder: "Listeden seç", sourcePlaceholder: "İstersen seç",
     addCategoryButton: "Yeni Kalem Ekle",
     addCategory: "Yeni kalem ekle", addSource: "Yeni ödeme yöntemi ekle",
     categoryRequiredEmpty: "Henüz kalem yok; buradan ekle",
@@ -1027,7 +1023,6 @@ export const tr = {
     dueDayInvalid: "1 ile 31 arasında bir gün yaz.",
     handInstallmentNote: "Kartsız taksit: plan Taksitler'de görünür, her ay taksit tutarı bakiyenden düşer.",
     installmentCount: "Taksit sayısı",
-    alreadyPaid: "Ödenen taksit",
     installmentInfo: (m: string, n: number) => `${n} taksit × ${m}`,
     installmentInfoUneven: (n: number, first: string, rest: string) =>
       `İlk taksit ${first}, sonraki ${n - 1} taksit ${rest}`,
@@ -1156,6 +1151,7 @@ export const tr = {
     rescheduleNote: "Kaydettiğinde bütün taksitler bu başlangıca göre yeniden dizilir; ödendi görünen aylar da buna göre değişir.",
     count: "Taksit sayısı",
     startMonth: "İlk Taksit Ayı",
+    paidSoFar: (paid: number, total: number) => paid >= total ? `${total} taksidin hepsi ödenmiş sayılır.` : `Bugüne kadar ${total} taksidin ${paid} tanesi ödenmiş sayılır.`,
     emptyTitle: "Henüz taksit ya da kredi yok",
     emptyHint: "Taksitli bir harcama veya krediyi ekle; aylara dağılımı otomatik hesaplanır.",
     newTitle: "Yeni Taksit / Kredi",
@@ -1166,7 +1162,7 @@ export const tr = {
     timelineMore: (count: number) => `Çizelge ${count} dönem daha devam eder.`,
     scheduleAndAssignment: "Takvim ve Sınıflandırma",
     scheduleAndAssignmentHint: "Başlangıç dönemini, ödeme yöntemini, kişiyi ve Mali Tablo kalemini seç.",
-    editHint: "Tutar ve taksit sayısı yalnızca ödenmemiş ayları değiştirir. Ödenen taksiti düzeltirsen çizelge o sayıya göre yeniden kurulur.",
+    editHint: "Tutar ve taksit sayısı yalnızca ödenmemiş ayları değiştirir. İlk taksit ayını değiştirirsen çizelge o aya göre yeniden kurulur.",
     historyConflict: "Taksit sayısını daha önce ödenmiş bir taksiti kaldıracak kadar düşüremezsin. Ödenmiş dönemler finansal geçmiş olarak korunur.",
     totalTooSmall: "Bu toplam, ödenmiş taksitlerden sonra kalan aylara yetmiyor. Toplamı artır ya da taksit sayısını azalt.",
     delete: "Bu planı sil",
@@ -1212,10 +1208,10 @@ export const tr = {
     currentAmount: "Girilen tutar",
     amountEntryHint: "Faturadaki gerçek tutarı gir. Bu tutar yalnızca seçili ayın ödemesine uygulanır.",
     amountEntrySaved: "Gerçek tutar kaydedildi.",
-    variableAutoPayHint: "Tutar değişebildiği için otomatik onay kapalı; gerçek tutarı sen girdikten sonra ödeme kaydedilir.",
+    variableAutoPayHint: "Ödeme günü geldiğinde tahmini tutar ödendi sayılır; fatura farklıysa kaydı düzeltirsin. Tahmin yazmadıysan ödeme tutarını senden bekler.",
     previewA11y: (name: string, cycle: string, schedule: string, monthly: string) => `${name}. ${cycle}. ${schedule}. Aylık karşılığı ${monthly}.`,
-    nextCharge: "Sıradaki ödeme",
-    followingCharge: "Sonraki tekrar",
+    nextCharge: "Sonraki ödeme",
+    followingCharge: (date: string) => `Ondan sonra: ${date}`,
     scheduleOverview: "Ödeme döngüsü",
     scheduleOverviewHint: "Sıradaki ödemeyi ve hemen arkasındaki planı tek bakışta gör.",
     next31Days: "31 günde ödeme",
@@ -1278,16 +1274,17 @@ export const tr = {
     pickItems: "En az bir kalem seç.",
     builderTitle: "Kolon hesabını kur",
     builderHint: "Önce hesap türünü seç; ardından kullanılacak kalemleri ve tabloda göreceğin adı belirle.",
-    flowA11y: (count: number, operation: string, result: string) => `${count} girdi, ${operation} işlemi, ${result} önizleme sonucu.`,
-    flowInput: "Girdi",
-    flowOperation: "Hesap",
-    flowResult: "Önizleme",
-    stepType: "Hesaplama Türü",
+    flowA11y: (count: number, operation: string, result: string) => `${count} seçili, ${operation} işlemi, bu ayki sonuç ${result}.`,
+    flowInput: "Seçilen",
+    flowOperation: "İşlem",
+    flowResult: "Bu ayki sonuç",
+    stepType: "Ne hesaplansın?",
+    // Each choice carries a worked example: the names alone ("Net Akış") told a newcomer nothing.
     ops: {
-      sum: { title: "Toplam", description: "Seçtiğin kalemleri tek kolonda toplar. Ör. tüm sabit giderler." },
-      difference: { title: "Fark", description: "Bir grubun toplamından diğerini çıkarır. Ör. maaştan kirayı düş." },
-      income_minus_expense: { title: "Net Akış", description: "Ayın tüm gelirlerinden tüm giderlerini çıkarır." },
-      cc_split: { title: "Kart Ayrımı", description: "Kredi kartındaki tek çekim veya taksit toplamını gösterir." },
+      sum: { title: "Toplam", description: "Seçtiğin kalemleri tek kolonda toplar. Ör. tüm sabit giderler.", example: "Market ₺3.000 + Yakıt ₺1.300 = ₺4.300" },
+      difference: { title: "Fark", description: "Bir grubun toplamından diğerini çıkarır. Ör. maaştan kirayı düş.", example: "Maaş ₺40.000 − Kira ₺15.000 = ₺25.000" },
+      income_minus_expense: { title: "Gelir − Gider", description: "Ayın tüm gelirlerinden tüm giderlerini çıkarır.", example: "Gelir ₺40.000 − Gider ₺32.000 = ₺8.000 kaldı" },
+      cc_split: { title: "Kart Harcaması", description: "Kredi kartındaki tek çekim veya taksit toplamını gösterir.", example: "Bu ay kartta: tek çekim ₺2.500 · taksit ₺1.800" },
     },
     pickCategories: "Toplanacak Kalemler",
     plusGroup: "Eklenecekler",
@@ -1515,6 +1512,12 @@ export const tr = {
     balanceOpeningLabel: "Ay başı kolonunun adı",
     balanceClosingLabel: "Bakiye kolonunun adı",
     balanceColumnsPlaceholder: (fallback: string) => `Boş bırakırsan: ${fallback}`,
+    columnYearLabel: "Düzenlenen yıl",
+    columnYearHint: (year: number) => `Sıralama ve görünürlük yalnız ${year} tablosunu değiştirir; ad ve silme tüm yılları etkiler.`,
+    columnVisibleInYear: (year: number) => `${year} tablosunda göster`,
+    columnsOutsideYear: (count: number, year: number) => `${year} tablosunda olmayan ${count} kalem`,
+    columnAddToYear: (year: number) => `${year} tablosuna ekle`,
+    columnHasDataInYear: (name: string, year: number) => `${name} ${year} içinde kayıt taşıyor, bu yılda gizlenemez.`,
     columnVisible: "Mali Tablo'da göster",
     deleteCategoryTitle: "Kalemi sil",
     deleteCategoryBody: (count: number) =>
@@ -1732,12 +1735,12 @@ export const tr = {
   persons: {
     selfBadge: "Bu hesap",
     overviewTitle: "Kimin akışını izliyorsun?",
-    overviewHint: "Merkezdeki hesap bakiyeyi oluşturur; çevresindekiler yalnızca takip edilir.",
+    overviewHint: "Merkezde sen varsın, bakiye senin. Çevrendekiler, ör. eşin ya da çocuğun, yalnızca takip edilir.",
     overviewA11y: (total: number, watched: number) => `${total} kişi. Bu hesap merkezde, ${watched} kişi yalnızca takip ediliyor.`,
     totalCount: (count: number) => `${count} kişi`,
     watchedCount: (count: number) => `${count} takip edilen`,
     addTitle: "Takibe kişi ekle",
-    addHint: "Ayrı görmek istediğin kişinin adını ekle; bu kayıt senin toplam bakiyene katılmaz.",
+    addHint: "Ör. eşinin ya da çocuğunun harcamalarını ayrı görmek için adını yaz. Onun harcamaları senin bakiyene katılmaz.",
     listTitle: "Çalışma alanındaki kişiler",
     listHint: "Bu hesap bakiyeyi oluşturur; takip edilen kişiler yalnızca kendi hareketleriyle görünür.",
     ownerHint: "Bu hesabın sahibi · bakiyeye dahil",
@@ -1890,7 +1893,7 @@ export const tr = {
     s6Body: "Altın, döviz, fon, hisse ve BES'i tek yerde topla. Önce ürününü tanımlarsın — bu adımda para hareket etmez. Zaten sahip olduğun bir yatırımı eklersen serbest bakiyenden düşmez; alış yaparsan düşer, satarsan geri döner. Ortalama maliyetini ve gerçekleşen kârını Helix hesaplar; serbest bakiyeni istediğinde Mali Tablo'ya aktarırsın.",
     s7Title: "Her Cihazda, Çevrimdışı da",
     // The backup carries only the attachment record, not the file.
-    s7Body: "Her şey önce cihazına kaydedilir; internet olmasa da çalışır. Aynı hesapla girdiğin telefon ve bilgisayarında otomatik senkronlanır. İşlemlere eklediğin fiş ve faturalar da eşitlenir; onları da her cihazından açabilirsin. Yalnız yedek dosyası belgelerin kaydını taşır, içeriğini taşımaz. Eski Excel'ini içe aktarabilir, verini istediğinde yedekleyebilirsin. Bakiyen hesabınla tutmuyorsa Bakiye Düzeltme ile tek adımda eşitlersin.",
+    s7Body: "Her şey önce cihazına kaydedilir; internet olmasa da çalışır. Aynı hesapla girdiğin telefon ve bilgisayarında otomatik senkronlanır. İşlemlere eklediğin fiş ve faturalar da eşitlenir; onları da her cihazından açabilirsin. Yalnız yedek dosyası belgelerin kaydını taşır, içeriğini taşımaz. Eski Excel'ini içe aktarabilir, verini istediğinde yedekleyebilirsin. Bakiyen hesabınla tutmuyorsa Bakiyemi Düzelt ile tek adımda eşitlersin.",
     next: "Devam",
     start: "Başlayalım",
     skip: "Geç",
@@ -2006,9 +2009,12 @@ export const tr = {
        well as the bound, because "kesimden önce" is the mistake people make
        and the picker refuses it without a reason otherwise. */
     cycleGraceInvalid: (max: number) => `Son ödeme, kesimden sonra ve en çok ${max} gün içinde olmalı.`,
-    cycleGraceTaken: "Bu gün kesimle uyumlu bir ödeme tarihi vermiyor.",
-    cycleGraceDays: (days: number) => `Kesimden ${days} gün sonra`,
-    cycleHint: "Yeni harcamalar, gerçek ekstrelerinin son ödeme tarihinde bakiyene yansır.",
+    cycleDayPlaceholder: "Gün seç",
+    cycleDayOption: (day: number) => (day === 31 ? "Ayın son günü" : `Ayın ${day}. günü`),
+    // Said with the person's own two days once both are chosen; a fixed example before that.
+    cycleExplained: (statement: number, due: number, grace: number) =>
+      `Ekstren ${cycleDayPhrase(statement)} kesilir; o güne kadarki harcamaları ${grace} gün sonra, ${cycleDayPhrase(due)} ödersin. Bakiyen de o gün düşer.`,
+    cycleExample: "Ör. kesim ayın 15. günü, son ödeme ayın 25. günüyse: 15'ine kadarki harcamaları 25'inde ödersin. Bakiyen de o gün düşer.",
     cycleDaysLeft: (days: number) =>
       days === 0 ? "Ekstre bugün kesiliyor" : `Ekstreye ${days} gün`,
     cycleMissing: "Ekstre tarihleri eksik",

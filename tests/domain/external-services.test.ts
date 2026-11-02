@@ -562,11 +562,13 @@ describe("deriving market prices from order books", () => {
   it("prices each coin at the fine gold it legally contains", () => {
     const quotes = deriveMarketQuotes(books);
     const at = (code: string) => quotes.find((quote) => quote.code === code);
-    expect(at("CEYREK_YENI")?.sellTry).toBeCloseTo(10_010 * COIN_FINE_GRAMS.CEYREK_YENI!, 6);
-    expect(at("TEK_YENI")?.sellTry).toBeCloseTo(10_010 * COIN_FINE_GRAMS.TEK_YENI!, 6);
-    expect(at("ATA_YENI")?.sellTry).toBeCloseTo(10_010 * COIN_FINE_GRAMS.ATA_YENI!, 6);
-    expect(at("CEYREK_YENI")?.buyTry)
-      .toBeCloseTo(dealerBidTry(10_010, DEALER_MARGIN_BP.metal) * COIN_FINE_GRAMS.CEYREK_YENI!, 6);
+    // Each coin carries its own premium over its gold on both sides.
+    expect(at("CEYREK_YENI")?.sellTry).toBeCloseTo(10_010 * COIN_FINE_GRAMS.CEYREK_YENI! * 1.016, 6);
+    expect(at("TEK_YENI")?.sellTry).toBeCloseTo(10_010 * COIN_FINE_GRAMS.TEK_YENI! * 1.012, 6);
+    expect(at("ATA_YENI")?.sellTry).toBeCloseTo(10_010 * COIN_FINE_GRAMS.ATA_YENI! * 1.0079, 6);
+    expect(at("CEYREK_YENI")?.buyTry).toBeCloseTo(10_010 * COIN_FINE_GRAMS.CEYREK_YENI! * 1.0073, 6);
+    expect(at("TEK_YENI")?.buyTry).toBeCloseTo(10_010 * COIN_FINE_GRAMS.TEK_YENI! * 1.0073, 6);
+    expect(at("ATA_YENI")?.buyTry).toBeCloseTo(10_010 * COIN_FINE_GRAMS.ATA_YENI! * 1.0034, 6);
     // Smaller coin, less gold: the ordering is the specification, not a detail.
     expect(COIN_FINE_GRAMS.CEYREK_YENI!).toBeLessThan(COIN_FINE_GRAMS.TEK_YENI!);
     expect(COIN_FINE_GRAMS.TEK_YENI!).toBeLessThan(COIN_FINE_GRAMS.ATA_YENI!);
@@ -612,7 +614,7 @@ describe("the past of one instrument", () => {
     expect(marketHistorySource("ALTIN")).toEqual({ symbols: ["PAXGTRY"], factor: 1 / 31.1035 });
     expect(marketHistorySource("ATA_YENI")).toEqual({
       symbols: ["PAXGTRY"],
-      factor: COIN_FINE_GRAMS.ATA_YENI! / 31.1035,
+      factor: COIN_FINE_GRAMS.ATA_YENI! * 1.0079 / 31.1035,
     });
     expect(marketHistorySource("BITCOIN")).toBeNull();
   });

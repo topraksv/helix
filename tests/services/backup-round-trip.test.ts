@@ -272,6 +272,7 @@ describe("backup round trip", () => {
       sortOrder: 0,
     });
     await writeSetting(SOURCE_USER, "column_years", { "2026": [sourceCategoryId] });
+    await writeSetting(SOURCE_USER, "year_layouts", { "2026": { order: [sourceCategoryId], hidden: [sourceCategoryId] } });
     // `item_key` is the third place an id hides from the generic `*_id` rule; the rewrite is
     // only observable because this category is re-derived under the target account.
     await setMatrixColor(SOURCE_USER, { scope: "row", itemKey: sourceCategoryId, month: null }, "red");
@@ -290,6 +291,11 @@ describe("backup round trip", () => {
       `SELECT definition FROM computed_columns WHERE user_id = ? AND name = 'Toplam'`,
     ).get(TARGET_USER) as { definition: string };
     expect(JSON.parse(definitionRow.definition)).toEqual({ op: "sum", categoryIds: [targetCategoryId] });
+
+    const layoutRow = harness.db!.prepare(
+      `SELECT value FROM settings WHERE user_id = ? AND key = 'year_layouts'`,
+    ).get(TARGET_USER) as { value: string };
+    expect(JSON.parse(layoutRow.value)).toEqual({ "2026": { order: [targetCategoryId], hidden: [targetCategoryId] } });
 
     const settingsRow = harness.db!.prepare(
       `SELECT value FROM settings WHERE user_id = ? AND key = 'column_years'`,
