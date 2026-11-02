@@ -37,6 +37,8 @@ test("onboarding → add → edit → delete/undo → backup protects the core l
   await expect(page.getByRole("heading", { name: "İşlemi Düzenle" })).toBeVisible();
   await page.getByRole("textbox", { name: "Not" }).fill("E2E düzenlendi");
   await page.getByRole("button", { name: "Kaydet", exact: true }).click();
+  // The month list beneath re-renders the new note while the form is still closing; CI clicked the form's control.
+  await expect(page.getByRole("heading", { name: "İşlemi Düzenle" })).toBeHidden();
   await expect(page.getByText("E2E düzenlendi", { exact: true })).toBeVisible();
 
   await page.getByRole("button", { name: "Sil" }).click();
