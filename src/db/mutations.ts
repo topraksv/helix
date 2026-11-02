@@ -18,6 +18,7 @@ import { clampToInputLimit, isInputWithinLimit } from "../domain/input";
 import { commentBeyondInstalments } from "../services/spreadsheet-import";
 import { convertOutboundRow, outboundPolicy } from "../sync/outbound-validation";
 import { resolveTombstoneVersion } from "../sync/tombstone-policy";
+import { UNSYNCED_COUNT_SQL } from "../sync/status";
 
 export interface RowWrite {
   table: SyncedTableName;
@@ -288,11 +289,11 @@ export async function writeRowBatchesAtomically(
   });
 }
 
-/** Rows still waiting to be pushed to the cloud (sign-out safety check). */
+/** Rows the cloud does not hold yet, queued or quarantined (sign-out and freeze safety check). */
 export async function pendingOutboxCount(): Promise<number> {
   const sqlite = await getSqliteAsync();
-  const row = await sqlite.getFirstAsync<{ n: number }>(`SELECT COUNT(*) AS n FROM outbox`, []);
-  return row?.n ?? 0;
+  const row = await sqlite.getFirstAsync<{ count: number }>(UNSYNCED_COUNT_SQL, []);
+  return row?.count ?? 0;
 }
 
 /** What a retry reports; `unrepairable` means the current local row would be quarantined again, so nothing is queued. */

@@ -26,6 +26,12 @@ export function classifyRefreshFailure(error: unknown): Exclude<RefreshOutcome, 
 /** Unfiltered: the database holds one account and the table has no user_id. */
 export const DEAD_LETTER_COUNT_SQL = "SELECT COUNT(*) AS count FROM sync_dead_letters";
 
+/**
+ * What the server does not hold yet: the queue and the quarantine. A quarantined row left the outbox but never
+ * reached the server, so a sign-out or a freeze that counted the outbox alone wiped it unasked (spec §10.2).
+ */
+export const UNSYNCED_COUNT_SQL = "SELECT (SELECT COUNT(*) FROM outbox) + (SELECT COUNT(*) FROM sync_dead_letters) AS count";
+
 interface SyncStatusStore {
   state: SyncState;
   lastSyncAt: string | null;

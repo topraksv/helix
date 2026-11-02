@@ -11,7 +11,7 @@ set local role postgres;
 -- first for the assertion helpers.
 set local search_path = extensions, public, pg_catalog;
 
-select extensions.plan(175);
+select extensions.plan(178);
 
 -- A small invoker-rights helper lets tests assert SQLSTATE without coupling to
 -- PostgreSQL's localized/full error text. The dynamic statement still runs as
@@ -1313,6 +1313,43 @@ select is(
   $command$),
   '23514',
   'the API rejects a future investment wallet start date'
+);
+
+-- Migration 47: a device's today is ahead of the server's UTC day east of it.
+-- At UTC-12 the latest calendar on Earth is always one or two days ahead.
+set local timezone = 'Etc/GMT+12';
+select is(
+  pg_temp.exec_sqlstate($command$
+    update public.investment_profiles
+    set started_on = current_date + 1
+    where id = '20000000-0000-4000-8000-000000000041'
+  $command$),
+  null,
+  'a wallet dated today on a calendar ahead of the server''s day is taken'
+);
+select is(
+  pg_temp.exec_sqlstate($command$
+    update public.investment_profiles
+    set started_on = current_date + 3
+    where id = '20000000-0000-4000-8000-000000000041'
+  $command$),
+  '23514',
+  'but a date no calendar has reached is not'
+);
+reset timezone;
+update public.investment_profiles set started_on = '2026-07-01'
+where id = '20000000-0000-4000-8000-000000000041';
+select is(
+  (
+    select count(*)
+    from pg_proc p
+    join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'private'
+      and p.proname in ('investment_transaction_cash_effect', 'guard_investment_profile_cash', 'guard_investment_category_cash')
+      and pg_catalog.pg_get_functiondef(p.oid) like '%current_date%'
+  ),
+  0::bigint,
+  'the cash guards count a transfer dated today on any calendar'
 );
 
 select is(

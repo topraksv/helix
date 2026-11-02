@@ -3,7 +3,7 @@
 import { DatabaseSync } from "node:sqlite";
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { DEAD_LETTER_COUNT_SQL } from "../../src/sync/status";
+import { DEAD_LETTER_COUNT_SQL, UNSYNCED_COUNT_SQL } from "../../src/sync/status";
 import { migrationStatements, required } from "../helpers";
 
 function freshDatabase(): DatabaseSync {
@@ -36,6 +36,12 @@ describe("dead-letter quarantine count", () => {
 
     const row = db.prepare(DEAD_LETTER_COUNT_SQL).get() as { count: number } | undefined;
     expect(required(row).count).toBe(2);
+  });
+
+  it("counts a quarantined row as unsynced once its outbox entry is gone, so sign-out asks before wiping it", () => {
+    expect(required(db.prepare(UNSYNCED_COUNT_SQL).get() as { count: number } | undefined).count).toBe(0);
+    db.prepare(INSERT_SQL).run(1, "transactions", "row-1", "{}", "malformed_payload", "2026-07-20T00:00:00.000Z");
+    expect(required(db.prepare(UNSYNCED_COUNT_SQL).get() as { count: number } | undefined).count).toBe(1);
   });
 
   it("has no user column to filter on — the local database is single-account", () => {
