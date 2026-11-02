@@ -6,7 +6,7 @@ import { join, resolve } from "node:path";
 import { spawn, spawnSync } from "node:child_process";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { appStoreMajor, appVersionOf, entryOf, greenRun, openRuns, otaRecord, storeSdkMajor } from "../../scripts/check-published.mjs";
+import { appStoreMajor, appVersionOf, entryOf, greenRun, mutationProven, openRuns, otaRecord, storeSdkMajor } from "../../scripts/check-published.mjs";
 
 const roots: string[] = [];
 const script = resolve(process.cwd(), "scripts/check-web-budget.mjs");
@@ -203,6 +203,14 @@ describe("published surfaces", () => {
     expect(greenRun(runs, "d")).toBeNull();
     expect(openRuns(runs, "h")).toBe(1);
     expect(openRuns(runs, "g")).toBe(0);
+  });
+
+  it("takes a run's mutants as proven only when every shard that ran passed", () => {
+    const job = (name: string, conclusion: string) => ({ name, conclusion });
+    expect(mutationProven([job("mutation (1)", "success"), job("mutation (2)", "success"), job("e2e (chromium 1/6)", "failure")])).toBe(true);
+    expect(mutationProven([job("mutation (1)", "success"), job("mutation (2)", "failure")])).toBe(false);
+    expect(mutationProven([job("mutation (1)", "skipped")])).toBe(false);
+    expect(mutationProven([job("check", "success")])).toBe(false);
   });
 
   it("accepts one update per platform on the SDK's runtime, and nothing less", () => {

@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
+import { importGraph, testsLoading } from "../../scripts/stryker-vitest-files.mjs";
 import { isMutationScoped, selectMutationScope, shardOfScope, weigherOf } from "../../stryker.ci.config.mjs";
 
 const read = (path: string) => readFileSync(resolve(process.cwd(), path), "utf8");
@@ -166,5 +167,30 @@ describe("CI mutation contract", () => {
       eventName: "push",
       cwd: process.cwd(),
     })).toThrow(/missing mutation diff/i);
+  });
+
+  // A static mutant runs only the tests that load its file; one that cannot be traced keeps every test.
+  it("runs a static mutant against the tests whose imports reach its file, and an untraceable test always", () => {
+    const root = mkdtempSync(join(tmpdir(), "helix-import-graph-"));
+    const write = (path: string, text: string) => {
+      mkdirSync(join(root, path, ".."), { recursive: true });
+      writeFileSync(join(root, path), text);
+    };
+    try {
+      write("src/domain/leaf.ts", "export const leaf = 1;\n");
+      write("src/domain/middle.ts", 'import { leaf } from "./leaf";\nexport const middle = leaf;\n');
+      write("src/domain/other.ts", "export const other = 2;\n");
+      write("src/db/index.ts", "export const db = 3;\n");
+      write("tests/domain/through.test.ts", 'import { middle } from "../../src/domain/middle";\n');
+      write("tests/domain/lazy.test.ts", 'vi.mock("../../src/domain/other");\nconst { db } = await import("../../src/db");\n');
+      write("tests/domain/broken.test.ts", 'import { gone } from "../../src/domain/gone";\n');
+      const graph = importGraph(root);
+      const names = (file: string) => testsLoading(graph, join(root, file)).map((test) => test.slice(root.length + 1)).sort();
+      expect(names("src/domain/leaf.ts")).toEqual(["tests/domain/broken.test.ts", "tests/domain/through.test.ts"]);
+      expect(names("src/domain/other.ts")).toEqual(["tests/domain/broken.test.ts", "tests/domain/lazy.test.ts"]);
+      expect(names("src/db/index.ts")).toEqual(["tests/domain/broken.test.ts", "tests/domain/lazy.test.ts"]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 });

@@ -406,10 +406,14 @@ describe("release contract", () => {
     const classify = job("classify");
     expect(classify).toMatch(/permissions:\n\s+contents: read\n(?:\s+#.*\n)*\s+actions: read/);
     expect(classify).toContain("base: ${{ steps.base.outputs.sha }}");
-    expect(classify).toContain("green=$(node scripts/check-published.mjs green | sed -n 's/^sha=//p')");
+    expect(classify).toContain("published=$(node scripts/check-published.mjs green)");
+    expect(classify).toContain("green=$(printf '%s\\n' \"$published\" | sed -n 's/^sha=//p')");
     // Ancestry, not recency: a green run this commit does not descend from is
-    // not what production was built from.
+    // not what production was built from, and the same holds for the run that
+    // proved mutation.
     expect(classify).toContain('git merge-base --is-ancestor "$green" "$HEAD_SHA"');
+    expect(classify).toContain('git merge-base --is-ancestor "$mutated" "$HEAD_SHA"');
+    expect(classify).toContain('mutation="${mutated:-$base}"');
     expect(classify).toContain("BASE_SHA: ${{ steps.base.outputs.sha }}");
     expect(classify).not.toContain("BASE_SHA: ${{ github.event.before }}");
     // A dispatch keeps no base, and with it the fail-open full gate.
