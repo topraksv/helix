@@ -719,8 +719,8 @@ describe("database workflow", () => {
   it("proves account isolation on a schedule and when the schema changes", () => {
     // One pinned CLI for every step, so the stack that lints is the one tested.
     expect(database).toMatch(/\n  SUPABASE: npx --yes supabase@\d+\.\d+\.\d+\n/);
-    expect(database).toContain("$SUPABASE test db --local");
-    expect(database).toContain("$SUPABASE db lint --local --schema public --fail-on warning");
+    expect(database).toContain("$SUPABASE test db\n");
+    expect(database).toContain("$SUPABASE db lint --schema public --fail-on warning");
     expect(database).toContain("cron:");
     // The CLI must not arrive through a third-party action: this repository
     // allows GitHub-owned actions only (`patterns_allowed` empty, `verified_allowed` false).
@@ -731,10 +731,11 @@ describe("database workflow", () => {
   });
 
   it("runs against a local stack, so an unattended job holds no credential", () => {
-    // `--linked` would point a weekly, unattended run at production and need a
+    // CLI 3 targets the local stack unless a flag names another: `--remote` (or
+    // v2's `--linked`) would point a weekly, unattended run at production and need a
     // `SUPABASE_ACCESS_TOKEN` to do it. The suite rolls back, but that is a
     // promise a scheduled job should not have to keep.
-    expect(database).not.toContain("--linked");
+    expect(database).not.toMatch(/--remote|--linked|--project-ref|--db-url/);
     expect(database).not.toContain("secrets.");
     expect(database).toMatch(/permissions:\n\s+contents: read/);
   });
