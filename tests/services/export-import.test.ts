@@ -417,12 +417,23 @@ describe("building what leaves the device", () => {
   });
 
   it("leaves a declared wallet's payments out of the sheet, as the table does", async () => {
-    dependencies.getAllAsync.mockImplementation(async (sql: string) => sql.includes("FROM payment_sources ps")
-      ? [{ id: "tami", value: JSON.stringify({ tami: { minor: 500_00, at: "2026-07-15", since: "2026-07-10" } }) }, { id: "papara", value: null }]
-      : []);
-    await buildWorkbookBytes(userId);
-    const totals = (dependencies.getAllAsync.mock.calls as [string, unknown[]][]).find(([sql]) => sql.includes("SUM("));
-    expect(totals?.[0]).toContain("NOT (t.type = 'expense' AND t.payment_source_id IS ? AND t.effective_date >= ?) AND t.user_id = ?");
-    expect(totals?.[1]).toEqual([expect.any(String), "tami", "2026-07-10", userId]);
+    // The setting is joined onto every wallet row, so each carries the same value.
+    const value = JSON.stringify({ tami: { minor: 500_00, at: "2026-07-15", since: "2026-07-10" }, papara: { minor: 1, at: "2026-07-12", since: "2026-07-12" } });
+    const totalsFor = async (wallets: { id: string; value: string | null }[]) => {
+      dependencies.getAllAsync.mockReset();
+      dependencies.getAllAsync.mockImplementation(async (sql: string) => sql.includes("FROM payment_sources ps") ? wallets : []);
+      await buildWorkbookBytes(userId);
+      return (dependencies.getAllAsync.mock.calls as [string, unknown[]][]).find(([sql]) => sql.includes("SUM("));
+    };
+    const clause = "NOT (t.type = 'expense' AND t.payment_source_id IS ? AND t.effective_date >= ?) AND ";
+    const both = await totalsFor([{ id: "tami", value }, { id: "papara", value }, { id: "undeclared", value }]);
+    expect(both?.[0]).toContain(`WHERE ${clause}${clause}t.user_id = ?`);
+    expect(both?.[1]).toEqual([expect.any(String), "tami", "2026-07-10", "papara", "2026-07-12", userId]);
+    // No wallet, or an unreadable setting, leaves the sheet as it always was.
+    for (const wallets of [[], [{ id: "tami", value: "{" }]]) {
+      const plain = await totalsFor(wallets);
+      expect(plain?.[0]).toContain("WHERE t.user_id = ?");
+      expect(plain?.[1]).toEqual([expect.any(String), userId]);
+    }
   });
 });

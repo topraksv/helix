@@ -28,6 +28,7 @@ import {
 } from "../domain/workbook-format";
 import { normalizeMatrixColorToken } from "../domain/matrix-colors";
 import { parseWalletBalances, walletDrawStarts } from "../domain/balance-declaration";
+import { decodeSettingValue } from "../domain/settings";
 
 interface RestoreOperationOptions {
   signal?: AbortSignal;
@@ -234,9 +235,8 @@ async function ledgerGridsByYear(userId: string, signal?: AbortSignal) {
     [userId],
   );
   throwIfAborted(signal);
-  let walletBalances: unknown = null;
-  try { walletBalances = wallets[0]?.value ? JSON.parse(wallets[0].value) : null; } catch { walletBalances = null; }
-  const walletStarts = [...walletDrawStarts(parseWalletBalances(walletBalances), wallets.map((row) => row.id))];
+  const walletBalances = parseWalletBalances(decodeSettingValue<unknown>("wallet_balances", wallets[0]?.value ?? undefined, null));
+  const walletStarts = [...walletDrawStarts(walletBalances, wallets.map((row) => row.id))];
   const notWalletDraw = walletStarts
     .map(() => `NOT (t.type = 'expense' AND t.payment_source_id IS ? AND t.effective_date >= ?) AND `)
     .join("");

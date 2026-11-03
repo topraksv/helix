@@ -130,7 +130,7 @@ export function parseWalletBalances(value: unknown): WalletBalances | null {
   if (entries.length > 500) return null;
   const balances: WalletBalances = {};
   for (const [id, entry] of entries) {
-    if (typeof entry !== "object" || entry === null) continue;
+    if (entry === null) continue;
     const { minor, at, since, recordedAt } = entry as Partial<WalletBalance>;
     if (!Number.isSafeInteger(minor) || !isISODate(at) || !isISODate(since) || since > at) continue;
     if (recordedAt !== undefined && (typeof recordedAt !== "string" || !Number.isFinite(Date.parse(recordedAt)))) continue;
@@ -153,12 +153,15 @@ export function walletDrawStarts(balances: WalletBalances | null, walletIds: Ite
 /** A payment a declared wallet made: its money left the account when the wallet was topped up. */
 export function isWalletDraw(
   row: { type: string; paymentSourceId: string | null; effectiveDate: ISODate },
-  starts: ReadonlyMap<string, ISODate>,
+  // Keyed by `string | null` so a row with no source looks up nothing rather than needing its own branch.
+  starts: ReadonlyMap<string | null, ISODate>,
 ): boolean {
-  if (row.type !== "expense" || row.paymentSourceId == null) return false;
-  const since = starts.get(row.paymentSourceId);
-  return since != null && row.effectiveDate >= since;
+  if (row.type !== "expense") return false;
+  return row.effectiveDate >= (starts.get(row.paymentSourceId) ?? NO_WALLET);
 }
+
+/** Later than any day: a source with no declaration never draws. */
+const NO_WALLET = "9999-12-31";
 
 interface WalletOutlook {
   /** The declared balance less what the wallet paid after that day, up to today. */
@@ -170,9 +173,10 @@ interface WalletOutlook {
 }
 
 function afterFigure(tx: TxLike, balance: WalletBalance): boolean {
-  if (tx.effectiveDate !== balance.at) return tx.effectiveDate > balance.at;
+  if (tx.effectiveDate > balance.at) return true;
   // Parsed, not compared as text: a row pulled from the server spells its offset differently.
-  return balance.recordedAt != null && tx.createdAt != null && Date.parse(tx.createdAt) > Date.parse(balance.recordedAt);
+  // A missing instant parses to NaN, which is after nothing.
+  return tx.effectiveDate === balance.at && Date.parse(String(tx.createdAt)) > Date.parse(String(balance.recordedAt));
 }
 
 /**
@@ -184,7 +188,8 @@ export function walletOutlook(input: {
   sourceId: string;
   balance: WalletBalance;
   transactions: readonly TxLike[];
-  planned: readonly { dueDate: ISODate; direction: "in" | "out"; amountTryMinor: number }[];
+  /** The wallet's subscriptions still expected: only ever money out. */
+  planned: readonly { dueDate: ISODate; amountTryMinor: number }[];
   today: ISODate;
   monthEnd: ISODate;
 }): WalletOutlook {
@@ -199,7 +204,7 @@ export function walletOutlook(input: {
     }
   }
   for (const item of input.planned) {
-    if (item.dueDate <= input.monthEnd) dueMinor += item.direction === "out" ? item.amountTryMinor : -item.amountTryMinor;
+    if (item.dueDate <= input.monthEnd) dueMinor += item.amountTryMinor;
   }
   return { remainingMinor, dueMinor, shortMinor: Math.max(0, dueMinor - Math.max(0, remainingMinor)) };
 }

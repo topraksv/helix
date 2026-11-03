@@ -242,7 +242,7 @@ export function expectationEffect(item: Pick<PlannedExpectation, "direction" | "
  * signed by the category's kind, plus what its planned expectations will do.
  */
 export function selfCellEffect(
-  rows: readonly { personId: string; type: TransactionType; amountTryMinor: Minor; paymentSourceId?: string | null; effectiveDate?: ISODate }[],
+  rows: readonly { personId: string; type: TransactionType; amountTryMinor: Minor; paymentSourceId: string | null; effectiveDate: ISODate }[],
   selfIds: ReadonlySet<string>,
   categoryKind: CategoryKind | null,
   planned: readonly Pick<PlannedExpectation, "direction" | "amountTryMinor">[],
@@ -250,7 +250,7 @@ export function selfCellEffect(
 ): Minor {
   // A declared wallet's payment is listed in the cell but was spent at the top-up, as the table counts it.
   const counted = (t: (typeof rows)[number]) =>
-    selfIds.has(t.personId) && !(t.effectiveDate != null && isWalletDraw({ type: t.type, paymentSourceId: t.paymentSourceId ?? null, effectiveDate: t.effectiveDate }, walletStarts));
+    selfIds.has(t.personId) && !isWalletDraw(t, walletStarts);
   return rows.filter(counted).reduce(
     (sum, t) => sum + signedBalanceEffectOf(t.type, t.amountTryMinor, categoryKind),
     0,

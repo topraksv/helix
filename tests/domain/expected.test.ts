@@ -9,6 +9,7 @@ import {
   obsoleteExpectedIds,
   plannedExpectations,
   selfCellEffect,
+  hasAutoPayAmount,
 } from "../../src/domain/expected";
 import type { ExpectedPaymentLike, RecurringIncomeLike, SubscriptionLike } from "../../src/domain/types";
 import { tx } from "../helpers";
@@ -462,9 +463,9 @@ describe("what a category's cell does to the owner's balance", () => {
 
   it("signs the owner's rows by the category's kind and adds planned effects", () => {
     const rows = [
-      { personId: "me", type: "expense" as const, amountTryMinor: 1_000 },
-      { personId: "me", type: "expense" as const, amountTryMinor: -250 },
-      { personId: "other", type: "expense" as const, amountTryMinor: 9_999 },
+      { personId: "me", type: "expense" as const, amountTryMinor: 1_000, paymentSourceId: null, effectiveDate: "2026-07-01" },
+      { personId: "me", type: "expense" as const, amountTryMinor: -250, paymentSourceId: null, effectiveDate: "2026-07-01" },
+      { personId: "other", type: "expense" as const, amountTryMinor: 9_999, paymentSourceId: null, effectiveDate: "2026-07-01" },
     ];
     expect(selfCellEffect(rows, self, "expense", [])).toBe(-750);
     expect(selfCellEffect(rows, self, "expense", [
@@ -474,12 +475,20 @@ describe("what a category's cell does to the owner's balance", () => {
   });
 
   it("reads income rows as money in, and a transfer as money out", () => {
-    expect(selfCellEffect([{ personId: "me", type: "income", amountTryMinor: 500 }], self, "income", [])).toBe(500);
-    expect(selfCellEffect([{ personId: "me", type: "transfer", amountTryMinor: 500 }], self, "expense", [])).toBe(-500);
+    expect(selfCellEffect([{ personId: "me", type: "income", amountTryMinor: 500, paymentSourceId: null, effectiveDate: "2026-07-01" }], self, "income", [])).toBe(500);
+    expect(selfCellEffect([{ personId: "me", type: "transfer", amountTryMinor: 500, paymentSourceId: null, effectiveDate: "2026-07-01" }], self, "expense", [])).toBe(-500);
   });
 
   it("is zero with nothing of the owner's and nothing planned", () => {
-    expect(selfCellEffect([{ personId: "other", type: "income", amountTryMinor: 500 }], self, null, [])).toBe(0);
+    expect(selfCellEffect([{ personId: "other", type: "income", amountTryMinor: 500, paymentSourceId: null, effectiveDate: "2026-07-01" }], self, null, [])).toBe(0);
     expect(selfCellEffect([], new Set(), null, [{ direction: "in", amountTryMinor: 1 }])).toBe(1);
+  });
+});
+
+describe("an auto-paid bill's amount", () => {
+  it("pays a fixed bill, and a variable one only once it has an estimate", () => {
+    expect(hasAutoPayAmount({ amountIsEstimated: false, amountMinor: 0 })).toBe(true);
+    expect(hasAutoPayAmount({ amountIsEstimated: true, amountMinor: 0 })).toBe(false);
+    expect(hasAutoPayAmount({ amountIsEstimated: true, amountMinor: 1 })).toBe(true);
   });
 });

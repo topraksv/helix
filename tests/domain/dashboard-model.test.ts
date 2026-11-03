@@ -113,6 +113,17 @@ describe("dashboard model parity", () => {
     expect(model.outgoingMinor).toBe(300_00);
   });
 
+  it("leaves out of what is still due a bill someone else pays and one a declared wallet pays", () => {
+    const due = (overrides: Partial<TxLike>) =>
+      tx({ type: "expense", amountTryMinor: 300_00, effectiveDate: "2026-07-28", status: "pending", ...overrides });
+    const model = dashboard({
+      transactions: [due({ id: "other", personIsSelf: false }), due({ id: "tami", paymentSourceId: "tami", walletDraw: true }), due({ id: "own", amountTryMinor: 50_00 })],
+      actualBalanceMinor: 5_000_00,
+    });
+
+    expect(model.outgoingMinor).toBe(50_00);
+  });
+
   it("keeps a workbook remainder to its own month, up to the month's last day", () => {
     const remainder = (id: string, effectiveDate: string, amountTryMinor: number) =>
       tx({ id, type: "expense", amountTryMinor, effectiveDate, categoryId: "kart", isWorkbookRemainder: true });

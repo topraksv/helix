@@ -45,8 +45,7 @@ export async function setWalletBalance(userId: string, sourceId: string, minor: 
   if (!Number.isSafeInteger(minor)) throw new Error("Invalid wallet balance");
   const balances = parseWalletBalances(await readSetting<unknown>(userId, "wallet_balances")) ?? {};
   // Never later than it was: a device whose day is behind must not hand earlier draws back to the ledger.
-  const stored = balances[sourceId]?.since;
-  const since = stored != null && stored < today ? stored : today;
+  const [since = today] = [balances[sourceId]?.since ?? today, today].sort();
   await writeSetting(userId, "wallet_balances", { ...balances, [sourceId]: { minor, at: today, since, recordedAt: nowIso() } });
 }
 

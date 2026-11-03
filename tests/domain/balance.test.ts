@@ -1017,9 +1017,31 @@ describe("a digital wallet's payments were spent at its top-up", () => {
     expect(parseWalletBalances(valid)).toEqual(valid);
     for (const bad of [null, [], "x"]) expect(parseWalletBalances(bad)).toBeNull();
     for (const entry of [null, { minor: 1.5, at: "2026-07-15", since: "2026-07-10" }, { minor: 1, at: "nope", since: "2026-07-10" },
-      { minor: 1, at: "2026-07-01", since: "2026-07-10" }, { ...valid.tami, recordedAt: "dün" }]) {
+      { minor: 1, at: "2026-07-01", since: "2026-07-10" }, { ...valid.tami, recordedAt: "dün" }, { ...valid.tami, recordedAt: 42 }, 5]) {
       expect(parseWalletBalances({ ...valid, papara: entry })).toEqual(valid);
     }
+    const typed = { tami: { ...valid.tami, recordedAt: "2026-07-15T09:00:00.000Z" } };
+    expect(parseWalletBalances(typed)).toEqual(typed);
+    const many = (count: number) => Object.fromEntries(Array.from({ length: count }, (_, index) => [`w${index}`, valid.tami]));
+    expect(Object.keys(parseWalletBalances(many(500)) ?? {})).toHaveLength(500);
+    expect(parseWalletBalances(many(501))).toBeNull();
+  });
+
+  it("counts a payment once: off the figure when it went, into what is due when it is still to go", () => {
+    const balance = { minor: 1000_00, at: "2026-07-15", since: "2026-07-10", recordedAt: "2026-07-15T09:00:00.000Z" };
+    const outlookOf = (rows: TxLike[], planned: { dueDate: string; amountTryMinor: number }[] = []) =>
+      walletOutlook({ sourceId: "tami", balance, transactions: rows, planned, today: "2026-07-20", monthEnd: "2026-07-31" });
+    // Today's still-pending bill is due, not gone; one paid ahead of its day has not left yet.
+    expect(outlookOf([draw({ effectiveDate: "2026-07-20", status: "pending" })])).toEqual({ remainingMinor: 1000_00, dueMinor: 200_00, shortMinor: 0 });
+    expect(outlookOf([draw({ effectiveDate: "2026-07-22" })])).toEqual({ remainingMinor: 1000_00, dueMinor: 0, shortMinor: 0 });
+    // Paid on the declaration day before the figure was typed: in the figure already, and not due either.
+    expect(outlookOf([draw({ effectiveDate: "2026-07-15", createdAt: "2026-07-15T08:00:00.000Z" })]).dueMinor).toBe(0);
+    // Typed at the very instant it was recorded: the figure read it.
+    expect(outlookOf([draw({ effectiveDate: "2026-07-15", createdAt: "2026-07-15T09:00:00.000Z" })]).remainingMinor).toBe(1000_00);
+    // A bill left pending from last week is not this month's to pay from today; one on the last day is.
+    expect(outlookOf([draw({ effectiveDate: "2026-07-19", status: "pending" })]).dueMinor).toBe(0);
+    expect(outlookOf([draw({ effectiveDate: "2026-07-31", status: "pending" })]).dueMinor).toBe(200_00);
+    expect(outlookOf([], [{ dueDate: "2026-07-31", amountTryMinor: 1100_00 }])).toEqual({ remainingMinor: 1000_00, dueMinor: 1100_00, shortMinor: 100_00 });
   });
 
   it("leaves what the wallet holds and says how much the month is short", () => {

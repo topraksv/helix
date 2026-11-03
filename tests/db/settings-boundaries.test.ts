@@ -52,6 +52,7 @@ describe("setting repository delegation", () => {
 
   it("keeps a wallet's first declaration day when its balance is updated, beside the other wallets", async () => {
     await setWalletBalance("user-1", "tami", 500_00, "2026-07-10");
+    expect(dependencies.readSetting).toHaveBeenLastCalledWith("user-1", "wallet_balances");
     expect(dependencies.writeSetting).toHaveBeenLastCalledWith("user-1", "wallet_balances", {
       tami: { minor: 500_00, at: "2026-07-10", since: "2026-07-10", recordedAt: "2026-08-20T00:00:00.000Z" },
     });
@@ -70,7 +71,13 @@ describe("setting repository delegation", () => {
     expect(dependencies.writeSetting).toHaveBeenLastCalledWith("user-1", "wallet_balances", {
       tami: { minor: 90_00, at: "2026-07-08", since: "2026-07-08", recordedAt: "2026-08-20T00:00:00.000Z" },
     });
-    await expect(setWalletBalance("user-1", "tami", 1.5, "2026-07-20")).rejects.toThrow();
+    // Updated on the same day: the start stays that day.
+    dependencies.readSetting.mockResolvedValueOnce({ tami: { minor: 90_00, at: "2026-07-08", since: "2026-07-08" } });
+    await setWalletBalance("user-1", "tami", 80_00, "2026-07-08");
+    expect(dependencies.writeSetting).toHaveBeenLastCalledWith("user-1", "wallet_balances", {
+      tami: { minor: 80_00, at: "2026-07-08", since: "2026-07-08", recordedAt: "2026-08-20T00:00:00.000Z" },
+    });
+    await expect(setWalletBalance("user-1", "tami", 1.5, "2026-07-20")).rejects.toThrow("Invalid wallet balance");
   });
 
   it("delegates sync recovery to its authoritative stores", async () => {

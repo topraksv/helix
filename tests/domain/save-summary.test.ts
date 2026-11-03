@@ -55,6 +55,9 @@ describe("what a saved row does to the two figures", () => {
     expect(saveEffect(saved({ walletDraw: true }), TODAY))
       .toEqual({ balanceMinor: 0, projectedMinor: 0, forecastOnly: false });
     expect(saveEffect(saved({ walletDraw: true, status: "pending" }), TODAY).projectedMinor).toBe(0);
+    // The confirmation says why: the row is listed but the table leaves it out.
+    expect(buildSaveSummary({ kind: "created", saved: saved({ walletDraw: true }), today: TODAY }).walletDraw).toBe(true);
+    expect(buildSaveSummary({ kind: "created", saved: saved(), today: TODAY }).walletDraw).toBe(false);
   });
 
   /**
