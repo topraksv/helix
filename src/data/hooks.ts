@@ -14,7 +14,7 @@ import { buildLedgerChain, ledgerChainEndYear, sliceLedgerYear, type LedgerBundl
 import type { classifyRecordId } from "../domain/route-params";
 import { projectInvestmentState } from "../domain/investment-projection";
 import type { InvestmentState } from "../domain/investments";
-import { todayISO, yearOf, type ISODate, type MonthKey } from "../domain/dates";
+import { lastDayOf, monthKeyOf, todayISO, yearOf, type ISODate, type MonthKey } from "../domain/dates";
 import { categoriesForYear, type YearLayouts } from "../domain/year-columns";
 import { autoConfirmedTransactionIds, plannedExpectations, type PlannedExpectation } from "../domain/expected";
 import { convertToTryMinor } from "../domain/fx";
@@ -25,6 +25,7 @@ import { devError } from "../services/logger";
 import { lookupRate, useFxRates } from "../services/fx-fetch";
 import { marketSellRateTry } from "../services/markets";
 import { decodeSettingValue, type SettingKey } from "../domain/settings";
+import { isWalletDraw, parseWalletBalances, walletDrawStarts, walletOutlook, type WalletBalance } from "../domain/balance-declaration";
 import { balanceColumnLabel, type StoredBalanceColumns } from "../domain/matrix-preferences";
 import { tr } from "../i18n/tr";
 import {
@@ -480,6 +481,7 @@ function toTxLike(
   rows: (typeof s.transactions.$inferSelect)[],
   persons: (typeof s.persons.$inferSelect)[],
   categories: (typeof s.categories.$inferSelect)[],
+  walletStarts: ReadonlyMap<string, ISODate>,
 ): TxLike[] {
   const selfIds = selfPersonIds(persons);
   const categoryKinds = new Map(categories.map((category) => [category.id, category.kind]));
@@ -499,7 +501,28 @@ function toTxLike(
     subscriptionId: r.subscriptionId,
     isAggregate: r.isAggregate,
     isWorkbookRemainder: isWorkbookRemainderRow(r),
+    walletDraw: isWalletDraw(r, walletStarts),
+    createdAt: r.createdAt,
   }));
+}
+
+let walletStartsCache: { sources: unknown; raw: string | undefined; value: ReadonlyMap<string, ISODate> } | null = null;
+
+/** The day each declared digital wallet started paying from money already counted at its top-up. */
+export function useWalletDrawStarts(): ReadonlyMap<string, ISODate> {
+  return walletDrawStartsFor(useSourcesState().data, useSettingsMapState().data.get("wallet_balances"));
+}
+
+/** One map for every screen, for the reason `txLikeCache` is one: its identity keys that cache. */
+function walletDrawStartsFor(sources: readonly (typeof s.paymentSources.$inferSelect)[], raw: string | undefined): ReadonlyMap<string, ISODate> {
+  const cached = walletStartsCache;
+  if (cached && cached.sources === sources && cached.raw === raw) return cached.value;
+  const value = walletDrawStarts(
+    parseWalletBalances(decodeSettingValue<unknown>("wallet_balances", raw, null)),
+    sources.filter((source) => source.type === "e_wallet").map((source) => source.id),
+  );
+  walletStartsCache = { sources, raw, value };
+  return value;
 }
 
 export function useStatementPaymentsState() {
@@ -516,6 +539,7 @@ let txLikeCache: {
   rows: unknown;
   persons: unknown;
   categories: unknown;
+  walletStarts: unknown;
   payments: unknown;
   today: string;
   raw: TxLike[];
@@ -532,17 +556,19 @@ export function useCardSettlement(): CardSettlement {
   const persons = usePersonsState().data;
   const categories = useCategoriesState().data;
   const payments = useStatementPaymentsState().data;
+  const walletStarts = useWalletDrawStarts();
   const today = todayISO();
   const cached = txLikeCache;
-  const sameRows = cached != null && cached.rows === rows && cached.persons === persons && cached.categories === categories;
+  const sameRows = cached != null && cached.rows === rows && cached.persons === persons && cached.categories === categories
+    && cached.walletStarts === walletStarts;
   if (sameRows && cached.payments === payments && cached.today === today) return cached.settlement;
-  const raw = sameRows ? cached.raw : toTxLike(rows, persons, categories);
+  const raw = sameRows ? cached.raw : toTxLike(rows, persons, categories, walletStarts);
   const settlement = settleCardStatements(
     raw,
     payments.map((row) => ({ id: row.id, statementId: row.statementId, paidOn: row.paidOn, amountMinor: row.amountMinor, kind: row.kind })),
     today,
   );
-  txLikeCache = { rows, persons, categories, payments, today, raw, settlement };
+  txLikeCache = { rows, persons, categories, walletStarts, payments, today, raw, settlement };
   return settlement;
 }
 
@@ -665,25 +691,70 @@ function plannedExpectationsFor(
   transactions: readonly TxLike[],
   today: ISODate,
   fxVersion: number,
+  walletStarts: ReadonlyMap<string, ISODate>,
 ): PlannedExpectation[] {
-  const inputs = [userId, expected, subscriptions, incomes, transactions, today, fxVersion] as const;
+  const inputs = [userId, expected, subscriptions, incomes, transactions, today, fxVersion, walletStarts] as const;
   if (plannedCache && plannedCache.inputs.every((input, index) => input === inputs[index])) return plannedCache.value;
   const subscriptionById = new Map(subscriptions.map((row) => [row.id, row]));
   const incomeById = new Map(incomes.map((row) => [row.id, row]));
   const value = plannedExpectations({
-    expected,
+    // A subscription a declared wallet pays is the wallet's draw, not the account's.
+    expected: expected.filter((item) => item.kind !== "subscription" || !isWalletDraw({
+      type: "expense",
+      paymentSourceId: subscriptionById.get(item.refId)?.paymentSourceId ?? null,
+      effectiveDate: item.dueDate,
+    }, walletStarts)),
     transactions,
     today,
-    // Missing FX stays missing; a foreign amount is never treated as TRY.
-    toTryMinor: (currency, amountMinor) => {
-      if (currency === "TRY") return amountMinor;
-      const rateTry = marketSellRateTry(currency) ?? lookupRate(userId, currency)?.rate.rateTry ?? null;
-      return rateTry == null ? null : convertToTryMinor(amountMinor, rateTry);
-    },
+    toTryMinor: tryMinorFor(userId),
     ruleOf: (kind, refId) => (kind === "subscription" ? subscriptionById : incomeById).get(refId),
   });
   plannedCache = { inputs, value };
   return value;
+}
+
+/** Missing FX stays missing; a foreign amount is never treated as TRY. */
+function tryMinorFor(userId: string) {
+  return (currency: string, amountMinor: number): number | null => {
+    if (currency === "TRY") return amountMinor;
+    const rateTry = marketSellRateTry(currency) ?? lookupRate(userId, currency)?.rate.rateTry ?? null;
+    return rateTry == null ? null : convertToTryMinor(amountMinor, rateTry);
+  };
+}
+
+/**
+ * Each declared wallet's balance as the owner typed it, what is left of it, and what this month
+ * still draws: the subscriptions it pays and the payments written on it ahead of their day.
+ */
+export function useWalletOutlooks(): ReadonlyMap<string, { balance: WalletBalance; outlook: ReturnType<typeof walletOutlook> }> {
+  const userId = useUserId();
+  const raw = useSettingsMapState().data.get("wallet_balances");
+  const expected = usePendingExpectedState().data;
+  const subscriptions = useSubscriptionsState().data;
+  const transactions = useTxLike();
+  const walletStarts = useWalletDrawStarts();
+  const fxVersion = useFxRates();
+  const today = todayISO();
+  return useMemo(() => {
+    void fxVersion;
+    const balances = parseWalletBalances(decodeSettingValue<unknown>("wallet_balances", raw, null)) ?? {};
+    const subscriptionById = new Map(subscriptions.map((row) => [row.id, row]));
+    const monthEnd = lastDayOf(monthKeyOf(today));
+    const result = new Map<string, { balance: WalletBalance; outlook: ReturnType<typeof walletOutlook> }>();
+    for (const sourceId of walletStarts.keys()) {
+      const balance = balances[sourceId];
+      if (!balance) continue;
+      const planned = plannedExpectations({
+        expected: expected.filter((item) => item.kind === "subscription" && subscriptionById.get(item.refId)?.paymentSourceId === sourceId),
+        transactions,
+        today,
+        toTryMinor: tryMinorFor(userId),
+        ruleOf: (_kind, refId) => subscriptionById.get(refId),
+      });
+      result.set(sourceId, { balance, outlook: walletOutlook({ sourceId, balance, transactions, planned, today, monthEnd }) });
+    }
+    return result;
+  }, [userId, raw, expected, subscriptions, transactions, walletStarts, fxVersion, today]);
 }
 
 export function useLedgerState(year: number): LiveValueResult<LedgerBundle | null> {
@@ -699,6 +770,7 @@ export function useLedgerState(year: number): LiveValueResult<LedgerBundle | nul
   const fxVersion = useFxRates();
   const userId = useUserId();
   const settlement = useCardSettlement();
+  const walletStarts = useWalletDrawStarts();
   const txLike = settlement.transactions;
   const settings = settingsState.data;
   const adjustments = adjustmentsState.data;
@@ -721,7 +793,7 @@ export function useLedgerState(year: number): LiveValueResult<LedgerBundle | nul
   const configuredStart = settingValue<MonthKey | null>(settings, "start_month", null);
   const openingBalanceMinor = settingValue<number>(settings, "opening_balance_minor", 0);
   const includePendingInCells = settingValue<boolean>(settings, "show_pending_in_table", true);
-  const planned = plannedExpectationsFor(userId, expectedState.data, subscriptionsState.data, incomesState.data, txLike, today, fxVersion);
+  const planned = plannedExpectationsFor(userId, expectedState.data, subscriptionsState.data, incomesState.data, txLike, today, fxVersion, walletStarts);
   const inputs = [configuredStart, openingBalanceMinor, includePendingInCells, txLike, adjustments, settlement.flows, planned, today] as const;
   const endYear = ledgerChainEndYear(year, today);
   const cached = ledgerChainCache.get(endYear);

@@ -10,6 +10,7 @@ import CalendarClock from "lucide-react-native/icons/calendar-clock";
 import ChartNoAxesColumn from "lucide-react-native/icons/chart-no-axes-column";
 import ChevronRight from "lucide-react-native/icons/chevron-right";
 import History from "lucide-react-native/icons/rotate-ccw-clock";
+import WalletCards from "lucide-react-native/icons/wallet-cards";
 import RefreshCw from "lucide-react-native/icons/refresh-cw";
 import Plus from "lucide-react-native/icons/plus";
 import ShieldCheck from "lucide-react-native/icons/shield-check";
@@ -36,6 +37,7 @@ import {
   usePersonsState,
   useRecurringIncomesState,
   useSourcesState,
+  useWalletOutlooks,
   useSubscriptionsState,
   useUserId,
 } from "../../data/hooks";
@@ -971,6 +973,9 @@ export default function DashboardScreen() {
   const actions = useExpectedActions(data);
   const [showForecast, setShowForecast] = React.useState(false);
   const late = data.model.lateItems;
+  const wallets = useWalletOutlooks();
+  const walletNames = useSourcesState().data;
+  const shortWallets = [...wallets].filter(([, entry]) => entry.outlook.shortMinor > 0);
   const paired = shouldPairDashboardPanels(contentWidth);
   return (
     <Screen
@@ -1002,6 +1007,19 @@ export default function DashboardScreen() {
           </Row>
         </Card>
       ) : null}
+      {/* A wallet that cannot pay this month's bills from what is in it; topping it up is the expense the table counts. */}
+      {shortWallets.map(([sourceId, { outlook }]) => (
+        <Card key={sourceId} tone="warning" onPress={() => router.push("/payment-sources")} testID="wallet-short-card">
+          <Row>
+            <WalletCards accessible={false} size={20} color={palette.warning} />
+            <View style={{ flex: 1 }}>
+              <Body>{tr.sources.walletShortTitle(walletNames.find((source) => source.id === sourceId)?.name ?? tr.sources.e_wallet, formatMinorCompact(outlook.shortMinor))}</Body>
+              <Body muted>{tr.sources.walletShortBody(formatMinorCompact(Math.max(0, outlook.remainingMinor)), formatMinorCompact(outlook.dueMinor))}</Body>
+            </View>
+            <ChevronRight accessible={false} size={18} color={palette.textSecondary} />
+          </Row>
+        </Card>
+      ))}
       <BalanceHero data={data} wide={shouldSplitDashboardHero(contentWidth)} showForecast={showForecast} onToggleForecast={() => setShowForecast((v) => !v)} />
       {/* Collapses rather than blinking: the toggle that opens it sits directly above. */}
       <Collapse open={Boolean(data.bundle) && showForecast && data.model.projectedMinor != null}>

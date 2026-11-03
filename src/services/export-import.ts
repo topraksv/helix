@@ -27,6 +27,7 @@ import {
   type SubscriptionRow,
 } from "../domain/workbook-format";
 import { normalizeMatrixColorToken } from "../domain/matrix-colors";
+import { parseWalletBalances, walletDrawStarts } from "../domain/balance-declaration";
 
 interface RestoreOperationOptions {
   signal?: AbortSignal;
@@ -225,16 +226,30 @@ async function ledgerGridsByYear(userId: string, signal?: AbortSignal) {
   const ownRows = `FROM transactions t
      JOIN persons pe ON pe.id = t.person_id AND pe.user_id = t.user_id AND pe.is_self = 1
      LEFT JOIN categories c ON c.id = t.category_id AND c.user_id = t.user_id`;
+  // A declared wallet's payments were spent at its top-up, so the sheet leaves them out as the table does.
+  const wallets = await sqlite.getAllAsync<{ id: string; value: string | null }>(
+    `SELECT ps.id, s.value FROM payment_sources ps
+       LEFT JOIN settings s ON s.user_id = ps.user_id AND s.key = 'wallet_balances' AND s.deleted_at IS NULL
+     WHERE ps.type = 'e_wallet' AND ps.user_id = ?`,
+    [userId],
+  );
+  throwIfAborted(signal);
+  let walletBalances: unknown = null;
+  try { walletBalances = wallets[0]?.value ? JSON.parse(wallets[0].value) : null; } catch { walletBalances = null; }
+  const walletStarts = [...walletDrawStarts(parseWalletBalances(walletBalances), wallets.map((row) => row.id))];
+  const notWalletDraw = walletStarts
+    .map(() => `NOT (t.type = 'expense' AND t.payment_source_id IS ? AND t.effective_date >= ?) AND `)
+    .join("");
   const [totals, instalments] = await Promise.all([
     sqlite.getAllAsync<Record<string, unknown>>(
       // A row saved under a category of the other kind reverses it, as `financialFlow` counts it.
       `SELECT COALESCE(c.name, ?) AS item, substr(t.effective_date, 1, 7) AS month,
               SUM(CASE WHEN t.type <> 'transfer' AND c.kind IS NOT NULL AND c.kind <> t.type THEN -t.amount_try_minor ELSE t.amount_try_minor END) AS total
        ${ownRows}
-       WHERE t.user_id = ? AND t.deleted_at IS NULL
+       WHERE ${notWalletDraw}t.user_id = ? AND t.deleted_at IS NULL
        GROUP BY item, month
        ORDER BY month`,
-      [tr.cashflow.uncategorized, userId],
+      [tr.cashflow.uncategorized, ...walletStarts.flat(), userId],
     ),
     sqlite.getAllAsync<Record<string, unknown>>(
       `SELECT p.id AS plan_id, p.title, p.installment_count, p.total_amount_minor, p.monthly_amount_minor, ps.name AS card,

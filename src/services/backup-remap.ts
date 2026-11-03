@@ -293,15 +293,22 @@ function remapYearLayouts(parsed: object, idMap: ReadonlyMap<string, string>): R
   return out;
 }
 
-const YEAR_KEYED_REMAPS = new Map([["column_years", remapColumnYears], ["year_layouts", remapYearLayouts]]);
+// Keyed by payment source id: a wallet re-derived under this account keeps its declared balance.
+function remapWalletBalances(parsed: object, idMap: ReadonlyMap<string, string>): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(parsed).map(([id, entry]) => [idMap.get(id) ?? id, entry]));
+}
+
+const OBJECT_KEYED_REMAPS = new Map([
+  ["column_years", remapColumnYears], ["year_layouts", remapYearLayouts], ["wallet_balances", remapWalletBalances],
+]);
 
 function remapSettingsValue(key: string, value: string, idMap: ReadonlyMap<string, string>): string {
   try {
     const parsed: unknown = JSON.parse(value);
-    const remapYears = YEAR_KEYED_REMAPS.get(key);
-    if (remapYears) {
+    const remapObject = OBJECT_KEYED_REMAPS.get(key);
+    if (remapObject) {
       if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return value;
-      return JSON.stringify(remapYears(parsed, idMap));
+      return JSON.stringify(remapObject(parsed, idMap));
     }
     if (key === "computed_columns_hidden") {
       if (!Array.isArray(parsed)) return value;

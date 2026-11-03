@@ -2143,7 +2143,7 @@ describe("installment plan lifecycle", () => {
     const row = (id: string, no: number | null, amount: number) => ({
       id, user_id: "user-1", installment_plan_id: "plan-1", installment_no: no, status: "realized", type: "expense",
       amount_minor: amount, currency: "TRY", amount_try_minor: amount, entry_date: "2026-07-05",
-      effective_date: "2026-07-05", deleted_at: null, person_id: "person-1", is_aggregate: 0,
+      effective_date: "2026-07-05", deleted_at: null, person_id: "person-1", category_id: "category-1", is_aggregate: 0,
     });
     dependencies.getSqliteAsync.mockResolvedValue(sqliteWith(
       [row("id:installmentTx|plan-1|1", 1, 100_00), row("refund-1", null, -120_00), row("payoff-1", null, 900_00)],

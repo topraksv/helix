@@ -66,6 +66,14 @@ export interface TxLike {
    * it is not spending: a negative one reads as a refund. Absent reads as false.
    */
   isWorkbookRemainder?: boolean;
+  /**
+   * Paid from a digital wallet whose balance the owner declared, on or after
+   * the first declaration: the top-up was the spending, so this row is shown
+   * and never counted. Absent reads as false.
+   */
+  walletDraw?: boolean;
+  /** When the row was first written; read only to tell a wallet's figure from what it paid after (§2.18). */
+  createdAt?: string;
 }
 
 /** How the owner described a recorded statement payment. */

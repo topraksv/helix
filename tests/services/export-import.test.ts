@@ -413,6 +413,16 @@ describe("building what leaves the device", () => {
     for (const [sql, params] of dependencies.getAllAsync.mock.calls as [string, unknown[]][]) {
       expect(params.at(-1), sql.slice(0, 40)).toBe(userId);
     }
-    expect(dependencies.getAllAsync).toHaveBeenCalledTimes(4);
+    expect(dependencies.getAllAsync).toHaveBeenCalledTimes(5);
+  });
+
+  it("leaves a declared wallet's payments out of the sheet, as the table does", async () => {
+    dependencies.getAllAsync.mockImplementation(async (sql: string) => sql.includes("FROM payment_sources ps")
+      ? [{ id: "tami", value: JSON.stringify({ tami: { minor: 500_00, at: "2026-07-15", since: "2026-07-10" } }) }, { id: "papara", value: null }]
+      : []);
+    await buildWorkbookBytes(userId);
+    const totals = (dependencies.getAllAsync.mock.calls as [string, unknown[]][]).find(([sql]) => sql.includes("SUM("));
+    expect(totals?.[0]).toContain("NOT (t.type = 'expense' AND t.payment_source_id IS ? AND t.effective_date >= ?) AND t.user_id = ?");
+    expect(totals?.[1]).toEqual([expect.any(String), "tami", "2026-07-10", userId]);
   });
 });

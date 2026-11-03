@@ -23,6 +23,7 @@ import {
   usePlansState,
   useSettledTransactionsBetweenState,
   useUserId,
+  useWalletDrawStarts,
 } from "../../../data/hooks";
 import { combineLiveStates } from "../../../data/live-state";
 import { scheduleSync } from "../../../sync/engine";
@@ -250,6 +251,7 @@ export default function MonthDetailScreen() {
   const rangeMonth = validMonth ?? monthKeyOf(todayISO());
   const transactionsState = useSettledTransactionsBetweenState(firstDayOf(rangeMonth), lastDayOf(rangeMonth));
   const ledgerState = useLedgerState(yearOf(rangeMonth));
+  const walletStarts = useWalletDrawStarts();
   const transactions = transactionsState.data;
   const bundle = ledgerState.data;
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -340,7 +342,7 @@ export default function MonthDetailScreen() {
       case "group-header": {
         const { categoryId, category, txs, planned, open } = item;
         const title = category?.name ?? tr.common.none;
-        const selfSum = selfCellEffect(txs, selfIds, category?.kind ?? null, planned);
+        const selfSum = selfCellEffect(txs, selfIds, category?.kind ?? null, planned, walletStarts);
         const note = cellNotes.find((n) => n.categoryId === categoryId);
         return (
           <View style={[groupSurface, groupTop, { paddingTop: spacing.lg, paddingBottom: open ? spacing.sm : spacing.lg }, open ? null : groupBottom]}>
@@ -404,7 +406,7 @@ export default function MonthDetailScreen() {
               pending={t.status === "pending"}
               hasDocuments={documented.has(t.id)}
               automatic={autoConfirmed.has(t.id)}
-              reversalBadge={transactionBadge(t)}
+              reversalBadge={transactionBadge(t, walletStarts)}
               amountMinor={signedBalanceEffectOf(t.type, t.amountTryMinor, category?.kind ?? null)}
               onEdit={() => router.push({ pathname: "/transaction", params: { id: t.id } })}
               onDelete={() => void removeTx(t.id)}

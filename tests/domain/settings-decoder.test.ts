@@ -44,6 +44,10 @@ describe("synced settings runtime decoding", () => {
       .toEqual({ openingLabel: "Ay Sonu", closingLabel: null, showOpening: false });
     expect(decodeSettingValue("balance_columns", '{"openingLabel":"Ay Sonu"}', null)).toBeNull();
     expect(decodeSettingValue("balance_columns", '"Ay Sonu"', null)).toBeNull();
+    // What each digital wallet holds, and the day its payments stopped being spending.
+    expect(decodeSettingValue("wallet_balances", '{"tami":{"minor":50000,"at":"2026-07-21","since":"2026-07-01"}}', null))
+      .toEqual({ tami: { minor: 50000, at: "2026-07-21", since: "2026-07-01" } });
+    expect(decodeSettingValue("wallet_balances", '[1]', null)).toBeNull();
   });
 
   it("still refuses a malformed declared balance", () => {

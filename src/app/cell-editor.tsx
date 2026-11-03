@@ -22,6 +22,7 @@ import {
   usePlansState,
   useSettledTransactionsBetweenState,
   useUserId,
+  useWalletDrawStarts,
 } from "../data/hooks";
 import { combineLiveStates } from "../data/live-state";
 import { dateForMonthEntry, firstDayOf, lastDayOf, monthKeyOf, todayISO, yearOf } from "../domain/dates";
@@ -77,6 +78,7 @@ function CellEditor({ month, categoryId }: { month: string; categoryId: string }
   const ledgerState = useLedgerState(yearOf(month));
   const pendingExpectedState = usePendingExpectedState();
   const autoConfirmed = useAutoConfirmedTransactionIds();
+  const walletStarts = useWalletDrawStarts();
   const undo = useUndo();
   const { palette } = useTheme();
   const [entryRaw, setEntryRaw] = useState("");
@@ -92,7 +94,7 @@ function CellEditor({ month, categoryId }: { month: string; categoryId: string }
   const cellExpected = (ledgerState.data?.plannedExpectations ?? []).filter(
     (item) => item.categoryId === categoryId && monthKeyOf(item.dueDate) === month,
   );
-  const selfSum = selfCellEffect(cellTx, selfIds, category?.kind ?? null, cellExpected);
+  const selfSum = selfCellEffect(cellTx, selfIds, category?.kind ?? null, cellExpected, walletStarts);
   const openRule = (item: PlannedExpectation) =>
     router.push(item.kind === "subscription" ? { pathname: "/subscription-form", params: { id: item.refId } } : "/incomes");
 
@@ -311,7 +313,7 @@ function CellEditor({ month, categoryId }: { month: string; categoryId: string }
               pending={t.status === "pending"}
               hasDocuments={documented.has(t.id)}
               automatic={autoConfirmed.has(t.id)}
-              reversalBadge={transactionBadge(t)}
+              reversalBadge={transactionBadge(t, walletStarts)}
               amountMinor={signedBalanceEffectOf(t.type, t.amountTryMinor, category?.kind ?? null)}
               onEdit={() => router.push({ pathname: "/transaction", params: { id: t.id } })}
               onDelete={() => void removeTx(t.id)}

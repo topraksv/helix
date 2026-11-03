@@ -19,6 +19,8 @@ export interface SavedTransaction {
   status: TransactionStatus;
   personIsSelf: boolean;
   origin?: TransactionOrigin | null;
+  /** Paid from a declared wallet (§2.18): its top-up was the spending, so neither figure moves. */
+  walletDraw?: boolean;
 }
 
 /**
@@ -40,8 +42,8 @@ interface SaveEffect {
 export function saveEffect(saved: SavedTransaction, today: ISODate): SaveEffect {
   // A transfer leaves the ledger like an expense: that money is no longer available.
   const signed = signedBalanceEffectOf(saved.type, saved.amountTryMinor, null);
-  const counts = saved.status === "realized" && saved.effectiveDate <= today && saved.personIsSelf;
-  const projected = saved.personIsSelf ? signed : 0;
+  const counts = saved.status === "realized" && saved.effectiveDate <= today && saved.personIsSelf && !saved.walletDraw;
+  const projected = saved.personIsSelf && !saved.walletDraw ? signed : 0;
   return {
     balanceMinor: counts ? signed : 0,
     projectedMinor: projected,
@@ -73,6 +75,8 @@ export interface SaveSummary {
   otherMonth: string | null;
   /** Offer undo only for something that can be taken back. */
   undoable: boolean;
+  /** Say why neither figure moved: a declared wallet paid it (§2.18). */
+  walletDraw: boolean;
 }
 
 export function buildSaveSummary(input: {
@@ -93,5 +97,6 @@ export function buildSaveSummary(input: {
         ? monthKeyOf(input.saved.effectiveDate)
         : null,
     undoable: input.undoable ?? true,
+    walletDraw: input.saved.walletDraw === true,
   };
 }

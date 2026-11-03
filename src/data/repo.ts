@@ -148,6 +148,7 @@ export {
   setYearColumnOrder,
   setYearColumnShown,
   setBalanceDeclaration,
+  setWalletBalance,
   setMatrixColorLabels,
   setPendingTableVisibility,
   setReminderDays,

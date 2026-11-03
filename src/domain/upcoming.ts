@@ -34,6 +34,7 @@ export function standaloneUpcomingTransactions(
   return transactions.filter(
     (tx) =>
       tx.personIsSelf &&
+      !tx.walletDraw &&
       !tx.isAggregate &&
       (tx.paymentSourceId == null || !creditCardIds.has(tx.paymentSourceId)) &&
       tx.status === "pending" &&

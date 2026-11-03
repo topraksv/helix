@@ -310,7 +310,10 @@ async function writePlanWithSchedule(
     writes = writes.map((write) => {
       if (write.table !== "transactions") return write;
       const historical = realizedById.get(String(write.row.id));
-      return historical ? { table: "transactions" as const, row: fromDbShape("transactions", historical) } : write;
+      // A paid month's figures and day are history; whose purchase it is and its category are the plan's label, so they follow an edit.
+      return historical
+        ? { table: "transactions" as const, row: { ...fromDbShape("transactions", historical), personId: resolvedInput.personId, categoryId: resolvedInput.categoryId } }
+        : write;
     });
     const referencedStatementIds = new Set(
       writes
@@ -337,6 +340,15 @@ async function writePlanWithSchedule(
         .map((transaction) => ({
           table: "transactions" as const,
           row: { ...fromDbShape("transactions", transaction), deletedAt: nowIso() },
+        })),
+      // The plan's refunds and payoff carry no instalment number, so the schedule never names them;
+      // they follow whose purchase it is and its category too, or a refund would stay on the old owner.
+      ...existingPlanTransactions
+        .filter((transaction) => transaction.installment_no == null
+          && (transaction.person_id !== resolvedInput.personId || transaction.category_id !== resolvedInput.categoryId))
+        .map((transaction) => ({
+          table: "transactions" as const,
+          row: { ...fromDbShape("transactions", transaction), personId: resolvedInput.personId, categoryId: resolvedInput.categoryId },
         })),
     );
   }
@@ -430,7 +442,7 @@ export interface InstallmentRefund {
 /**
  * Record a refund against an instalment purchase: a negative expense linked to the plan, never a
  * change to it. Its rows carry no instalment number, so the schedule and later plan edits leave
- * them alone. It may not exceed what is left of the purchase (a larger credit is a typo that would
+ * their figures alone; only whose purchase it is and its category follow an edit. It may not exceed what is left of the purchase (a larger credit is a typo that would
  * read as income). A foreign-currency refund is in the plan's currency, each credit at the rate of
  * its own day like the instalments beside it.
  */

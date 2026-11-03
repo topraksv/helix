@@ -18,7 +18,7 @@ import type { AdjustmentLike, SettlementFlow, TxLike } from "./types";
 import { financialFlow, signedBalanceEffect } from "./transactions";
 
 export function countsTowardBalance(tx: TxLike, today: ISODate): boolean {
-  return tx.status === "realized" && tx.effectiveDate <= today && tx.personIsSelf;
+  return tx.status === "realized" && tx.effectiveDate <= today && tx.personIsSelf && !tx.walletDraw;
 }
 
 /** Replacement value for today's deterministic reconciliation row. The
@@ -255,7 +255,7 @@ export function buildLedger(input: LedgerInput): MonthLedger[] {
       const bucket = byMonth.get(key);
       if (bucket) bucket.push(tx);
       else byMonth.set(key, [tx]);
-    } else if (includePendingInCells && tx.personIsSelf) {
+    } else if (includePendingInCells && tx.personIsSelf && !tx.walletDraw) {
       // An own row the balance does not count yet is planned: pending, or marked
       // realized but dated after today by a device whose day had already turned.
       // Left out of both, that second kind vanished from its own cell on the

@@ -13,6 +13,8 @@ import Repeat from "lucide-react-native/icons/repeat";
 import Trash from "lucide-react-native/icons/trash";
 import { expectationEffect, type PlannedExpectation } from "../domain/expected";
 import { isWorkbookRemainderRow } from "../domain/transactions";
+import { isWalletDraw } from "../domain/balance-declaration";
+import type { ISODate } from "../domain/dates";
 import type { TransactionType } from "../domain/types";
 import { dateLabel, tr } from "../i18n/tr";
 import { Amount, Badge, Body, Divider, IconButton, Row, Spread } from "./components";
@@ -28,8 +30,12 @@ const actionLabel = (verb: string, title: string | null, dateText: string) => [v
 export type TransactionBadge = { text: string; tone: "negative" | "positive" | "muted" };
 
 /** The marker a row wears when it is a workbook remainder or a reversal, so the three lists name them alike. */
-export function transactionBadge(t: Parameters<typeof isWorkbookRemainderRow>[0] & { type: TransactionType; amountTryMinor: number }): TransactionBadge | null {
+export function transactionBadge(
+  t: Parameters<typeof isWorkbookRemainderRow>[0] & { type: TransactionType; amountTryMinor: number; paymentSourceId: string | null; effectiveDate: ISODate },
+  walletStarts: ReadonlyMap<string, ISODate>,
+): TransactionBadge | null {
   if (isWorkbookRemainderRow(t)) return { text: tr.analysis.remainderBadge, tone: "muted" };
+  if (isWalletDraw(t, walletStarts)) return { text: tr.sources.walletPaid, tone: "muted" };
   return t.amountTryMinor < 0 ? { text: tr.tx.reversalLabel(t.type), tone: t.type === "income" ? "negative" : "positive" } : null;
 }
 

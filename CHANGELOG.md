@@ -6,6 +6,16 @@ defterinde yazılıdır ve bu depoya dahil değildir.
 
 Notlar kısa tutulur: ne değişti, tek cümle. Sebebi ve ölçümü commit'te.
 
+## 2.0.2
+
+### Patch Changes
+
+- Bir taksitte kimin harcaması olduğu ya da kategorisi değiştirilince ödenmiş taksitler de değişiyor; eskiden eski kişide kalıyordu.
+- Canlı piyasa grafiğinin üstünde Satış / Alış seçeneği var; alış çizgisi kutudaki alış fiyatıyla çiziliyor.
+- Dijital cüzdan (Tami gibi): ödeme yönteminde bakiyesi girilince cüzdandan ödenen faturalar tabloda ikinci kez gider sayılmıyor, yalnız listeleniyor; cüzdanda kalan para ve bu ay çekilecek tutar görünüyor, yetmeyecekse Durum'da uyarı çıkıyor.
+- Çıkış yaparken buluta gidemeyen kayıtlar varsa önce soruluyor; eskiden sessizce siliniyordu.
+- Gece 00:00–03:00 arasında bugünün tarihiyle girilen yatırım işlemi eşitlemeyi artık durdurmuyor.
+
 ## 2.0.1
 
 ### Patch Changes

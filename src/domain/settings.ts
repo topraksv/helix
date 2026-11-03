@@ -1,7 +1,7 @@
 /** Runtime decoders for synced/imported JSON settings. */
 
 import { isAttentionState } from "./attention";
-import { parseBalanceDeclaration } from "./balance-declaration";
+import { parseBalanceDeclaration, parseWalletBalances } from "./balance-declaration";
 import { isISODate, isMonthKey } from "./dates";
 import { parseMatrixColorLabels } from "./matrix-colors";
 import { parseBalanceColumns } from "./matrix-preferences";
@@ -43,6 +43,8 @@ const SETTING_VALIDATORS = {
   last_entry_at: (value: unknown) =>
     typeof value === "string" && isISODate(value.slice(0, 10)) && Number.isFinite(Date.parse(value)),
   balance_declared: (value: unknown) => parseBalanceDeclaration(value) !== null,
+  /** What each digital wallet holds, as the owner last typed it, and since when its payments are its own. */
+  wallet_balances: (value: unknown) => parseWalletBalances(value) !== null,
   // Read through their own live queries, listed so "which settings exist" has one answer.
   account_frozen: (value: unknown) => typeof value === "boolean",
   onboarded: (value: unknown) => typeof value === "boolean",

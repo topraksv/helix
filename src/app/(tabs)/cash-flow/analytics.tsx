@@ -29,6 +29,7 @@ import {
   usePersonsState,
   useSourcesState,
   useTxLike,
+  useWalletDrawStarts,
 } from "../../../data/hooks";
 import { combineLiveStates } from "../../../data/live-state";
 import { Amount, Badge, Body, Button, Card, CardList, DataGateScreen, DataStateNotice, Divider, EmptyState, Field, FieldNote, Heading, IconButton, ListRow, MetricStrip, PanelHeader, Row, Screen, SectionHeader, Segmented, Select, Spread } from "../../../ui/components";
@@ -306,11 +307,11 @@ function SearchCard({ search, sources, compact, periodLabel, onClear, style }: {
  * render inside the screen's FlatList (real virtualization) with the card look
  * split across the first and last rows instead of a wrapping Card.
  */
-function ResultRow({ transaction: t, first, last, categoryById, sourceName }: { transaction: TxRow; first: boolean; last: boolean; categoryById: Map<string, Category>; sourceName: string | undefined }) {
+function ResultRow({ transaction: t, first, last, categoryById, sourceName, walletStarts }: { transaction: TxRow; first: boolean; last: boolean; categoryById: Map<string, Category>; sourceName: string | undefined; walletStarts: ReadonlyMap<string, string> }) {
   const router = useRouter();
   const { palette } = useTheme();
   const category = t.categoryId ? categoryById.get(t.categoryId) : undefined;
-  const badge = transactionBadge(t);
+  const badge = transactionBadge(t, walletStarts);
   return (
     <View
       style={[
@@ -568,6 +569,7 @@ export default function AnalysisScreen() {
 
   // Derived from the data, not the render: these walk every transaction.
   const txLike = useTxLike();
+  const walletStarts = useWalletDrawStarts();
   const categoryById = useMemo(() => new Map(categories.map((category) => [category.id, category])), [categories]);
   // The analysis matrix is an all-flow view: transfer/investment categories
   // stay visibly separate from expense totals, but must not disappear from the
@@ -712,6 +714,7 @@ export default function AnalysisScreen() {
             last={index === search.visible.length - 1}
             categoryById={categoryById}
             sourceName={item.paymentSourceId ? search.sourceNameById.get(item.paymentSourceId) : undefined}
+            walletStarts={walletStarts}
           />
         )}
         ListHeaderComponent={header}

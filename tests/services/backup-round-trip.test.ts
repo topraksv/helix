@@ -260,8 +260,10 @@ describe("backup round trip", () => {
       startMonth: "2026-07" as never,
       openingBalanceMinor: 0,
       persons: [{ name: "Ben", isSelf: true }],
-      sources: [],
+      sources: [{ name: "Tami", type: "e_wallet", personIndex: 0 }],
     });
+    const wallet = { minor: 500_00, at: "2026-07-15", since: "2026-07-10" };
+    await writeSetting(SOURCE_USER, "wallet_balances", { [await deterministicId(naturalKeys.onboardingSource(SOURCE_USER, 0))]: wallet });
     const sourceCategoryId = (harness.db!.prepare(
       `SELECT id FROM categories WHERE user_id = ? AND name = ?`,
     ).get(SOURCE_USER, categoryName) as { id: string }).id;
@@ -301,6 +303,12 @@ describe("backup round trip", () => {
       `SELECT value FROM settings WHERE user_id = ? AND key = 'column_years'`,
     ).get(TARGET_USER) as { value: string };
     expect(JSON.parse(settingsRow.value)).toEqual({ "2026": [targetCategoryId] });
+
+    // A wallet's declared balance is keyed by its source id, which the target account re-derives.
+    const walletRow = harness.db!.prepare(
+      `SELECT value FROM settings WHERE user_id = ? AND key = 'wallet_balances'`,
+    ).get(TARGET_USER) as { value: string };
+    expect(JSON.parse(walletRow.value)).toEqual({ [await deterministicId(naturalKeys.onboardingSource(TARGET_USER, 0))]: wallet });
 
     const markRow = harness.db!.prepare(
       `SELECT item_key FROM matrix_colors WHERE user_id = ? AND scope = 'row'`,

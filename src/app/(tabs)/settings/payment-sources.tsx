@@ -4,7 +4,18 @@ import { useState } from "react";
 import { View } from "react-native";
 import { PaymentSourceLogo } from "../../../ui/logo";
 import { useContentWidth } from "../../../ui/viewport";
-import { useAllTransactionsState, useCreditCardStatementsState, usePersonsState, useSourcesState, useUserId } from "../../../data/hooks";
+import {
+  useAllTransactionsState,
+  useCategoriesState,
+  useCreditCardStatementsState,
+  usePersonsState,
+  useSourcesState,
+  useSubscriptionsState,
+  useTxLike,
+  useUserId,
+  useWalletDrawStarts,
+  useWalletOutlooks,
+} from "../../../data/hooks";
 import { combineLiveStates } from "../../../data/live-state";
 import {
   CreditCardCycleRequiredError,
@@ -13,6 +24,7 @@ import {
   reassignAndDeletePaymentSource,
   ReferencedRecordError,
   restorePaymentSource,
+  setWalletBalance,
   upsertPaymentSource,
   type PaymentSourceReferenceUsage,
 } from "../../../data/repo";
@@ -28,7 +40,7 @@ import ReceiptText from "lucide-react-native/icons/receipt-text";
 import Trash from "lucide-react-native/icons/trash";
 import WalletCards from "lucide-react-native/icons/wallet-cards";
 import type { LucideIcon } from "lucide-react-native";
-import { Amount, Badge, Body, Button, Card, CardList, ChoiceTile, CardListSkeleton, DataGateScreen, DataStateNotice, EmptyState, Field, IconButton, PanelHeader, Row, Screen, SectionHeader, Spread, useLedeAlignment, useScrollToForm } from "../../../ui/components";
+import { Amount, Badge, Body, Button, Card, CardList, ChoiceTile, CardListSkeleton, DataGateScreen, DataStateNotice, EmptyState, Field, IconButton, MoneyField, PanelHeader, Row, Screen, SectionHeader, Spread, useLedeAlignment, useScrollToForm } from "../../../ui/components";
 import { ReferenceInUseCard } from "../../../ui/category-delete-sheet";
 import { useRotatingPlaceholder } from "../../../ui/placeholders";
 import { useUndo } from "../../../ui/undo";
@@ -37,7 +49,7 @@ import { appAlert, appConfirm } from "../../../ui/dialog";
 import { useOperationGuard } from "../../../ui/operation-guard";
 import { useDirtyExitGuard } from "../../../ui/dirty-exit";
 import { WorkspaceSplit } from "../../../ui/workspace-layout";
-import { isMonthDay } from "../../../domain/dates";
+import { isMonthDay, todayISO } from "../../../domain/dates";
 import { monthDayLabel } from "../../../ui/month-day-field";
 import { CardCycleFields, CardCycleRing, cardCycleError } from "../../../ui/card-cycle-fields";
 import { selectionTapIfChanged } from "../../../ui/haptics";
@@ -99,6 +111,7 @@ function SourceTypePicker({ value, onChange }: { value: PaymentSourceType; onCha
 function PaymentSourceRow({
   source,
   ownerName,
+  walletLeftMinor,
   onEdit,
   onDelete,
 }: {
@@ -111,6 +124,8 @@ function PaymentSourceRow({
   };
   /** Null when the workspace has one person and the line would say nothing. */
   ownerName: string | null;
+  /** What a declared wallet still holds; null for every other source. */
+  walletLeftMinor: number | null;
   onEdit: () => void;
   onDelete: () => void;
 }) {
@@ -143,6 +158,11 @@ function PaymentSourceRow({
               )}
             </Row>
           ) : null}
+          {walletLeftMinor != null ? (
+            <Row style={{ marginTop: spacing.xs }}>
+              <Badge text={tr.sources.walletBadge(formatMinorCompact(walletLeftMinor))} tone={walletLeftMinor < 0 ? "warning" : "primary"} />
+            </Row>
+          ) : null}
         </View>
       </Row>
       <View onLayout={lede.onTrailingLayout} style={lede.blockStyle}>
@@ -161,6 +181,7 @@ type Busy = [boolean, (busy: boolean) => void];
 /** The add-or-edit form: its fields, whether it would change anything, and saving it. */
 function useSourceForm(sources: Source[], persons: { id: string; isSelf: boolean }[], [busy, setBusy]: Busy, onEditStart: () => void) {
   const userId = useUserId();
+  const walletStarts = useWalletDrawStarts();
   const operationGuard = useOperationGuard();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [name, setName] = useState("");
@@ -197,6 +218,9 @@ function useSourceForm(sources: Source[], persons: { id: string; isSelf: boolean
   const save = () => operationGuard.run(async () => {
     if (busy) return;
     if (!valid || !personId) return setAttempted(true);
+    // Its payments stop being draws and count again, though their top-ups already did.
+    if (editing && walletStarts.has(editing.id) && sourceType !== "e_wallet"
+      && !(await appConfirm(editing.name, tr.sources.walletTypeWarning, { confirmLabel: tr.common.save, danger: true }))) return;
     setBusy(true);
     try {
       await upsertPaymentSource(userId, { id: editingId ?? undefined, name, type: sourceType, personId, dueDay, statementDay });
@@ -220,6 +244,7 @@ const cardRequiredFor = (removed: Source, usage: PaymentSourceReferenceUsage) =>
 /** Deleting a source: at once when nothing uses it, else after choosing where its records go. */
 function useSourceRemoval(sources: Source[], [busy, setBusy]: Busy) {
   const userId = useUserId();
+  const walletStarts = useWalletDrawStarts();
   const undo = useUndo();
   const [resolving, setResolving] = useState<{ source: Source; usage: PaymentSourceReferenceUsage } | null>(null);
   const [replacementChoice, setReplacementChoice] = useState<string>(NO_SOURCE);
@@ -255,7 +280,10 @@ function useSourceRemoval(sources: Source[], [busy, setBusy]: Busy) {
     if (!resolving || busy) return;
     const replacementId = replacementChoice === NO_SOURCE ? null : replacementChoice;
     const replacementName = sources.find((source) => source.id === replacementId)?.name ?? tr.references.noSource;
-    const confirmed = await appConfirm(resolving.source.name, tr.references.reassignSourceConfirm(resolving.usage.total, replacementName), {
+    // Moving rows out of a declared wallet counts its payments again; moving rows into one stops counting them.
+    const walletMoved = walletStarts.has(resolving.source.id) || (replacementId != null && walletStarts.has(replacementId));
+    const message = tr.references.reassignSourceConfirm(resolving.usage.total, replacementName);
+    const confirmed = await appConfirm(resolving.source.name, walletMoved ? `${message} ${tr.sources.walletMoveWarning}` : message, {
       confirmLabel: tr.references.reassignAndDelete,
       danger: true,
     });
@@ -352,6 +380,111 @@ function StatementHistoryCard({ cardId }: { cardId: string }) {
   );
 }
 
+/** How many of a wallet's payments the card lists; the rest are in the month screens. */
+const WALLET_PAID_SHOWN = 8;
+
+/**
+ * A digital wallet's balance as the owner reads it in the wallet's own app, and
+ * what it paid since. Entering the figure is what turns the wallet's payments
+ * from spending into draws on money the top-up already counted.
+ */
+function WalletBalanceCard({ sourceId }: { sourceId: string }) {
+  const userId = useUserId();
+  const operationGuard = useOperationGuard();
+  const entry = useWalletOutlooks().get(sourceId);
+  const transactions = useTxLike();
+  const subscriptions = useSubscriptionsState().data;
+  const categories = useCategoriesState().data;
+  const [raw, setRaw] = useState("");
+  const [minor, setMinor] = useState<number | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [attempted, setAttempted] = useState(false);
+  useDirtyExitGuard(raw.trim() !== "" && !busy);
+  const nameOf = (tx: { subscriptionId: string | null; categoryId: string | null }) =>
+    (tx.subscriptionId ? subscriptions.find((row) => row.id === tx.subscriptionId)?.name : undefined)
+    ?? (tx.categoryId ? categories.find((row) => row.id === tx.categoryId)?.name : undefined)
+    ?? tr.common.paymentFallback;
+  const paid = entry
+    ? transactions
+      .filter((tx) => tx.walletDraw && tx.paymentSourceId === sourceId && tx.effectiveDate >= entry.balance.since)
+      .sort((a, b) => b.effectiveDate.localeCompare(a.effectiveDate))
+    : [];
+
+  const save = () => operationGuard.run(async () => {
+    if (busy) return;
+    if (minor == null) return setAttempted(true);
+    setBusy(true);
+    try {
+      await setWalletBalance(userId, sourceId, minor, todayISO());
+      scheduleSync(userId);
+      setRaw("");
+      setMinor(null);
+      setAttempted(false);
+    } catch {
+      void appAlert(tr.errors.saveFailed, tr.errors.title);
+    } finally {
+      setBusy(false);
+    }
+  });
+
+  return (
+    <Card>
+      <PanelHeader icon={WalletCards} title={tr.sources.walletTitle} description={tr.sources.walletHint} />
+      {entry ? (
+        <View style={{ gap: spacing.sm, marginBottom: spacing.md }}>
+          <Spread style={{ alignItems: "center" }}>
+            <Body muted>{tr.sources.walletLeft}</Body>
+            <Amount minor={entry.outlook.remainingMinor} colorized={false} large testID="wallet-left" />
+          </Spread>
+          <Spread style={{ alignItems: "center" }}>
+            <Body muted>{tr.sources.walletDue}</Body>
+            <Amount minor={entry.outlook.dueMinor} colorized={false} />
+          </Spread>
+          <Body muted style={{ fontSize: type.small.fontSize }}>
+            {tr.sources.walletDeclared(formatMinorCompact(entry.balance.minor), dateLabel(entry.balance.at))}
+          </Body>
+          {entry.outlook.shortMinor > 0 ? (
+            <Badge text={tr.sources.walletShort(formatMinorCompact(entry.outlook.shortMinor))} tone="warning" />
+          ) : (
+            <Body muted style={{ fontSize: type.small.fontSize }}>{tr.sources.walletEnough}</Body>
+          )}
+        </View>
+      ) : null}
+      <MoneyField
+        label={tr.sources.walletBalance}
+        value={raw}
+        onChangeMinor={(next, parsed) => {
+          setRaw(next);
+          setMinor(parsed);
+        }}
+        error={attempted && minor == null ? tr.required.amount : null}
+        testID="wallet-balance-field"
+      />
+      <Button label={tr.sources.walletSave} onPress={() => void save()} loading={busy} />
+      {entry ? (
+        <View style={{ marginTop: spacing.lg }}>
+          <SectionHeader>{tr.sources.walletPaidList}</SectionHeader>
+          {paid.length === 0 ? <Body muted>{tr.sources.walletPaidEmpty}</Body> : null}
+          {paid.slice(0, WALLET_PAID_SHOWN).map((tx) => (
+            <Spread key={tx.id} style={{ alignItems: "center", paddingVertical: spacing.xs }}>
+              <View style={{ flex: 1, minWidth: 0, paddingRight: spacing.sm }}>
+                <Body>{nameOf(tx)}</Body>
+                <Body muted style={{ fontSize: type.small.fontSize }}>
+                  {tx.status === "pending" ? `${dateLabel(tx.effectiveDate)} · ${tr.tx.futureNote}` : dateLabel(tx.effectiveDate)}
+                </Body>
+              </View>
+              <Amount minor={-tx.amountTryMinor} colorized={false} />
+            </Spread>
+          ))}
+          {paid.length > WALLET_PAID_SHOWN ? (
+            <Body muted style={{ fontSize: type.small.fontSize }}>{tr.sources.walletMore(paid.length - WALLET_PAID_SHOWN)}</Body>
+          ) : null}
+        </View>
+      ) : null}
+    </Card>
+  );
+}
+
 function SourceFormCard({ form, persons, busy }: { form: ReturnType<typeof useSourceForm>; persons: { id: string; name: string; isSelf: boolean }[]; busy: boolean }) {
   const sourcePlaceholder = useRotatingPlaceholder(tr.placeholders.source);
   const saveButton = <Button label={form.editingId ? tr.common.save : tr.common.add} onPress={() => void form.save()} loading={busy} />;
@@ -406,6 +539,7 @@ export default function SourcesScreen() {
   const { scrollRef, scrollToForm } = useScrollToForm();
   const form = useSourceForm(sources, persons, busy, scrollToForm);
   const removal = useSourceRemoval(sources, busy);
+  const wallets = useWalletOutlooks();
   const { status, ready, retry } = combineLiveStates([sourcesState, statementsState, transactionsState, personsState]);
   if (!ready) return <DataGateScreen status={status} retry={retry} skeleton={<CardListSkeleton />} />;
   return (
@@ -418,6 +552,10 @@ export default function SourcesScreen() {
           <View>
             <SourceFormCard form={form} persons={persons} busy={busy[0]} />
             {form.editingId && form.sourceType === "credit_card" ? <StatementHistoryCard cardId={form.editingId} /> : null}
+            {/* Only a wallet saved as one: the balance belongs to the source, not to a type picked in an unsaved form. */}
+            {form.editingId && sources.find((source) => source.id === form.editingId)?.type === "e_wallet"
+              ? <WalletBalanceCard sourceId={form.editingId} />
+              : null}
           </View>
         )}
         secondary={(
@@ -435,6 +573,7 @@ export default function SourcesScreen() {
                     <PaymentSourceRow
                       source={s}
                       ownerName={persons.length > 1 ? persons.find((p) => p.id === s.personId)?.name ?? tr.common.none : null}
+                      walletLeftMinor={s.type === "e_wallet" ? wallets.get(s.id)?.outlook.remainingMinor ?? null : null}
                       onEdit={() => form.startEdit(s)}
                       onDelete={() => void removal.remove(s)}
                     />

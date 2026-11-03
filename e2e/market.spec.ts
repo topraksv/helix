@@ -55,7 +55,8 @@ test("draws the price, the chart and the range block when the feed answers", asy
   const errors = collectRuntimeErrors(page);
   await openUsdTry(page);
 
-  await expect(page.getByText("Satış")).toBeVisible();
+  // The quote's caption and the chart's side switch both read "Satış".
+  await expect(page.getByText("Satış").first()).toBeVisible();
   await expect(page.getByText("48,35 ₺").first()).toBeVisible();
 
   await expect(page.getByText("1A değişimi")).toBeVisible();
@@ -65,6 +66,14 @@ test("draws the price, the chart and the range block when the feed answers", asy
     await expect(page.getByText(label, { exact: true })).toBeVisible();
   }
   await expect(page.locator("svg").first()).toBeVisible();
+
+  // The chart draws selling by default; the switch above it redraws the buying side, and its figures move with it.
+  await expect(page.getByRole("radio", { name: "Satış", exact: true })).toBeChecked();
+  const selling = await page.locator("body").innerText();
+  await page.getByRole("radio", { name: "Alış", exact: true }).click();
+  await expect(page.getByRole("radio", { name: "Alış", exact: true })).toBeChecked();
+  await expect.poll(() => page.locator("body").innerText()).not.toBe(selling);
+  await expect(page.getByText("1A değişimi")).toBeVisible();
   expect(errors).toEqual([]);
 });
 

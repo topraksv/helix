@@ -1365,6 +1365,7 @@ describe("data reset", () => {
       seedSetting("start_month", '"2020-01"');
       seedSetting("opening_balance_minor", "150000");
       seedSetting("balance_declared", '{"minor":150000,"at":"2026-01-01"}');
+      seedSetting("wallet_balances", '{"tami":{"minor":50000,"at":"2026-01-01","since":"2026-01-01"}}');
       seedTransaction("typed", { effectiveDate: "2024-03-04", amountTryMinor: 40_000 });
       seedTransaction("future", { effectiveDate: "2027-01-04", amountTryMinor: 9_000 });
       seedPlan("live");
@@ -1385,7 +1386,7 @@ describe("data reset", () => {
       expect(live("transactions")).toEqual([]);
       expect(live("balance_adjustments")).toEqual([]);
       const settings = live("settings");
-      for (const key of ["start_month", "opening_balance_minor", "balance_declared"]) {
+      for (const key of ["start_month", "opening_balance_minor", "balance_declared", "wallet_balances"]) {
         expect(settings, key).not.toContain(`det:setting|${USER}|${key}`);
       }
       // The structure the reset promises to keep is still standing, so this is

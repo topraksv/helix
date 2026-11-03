@@ -1,7 +1,9 @@
 import { pruneAttentionState, type AttentionState } from "../../domain/attention";
 import { parseMatrixColorLabels, type MatrixColorLabels } from "../../domain/matrix-colors";
 import { parseBalanceColumns, type StoredBalanceColumns } from "../../domain/matrix-preferences";
-import { readSetting, writeSetting } from "../../db/mutations";
+import { nowIso, readSetting, writeSetting } from "../../db/mutations";
+import { parseWalletBalances } from "../../domain/balance-declaration";
+import type { ISODate } from "../../domain/dates";
 import type { YearLayouts } from "../../domain/year-columns";
 
 export {
@@ -33,6 +35,19 @@ export function setMatrixColorLabels(userId: string, labels: MatrixColorLabels):
 /** The balance the user last declared and when; the adjustment row alone would lose what was actually confirmed. */
 export function setBalanceDeclaration(userId: string, minor: number, at: string): Promise<void> {
   return writeSetting(userId, "balance_declared", { minor, at });
+}
+
+/**
+ * What a digital wallet holds now. The first declaration's day stays as `since`: moving it would
+ * hand the wallet's earlier payments back to the ledger, which already counted their top-up.
+ */
+export async function setWalletBalance(userId: string, sourceId: string, minor: number, today: ISODate): Promise<void> {
+  if (!Number.isSafeInteger(minor)) throw new Error("Invalid wallet balance");
+  const balances = parseWalletBalances(await readSetting<unknown>(userId, "wallet_balances")) ?? {};
+  // Never later than it was: a device whose day is behind must not hand earlier draws back to the ledger.
+  const stored = balances[sourceId]?.since;
+  const since = stored != null && stored < today ? stored : today;
+  await writeSetting(userId, "wallet_balances", { ...balances, [sourceId]: { minor, at: today, since, recordedAt: nowIso() } });
 }
 
 /** The two balance column names and whether both are drawn; one value, as the colour labels are. */

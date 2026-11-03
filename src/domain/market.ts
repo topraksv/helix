@@ -239,6 +239,18 @@ export function marketHistorySource(code: string): MarketHistorySource | null {
 }
 
 /**
+ * A tile's buying price over its selling price. A candle is one traded price,
+ * not a dealer's two, so the buying line is the selling line at the ratio the
+ * live tile applies: the two lines share a shape and part by the dealer's margin.
+ */
+export function marketBuyRatio(code: string): number | null {
+  if (code === "ALTIN") return 1 - DEALER_MARGIN_BP.metal / 10_000;
+  if (code === "USDTRY") return 1 - DEALER_MARGIN_BP.usd / 10_000;
+  if (code === "EURTRY") return 1 - DEALER_MARGIN_BP.eur / 10_000;
+  return code in COIN_FINE_GRAMS ? coinFactor(code, "buy") / coinFactor(code, "sell") : null;
+}
+
+/**
  * Candle closes, keyed by open time. A map, not a list: two series are
  * multiplied for the euro and must be paired by the moment each candle covers,
  * since position would silently shift the series when one symbol skipped a candle.

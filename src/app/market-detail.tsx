@@ -17,7 +17,7 @@ import TrendingDown from "lucide-react-native/icons/trending-down";
 import TrendingUp from "lucide-react-native/icons/trending-up";
 import type { LucideIcon } from "lucide-react-native";
 import { INVESTMENT_MARKET_TITLES } from "../domain/investment-catalog";
-import { historyDelta, historyExtent, type MarketHistoryPoint, type MarketRange } from "../domain/market";
+import { historyDelta, historyExtent, marketBuyRatio, type MarketHistoryPoint, type MarketRange } from "../domain/market";
 import { fetchMarketHistory, useMarkets } from "../services/markets";
 import { clockOrDateTimeLabel, marketRateLabel, tr } from "../i18n/tr";
 import { Body, Button, Card, Label, Row, Screen, Segmented, Title } from "../ui/components";
@@ -28,6 +28,8 @@ import { radius, spacing, type, useTheme } from "../ui/theme";
 import { WorkspaceGrid } from "../ui/workspace-layout";
 
 const RANGES: readonly MarketRange[] = ["day", "week", "month", "year"];
+/** Selling leads, as on the tile above: it is what buying more would cost. */
+const SIDES = ["sell", "buy"] as const;
 
 /** Only the newest candle moves, at the same rate for every range, so one cadence serves all. */
 const HISTORY_REFRESH_MS = 60_000;
@@ -142,10 +144,14 @@ export default function MarketDetailScreen() {
   const colors = useSeriesColors();
 
   const [range, setRange] = useState<MarketRange>("month");
+  const [side, setSide] = useState<(typeof SIDES)[number]>("sell");
   // Keyed by what it was fetched for: a series of another range is not this range's chart.
   const key = `${code}:${range}`;
   const [fetched, setFetched] = useState<{ key: string; points: MarketHistoryPoint[] | null } | null>(null);
-  const points = fetched?.key === key ? fetched.points : null;
+  const fetchedPoints = fetched?.key === key ? fetched.points : null;
+  // The candles are the selling side; the buying side is the same line at the tile's own ratio.
+  const ratio = side === "buy" ? marketBuyRatio(code) ?? 1 : 1;
+  const points = fetchedPoints?.map((point) => ({ at: point.at, valueTry: point.valueTry * ratio })) ?? null;
   const [loading, setLoading] = useState(true);
   const [attempt, setAttempt] = useState(0);
   // A chart nobody is looking at must not fetch.
@@ -236,6 +242,12 @@ export default function MarketDetailScreen() {
 
         <Card>
           <Segmented
+            value={side}
+            onChange={setSide}
+            fill
+            options={SIDES.map((value) => ({ value, label: tr.markets[value] }))}
+          />
+          <Segmented
             value={range}
             onChange={setRange}
             fill
@@ -262,7 +274,7 @@ export default function MarketDetailScreen() {
                     baseline="range"
                     xLabels={points.map((point) => pointLabel(point.at, range))}
                     series={[{
-                      label: title.label,
+                      label: `${title.label} ${tr.markets[side]}`,
                       color: colors[0]!,
                       // Minor units, so axis and readout format prices like the ledger formats money.
                       points: points.map((point) => Math.round(point.valueTry * 100)),

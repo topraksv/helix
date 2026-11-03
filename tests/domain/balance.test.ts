@@ -14,7 +14,18 @@ import {
 import type { ISODate, MonthKey } from "../../src/domain/dates";
 import type { TxLike } from "../../src/domain/types";
 import { required, tl, tx } from "../helpers";
-import { balanceDeclarationDrift, declarationAdjustmentMinor, declaredMonthOf, driftCandidates, parseBalanceDeclaration } from "../../src/domain/balance-declaration";
+import {
+  balanceDeclarationDrift,
+  declarationAdjustmentMinor,
+  declaredMonthOf,
+  driftCandidates,
+  isWalletDraw,
+  parseBalanceDeclaration,
+  parseWalletBalances,
+  walletDrawStarts,
+  walletOutlook,
+} from "../../src/domain/balance-declaration";
+import { selfCellEffect } from "../../src/domain/expected";
 
 /**
  * Golden test: the user's real Excel (Gelir-Gider 2026, Ocak–Temmuz) verified
@@ -970,5 +981,84 @@ describe("needsNegativeBalanceHint", () => {
     expect(needsNegativeBalanceHint({ ...fresh, declared: true })).toBe(false);
     expect(needsNegativeBalanceHint({ ...fresh, adjustmentCount: 1 })).toBe(false);
     expect(needsNegativeBalanceHint({ ...fresh, imported: true })).toBe(false);
+  });
+});
+
+describe("a digital wallet's payments were spent at its top-up", () => {
+  const starts = new Map([["tami", "2026-07-10"]]);
+  const draw = (overrides: Partial<TxLike> & Pick<TxLike, "effectiveDate">) =>
+    tx({ type: "expense", amountTryMinor: 200_00, paymentSourceId: "tami", walletDraw: true, ...overrides });
+
+  it("counts the top-up and not the bills the wallet pays from it", () => {
+    const topUp = tx({ type: "expense", amountTryMinor: 1000_00, effectiveDate: "2026-07-10", categoryId: "bills" });
+    const bill = draw({ effectiveDate: "2026-07-12", categoryId: "bills" });
+    expect(balanceOn([topUp, bill], "2026-07-20")).toBe(0);
+    const ledger = buildLedger({
+      openingBalanceMinor: 1000_00, startMonth: "2026-07", endMonth: "2026-07", adjustments: [], today: "2026-07-20",
+      transactions: [topUp, bill, draw({ effectiveDate: "2026-07-25", status: "pending", categoryId: "bills" })],
+      includePendingInCells: true,
+    });
+    expect(required(ledger[0]).byCategory.get("bills")).toBe(1000_00);
+    expect(required(ledger[0]).expenseMinor).toBe(1000_00);
+  });
+
+  it("starts on the first declaration's day, only for wallets, and only for spending", () => {
+    expect(isWalletDraw({ type: "expense", paymentSourceId: "tami", effectiveDate: "2026-07-10" }, starts)).toBe(true);
+    expect(isWalletDraw({ type: "expense", paymentSourceId: "tami", effectiveDate: "2026-07-09" }, starts)).toBe(false);
+    expect(isWalletDraw({ type: "income", paymentSourceId: "tami", effectiveDate: "2026-07-11" }, starts)).toBe(false);
+    expect(isWalletDraw({ type: "expense", paymentSourceId: null, effectiveDate: "2026-07-11" }, starts)).toBe(false);
+    const balances = { tami: { minor: 500_00, at: "2026-07-15", since: "2026-07-10" }, card: { minor: 1, at: "2026-07-15", since: "2026-07-15" } };
+    expect([...walletDrawStarts(balances, ["tami"])]).toEqual([["tami", "2026-07-10"]]);
+    expect(walletDrawStarts(null, ["tami"]).size).toBe(0);
+  });
+
+  it("reads back the well-formed wallets and drops only a malformed one", () => {
+    const valid = { tami: { minor: 500_00, at: "2026-07-15", since: "2026-07-10" } };
+    expect(parseWalletBalances(valid)).toEqual(valid);
+    for (const bad of [null, [], "x"]) expect(parseWalletBalances(bad)).toBeNull();
+    for (const entry of [null, { minor: 1.5, at: "2026-07-15", since: "2026-07-10" }, { minor: 1, at: "nope", since: "2026-07-10" },
+      { minor: 1, at: "2026-07-01", since: "2026-07-10" }, { ...valid.tami, recordedAt: "dün" }]) {
+      expect(parseWalletBalances({ ...valid, papara: entry })).toEqual(valid);
+    }
+  });
+
+  it("leaves what the wallet holds and says how much the month is short", () => {
+    const balance = { minor: 500_00, at: "2026-07-15", since: "2026-07-10" };
+    const transactions = [
+      draw({ effectiveDate: "2026-07-15" }),
+      draw({ effectiveDate: "2026-07-16", amountTryMinor: 300_00 }),
+      draw({ effectiveDate: "2026-07-25", status: "pending", amountTryMinor: 150_00 }),
+      draw({ effectiveDate: "2026-08-02", status: "pending" }),
+      draw({ effectiveDate: "2026-07-16", paymentSourceId: "other" }),
+    ];
+    const planned = [
+      { dueDate: "2026-07-28", direction: "out" as const, amountTryMinor: 120_00 },
+      { dueDate: "2026-08-05", direction: "out" as const, amountTryMinor: 999_00 },
+    ];
+    const outlook = walletOutlook({ sourceId: "tami", balance, transactions, planned, today: "2026-07-20", monthEnd: "2026-07-31" });
+    expect(outlook).toEqual({ remainingMinor: 200_00, dueMinor: 270_00, shortMinor: 70_00 });
+    expect(walletOutlook({ sourceId: "tami", balance, transactions: [], planned: [], today: "2026-07-20", monthEnd: "2026-07-31" }).shortMinor).toBe(0);
+  });
+
+  it("takes a payment of the declaration day off the figure only if it was recorded after it", () => {
+    const balance = { minor: 1000_00, at: "2026-07-15", since: "2026-07-15", recordedAt: "2026-07-15T09:00:00.000Z" };
+    const outlookOf = (createdAt: string | undefined) => walletOutlook({
+      sourceId: "tami", balance: createdAt === undefined ? { ...balance, recordedAt: undefined } : balance,
+      transactions: [draw({ effectiveDate: "2026-07-15", createdAt: createdAt ?? "2026-07-15T10:00:00+00:00" })],
+      planned: [], today: "2026-07-15", monthEnd: "2026-07-31",
+    }).remainingMinor;
+    expect(outlookOf("2026-07-15T10:00:00+00:00")).toBe(800_00);
+    expect(outlookOf("2026-07-15T08:00:00.000Z")).toBe(1000_00);
+    expect(outlookOf(undefined)).toBe(1000_00);
+  });
+
+  it("keeps a wallet's payment out of a cell's total and out of the drift candidates", () => {
+    const rows = [
+      { personId: "me", type: "expense" as const, amountTryMinor: 1000_00, paymentSourceId: null, effectiveDate: "2026-07-10" },
+      { personId: "me", type: "expense" as const, amountTryMinor: 200_00, paymentSourceId: "tami", effectiveDate: "2026-07-12" },
+    ];
+    expect(selfCellEffect(rows, new Set(["me"]), "expense", [], starts)).toBe(-1000_00);
+    expect(selfCellEffect(rows, new Set(["me"]), "expense", [])).toBe(-1200_00);
+    expect(driftCandidates(1_000_00, [draw({ effectiveDate: "2026-07-12", status: "pending" })], "2026-07-20")).toEqual([]);
   });
 });

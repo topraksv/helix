@@ -50,7 +50,7 @@ vi.mock("../../src/services/fx-fetch", () => ({ lookupRate: vi.fn(() => null) })
 vi.mock("../../src/services/markets", () => ({ marketSellRateTry: vi.fn(() => null) }));
 
 import { commitStatementRows, type AcceptedStatementRow } from "../../src/data/repo/statement-import";
-import { createInstallmentPlan, updateInstallmentPlan } from "../../src/data/repo/installments";
+import { addInstallmentRefund, createInstallmentPlan, updateInstallmentPlan } from "../../src/data/repo/installments";
 import { revertExpected } from "../../src/data/repo/expected";
 import type { MonthKey } from "../../src/domain/dates";
 import { statementPlanSpec } from "../../src/domain/statement-import";
@@ -410,6 +410,38 @@ describe("an instalment line becomes the plan behind it", () => {
 
     expect(livePlans()[0]).toMatchObject({ title: "TEKNOSA 2" });
     expect(liveRows().map((live) => live.installment_no).sort((a, b) => Number(a) - Number(b))).toEqual([3, 4, 5, 6, 7, 8, 9]);
+  });
+
+  // The owner moved a purchase to another person and the paid months, the ones the month list shows, kept the first.
+  it("an edit's person and category reach the paid instalments, which keep their figures", async () => {
+    await commitStatementRows(USER, { personId: "person-self", period: "2026-07", paymentSourceId: "card", rows: [instalment()] });
+    harness.db!.prepare(
+      `INSERT INTO persons (id, user_id, created_at, updated_at, deleted_at, tombstone_version, name, is_self)
+       VALUES ('person-other', ?, ?, ?, NULL, 0, 'Eş', 0)`,
+    ).run(USER, NOW, NOW);
+    harness.db!.prepare(
+      `INSERT INTO categories (id, user_id, created_at, updated_at, deleted_at, tombstone_version, name, kind, sort_order, is_column, is_transfer)
+       VALUES ('cat-2', ?, ?, ?, NULL, 0, 'Ev', 'expense', 1, 1, 0)`,
+    ).run(USER, NOW, NOW);
+    const plan = livePlans()[0]!;
+    // A refund has no instalment number, so the schedule never names it; it must still move with the plan.
+    await addInstallmentRefund(USER, String(plan.id), { amountMinor: 600_00, spread: "once", month: "2026-07", note: null });
+    const before = liveRows();
+    expect(before.some((live) => live.status === "realized")).toBe(true);
+    expect(before.some((live) => live.installment_no == null)).toBe(true);
+
+    await updateInstallmentPlan(USER, String(plan.id), {
+      title: "TEKNOSA", kind: "card_installment", totalAmountMinor: null, monthlyAmountMinor: 199_573, installmentCount: 9,
+      currency: "TRY", fxRate: null, startMonth: "2026-05", dueDay: null, paymentSourceId: "card",
+      personId: "person-other", personIsSelf: false, categoryId: "cat-2", note: null, tryFactor: 1,
+    }, { reschedule: false });
+
+    const after = liveRows();
+    expect(after).toHaveLength(before.length);
+    expect(after.every((live) => live.person_id === "person-other" && live.category_id === "cat-2")).toBe(true);
+    const figures = (rows: Record<string, unknown>[]) =>
+      rows.map((live) => [live.installment_no, live.status, live.amount_minor, live.effective_date]).sort((a, b) => Number(a[0]) - Number(b[0]));
+    expect(figures(after)).toEqual(figures(before));
   });
 
   // The months the statement left out still took their share of a total: an

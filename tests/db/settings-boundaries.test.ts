@@ -5,6 +5,7 @@ const dependencies = vi.hoisted(() => ({
   requeueSyncDeadLetter: vi.fn(async () => "requeued" as const),
   discardSyncDeadLetter: vi.fn(async () => true),
   writeSetting: vi.fn(async () => {}),
+  readSetting: vi.fn(async (): Promise<unknown> => null),
   deterministicId: vi.fn(async (key: string) => `color:${key}`),
   nowIso: vi.fn(() => "2026-08-20T00:00:00.000Z"),
   writeRows: vi.fn(),
@@ -22,6 +23,7 @@ vi.mock("../../src/db/mutations", () => ({
   requeueSyncDeadLetter: dependencies.requeueSyncDeadLetter,
   discardSyncDeadLetter: dependencies.discardSyncDeadLetter,
   writeSetting: dependencies.writeSetting,
+  readSetting: dependencies.readSetting,
   assertLiveRow: dependencies.assertLiveRow,
   nowIso: dependencies.nowIso,
   writeRowsValidated: vi.fn(async (user: string, writes: unknown[], validate: (db: unknown) => Promise<void>) => {
@@ -41,11 +43,35 @@ import {
   setMatrixColorLabels,
   setPendingTableVisibility,
   setReminderDays,
+  setWalletBalance,
 } from "../../src/data/repo/settings";
 import { setMatrixColor } from "../../src/data/repo/matrix-colors";
 
 describe("setting repository delegation", () => {
   beforeEach(() => vi.clearAllMocks());
+
+  it("keeps a wallet's first declaration day when its balance is updated, beside the other wallets", async () => {
+    await setWalletBalance("user-1", "tami", 500_00, "2026-07-10");
+    expect(dependencies.writeSetting).toHaveBeenLastCalledWith("user-1", "wallet_balances", {
+      tami: { minor: 500_00, at: "2026-07-10", since: "2026-07-10", recordedAt: "2026-08-20T00:00:00.000Z" },
+    });
+    dependencies.readSetting.mockResolvedValueOnce({
+      tami: { minor: 500_00, at: "2026-07-10", since: "2026-07-10" },
+      papara: { minor: 90_00, at: "2026-07-01", since: "2026-07-01" },
+    });
+    await setWalletBalance("user-1", "tami", 120_00, "2026-07-20");
+    expect(dependencies.writeSetting).toHaveBeenLastCalledWith("user-1", "wallet_balances", {
+      tami: { minor: 120_00, at: "2026-07-20", since: "2026-07-10", recordedAt: "2026-08-20T00:00:00.000Z" },
+      papara: { minor: 90_00, at: "2026-07-01", since: "2026-07-01" },
+    });
+    // A device whose day is behind keeps the earlier start rather than moving it.
+    dependencies.readSetting.mockResolvedValueOnce({ tami: { minor: 120_00, at: "2026-07-20", since: "2026-07-10" } });
+    await setWalletBalance("user-1", "tami", 90_00, "2026-07-08");
+    expect(dependencies.writeSetting).toHaveBeenLastCalledWith("user-1", "wallet_balances", {
+      tami: { minor: 90_00, at: "2026-07-08", since: "2026-07-08", recordedAt: "2026-08-20T00:00:00.000Z" },
+    });
+    await expect(setWalletBalance("user-1", "tami", 1.5, "2026-07-20")).rejects.toThrow();
+  });
 
   it("delegates sync recovery to its authoritative stores", async () => {
     await expect(pendingSyncChangeCount()).resolves.toBe(7);

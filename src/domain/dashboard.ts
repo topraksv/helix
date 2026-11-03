@@ -98,6 +98,7 @@ export function buildDashboardModel<TExpected extends ExpectedPaymentLike>(
   for (const transaction of input.transactions) {
     if (
       transaction.personIsSelf &&
+      !transaction.walletDraw &&
       transaction.status === "pending" &&
       transaction.effectiveDate >= input.today &&
       transaction.effectiveDate <= input.monthEnd &&

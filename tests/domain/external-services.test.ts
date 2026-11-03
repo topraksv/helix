@@ -29,6 +29,7 @@ import {
   MARKET_DATA_HOST,
   MARKET_PAIRS,
   MARKET_RANGES,
+  marketBuyRatio,
   marketHistorySource,
   parseKlineCloses,
   parseMarketBooks,
@@ -617,6 +618,18 @@ describe("the past of one instrument", () => {
       factor: COIN_FINE_GRAMS.ATA_YENI! * 1.0079 / 31.1035,
     });
     expect(marketHistorySource("BITCOIN")).toBeNull();
+  });
+
+  it("draws the buying line at the ratio the live tile buys at", () => {
+    const quotes = deriveMarketQuotes({
+      goldTry: { bid: 311_000, ask: 311_035 },
+      usdTry: { bid: 41.9, ask: 42 },
+      eurUsd: { bid: 1.15, ask: 1.16 },
+    });
+    expect(quotes).toHaveLength(MARKET_SYMBOLS.length);
+    for (const quote of quotes) expect(marketBuyRatio(quote.code), quote.code).toBeCloseTo(quote.buyTry / quote.sellTry, 12);
+    expect(marketBuyRatio("ALTIN")).toBeCloseTo(0.9894, 12);
+    expect(marketBuyRatio("BITCOIN")).toBeNull();
   });
 
   it("covers every tile the card can open", () => {

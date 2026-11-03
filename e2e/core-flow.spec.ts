@@ -664,3 +664,39 @@ test("the subscription sheet of an exported workbook comes back through the impo
   await expect(page.getByText("E2E Başkası", { exact: true })).toHaveCount(0);
   expect(errors).toEqual([]);
 });
+
+// §2.18: the top-up was the spending, so once the wallet's balance is typed, its payments are listed and never counted.
+test("a payment from a digital wallet with a typed balance is listed and not counted", async ({ page }) => {
+  const errors = collectRuntimeErrors(page);
+  await onboard(page);
+  await page.goto("/helix/settings/payment-sources");
+  await page.getByRole("radio", { name: "Dijital Cüzdan" }).click();
+  await page.getByRole("textbox", { name: "Yöntem adı" }).fill("Tami");
+  await page.getByRole("button", { name: "Ekle", exact: true }).click();
+  await page.getByRole("button", { name: "Düzenle · Tami" }).click();
+  await page.getByRole("textbox", { name: "Cüzdanda şu an olan para", exact: true }).fill("500,00");
+  await page.getByRole("button", { name: "Bakiyeyi Kaydet", exact: true }).click();
+  await expect(page.getByTestId("wallet-left")).toContainText("500");
+  await expect(page.getByText(/Kalan: .*500/u)).toBeVisible();
+
+  await page.goto("/helix/");
+  await expect(page.getByTestId("dashboard-current-balance")).toContainText("0,00");
+  await page.getByRole("button", { name: /İşlem Ekle/ }).first().click();
+  await page.getByRole("textbox", { name: "Tutar · TRY", exact: true }).fill("200");
+  await pickOption(page, "Ne tür bir harcama?", "Market");
+  await pickOption(page, "Nasıl ödedin?", /Tami/);
+  await page.getByRole("button", { name: "Kaydet", exact: true }).click();
+  await expect(page.getByRole("alert").first()).toContainText(/Market · .*200,00/u);
+  await expect(page.getByRole("alert").first()).toContainText("Cüzdandan ödendi · tabloda sayılmaz");
+  await expect(page.getByRole("alert").first()).not.toContainText("Güncel bakiye");
+  await expect(page.getByTestId("dashboard-current-balance")).toContainText("0,00");
+  await expect(page.getByTestId("dashboard-current-balance")).not.toContainText("200");
+
+  await page.goto("/helix/settings/payment-sources");
+  await page.getByRole("button", { name: "Düzenle · Tami" }).click();
+  await expect(page.getByText("Cüzdandan ödenenler", { exact: true })).toBeVisible();
+  // Recorded after the figure was typed, so it comes off what is left.
+  await expect(page.getByTestId("wallet-left")).toContainText("300,00");
+  await expect(page.getByText(/Kalan: .*300,00/u)).toBeVisible();
+  expect(errors).toEqual([]);
+});

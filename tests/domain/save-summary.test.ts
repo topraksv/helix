@@ -50,6 +50,13 @@ describe("what a saved row does to the two figures", () => {
       .toEqual({ balanceMinor: 0, projectedMinor: 0, forecastOnly: false });
   });
 
+  /** A wallet's payment was spent at the top-up, so the card claims neither figure moved. */
+  it("moves nothing for a payment a declared wallet made", () => {
+    expect(saveEffect(saved({ walletDraw: true }), TODAY))
+      .toEqual({ balanceMinor: 0, projectedMinor: 0, forecastOnly: false });
+    expect(saveEffect(saved({ walletDraw: true, status: "pending" }), TODAY).projectedMinor).toBe(0);
+  });
+
   /**
    * The confirmation must never claim a balance change the ledger will not
    * make. Both derive from the same three conditions; this pins them together
@@ -63,10 +70,11 @@ describe("what a saved row does to the two figures", () => {
       saved({ personIsSelf: false }),
       saved({ effectiveDate: "2020-01-01" }),
       saved({ type: "income", status: "pending" }),
+      saved({ walletDraw: true }),
     ];
     for (const row of cases) {
       expect(saveEffect(row, TODAY).balanceMinor !== 0, JSON.stringify(row))
-        .toBe(countsTowardBalance(tx({ id: "t", type: row.type, amountTryMinor: row.amountTryMinor, effectiveDate: row.effectiveDate, status: row.status, personIsSelf: row.personIsSelf }), TODAY));
+        .toBe(countsTowardBalance(tx({ id: "t", type: row.type, amountTryMinor: row.amountTryMinor, effectiveDate: row.effectiveDate, status: row.status, personIsSelf: row.personIsSelf, walletDraw: row.walletDraw }), TODAY));
     }
   });
 });

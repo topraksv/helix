@@ -338,8 +338,8 @@ function clearsWallet(selection: ResetSelection): boolean {
 
 /**
  * The opening balance and start month, which go only with an unbounded ledger reset and TOGETHER
- * (one unit, as `useLedgerState` reads them). `balance_declared` joins them: it is a claim about a
- * balance with nothing behind it.
+ * (one unit, as `useLedgerState` reads them). `balance_declared` and `wallet_balances` join them:
+ * each is a claim about a balance with nothing behind it.
  */
 async function anchorWrites(userId: string): Promise<RowWrite[]> {
   const sqlite = await getSqliteAsync();
@@ -348,7 +348,7 @@ async function anchorWrites(userId: string): Promise<RowWrite[]> {
   const rows = await sqlite.getAllAsync<Record<string, unknown>>(
     `SELECT * FROM settings
      WHERE user_id = ? AND deleted_at IS NULL
-       AND key IN ('start_month', 'opening_balance_minor', 'balance_declared')`,
+       AND key IN ('start_month', 'opening_balance_minor', 'balance_declared', 'wallet_balances')`,
     [userId],
   );
   return rows.map((row) => ({ table: "settings" as const, row: { ...fromDbShape("settings", row), deletedAt } }));

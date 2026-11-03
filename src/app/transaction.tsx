@@ -26,8 +26,10 @@ import {
   usePersonsState,
   useSourcesState,
   useUserId,
+  useWalletDrawStarts,
   useAnsweredForId,
 } from "../data/hooks";
+import { isWalletDraw } from "../domain/balance-declaration";
 import { combineLiveStates } from "../data/live-state";
 import { classifyRecordId } from "../domain/route-params";
 import { previewTryMinor, resolveTransactionSave } from "../domain/transaction-draft";
@@ -524,6 +526,7 @@ function cardContext(entry: Entry, sources: ExistingSource[], persons: { id: str
 
 function useTransactionForm({ existing, refundOf, investmentRefund }: { existing?: ExistingTx; refundOf?: ExistingTx; investmentRefund: boolean }) {
   const userId = useUserId();
+  const walletStarts = useWalletDrawStarts();
   const categoriesState = useCategoriesState();
   const sourcesState = useSourcesState();
   const personsState = usePersonsState();
@@ -633,6 +636,7 @@ function useTransactionForm({ existing, refundOf, investmentRefund }: { existing
    */
   const confirmSave = (summary: SaveSummary, createdId: string | null, name: string) => {
     const parts = balanceParts(summary, ledgerNow ?? null, cardStatementPreview?.dueDate ?? effectiveDate);
+    if (summary.walletDraw) parts.push(tr.sources.walletPaid);
     if (parts.length === 0 && summary.effect.forecastOnly) parts.push(tr.tx.savedForecastEffect(formatMinorCompact(summary.effect.projectedMinor)));
     if (summary.otherMonth) parts.push(tr.tx.savedOtherMonth(monthLabel(summary.otherMonth as MonthKey)));
     if (summary.kind === "updated") {
@@ -712,6 +716,7 @@ function useTransactionForm({ existing, refundOf, investmentRefund }: { existing
       const saved: SavedTransaction = {
         type: entry.entryType, amountTryMinor: saveable.tryMinor, effectiveDate: balanceDate,
         status: balanceDate <= todayISO() ? "realized" : "pending", personIsSelf: saveable.person.isSelf,
+        walletDraw: isWalletDraw({ type: entry.entryType, paymentSourceId: sourceId, effectiveDate: balanceDate }, walletStarts),
       };
       if (existing) {
         await updateTransaction(userId, existing, fields);
