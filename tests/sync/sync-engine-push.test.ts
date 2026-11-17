@@ -31,6 +31,10 @@ const harness = vi.hoisted(() => ({
   /** How each upsert was asked for: its conflict target and what it read back. */
   upserts: [] as { options: unknown; select: unknown }[],
   rpcs: [] as string[],
+  /** Keyed reads of what the server holds. */
+  reads: 0,
+  /** Whose session the client holds. */
+  sessionUser: "11111111-1111-4111-8111-111111111111" as string | null,
   rpcArgs: [] as unknown[],
   kv: new Map<string, string>(),
   configured: true,
@@ -92,6 +96,7 @@ function query(table: string) {
     abortSignal: async (signal: AbortSignal) => {
       if (signal.aborted) throw new Error("aborted");
       if (rows == null && ids) {
+        harness.reads += 1;
         if (harness.heldError) return { data: null, error: harness.heldError };
         // Only the columns asked for, as PostgREST answers.
         const asked = String(upsert.select).split(", ");
@@ -137,7 +142,10 @@ vi.mock("../../src/sync/supabase", () => ({
           const answer = { data: null, error: { message: "missing", code: "PGRST202" } };
           return Object.assign(Promise.resolve(answer), { abortSignal: async () => answer });
         },
-        auth: { refreshSession: harness.refresh },
+        auth: {
+          refreshSession: harness.refresh,
+          getSession: async () => ({ data: { session: harness.sessionUser ? { user: { id: harness.sessionUser } } : null }, error: null }),
+        },
       }
     : null,
 }));
@@ -170,11 +178,19 @@ function queueCategory(rowId: string, fields: Record<string, unknown> = {}): voi
   queueEvent(rowId, JSON.stringify(row));
 }
 
-function queueEvent(rowId: string, payload: string): void {
+function queueEvent(rowId: string, payload: string, table = "categories"): void {
   harness.db!.prepare(
     `INSERT INTO outbox (table_name, row_id, op, payload, idempotency_key, created_at)
      VALUES (?, ?, ?, ?, ?, ?)`,
-  ).run("categories", rowId, "upsert", payload, `${rowId}:${Math.random()}`, NOW);
+  ).run(table, rowId, "upsert", payload, `${rowId}:${Math.random()}`, NOW);
+}
+
+/** A note on a category's month: a row naming another by `category_id`. */
+function queueNote(rowId: string, categoryId: string): void {
+  queueEvent(rowId, JSON.stringify({
+    id: rowId, user_id: USER, created_at: NOW, updated_at: NOW, deleted_at: null, tombstone_version: 0,
+    month: "2026-09", category_id: categoryId, body: "not",
+  }), "cell_notes");
 }
 
 const outboxCount = () =>
@@ -192,6 +208,8 @@ beforeEach(async () => {
   harness.heldError = null;
   harness.upserts = [];
   harness.rpcs = [];
+  harness.sessionUser = USER;
+  harness.reads = 0;
   harness.rpcArgs = [];
   harness.kv = new Map();
   harness.configured = true;
@@ -296,17 +314,157 @@ describe("what leaves the outbox", () => {
     });
   });
 
-  it("keeps the refusal of a check no generation explains", async () => {
+  it("sets aside the refusal of a check no generation explains", async () => {
     queueCategory("01a06b2c-0000-7000-8000-00000000000a");
     harness.held.set("01a06b2c-0000-7000-8000-00000000000a", 0);
     harness.onUpsert = () => ({ data: null, error: { message: "name too long", code: "23514" } });
     startSyncSession(USER);
 
-    expect(await syncNow(USER, false)).toBe(false);
+    expect(await syncNow(USER, false)).toBe(true);
 
     expect(harness.calls, "asked, found nothing ahead, and not sent again").toHaveLength(1);
-    expect(harness.logger.devError).toHaveBeenCalledWith("sync", "push categories: name too long");
+    expect(harness.reads, "a run of one is asked about once").toBe(1);
+    expect(outboxCount()).toBe(0);
+    expect(deadLetters()).toEqual([{ table_name: "categories", row_id: "01a06b2c-0000-7000-8000-00000000000a", reason: "refused" }]);
+  });
+
+  /**
+   * A restored backup of another account keeps that account's uuidv7 ids, and
+   * the server answers its row with 42501. Before, that one row stopped every
+   * later push before the pull; now only it waits aside.
+   */
+  it("sets aside a row another account holds and sends the rest of its run", async () => {
+    const theirs = "01a06b2c-0000-7000-8000-000000000001";
+    const mine = "01a06b2c-0000-7000-8000-000000000002";
+    queueCategory(theirs);
+    queueCategory(mine);
+    harness.onUpsert = (_table, rows) => rows.some((each) => each.id === theirs)
+      ? { data: null, error: { message: 'new row violates row-level security policy (USING expression) for table "categories"', code: "42501" } }
+      : { data: rows, error: null };
+    startSyncSession(USER);
+
+    expect(await syncNow(USER, false)).toBe(true);
+
+    expect(harness.calls.map((call) => call.count), "the run, then each row alone").toEqual([2, 1, 1]);
+    expect(outboxCount()).toBe(0);
+    expect(deadLetters()).toEqual([{ table_name: "categories", row_id: theirs, reason: "refused" }]);
+  });
+
+  it("holds a cash row behind a refused one, unsent, until nothing of the kind waits aside", async () => {
+    const refused = "01a06b2c-0000-7000-8000-000000000001";
+    const later = "01a06b2c-0000-7000-8000-000000000002";
+    const plain = "01a06b2c-0000-7000-8000-000000000003";
+    const note = "01a06b2c-0000-7000-8000-000000000004";
+    queueCategory(refused, { is_transfer: 1 });
+    queueCategory(later, { is_transfer: 1 });
+    queueCategory(plain);
+    queueNote(note, later);
+    harness.onUpsert = (_table, rows) => rows.some((each) => each.id === refused)
+      ? { data: null, error: { message: "new row violates row-level security policy for table \"categories\"", code: "42501" } }
+      : { data: rows, error: null };
+    startSyncSession(USER);
+
+    expect(await syncNow(USER, false)).toBe(true);
+    expect(harness.calls.map((call) => call.count), "the run, the refused row alone, then the plain one; the later transfer is never sent").toEqual([3, 1, 1]);
+    expect(deadLetters()).toEqual([{ table_name: "categories", row_id: refused, reason: "refused" }]);
+    expect(harness.db!.prepare("SELECT row_id FROM outbox ORDER BY id").all(), "held, so a cash guard cannot store it deleted; and the note naming it, which the server would refuse without it").toEqual([{ row_id: later }, { row_id: note }]);
+
+    harness.calls = [];
+    expect(await syncNow(USER, false)).toBe(true);
+    expect(harness.calls, "still held while its kind waits aside").toEqual([]);
+
+    harness.db!.exec("DELETE FROM sync_dead_letters");
+    await syncNow(USER, false);
+    expect(harness.calls, "sent once nothing of its kind waits, then its note").toEqual([{ table: "categories", count: 1 }, { table: "cell_notes", count: 1 }]);
+    expect(outboxCount()).toBe(0);
+  });
+
+  it("holds a cash row in a later run of the batch, after an earlier run refused one", async () => {
+    harness.db!.prepare("INSERT INTO sync_state (table_name, last_pulled_at) VALUES (?, ?)").run("unpulled:categories", JSON.stringify(["color"]));
+    const refused = "01a06b2c-0000-7000-8000-000000000001";
+    const later = "01a06b2c-0000-7000-8000-000000000002";
+    queueCategory(refused, { is_transfer: 1 });
+    queueCategory(later, { is_transfer: 1, color: "blue" });
+    harness.onUpsert = (_table, rows) => rows.some((each) => each.id === refused)
+      ? { data: null, error: { message: "new row violates row-level security policy for table \"categories\"", code: "42501" } }
+      : { data: rows, error: null };
+    startSyncSession(USER);
+
+    expect(await syncNow(USER, false)).toBe(true);
+
+    expect(harness.calls.map((call) => call.count), "the first run alone; the second, of another shape, is held whole").toEqual([1]);
+    expect(harness.db!.prepare("SELECT row_id FROM outbox").all()).toEqual([{ row_id: later }]);
+  });
+
+  it("sends a refused cash row's own fix, and holds the others of its kind", async () => {
+    const refused = "01a06b2c-0000-7000-8000-000000000001";
+    const other = "01a06b2c-0000-7000-8000-000000000002";
+    harness.db!.prepare(
+      "INSERT INTO sync_dead_letters (outbox_id, table_name, row_id, payload, reason, quarantined_at) VALUES (99, 'categories', ?, ?, 'refused', ?)",
+    ).run(refused, JSON.stringify({ id: refused, is_transfer: 1 }), NOW);
+    // Not the first run of this version, which sends what waits aside once more.
+    harness.db!.prepare("INSERT INTO sync_state (table_name, last_pulled_at) VALUES ('retried:0', ?)").run(NOW);
+    queueCategory(refused, { is_transfer: 1 });
+    queueCategory(other, { is_transfer: 1 });
+    startSyncSession(USER);
+
+    expect(await syncNow(USER, false)).toBe(true);
+
+    expect(harness.calls.map((call) => call.count), "the edit goes, and the server taking it clears the clue").toEqual([1]);
+    expect(deadLetters()).toEqual([]);
+    expect(harness.db!.prepare("SELECT row_id FROM outbox").all()).toEqual([{ row_id: other }]);
+    await syncNow(USER, false);
+    expect(outboxCount(), "nothing of its kind waits now").toBe(0);
+  });
+
+  it("sends nothing under another account's session", async () => {
+    queueCategory(ROW);
+    harness.sessionUser = OTHER;
+    startSyncSession(USER);
+
+    expect(await syncNow(USER, false)).toBe(false);
+
+    expect(useSyncStatus.getState().error, "asks for a sign-in rather than retrying for ever").toBe(tr.sync.errReauth);
+    expect(harness.calls).toEqual([]);
     expect(outboxCount()).toBe(1);
+    expect(deadLetters()).toEqual([]);
+  });
+
+  it("keeps a row the server answers with no signed-in role, which a new session sends", async () => {
+    queueCategory(ROW);
+    harness.onUpsert = () => ({ data: null, error: { message: "permission denied for table categories", code: "42501" } });
+    startSyncSession(USER);
+
+    expect(await syncNow(USER, false)).toBe(false);
+
+    expect(outboxCount()).toBe(1);
+    expect(deadLetters()).toEqual([]);
+  });
+
+  it("forgets the clue of a row the server has since taken", async () => {
+    harness.db!.prepare(
+      "INSERT INTO sync_dead_letters (outbox_id, table_name, row_id, payload, reason, quarantined_at) VALUES (99, 'categories', ?, '{}', 'refused', ?)",
+    ).run(ROW, NOW);
+    queueCategory(ROW);
+    startSyncSession(USER);
+
+    expect(await syncNow(USER, false)).toBe(true);
+
+    expect(deadLetters()).toEqual([]);
+  });
+
+  it("keeps the run when a row alone meets the network rather than a refusal", async () => {
+    queueCategory("01a06b2c-0000-7000-8000-000000000001");
+    queueCategory("01a06b2c-0000-7000-8000-000000000002");
+    harness.onUpsert = (_table, rows) => rows.length > 1
+      ? { data: null, error: { message: "violates check", code: "23514" } }
+      : { data: null, error: { message: "Network request failed" } };
+    startSyncSession(USER);
+
+    expect(await syncNow(USER, false)).toBe(false);
+
+    expect(outboxCount(), "nothing set aside for a failure a later sync can pass").toBe(2);
+    expect(deadLetters()).toEqual([]);
   });
 
   it("keeps the run when what the server holds cannot be read", async () => {
@@ -413,14 +571,13 @@ describe("what an acknowledgement changes", () => {
   it("does not let an acknowledgement overwrite an edit made while it was in flight", async () => {
     queueCategory(ROW);
     harness.onUpsert = (_table, rows) => {
-      harness.onUpsert = () => new Promise<Reply>(() => {});
       queueCategory(ROW, { name: "Yolda düzenlendi" });
       return { data: rows.map((row) => ({ ...row, updated_at: SERVER_STAMP })), error: null };
     };
     startSyncSession(USER);
 
-    void flushOutbox(USER);
-    await vi.waitFor(() => expect(harness.calls).toHaveLength(2));
+    await flushOutbox(USER);
+    expect(harness.calls, "what was queued after the push began waits for the next").toHaveLength(1);
 
     expect(localCategory(ROW)).toEqual({ name: "Yolda düzenlendi", updated_at: NOW });
     expect(outboxCount(), "the newer edit is still waiting to be sent").toBe(1);
@@ -789,6 +946,7 @@ describe("when a sync runs", () => {
     await vi.advanceTimersByTimeAsync(5_000);
 
     startSyncSession(OTHER);
+    harness.sessionUser = OTHER;
     harness.db!.exec("DELETE FROM outbox");
     queueCategory(ROW, { user_id: OTHER, name: "Diğer" });
     harness.db!.exec(`UPDATE categories SET user_id = '${OTHER}'`);

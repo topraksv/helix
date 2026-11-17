@@ -11,7 +11,7 @@ set local role postgres;
 -- first for the assertion helpers.
 set local search_path = extensions, public, pg_catalog;
 
-select extensions.plan(178);
+select extensions.plan(183);
 
 -- A small invoker-rights helper lets tests assert SQLSTATE without coupling to
 -- PostgreSQL's localized/full error text. The dynamic statement still runs as
@@ -983,6 +983,43 @@ select lives_ok(
     )$$,
   'user B can insert an owned expense category'
 );
+
+-- A restored backup of account B, signed in as A, keeps B's uuidv7 ids. The
+-- client's upsert on `id` meets B's row, and the engine sets aside exactly
+-- this answer (42501 naming row-level security) rather than stopping the sync.
+reset role;
+select set_config('request.jwt.claim.sub', '10000000-0000-4000-8000-000000000001', true);
+set local role authenticated;
+
+select throws_matching(
+  $$insert into public.categories (id, user_id, name, kind)
+    values (
+      '20000000-0000-4000-8000-000000000023',
+      '10000000-0000-4000-8000-000000000001',
+      'Expense', 'expense'
+    )
+    on conflict (id) do update set user_id = excluded.user_id, name = excluded.name$$,
+  'row-level security',
+  'an upsert onto another account''s id is refused by row-level security'
+);
+
+select is(
+  pg_temp.exec_sqlstate($command$
+    insert into public.categories (id, user_id, name, kind)
+    values (
+      '20000000-0000-4000-8000-000000000023',
+      '10000000-0000-4000-8000-000000000001',
+      'Expense', 'expense'
+    )
+    on conflict (id) do update set user_id = excluded.user_id, name = excluded.name
+  $command$),
+  '42501',
+  'with the code the engine reads beside the message'
+);
+
+reset role;
+select set_config('request.jwt.claim.sub', '20000000-0000-4000-8000-000000000002', true);
+set local role authenticated;
 
 select lives_ok(
   $$update public.categories set is_transfer = true
@@ -2397,6 +2434,28 @@ select is(
       and permissive = 'RESTRICTIVE' and qual = 'false' and with_check = 'false'),
   1::bigint,
   'feedback_reports states that no client reaches its rows'
+);
+
+-- Migration 48: the sweep names a gone uploader's object and nothing else.
+set local role postgres;
+insert into storage.objects (bucket_id, name, owner_id) values
+  ('attachments', '30000000-0000-4000-8000-000000000003/left.pdf', '30000000-0000-4000-8000-000000000003'),
+  ('attachments', '20000000-0000-4000-8000-000000000002/kept.pdf', '20000000-0000-4000-8000-000000000002');
+select is(
+  array(select name from public.swept_objects()),
+  array['30000000-0000-4000-8000-000000000003/left.pdf'],
+  'the sweep names a deleted account''s document alone'
+);
+select ok(
+  (select count(*) from storage.objects where owner_id is null) > 0
+    and (select count(*) from storage.objects where owner_id = '20000000-0000-4000-8000-000000000002') > 0,
+  'beside it, a live account''s and an unowned document stay'
+);
+select ok(
+  has_function_privilege('service_role', 'public.swept_objects()', 'EXECUTE')
+    and not has_function_privilege('anon', 'public.swept_objects()', 'EXECUTE')
+    and not has_function_privilege('authenticated', 'public.swept_objects()', 'EXECUTE'),
+  'only the server role may ask what the sweep removes'
 );
 
 -- `reset role` returns to the Supabase CLI's short-lived login role, which can

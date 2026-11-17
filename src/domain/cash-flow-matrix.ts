@@ -59,7 +59,7 @@ export function buildCashFlowMatrixModel(input: {
    */
   showOpening?: boolean;
   /** First month the workspace has a ledger for; earlier months never existed. */
-  startMonth?: MonthKey;
+  startMonth: MonthKey;
 }): CashFlowMatrixModel {
   const dataByMonth = new Map(input.yearMonths.map((month) => [month.month, month]));
   const allMonths = Array.from({ length: 12 }, (_, index) => {
@@ -72,9 +72,7 @@ export function buildCashFlowMatrixModel(input: {
   // months that never existed. Trimmed only when something is left: a year
   // entirely before the start keeps its twelve, so the screen still reaches
   // its own empty-year state instead of rendering a table with no rows.
-  const fromStart = input.startMonth == null
-    ? allMonths
-    : allMonths.filter((entry) => entry.month >= input.startMonth!);
+  const fromStart = allMonths.filter((entry) => entry.month >= input.startMonth);
   const months = fromStart.length > 0 ? fromStart : allMonths;
   const cardSplits = creditCardSplitsByMonth(input.transactions, input.creditCardIds, input.today);
 

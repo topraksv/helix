@@ -4,7 +4,7 @@
  * asked for in the card that sent it, not in a dialog over it.
  */
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { View } from "react-native";
 import { Redirect, useRouter } from "expo-router";
 import KeyRound from "lucide-react-native/icons/key-round";
@@ -57,6 +57,18 @@ function CloudAccountSecurityScreen() {
   const [cardDrafts, setCardDrafts] = useState({ email: false, reset: false });
   const draftIn = (card: keyof typeof cardDrafts) => (dirty: boolean) => setCardDrafts((held) => (held[card] === dirty ? held : { ...held, [card]: dirty }));
   const { allowExit } = useDirtyExitGuard(Boolean(currentPassword || newPassword) || cardDrafts.email || cardDrafts.reset);
+  // A new password voids the e-mail change's codes on Auth's side (measured on
+  // local Auth, by a change and by a reset alike): the e-mail card asks for new
+  // ones and the screen stays, rather than leaving that card calling them wrong.
+  // Renewed inside the request that saved the password: the screen's gate is
+  // still held then, and a request of its own would be turned away.
+  const renewEmailCodes = useRef<RenewCodes>(null);
+  /** Whether an e-mail change was waiting, and so was told about the new password. */
+  const renewedEmailCodes = async (signedIn = true) => {
+    const renew = renewEmailCodes.current;
+    if (renew) await renew(signedIn);
+    return renew != null;
+  };
 
   const submitPassword = async () => {
     if (currentPassword.length < 6 || !isValidNewPassword(newPassword)) return;
@@ -76,6 +88,7 @@ function CloudAccountSecurityScreen() {
           }
           setCurrentPassword("");
           setNewPassword("");
+          if (await renewedEmailCodes()) return;
           void appAlert(tr.account.passwordChanged);
           allowExit(() => navigateBack(router, "/(tabs)/settings"));
         } finally {
@@ -140,7 +153,7 @@ function CloudAccountSecurityScreen() {
   return (
     <Screen width="workspace">
       <WorkspaceGrid testID="account-security-grid" layout="stack">
-      <EmailChangeCard email={email} guard={operationGuard} onDraft={draftIn("email")} />
+      <EmailChangeCard email={email} guard={operationGuard} onDraft={draftIn("email")} renewRef={renewEmailCodes} />
 
       <Card>
         <PanelHeader icon={KeyRound} title={tr.account.changePassword} description={tr.account.changePasswordSectionHint} />
@@ -171,7 +184,7 @@ function CloudAccountSecurityScreen() {
         />
       </Card>
 
-      <ResetCard email={email} guard={operationGuard} onDraft={draftIn("reset")} />
+      <ResetCard email={email} guard={operationGuard} onDraft={draftIn("reset")} afterSave={renewedEmailCodes} />
 
       {/* Erasing records, above the two ways an account ends: the same kind of
           decision at a smaller scale, and the one a person reaches for first
@@ -232,6 +245,9 @@ function CloudAccountSecurityScreen() {
   );
 }
 
+/** Set while an e-mail change waits for its codes: asks for new ones inside the request that saved the password. */
+/** Signed out by the password, the device cannot ask for codes: the change is dropped instead. */
+type RenewCodes = ((signedIn: boolean) => Promise<void>) | null;
 type CardProps = { email: string | null; guard: ReturnType<typeof useOperationGuard>; onDraft: (dirty: boolean) => void };
 
 const NO_CODES: EmailChangeCodes = { current: "", next: "" };
@@ -268,7 +284,7 @@ function useCardRequest(guard: CardProps["guard"]) {
 }
 
 /** The new address and the password, then the code each address was sent. */
-function EmailChangeCard({ email, guard, onDraft }: CardProps) {
+function EmailChangeCard({ email, guard, onDraft, renewRef }: CardProps & { renewRef: RefObject<RenewCodes> }) {
   const { verifyPassword, changeEmail, confirmEmailChange } = useSession();
   const { busy, run } = useCardRequest(guard);
   const [newEmail, setNewEmail] = useState("");
@@ -277,7 +293,9 @@ function EmailChangeCard({ email, guard, onDraft }: CardProps) {
   const [pendingEmail, setPendingEmail] = useState<string | null>(null);
   const [codes, setCodes] = useState<EmailChangeCodes>(NO_CODES);
   const [accepted, setAccepted] = useState<Record<keyof EmailChangeCodes, boolean>>(NONE_ACCEPTED);
-  const dirty = Boolean(newEmail || emailPassword || codes.current || codes.next);
+  // Codes on their way are a draft too: leaving drops them, and a new request
+  // inside Auth's minute is refused.
+  const dirty = Boolean(pendingEmail || newEmail || emailPassword || codes.current || codes.next);
   useEffect(() => onDraft(dirty), [dirty, onDraft]);
 
   const emailValid = /.+@.+\..+/.test(newEmail.trim());
@@ -294,13 +312,16 @@ function EmailChangeCard({ email, guard, onDraft }: CardProps) {
     setEmailPassword("");
   });
   /** New codes replace the old ones, so the ones already typed and taken start over. */
+  const sendCodesAgain = async (address: string, sent: string, refusedPrefix = "") => {
+    const refused = await changeEmail(address);
+    // A refused renewal leaves void codes typed; a refused resend leaves valid ones.
+    if (!refused || refusedPrefix) setCodes(NO_CODES);
+    // The session keeps a side Auth took until the codes are sent again.
+    if (!refused) setAccepted(NONE_ACCEPTED);
+    void appAlert(refused ? refusedPrefix + refused : sent, refused ? tr.errors.title : undefined);
+  };
   const resendCodes = run("request", async () => {
-    if (!pendingEmail) return;
-    const refused = await changeEmail(pendingEmail);
-    if (refused) return void appAlert(refused, tr.errors.title);
-    setCodes(NO_CODES);
-    setAccepted(NONE_ACCEPTED);
-    void appAlert(tr.account.codesResent);
+    if (pendingEmail) await sendCodesAgain(pendingEmail, tr.account.codesResent);
   });
   const codesReady = (typed: EmailChangeCodes) => (["current", "next"] as const).every((side) => accepted[side] || codeComplete(typed[side]));
   const confirmCodes = (typed: EmailChangeCodes) =>
@@ -324,6 +345,14 @@ function EmailChangeCard({ email, guard, onDraft }: CardProps) {
     setCodes(NO_CODES);
     setAccepted(NONE_ACCEPTED);
   };
+  useEffect(() => {
+    renewRef.current = pendingEmail
+      ? async (signedIn) => (signedIn ? sendCodesAgain(pendingEmail, tr.account.codesRenewedAfterPassword, tr.account.codesVoidedByPassword) : cancel())
+      : null;
+    return () => {
+      renewRef.current = null;
+    };
+  });
 
   return (
     <Card>
@@ -374,14 +403,14 @@ function EmailChangeCard({ email, guard, onDraft }: CardProps) {
 }
 
 /** A code to the account's own address, then the code and a new password in the same card. */
-function ResetCard({ email, guard, onDraft }: CardProps) {
+function ResetCard({ email, guard, onDraft, afterSave }: CardProps & { afterSave: (signedIn: boolean) => Promise<boolean> }) {
   const { requestPasswordReset, resetPassword } = useSession();
   const { busy, run } = useCardRequest(guard);
   /** Set once the code is mailed: the card then asks for it and the new password. */
   const [sent, setSent] = useState(false);
   const [code, setCode] = useState("");
   const [password, setPassword] = useState("");
-  const dirty = Boolean(code || password);
+  const dirty = sent || Boolean(code || password);
   useEffect(() => onDraft(dirty), [dirty, onDraft]);
 
   const sendCode = run("send", async () => {
@@ -400,9 +429,11 @@ function ResetCard({ email, guard, onDraft }: CardProps) {
   const save = run("save", async () => {
     if (!email || !ready) return;
     const error = await resetPassword(email, code, password);
-    if (error) return void appAlert(error, tr.errors.title);
+    // The one error after which the password did change: this device is signed out by it.
+    if (error && error !== tr.auth.passwordResetSignInAgain) return void appAlert(error, tr.errors.title);
     cancel();
-    void appAlert(tr.account.passwordChanged);
+    if (error) return void appAlert((await afterSave(false)) ? error + tr.account.emailChangeDropped : error, tr.errors.title);
+    if (!(await afterSave(true))) void appAlert(tr.account.passwordChanged);
   });
 
   return (

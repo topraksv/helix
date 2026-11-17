@@ -161,6 +161,7 @@ describe("every money screen reports the same dataset the same way", () => {
     ];
     const model = buildCashFlowMatrixModel({
       year: 2026,
+      startMonth: "2026-01",
       yearMonths,
       categories,
       computedColumns: [],

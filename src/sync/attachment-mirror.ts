@@ -141,6 +141,30 @@ let listed = false;
 /** Which account the two above describe, so the next account never reads the last one's listing. */
 let listedFor: string | null = null;
 
+/**
+ * `knownRemote` as of an account's last listing, kept in `sync_state` under
+ * this prefix and the account's id: after a relaunch, or with another account
+ * signed in, no listing can answer for it, and a document sent long ago would
+ * be called lost.
+ */
+const SENT = "attachments-sent:";
+
+async function rememberSent(userId: string): Promise<void> {
+  const sqlite = await getSqliteAsync();
+  await sqlite.runAsync(
+    `INSERT INTO sync_state (table_name, last_pulled_at) VALUES (?, ?)
+     ON CONFLICT(table_name) DO UPDATE SET last_pulled_at = excluded.last_pulled_at`,
+    [SENT + userId, JSON.stringify([...knownRemote])],
+  );
+}
+
+async function sentBefore(userId: string): Promise<Set<string>> {
+  const sqlite = await getSqliteAsync();
+  const row = await sqlite.getFirstAsync<{ last_pulled_at: string }>("SELECT last_pulled_at FROM sync_state WHERE table_name = ?", [SENT + userId]);
+  // Only rememberSent writes this key, always a JSON list of names.
+  return new Set<string>(row ? JSON.parse(row.last_pulled_at) : []);
+}
+
 export async function reconcileAttachments(userId: string, signal?: AbortSignal): Promise<void> {
   const supabase = getSupabase();
   // A second sync starting mid-upload would repeat the upload against a listing it invalidated.
@@ -190,38 +214,46 @@ async function reconcileOnce(
   for (const name of remote) knownRemote.add(name);
   listed = true;
 
-  for (const row of rows) {
-    if (signal?.aborted) return;
-    if (row.deleted_at == null) {
-      if (!remote.has(row.stored_name) && await upload(userId, row, signal)) {
-        knownRemote.add(row.stored_name);
+  // Kept however the pass ends: a removal made before an abort or a throw
+  // must not stay "sent", or an undone delete would be wiped as safe.
+  try {
+    for (const row of rows) {
+      if (signal?.aborted) return;
+      if (row.deleted_at == null) {
+        if (!remote.has(row.stored_name) && await upload(userId, row, signal)) {
+          knownRemote.add(row.stored_name);
+        }
+        continue;
       }
-      continue;
+      if (!remote.has(row.stored_name)) continue;
+      const path = objectPath(userId, row.stored_name);
+      if (!path) continue;
+      const { error } = await supabase.storage.from(BUCKET).remove([path]);
+      if (error) devWarning("attachment.mirror", `remove ${error.message}`);
+      else knownRemote.delete(row.stored_name);
     }
-    if (!remote.has(row.stored_name)) continue;
-    const path = objectPath(userId, row.stored_name);
-    if (!path) continue;
-    const { error } = await supabase.storage.from(BUCKET).remove([path]);
-    if (error) devWarning("attachment.mirror", `remove ${error.message}`);
-    else knownRemote.delete(row.stored_name);
+  } finally {
+    await rememberSent(userId);
   }
 }
 
 /**
  * Documents a sign-out would erase with no copy anywhere: held here, and not
- * seen in the bucket by this session.
+ * seen in the bucket.
  *
- * Before any listing has answered — offline since the app started — that is
- * every document held here, and `verified` is false, so the warning can say
- * it could not check rather than claim they were never sent. Only a listing
- * turns a name into knowledge; an unanswered question is not a yes.
+ * Before this session's listing has answered — offline since the app
+ * started, or another account's documents — the account's last listing
+ * answers, and `verified` is false, so the warning can say it could not check
+ * rather than claim they were never sent. Only a listing turns a name into
+ * knowledge; an unanswered question is not a yes.
  */
 export async function unsentAttachments(userId: string): Promise<{ count: number; verified: boolean }> {
   const live = (await mirrorRows(userId)).filter((row) => row.deleted_at == null).map((row) => row.stored_name);
   if (live.length === 0) return { count: 0, verified: true };
   const verified = listed && listedFor === userId;
+  const sent = verified ? knownRemote : await sentBefore(userId);
   let count = 0;
-  for (const name of await presentAttachments(live)) if (!verified || !knownRemote.has(name)) count += 1;
+  for (const name of await presentAttachments(live)) if (!sent.has(name)) count += 1;
   return { count, verified };
 }
 
@@ -247,13 +279,15 @@ export async function purgeRemoteAttachments(userId: string): Promise<boolean> {
   const paths = [...remote]
     .map((name) => objectPath(userId, name))
     .filter((path): path is string => path !== null);
-  if (paths.length === 0) return true;
-  const { error } = await supabase.storage.from(BUCKET).remove(paths);
-  if (error) {
-    devWarning("attachment.mirror", `purge ${error.message}`);
-    return false;
+  if (paths.length > 0) {
+    const { error } = await supabase.storage.from(BUCKET).remove(paths);
+    if (error) {
+      devWarning("attachment.mirror", `purge ${error.message}`);
+      return false;
+    }
   }
   knownRemote.clear();
   listed = false;
+  await rememberSent(userId);
   return true;
 }

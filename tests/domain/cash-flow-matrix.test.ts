@@ -14,6 +14,7 @@ const matrixModel = (overrides: Partial<Parameters<typeof buildCashFlowMatrixMod
     creditCardIds: new Set(),
     liveCategoryIds: new Set(),
     today: "2026-12-31",
+    startMonth: "2026-01",
     openingLabel: "Ay Başı",
     closingLabel: "Güncel Bakiye",
     ...overrides,
@@ -135,7 +136,7 @@ describe("cash-flow matrix model", () => {
       today: "2026-08-23",
       includePendingInCells: true,
     });
-    const model = (startMonth?: string) => matrixModel({
+    const model = (startMonth: string) => matrixModel({
       yearMonths: ledger,
       today: "2026-08-23",
       startMonth: startMonth as never,
@@ -145,8 +146,6 @@ describe("cash-flow matrix model", () => {
       .toEqual(["2026-07", "2026-08", "2026-09", "2026-10", "2026-11", "2026-12"]);
     // Later years keep every month: the workspace covers all of them.
     expect(model("2025-03").months).toHaveLength(12);
-    // Unspecified start is the old behaviour, so no caller silently changes.
-    expect(model(undefined).months).toHaveLength(12);
   });
 
   /**

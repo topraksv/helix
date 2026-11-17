@@ -10,7 +10,7 @@ export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: "14.5"
+    PostgrestVersion: "14.17"
   }
   graphql_public: {
     Tables: {
@@ -1425,6 +1425,13 @@ export type Database = {
       record_feedback_send: { Args: never; Returns: boolean }
       record_signed_out_feedback_send: { Args: never; Returns: boolean }
       record_usage: { Args: { events: Json }; Returns: undefined }
+      swept_objects: {
+        Args: never
+        Returns: {
+          bucket_id: string
+          name: string
+        }[]
+      }
       sync_cursors: {
         Args: never
         Returns: {

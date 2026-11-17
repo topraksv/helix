@@ -16,8 +16,14 @@ const written = vi.fn(async (_name: string, _bytes: Uint8Array) => {});
 const pruned = vi.fn(async (_live: ReadonlySet<string>) => 0);
 const held = vi.fn(async (_names: readonly string[]) => new Set<string>());
 
+/** `sync_state`, which outlives the module the way the database outlives a launch. */
+const state = new Map<string, string>();
 vi.mock("../../src/db/client", () => ({
-  getSqliteAsync: async () => ({ getAllAsync: (_sql: string, _params: unknown[]) => rows() }),
+  getSqliteAsync: async () => ({
+    getAllAsync: (_sql: string, _params: unknown[]) => rows(),
+    getFirstAsync: async (_sql: string, [key]: [string]) => (state.has(key) ? { last_pulled_at: state.get(key) } : null),
+    runAsync: async (_sql: string, [key, value]: [string, string]) => void state.set(key, value),
+  }),
 }));
 vi.mock("../../src/services/attachment-store", () => ({
   readAttachmentBytes: (name: string) => bytesFor(name),
@@ -54,6 +60,7 @@ async function mirror() {
 
 beforeEach(() => {
   configured = true;
+  state.clear();
   rows.mockResolvedValue([]);
   bytesFor.mockResolvedValue(null);
   held.mockClear().mockResolvedValue(new Set());
@@ -356,6 +363,64 @@ describe("what a sign-out would lose", () => {
     held.mockResolvedValue(new Set([NAME, SENT]));
 
     await expect(unsentAttachments(USER)).resolves.toEqual({ count: 2, verified: false });
+  });
+
+  it("answers, unverified, from the account's last listing once no listing of this launch can", async () => {
+    const first = await mirror();
+    rows.mockResolvedValue([live(NAME), live(SENT)]);
+    held.mockResolvedValue(new Set([NAME, SENT]));
+    storage.list.mockResolvedValue({ data: [{ name: SENT }], error: null });
+    storage.upload.mockResolvedValue({ error: { message: "offline" } });
+    bytesFor.mockResolvedValue(new Uint8Array([1]));
+    await first.reconcileAttachments(USER);
+
+    // A relaunch, or another account signed in: the sent one is not called lost.
+    const { unsentAttachments } = await mirror();
+    await expect(unsentAttachments(USER)).resolves.toEqual({ count: 1, verified: false });
+  });
+
+  it("forgets what was sent once the account's folder is purged", async () => {
+    const first = await mirror();
+    rows.mockResolvedValue([live(SENT)]);
+    held.mockResolvedValue(new Set([SENT]));
+    storage.list.mockResolvedValue({ data: [{ name: SENT }], error: null });
+    await first.reconcileAttachments(USER);
+    await first.purgeRemoteAttachments(USER);
+
+    const { unsentAttachments } = await mirror();
+    await expect(unsentAttachments(USER)).resolves.toEqual({ count: 1, verified: false });
+  });
+
+  it("does not keep a removed document as sent when the pass is cut short", async () => {
+    const first = await mirror();
+    rows.mockResolvedValue([live(SENT)]);
+    storage.list.mockResolvedValue({ data: [{ name: SENT }], error: null });
+    await first.reconcileAttachments(USER);
+
+    const second = await mirror();
+    const cut = new AbortController();
+    rows.mockResolvedValue([dead(SENT), live(NAME)]);
+    storage.remove.mockImplementation(async () => {
+      cut.abort();
+      return { error: null };
+    });
+    await second.reconcileAttachments(USER, cut.signal);
+
+    // The delete is undone; the bucket no longer holds it.
+    rows.mockResolvedValue([live(SENT)]);
+    held.mockResolvedValue(new Set([SENT]));
+    const { unsentAttachments } = await mirror();
+    await expect(unsentAttachments(USER)).resolves.toEqual({ count: 1, verified: false });
+  });
+
+  it("forgets what was sent when the purge finds the folder already empty", async () => {
+    state.set(`attachments-sent:${USER}`, JSON.stringify([SENT]));
+    const { purgeRemoteAttachments, unsentAttachments } = await mirror();
+    rows.mockResolvedValue([live(SENT)]);
+    held.mockResolvedValue(new Set([SENT]));
+    await expect(purgeRemoteAttachments(USER)).resolves.toBe(true);
+
+    await expect(unsentAttachments(USER)).resolves.toEqual({ count: 1, verified: false });
   });
 
   it("does not answer for one account with another's listing", async () => {

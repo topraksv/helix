@@ -264,23 +264,178 @@ async function atServerGeneration(
   return ahead ? level : null;
 }
 
+/**
+ * What the server will never take as sent: a value out of bounds (class 22),
+ * a constraint or a generation it refuses (23), a row the caller may not
+ * write — another account's id, which a restored backup can carry. "Permission
+ * denied for table" is not here: that is a request with no signed-in role,
+ * which a new session fixes.
+ */
+function isRefusal(error: { code?: string; message: string }): boolean {
+  return /^2[23]/.test(error.code ?? "") || (error.code === "42501" && /row-level security/i.test(error.message));
+}
+
+/**
+ * Rows a server cash guard takes in another shape instead of refusing
+ * (migrations 16, 17, 22, 24, 26, 47): an investment operation or profile and
+ * a realized transfer are stored deleted, a category's transfer mark is put
+ * back. Sent after a refused row of the same kind, which the server's cash
+ * lacks, one could be, and the device would take that answer as the user's;
+ * so such rows wait in the outbox while one of the kind waits aside. The
+ * refused row's own newer events still go: they are how it is fixed.
+ */
+function movesCash(table: SyncedTableName, row: Record<string, unknown>): boolean {
+  if (table === "investment_operations" || table === "investment_profiles") return true;
+  if (table === "transactions") return row.type === "transfer" && row.status === "realized";
+  return table === "categories" && row.is_transfer === true;
+}
+
+/** `movesCash` asked of what waits aside, whose payload is the outbox event's. */
+const CASH_ASIDE_SQL = `SELECT row_id FROM sync_dead_letters WHERE reason = 'refused' AND json_valid(payload)
+  AND (table_name IN ('investment_operations', 'investment_profiles')
+    OR (table_name = 'transactions' AND json_extract(payload, '$.type') = 'transfer' AND json_extract(payload, '$.status') = 'realized')
+    OR (table_name = 'categories' AND json_extract(payload, '$.is_transfer') = 1))`;
+
+/** The refused cash rows a push knows of; while any waits, other cash rows wait too. */
+interface CashBlock {
+  refused: Set<string>;
+}
+
+const holdsCash = (cash: CashBlock, table: SyncedTableName, row: Record<string, unknown>) =>
+  cash.refused.size > 0 && movesCash(table, row) && !cash.refused.has(String(row.id));
+
+/**
+ * One statement for the run, and the server takes it whole or not at all.
+ * Refused, it is sent again row by row, so the rows it will take go and only
+ * the one it will not waits aside; before this, one such row stopped every
+ * later push before the pull. After a refused cash row, the run's later cash
+ * rows are held unsent (`movesCash`).
+ */
+async function sendRun(
+  table: SyncedTableName,
+  run: Record<string, unknown>[],
+  cash: CashBlock,
+  token: SessionEpochToken,
+): Promise<{ acknowledged: Record<string, unknown>[]; refused: string[]; held: string[] }> {
+  const send = (rows: Record<string, unknown>[]) =>
+    getSupabase()!
+      .from(table)
+      // prepareOutboundBatch performs table-aware runtime validation. This
+      // cast is the one dynamic-table bridge into generated Supabase types.
+      .upsert(rows as SyncedInsert[], { onConflict: "id" })
+      .select("*")
+      .abortSignal(token.signal);
+  const answered = (rows: Record<string, unknown>[], data: unknown) => {
+    const answer = (data ?? []) as Record<string, unknown>[];
+    if (answer.length !== rows.length) throw new Error(`push ${table}: incomplete acknowledgement`);
+    return answer;
+  };
+  const levelled = async (rows: Record<string, unknown>[]) => {
+    const answer = await send(rows);
+    if (answer.error?.code !== "23514") return answer;
+    const level = await atServerGeneration(table, rows, token);
+    return level ? send(level) : answer;
+  };
+  const whole = await levelled(run);
+  if (!whole.error) return { acknowledged: answered(run, whole.data), refused: [], held: [] };
+  if (!isRefusal(whole.error)) throw new Error(`push ${table}: ${whole.error.message}`);
+  const acknowledged: Record<string, unknown>[] = [];
+  const refused: string[] = [];
+  const held: string[] = [];
+  for (const row of run) {
+    assertActive(token);
+    if (holdsCash(cash, table, row)) {
+      held.push(String(row.id));
+      continue;
+    }
+    // A run of one already had its generation looked at.
+    const one = run.length === 1 ? whole : await levelled([row]);
+    if (!one.error) acknowledged.push(...answered([row], one.data));
+    else if (isRefusal(one.error)) {
+      refused.push(String(row.id));
+      if (movesCash(table, row)) cash.refused.add(String(row.id));
+    } else throw new Error(`push ${table}: ${one.error.message}`);
+  }
+  return { acknowledged, refused, held };
+}
+
+/** Under another account's token every row would be refused and set aside as if it were bad. */
+async function assertSessionIs(userId: string): Promise<void> {
+  const { data, error } = await getSupabase()!.auth.getSession();
+  if (error) throw error;
+  // Worded as an auth failure, so the run refreshes once and then asks for a sign-in rather than retrying for ever.
+  if (data.session?.user.id !== userId) throw new Error("push: not authenticated as this account");
+}
+
+/**
+ * Held: a row already held, its newer events with it; a cash row while a
+ * refused one waits; and a row naming a held one, which the server would
+ * refuse for the missing parent.
+ */
+function holds(table: SyncedTableName, row: Record<string, unknown>, heldRows: Set<string>, cash: CashBlock): boolean {
+  if (heldRows.has(String(row.id)) || holdsCash(cash, table, row)) return true;
+  return Object.entries(row).some(([column, value]) => column.endsWith("_id") && typeof value === "string" && heldRows.has(value));
+}
+
+/** A batch's rows sent run by run; a held row's id joins `heldRows`, which lasts the push. */
+async function sendBatch(
+  table: SyncedTableName,
+  rows: Record<string, unknown>[],
+  heldRows: Set<string>,
+  cash: CashBlock,
+  token: SessionEpochToken,
+): Promise<{ acknowledged: Record<string, unknown>[]; refused: Set<string> }> {
+  const acknowledged: Record<string, unknown>[] = [];
+  const refused = new Set<string>();
+  // One statement gives every row the same columns, and PostgREST writes
+  // null into one a row lacks, so a run of rows of one shape goes at a
+  // time; runs keep the batch's order. Every row has one shape unless a
+  // column is `unpulled`. Holds are asked per run: an earlier run may have
+  // refused a cash row.
+  for (const shaped of runsOfOneShape(rows)) {
+    assertActive(token);
+    const run = shaped.filter((row) => {
+      const held = holds(table, row, heldRows, cash);
+      if (held) heldRows.add(String(row.id));
+      return !held;
+    });
+    if (run.length === 0) continue;
+    const sent = await sendRun(table, run, cash, token);
+    acknowledged.push(...sent.acknowledged);
+    for (const id of sent.refused) refused.add(id);
+    for (const id of sent.held) heldRows.add(id);
+  }
+  return { acknowledged, refused };
+}
+
 async function pushOutbox(userId: string, token: SessionEpochToken): Promise<void> {
-  const supabase = getSupabase()!;
   const sqlite = await getSqliteAsync();
+  await assertSessionIs(userId);
+  // A write committed after a parent table was passed would reach the server
+  // before its parent and be refused for it, so the push takes only what was
+  // queued when it began.
+  const ceiling = (await sqlite.getFirstAsync<{ id: number | null }>("SELECT MAX(id) AS id FROM outbox"))?.id ?? 0;
   // Tables refused per reason across the push: `sync_dead_letters` never leaves the device, so the incident log is the only way to know what is stuck.
   const quarantined = new Map<string, Set<string>>();
+  // Across tables, so a child of a held parent waits with it.
+  const heldRows = new Set<string>();
   // Push per table in FK-safe declaration order, oldest events first.
   for (const table of Object.keys(SYNCED_TABLES) as SyncedTableName[]) {
     // Read with the table's first batch: only a migration writes the mark, and
     // only the pull after this push clears it.
     let unpulled: Map<string, unknown> | undefined;
+    // Held rows stay in the outbox, so the reads move on by id past them, and
+    // a newer event of a held row is held too, never sent before the older.
+    let after = 0;
     for (;;) {
       assertActive(token);
       const events = await sqlite.getAllAsync<{ id: number; payload: string; row_id: string }>(
-        `SELECT id, payload, row_id FROM outbox WHERE table_name = ? ORDER BY id ASC LIMIT ${PUSH_BATCH}`,
-        [table],
+        `SELECT id, payload, row_id FROM outbox WHERE table_name = ? AND id > ? AND id <= ? ORDER BY id ASC LIMIT ${PUSH_BATCH}`,
+        [table, after, ceiling],
       );
       if (events.length === 0) break;
+      after = events.at(-1)!.id;
+      const cash: CashBlock = { refused: new Set((await sqlite.getAllAsync<{ row_id: string }>(CASH_ASIDE_SQL)).map((letter) => letter.row_id)) };
       unpulled ??= await unpulledOf(sqlite, table);
       // Keep only the newest event per row. Invalid/cross-account payloads are
       // quarantined below; they are never silently discarded or sent under the
@@ -289,30 +444,9 @@ async function pushOutbox(userId: string, token: SessionEpochToken): Promise<voi
         ...outboundPolicy(table),
         unpulled,
       });
-      const acknowledged: Record<string, unknown>[] = [];
-      // One statement gives every row the same columns, and PostgREST writes
-      // null into one a row lacks, so a run of rows of one shape goes at a
-      // time; runs keep the batch's order. Every row has one shape unless a
-      // column is `unpulled`.
-      const send = (run: Record<string, unknown>[]) =>
-        supabase
-          .from(table)
-          // prepareOutboundBatch performs table-aware runtime validation. This
-          // cast is the one dynamic-table bridge into generated Supabase types.
-          .upsert(run as SyncedInsert[], { onConflict: "id" })
-          .select("*")
-          .abortSignal(token.signal);
-      for (const run of runsOfOneShape(rows)) {
-        assertActive(token);
-        let { data, error } = await send(run);
-        if (error?.code === "23514") {
-          const level = await atServerGeneration(table, run, token);
-          if (level) ({ data, error } = await send(level));
-        }
-        if (error) throw new Error(`push ${table}: ${error.message}`);
-        const answered = (data ?? []) as Record<string, unknown>[];
-        if (answered.length !== run.length) throw new Error(`push ${table}: incomplete acknowledgement`);
-        acknowledged.push(...answered);
+      const { acknowledged, refused } = await sendBatch(table, rows, heldRows, cash, token);
+      for (const event of pushedEvents) {
+        if (refused.has(event.row_id)) rejected.push({ ...event, reason: "refused" });
       }
       // A sign-out/account switch may have happened while PostgREST was in
       // flight. Never clear the local outbox for a stale session response.
@@ -330,6 +464,10 @@ async function pushOutbox(userId: string, token: SessionEpochToken): Promise<voi
             await upsertLocal(table, remote, allowed);
           }
         }
+        // A clue is only as old as the row it names: once a newer version is taken, it is history.
+        for (const raw of acknowledged) {
+          await sqlite.runAsync("DELETE FROM sync_dead_letters WHERE table_name = ? AND row_id = ?", [table, raw.id as string]);
+        }
         for (const event of rejected) {
           await sqlite.runAsync(
             `INSERT OR IGNORE INTO sync_dead_letters
@@ -338,8 +476,8 @@ async function pushOutbox(userId: string, token: SessionEpochToken): Promise<voi
             [event.id, table, event.row_id, event.payload, event.reason, new Date().toISOString()],
           );
         }
-        const placeholders = events.map(() => "?").join(", ");
-        await sqlite.runAsync(`DELETE FROM outbox WHERE id IN (${placeholders})`, events.map((event) => event.id));
+        const done = events.filter((event) => !heldRows.has(event.row_id)).map((event) => event.id);
+        if (done.length > 0) await sqlite.runAsync(`DELETE FROM outbox WHERE id IN (${done.map(() => "?").join(", ")})`, done);
       });
       for (const event of rejected) {
         const tables = quarantined.get(event.reason) ?? new Set<string>();
@@ -349,7 +487,7 @@ async function pushOutbox(userId: string, token: SessionEpochToken): Promise<voi
     }
   }
   // Grouped by reason rather than per rejected row: the ring holds twelve
-  // events, and there are exactly three reasons, so a push that refuses a
+  // events, and there are exactly four reasons, so a push that refuses a
   // thousand rows still cannot evict the rest of the ring to say so. The table
   // names ride in the message because they survive the fingerprint as tokens.
   for (const [reason, tables] of quarantined) {
@@ -650,7 +788,7 @@ async function runSync(userId: string, token: SessionEpochToken, allowRefresh: b
     // Registered as session work rather than fired loose: this one can spend a
     // while sending a 25 MB file, and a sign-out that wiped the database out
     // from under it would be reading a document that no longer has a row.
-    void runSyncSessionTask(userId, (signal) => reconcileAttachments(userId, signal));
+    void runSyncSessionTask(userId, (signal) => reconcileAttachments(userId, signal)).then(undefined, () => {});
     status.set({
       state: completionState,
       lastSyncAt: new Date().toISOString(),

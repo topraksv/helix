@@ -104,7 +104,10 @@ const client = {
     const answer = { data: [], error: null };
     return Object.assign(Promise.resolve(answer), { abortSignal: async () => answer });
   },
-  auth: { refreshSession: async () => ({ data: { session: null }, error: null }) },
+  auth: {
+    refreshSession: async () => ({ data: { session: null }, error: null }),
+    getSession: async () => ({ data: { session: { user: { id: "11111111-1111-4111-8111-111111111111" } } }, error: null }),
+  },
 };
 vi.mock("../../src/sync/supabase", () => ({ getSupabase: () => client }));
 

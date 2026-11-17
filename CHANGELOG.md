@@ -6,6 +6,15 @@ defterinde yazılıdır ve bu depoya dahil değildir.
 
 Notlar kısa tutulur: ne değişti, tek cümle. Sebebi ve ölçümü commit'te.
 
+## 2.0.5
+
+### Patch Changes
+
+- Sunucunun kabul etmediği tek bir kayıt artık sonraki bütün gönderimleri durdurmuyor; yalnız o kayıt "Bekleyen Kayıtlar"a alınıyor, gerisi gidiyor.
+- Bekleyen bir e-posta değişikliği sırasında şifre değişince geçersiz kalan kodların yerine yenileri kendiliğinden gönderiliyor.
+- Uygulama yeniden açılınca ya da internet yokken, daha önce buluta gönderilmiş belgeler artık "gönderilmemiş" diye uyarılmıyor.
+- Hesap silindikten sonra başka bir cihazın yüklediği belgeler de buluttan en geç bir gün içinde siliniyor.
+
 ## 2.0.4
 
 ### Patch Changes

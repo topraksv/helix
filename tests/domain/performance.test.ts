@@ -100,6 +100,7 @@ describe("large-ledger performance contracts", () => {
     const startedAt = performance.now();
     const model = buildCashFlowMatrixModel({
       year: 2026,
+      startMonth: "2026-01",
       yearMonths: ledger,
       categories: Array.from({ length: 40 }, (_, index) => ({ id: `category-${index}`, name: `Kategori ${index}` })),
       computedColumns: [{
