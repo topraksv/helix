@@ -11,6 +11,8 @@ let db: DatabaseSync | null = null;
 
 vi.mock("react-native", () => ({ Platform: { OS: "web" } }));
 vi.mock("expo-constants", () => ({ default: { expoConfig: { version: "1.1.0" } } }));
+// The engine reaches the write layer for its retry after an update; ids are minted only for new rows.
+vi.mock("../../src/db/ids", () => ({ deterministicId: async (key: string) => key, naturalKeys: {} }));
 vi.mock("../../src/db/client", () => sqliteClientMock(() => db!));
 const logger = vi.hoisted(() => ({ devWarning: vi.fn(), devError: vi.fn() }));
 vi.mock("../../src/services/logger", () => logger);
@@ -451,6 +453,18 @@ describe("which pulled rows win", () => {
     expect(category(OTHER_ID)?.name).toBe("Yerel");
     expect(category(uuid(3))).toEqual(expect.objectContaining({ name: "Yerel", tombstone_version: 2 }));
     expect(useSyncStatus.getState().remoteChangeAt).not.toBeNull();
+  });
+
+  it("does not let the retry after an update overwrite what another device wrote since the row was set aside", async () => {
+    localCategory(ID, "2026-09-02T10:00:00.000Z");
+    db!.prepare("INSERT INTO sync_dead_letters (outbox_id, table_name, row_id, payload, reason, quarantined_at) VALUES (1, 'categories', ?, '{}', 'invalid_row', ?)").run(ID, TS);
+    server.categories = [serverCategory(ID, TS, { name: "Sunucu" })];
+    const { syncNow } = await engine();
+
+    await syncNow(USER, false);
+
+    expect(category(ID)?.name, "pulled before it was requeued").toBe("Sunucu");
+    expect(db!.prepare("SELECT COUNT(*) AS n FROM sync_dead_letters").get()).toEqual({ n: 0 });
   });
 
   it("announces nothing when a pull only adds rows this device never had", async () => {

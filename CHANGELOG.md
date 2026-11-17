@@ -6,6 +6,13 @@ defterinde yazılıdır ve bu depoya dahil değildir.
 
 Notlar kısa tutulur: ne değişti, tek cümle. Sebebi ve ölçümü commit'te.
 
+## 2.0.4
+
+### Patch Changes
+
+- Bu cihazda başka bir hesabın gönderilmemiş kayıtları dururken yeni hesapla giriş yapılınca artık ne silineceği söylenip soruluyor; onaylanırsa giriş yapılıyor. Eskiden o hesap geri gelemiyorsa cihaz kilitli kalıyordu.
+- Güncellemeden sonra, eski sürümün buluta gönderemeyip kenara aldığı kayıtlar bir kez kendiliğinden yeniden gönderiliyor; eskiden Ayarlar'dan tek tek denemek gerekiyordu.
+
 ## 2.0.3
 
 ### Patch Changes

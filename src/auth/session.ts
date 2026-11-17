@@ -123,7 +123,7 @@ const unsentCount = async (userId: string) => (await pendingOutboxCount()) + (aw
  * proceed then, or the previous account's data would remain readable (and the
  * owner marker would go stale).
  */
-async function ensureWorkspaceFor(userId: string): Promise<string | null> {
+async function ensureWorkspaceFor(userId: string, takeOver = false): Promise<string | null> {
   // Read, write and verify: this marker is the only record that the wipe happened. A failed read must not
   // pass for "no previous owner", the answer that skips the wipe and hands the previous account's rows on.
   let owner: string | null;
@@ -134,8 +134,10 @@ async function ensureWorkspaceFor(userId: string): Promise<string | null> {
   }
   if (owner && owner !== userId) {
     // A session the server ended leaves what it never sent, and only its own account can send it. A count
-    // that fails is not a zero; a wipe that already failed is retried, because nobody is left to ask.
-    if (owner !== LOCAL_WIPE_PENDING_OWNER && (await unsentCount(owner).catch(() => {})) !== 0) return tr.errors.otherAccountPending;
+    // that fails is not a zero; a wipe that already failed is retried, because nobody is left to ask. A
+    // takeover the person holding the device confirmed, told what it costs, goes on: an account that
+    // cannot come back would hold the device for good.
+    if (!takeOver && owner !== LOCAL_WIPE_PENDING_OWNER && (await unsentCount(owner).catch(() => {})) !== 0) return tr.errors.otherAccountPending;
     await stopSyncSession();
     disconnectMarkets();
     clearRateCache();
@@ -245,7 +247,8 @@ interface SessionStore {
   /** Login before the current successful session; never the current start. */
   previousLoginAt: string | null;
   bootstrap: () => Promise<void>;
-  signIn: (email: string, password: string) => Promise<string | null>;
+  /** Refuses with `tr.errors.otherAccountPending` while another account's records are unsent here, unless `takeOver`. */
+  signIn: (email: string, password: string, options?: { takeOver?: boolean }) => Promise<string | null>;
   signUp: (email: string, password: string) => Promise<SignUpResult>;
   /** Send a neutral, expiring password-reset code. */
   requestPasswordReset: (email: string) => Promise<string | null>;
@@ -380,12 +383,12 @@ export const useSession = create<SessionStore>((set, get) => ({
     set({ userId: lastUser, email: lastEmail, ready: true, isOnlineSession: false, isNewSignup: false, previousLoginAt });
   },
 
-  signIn: async (email, password) => {
+  signIn: async (email, password, options) => {
     const supabase = getSupabase();
     if (!supabase) return tr.errors.supabaseNotConfigured;
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) return friendlyAuthError(error.message);
-    const wsError = await ensureWorkspaceFor(data.user.id);
+    const wsError = await ensureWorkspaceFor(data.user.id, options?.takeOver);
     if (wsError) {
       await supabase.auth.signOut({ scope: "local" }).catch(() => {});
       return wsError;

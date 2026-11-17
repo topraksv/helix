@@ -10,6 +10,7 @@ import { useSession } from "../../auth/session";
 import { LegalConsentControl, LegalNoticeSheet } from "../../ui/legal-notice";
 import { isSupabaseConfigured } from "../../sync/supabase";
 import { AuthNotice } from "../../ui/auth-notice";
+import { appConfirm } from "../../ui/dialog";
 import { Body, Button, Card, Field, Screen } from "../../ui/components";
 import { useSubmitOnEnter } from "../../ui/keyboard";
 import { clearLifecycleIntent } from "../../ui/lifecycle-intent";
@@ -251,7 +252,13 @@ function useAuthForm() {
   const request = async (typedCode: string): Promise<string | null> => {
     const address = email.trim();
     if (mode === "signIn") {
-      const err = await signIn(address, password);
+      let err = await signIn(address, password);
+      // Whoever holds the device may give up what its last account never sent, once told what goes.
+      if (
+        err === tr.errors.otherAccountPending &&
+        (await appConfirm(tr.auth.takeOverTitle, tr.auth.takeOverBody, { confirmLabel: tr.auth.takeOverConfirm, danger: true }))
+      )
+        err = await signIn(address, password, { takeOver: true });
       if (err !== tr.auth.errEmailNotConfirmed) return err;
       // The account waits on its code: mail a fresh one and ask for it here. A
       // resend refused for coming too soon leaves the code already mailed to type.

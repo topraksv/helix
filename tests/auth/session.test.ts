@@ -718,6 +718,12 @@ describe("switching accounts on one device", () => {
       expect(harness.unsentAttachments.mock.calls.every(([userId]) => userId === USER_B.id), "the previous owner's documents are the ones counted").toBe(true);
     }
 
+    expect(await useSession.getState().signIn(USER_A.email, "pw", { takeOver: true }), "the person holding the device gave them up").toBeNull();
+    expect(harness.log).toEqual(expect.arrayContaining(["wipe", "attachments:erase"]));
+    expect(harness.store.get(OWNER_KEY)).toBe(USER_A.id);
+    reset();
+    harness.supabase.auth.signInWithPassword.mockResolvedValue({ data: { user: USER_A }, error: null });
+
     harness.store.set(OWNER_KEY, "__helix_wipe_pending__");
     expect(await useSession.getState().signIn(USER_A.email, "pw"), "nobody is left to ask").toBeNull();
     expect(harness.log).toContain("wipe");

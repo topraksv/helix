@@ -20,6 +20,8 @@ let statements: string[] = [];
 
 vi.mock("react-native", () => ({ Platform: { OS: "web" } }));
 vi.mock("expo-constants", () => ({ default: { expoConfig: { version: "1.1.0" } } }));
+// The engine reaches the write layer for its retry after an update; ids are minted only for new rows.
+vi.mock("../../src/db/ids", () => ({ deterministicId: async (key: string) => key, naturalKeys: {} }));
 vi.mock("../../src/services/logger", () => ({ devWarning: vi.fn(), devError: vi.fn() }));
 vi.mock("../../src/services/diagnostics", () => ({ uploadDiagnostics: vi.fn(async () => {}) }));
 // Counting screens is piggybacked on the same success path and is equally

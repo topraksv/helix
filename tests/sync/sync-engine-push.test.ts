@@ -44,6 +44,8 @@ const harness = vi.hoisted(() => ({
 
 vi.mock("react-native", () => ({ Platform: harness.platform }));
 vi.mock("expo-constants", () => ({ default: { expoConfig: { extra: {} } } }));
+// The engine reaches the write layer for its retry after an update; ids are minted only for new rows.
+vi.mock("../../src/db/ids", () => ({ deterministicId: async (key: string) => key, naturalKeys: {} }));
 vi.mock("../../src/db/client", async () => {
   const { sqliteClientMock } = await import("../helpers");
   return sqliteClientMock(() => harness.db!);
@@ -481,6 +483,33 @@ describe("what the device refuses to send", () => {
     expect(harness.logger.devWarning.mock.calls.filter(([scope]) => scope === "sync.quarantine").map(([, message]) => message).sort())
       .toEqual(["invalid_row categories", "malformed_payload categories", "wrong_user categories"]);
     expect(useSyncStatus.getState()).toEqual(expect.objectContaining({ state: "attention", error: tr.sync.errQuarantined }));
+  });
+
+  it("sends what an older version set aside once more after an update, and a refusal of its own only once", async () => {
+    const setAside = () => {
+      harness.db!.exec("DELETE FROM outbox");
+      harness.db!.prepare(
+        "INSERT INTO sync_dead_letters (outbox_id, table_name, row_id, payload, reason, quarantined_at) VALUES (1, 'categories', ?, '{}', 'invalid_row', ?)",
+      ).run(ROW, NOW);
+    };
+    queueCategory(ROW);
+    setAside();
+    harness.db!.prepare(
+      "INSERT INTO sync_dead_letters (outbox_id, table_name, row_id, payload, reason, quarantined_at) VALUES (2, 'cell_notes', ?, '{}', 'invalid_row', ?)",
+    ).run(ROW, NOW);
+    harness.db!.prepare("INSERT INTO sync_state (table_name, last_pulled_at) VALUES ('retried:1.9.0', ?)").run(NOW);
+    startSyncSession(USER);
+
+    expect(await syncNow(USER)).toBe(true);
+    expect(harness.calls).toEqual([{ table: "categories", count: 1 }]);
+    expect(deadLetters(), "a note is left to the button, whose retry shortens it").toEqual([{ table_name: "cell_notes", row_id: ROW, reason: "invalid_row" }]);
+    expect(harness.db!.prepare("SELECT table_name FROM sync_state WHERE table_name LIKE 'retried:%'").all(), "one marker, this version's").toEqual([{ table_name: "retried:0" }]);
+
+    setAside();
+    harness.calls = [];
+    await syncNow(USER);
+    expect(harness.calls, "not sent on every sync").toEqual([]);
+    expect(deadLetters()).toHaveLength(2);
   });
 });
 

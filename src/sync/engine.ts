@@ -9,6 +9,7 @@ import Constants from "expo-constants";
 import { getTableColumns } from "drizzle-orm";
 import type { SQLiteBindValue } from "expo-sqlite";
 import { getSqliteAsync, withTransaction } from "../db/client";
+import { requeueSyncDeadLetter } from "../db/mutations";
 import { SYNCED_TABLES, UNPULLED, type SyncedTableName } from "../db/schema";
 import { getSupabase } from "./supabase";
 import { classifyRefreshFailure, completedSyncState, DEAD_LETTER_COUNT_SQL, useSyncStatus, type RefreshOutcome } from "./status";
@@ -557,6 +558,30 @@ export async function stopSyncSession(userId?: string): Promise<void> {
 /** The version the incident happened in, as the table's CHECK will accept it. */
 const APP_VERSION = String(Constants.expoConfig?.version ?? "0").slice(0, 32);
 
+const RETRIED = "retried:";
+
+/**
+ * A refusal is final only for the engine that met it, and the retry is a button few find. A new version
+ * sends what waits aside once more, after its first pull: the requeue stamps the row as edited now, so
+ * before the pull it would overwrite what another device wrote since. A row refused again waits for the
+ * next version, not the next sync. Notes stay with the button, whose retry shortens one past the limit.
+ */
+const RETRIED_KEY = RETRIED + APP_VERSION;
+
+/** What waited aside before this version first pushed, so its own refusals are not sent twice; null once it has had its look. */
+async function asideBeforeUpdate(): Promise<{ id: number }[] | null> {
+  const sqlite = await getSqliteAsync();
+  if (await sqlite.getFirstAsync("SELECT 1 FROM sync_state WHERE table_name = ?", [RETRIED_KEY])) return null;
+  return sqlite.getAllAsync<{ id: number }>("SELECT id FROM sync_dead_letters WHERE table_name <> 'cell_notes'", []);
+}
+
+async function retryAside(userId: string, aside: { id: number }[]): Promise<void> {
+  const sqlite = await getSqliteAsync();
+  for (const { id } of aside) await requeueSyncDeadLetter(userId, id);
+  await sqlite.runAsync("DELETE FROM sync_state WHERE table_name LIKE ?", [`${RETRIED}%`]);
+  await sqlite.runAsync("INSERT INTO sync_state (table_name, last_pulled_at) VALUES (?, ?)", [RETRIED_KEY, new Date().toISOString()]);
+}
+
 function devicePlatform(): DiagnosticUpload["platform"] {
   return Platform.OS === "ios" ? "ios" : Platform.OS === "android" ? "android" : "web";
 }
@@ -598,8 +623,13 @@ async function runSync(userId: string, token: SessionEpochToken, allowRefresh: b
   }
   status.set({ state: "syncing" });
   try {
+    const aside = await asideBeforeUpdate();
     await pushOutbox(userId, token);
     const superseded = await pullAndMerge(userId, token);
+    if (aside) {
+      await retryAside(userId, aside);
+      await pushOutbox(userId, token);
+    }
     assertActive(token);
     const sqlite = await getSqliteAsync();
     const deadLetters = await sqlite.getFirstAsync<{ count: number }>(DEAD_LETTER_COUNT_SQL, []);
