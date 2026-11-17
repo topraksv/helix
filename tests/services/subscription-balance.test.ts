@@ -180,7 +180,7 @@ describe("adding a subscription never moves the current balance", () => {
     expect(transactions[0]).toMatchObject({ status: "realized", effective_date: todayISO() });
     expect(balanceNow()).toBe(OPENING_MINOR - baseInput.amountMinor);
     // Provenance: a charge the app made is recorded apart from one the owner
-    // confirmed. No screen reads it yet; docs/BACKLOG.md holds that decision.
+    // confirmed. The cash-flow month and the cell editor read it.
     expect(autoConfirmedFlag()).toBe(1);
   });
 

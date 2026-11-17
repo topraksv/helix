@@ -369,10 +369,13 @@ describe("release contract", () => {
     expect(mutation).toContain("fetch-depth: 0");
   });
 
-  it("divides the mutation gate across as many runners as the matrix holds", () => {
+  it("divides the mutation gate across a runner per file to mutate, six at most", () => {
     const mutation = job("mutation");
-    const shards = mutation.match(/shard: \[([\d, ]+)\]/)?.[1]?.split(",").map((value) => Number(value.trim()));
-    expect(shards).toEqual(Array.from({ length: shards!.length }, (_, i) => i + 1));
+    // Counted by the classifier from the same scope each shard is dealt from.
+    expect(job("classify")).toContain("Array.from({ length: Math.min(6, Math.max(1, config.mutate.length)) }, (_, i) => i + 1)");
+    expect(job("classify")).toContain("MUTATION_BASE_SHA: ${{ steps.base.outputs.mutation }}");
+    expect(ci).toContain("mutation_shards: ${{ steps.shards.outputs.list }}");
+    expect(mutation).toContain("shard: ${{ fromJSON(needs.classify.outputs.mutation_shards || '[1]') }}");
     expect(mutation).toContain("MUTATION_SHARD: ${{ matrix.shard }}/${{ strategy.job-total }}");
     // A shard dealt nothing skips the pass rather than running it on an empty list.
     expect(mutation).toMatch(/if: steps\.scope\.outputs\.files != '0'\n\s+run: npm run test:mutation:ci/);

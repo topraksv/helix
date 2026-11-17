@@ -50,6 +50,7 @@ const harness = vi.hoisted(() => {
       },
     },
     pendingOutbox: vi.fn(async () => 0),
+    unsentAttachments: vi.fn(async (_userId: string) => ({ count: 0, verified: true })),
     flushOutbox: vi.fn(async (_userId: string) => {}),
     startSyncSession: vi.fn(),
     stopSyncSession: vi.fn(async (userId?: string) => {
@@ -101,7 +102,7 @@ vi.mock("../../src/sync/engine", () => ({
   reconcileAttachments: async () => {
     harness.log.push("attachments:send");
   },
-  unsentAttachments: async () => ({ count: 0, verified: true }),
+  unsentAttachments: harness.unsentAttachments,
   runSyncSessionTask: vi.fn(async (_userId: string, task: (signal: AbortSignal) => Promise<unknown>) => task(new AbortController().signal)),
   startSyncSession: harness.startSyncSession,
   stopSyncSession: harness.stopSyncSession,
@@ -169,6 +170,8 @@ function reset(): void {
   harness.platform.OS = "web";
   harness.pendingOutbox.mockReset();
   harness.pendingOutbox.mockResolvedValue(0);
+  harness.unsentAttachments.mockReset();
+  harness.unsentAttachments.mockResolvedValue({ count: 0, verified: true });
   harness.flushOutbox.mockReset();
   harness.flushOutbox.mockResolvedValue(undefined);
   harness.supabase.auth.getUser.mockReset();
@@ -548,6 +551,49 @@ describe("a session the server ends", () => {
     expect(session.getState()).toMatchObject(SIGNED_OUT);
   });
 
+  it("keeps a workspace with a row or a document never sent behind sign-in, documents and owner with it", async () => {
+    const unsent = [
+      () => harness.pendingOutbox.mockResolvedValue(1),
+      () => harness.pendingOutbox.mockRejectedValue(new Error("disk")),
+      // Its row went up; its bytes have not, or the bucket was never asked.
+      () => harness.unsentAttachments.mockResolvedValue({ count: 1, verified: false }),
+    ];
+    for (const leave of unsent) {
+      reset();
+      const session = await freshSession();
+      await session.getState().bootstrap();
+      openAccount(session);
+      harness.store.set(OWNER_KEY, USER_A.id);
+      harness.log.length = 0;
+      leave();
+
+      harness.authListeners[0]!("SIGNED_OUT");
+      await vi.waitFor(() => expect(harness.log).toContain(`kv:remove:${EMAIL_KEY}`));
+
+      expect(harness.log, "a count that fails is not a zero").toEqual([`stop:${USER_A.id}`, "markets:off", "fx:clear", "notifications:clear:true", `kv:remove:${USER_KEY}`, `kv:remove:${EMAIL_KEY}`]);
+      expect(session.getState()).toMatchObject(SIGNED_OUT);
+      expect(harness.store.get(OWNER_KEY), "only its own account reopens it").toBe(USER_A.id);
+      expect(harness.unsentAttachments.mock.calls.every(([userId]) => userId === USER_A.id)).toBe(true);
+    }
+  });
+
+  it("leaves an account that took over while the unsent rows were counted", async () => {
+    const session = await freshSession();
+    await session.getState().bootstrap();
+    openAccount(session);
+    harness.pendingOutbox.mockImplementationOnce(async () => {
+      session.setState({ userId: USER_B.id });
+      return 1;
+    });
+
+    harness.authListeners[0]!("SIGNED_OUT");
+    await settle();
+    await settle();
+
+    expect(session.getState().userId).toBe(USER_B.id);
+    expect(harness.store.get(USER_KEY)).toBe(USER_A.id);
+  });
+
   it("ignores other events, a closed workspace, and a second sign-out while the first runs", async () => {
     const session = await freshSession();
     await session.getState().bootstrap();
@@ -650,8 +696,31 @@ describe("switching accounts on one device", () => {
 
     expect(await useSession.getState().signIn(USER_A.email, "pw")).toBeNull();
 
-    expect(harness.log.slice(0, harness.log.indexOf("wipe") + 1)).toEqual([`stop:undefined`, ...LEAVE_ACCOUNT]);
+    expect(harness.log.slice(0, harness.log.indexOf("wipe") + 2), "a session the server ended may have left its documents").toEqual([`stop:undefined`, ...LEAVE_ACCOUNT, "attachments:erase"]);
     expect(harness.supabase.auth.signInWithPassword).toHaveBeenCalledWith({ email: USER_A.email, password: "pw" });
+  });
+
+  it("holds another account out while the previous one's rows or documents are unsent, unless its wipe already failed", async () => {
+    const unsent = [
+      () => harness.pendingOutbox.mockResolvedValue(1),
+      () => harness.pendingOutbox.mockRejectedValue(new Error("disk")),
+      () => harness.unsentAttachments.mockResolvedValue({ count: 1, verified: false }),
+    ];
+    for (const leave of unsent) {
+      reset();
+      harness.supabase.auth.signInWithPassword.mockResolvedValue({ data: { user: USER_A }, error: null });
+      harness.store.set(OWNER_KEY, USER_B.id);
+      leave();
+
+      expect(await useSession.getState().signIn(USER_A.email, "pw")).toBe(tr.errors.otherAccountPending);
+      expect(harness.log).not.toContain("wipe");
+      expect(harness.store.get(OWNER_KEY)).toBe(USER_B.id);
+      expect(harness.unsentAttachments.mock.calls.every(([userId]) => userId === USER_B.id), "the previous owner's documents are the ones counted").toBe(true);
+    }
+
+    harness.store.set(OWNER_KEY, "__helix_wipe_pending__");
+    expect(await useSession.getState().signIn(USER_A.email, "pw"), "nobody is left to ask").toBeNull();
+    expect(harness.log).toContain("wipe");
   });
 
   it("adopts an unowned device without erasing it, and never rewrites its own marker", async () => {

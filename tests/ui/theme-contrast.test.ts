@@ -270,7 +270,7 @@ describe("semantic theme contrast", () => {
    * A hover is the quietest thing a control says, and it says it the same way
    * everywhere.
    *
-   * Measured ratios belong in docs/BASELINE.md; the floor here is the rule.
+   * The floor here is the rule.
    * 1.5:1 is what a SELECTED row is allowed, and a pointer passing over
    * something has not selected it.
    *

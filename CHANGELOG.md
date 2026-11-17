@@ -6,6 +6,14 @@ defterinde yazılıdır ve bu depoya dahil değildir.
 
 Notlar kısa tutulur: ne değişti, tek cümle. Sebebi ve ölçümü commit'te.
 
+## 2.0.3
+
+### Patch Changes
+
+- Şifre başka bir cihazdan değiştirilince ya da oturum sunucuda kapanınca buluta gitmemiş kayıtlar ve belgeler artık silinmiyor; aynı hesapla yeniden girince gönderiliyor.
+- Bu cihazda bir hesabın gönderilmemiş kayıtları dururken başka bir hesapla giriş yapılamıyor; önce o hesabın eşitlenmesi isteniyor.
+- Hesap dondurulamayınca çıkan uyarı, gönderilemeyen kayıtların Ayarlar'da nerede görüleceğini de söylüyor.
+
 ## 2.0.2
 
 ### Patch Changes

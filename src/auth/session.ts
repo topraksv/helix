@@ -112,6 +112,9 @@ async function forgetAccount(): Promise<void> {
   for (const key of [LOCAL_OWNER_KEY, LAST_USER_KEY, LAST_EMAIL_KEY]) await kv.remove(key).catch(() => {});
 }
 
+/** What only this device holds: rows the server lacks, and documents the bucket was not seen to hold. */
+const unsentCount = async (userId: string) => (await pendingOutboxCount()) + (await unsentAttachments(userId)).count;
+
 /**
  * Ensure the local DB belongs to `userId`. If a different account previously
  * used this device, wipe the local workspace so its rows never sync under the
@@ -130,6 +133,9 @@ async function ensureWorkspaceFor(userId: string): Promise<string | null> {
     return tr.errors.workspaceOwnerUnrecorded;
   }
   if (owner && owner !== userId) {
+    // A session the server ended leaves what it never sent, and only its own account can send it. A count
+    // that fails is not a zero; a wipe that already failed is retried, because nobody is left to ask.
+    if (owner !== LOCAL_WIPE_PENDING_OWNER && (await unsentCount(owner).catch(() => {})) !== 0) return tr.errors.otherAccountPending;
     await stopSyncSession();
     disconnectMarkets();
     clearRateCache();
@@ -137,6 +143,8 @@ async function ensureWorkspaceFor(userId: string): Promise<string | null> {
     await clearAccountScopedDeviceState();
     try {
       await resetLocalWorkspace();
+      // A wipe that failed under a session the server ended may have left its documents.
+      await eraseDeviceAttachments();
     } catch {
       return tr.errors.workspaceResetFailed;
     }
@@ -162,9 +170,9 @@ async function ensureWorkspaceFor(userId: string): Promise<string | null> {
  * runs only for an open session — a signed-out device kept every receipt
  * readable until somebody next signed in.
  */
-async function endLocalSession(): Promise<void> {
+async function endLocalSession(eraseDocuments = true): Promise<void> {
   useSession.setState({ userId: null, email: null, isOnlineSession: false, isNewSignup: false, isFreezing: false, previousLoginAt: null });
-  await eraseDeviceAttachments();
+  if (eraseDocuments) await eraseDeviceAttachments();
 }
 
 /** A revoked/deleted remote session must stop exposing its cached workspace
@@ -179,18 +187,28 @@ async function clearInvalidatedSession(): Promise<void> {
   disconnectMarkets();
   clearRateCache();
   await clearAccountNotifications(true).catch(() => {});
-  await clearAccountScopedDeviceState();
-  try {
-    await resetLocalWorkspace();
-  } catch {
-    // Keep a non-user owner marker so BOTH a different account and this same
-    // account must retry the wipe before any cached rows can be reopened.
-    await kv.set(LOCAL_OWNER_KEY, LOCAL_WIPE_PENDING_OWNER).catch(() => {});
+  // A count that fails is not a zero.
+  if ((await unsentCount(userId).catch(() => {})) === 0) {
+    await clearAccountScopedDeviceState();
+    try {
+      await resetLocalWorkspace();
+    } catch {
+      // Keep a non-user owner marker so BOTH a different account and this same
+      // account must retry the wipe before any cached rows can be reopened.
+      await kv.set(LOCAL_OWNER_KEY, LOCAL_WIPE_PENDING_OWNER).catch(() => {});
+    }
+    if (useSession.getState().userId !== userId) return;
+    // Whether or not the rows were wiped: a retried wipe does not need the
+    // documents, and nobody is signed in to read them.
+    await endLocalSession();
+  } else {
+    // Rows and documents never sent exist nowhere else, and a password changed
+    // on another device ends this session without asking. They stay behind
+    // sign-in, still owned: the same account's next sign-in sends them, and
+    // `ensureWorkspaceFor` holds any other account out until it has.
+    if (useSession.getState().userId !== userId) return;
+    await endLocalSession(false);
   }
-  if (useSession.getState().userId !== userId) return;
-  // Whether or not the rows were wiped: a retried wipe does not need the
-  // documents, and nobody is signed in to read them.
-  await endLocalSession();
   await kv.remove(LAST_USER_KEY);
   await kv.remove(LAST_EMAIL_KEY);
 }
@@ -474,7 +492,7 @@ export const useSession = create<SessionStore>((set, get) => ({
       !options?.force &&
       isSupabaseConfigured &&
       (await pendingChangesWouldBeLost({
-        pendingCount: async () => (await pendingOutboxCount()) + (await unsentAttachments(userId)).count,
+        pendingCount: () => unsentCount(userId),
         flush: () => Promise.allSettled([flushOutbox(userId), reconcileAttachments(userId)]),
       }))
     ) {

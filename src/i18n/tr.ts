@@ -282,6 +282,7 @@ export const tr = {
     backupTooLarge: "Yedek dosyası güvenli içe aktarma sınırını aşıyor.",
     workbookTooLarge: "Kayıtların tek bir Excel dosyasına sığmayacak kadar çok. Tam yedek al: JSON yedeği bu sınıra takılmaz.",
     workspaceResetFailed: "Cihazdaki önceki hesabın verileri temizlenemedi; giriş yapılamadı. Lütfen tekrar dene.",
+    otherAccountPending: "Bu cihazda başka bir hesabın henüz buluta gönderilmemiş kayıtları var. Önce o hesapla giriş yapıp eşitlenmesini bekle, sonra çıkış yap.",
     workspaceOwnerUnrecorded: "Bu cihaz çalışma alanının kime ait olduğunu kaydedemedi; giriş yapılamadı. Tarayıcı ayarlarında site verilerine izin ver ya da cihazı yeniden başlatıp tekrar dene.",
     fxUnavailable: "Döviz kuru henüz alınamadı. İnternete bağlanınca tekrar dene.",
     saveFailed: "Kaydedilemedi. Lütfen tekrar dene.",
@@ -424,7 +425,7 @@ export const tr = {
     freezeDialogCloseDetail: "Son değişiklikler korunmadan işlem tamamlanmaz.",
     freezeDialogReturnTitle: "Tekrar girişte devam edersin",
     freezeDialogReturnDetail: "Hesabını yeniden açmak için aynı hesapla giriş yapman yeterli.",
-    freezeSyncFailed: "Gönderilmemiş kayıtlar güvenle buluta aktarılamadı. Hesap dondurulmadı; internet bağlantını kontrol edip tekrar dene.",
+    freezeSyncFailed: "Gönderilmemiş kayıtlar güvenle buluta aktarılamadı. Hesap dondurulmadı; internet bağlantını kontrol edip tekrar dene; sorun sürerse Ayarlar'da \"Bu cihazda kalan kayıtlar\"a bak.",
     freezeRollbackFailed:
       "Hesap dondurulamadı ve bu cihazdaki dondurma işareti geri alınamadı. Uygulamayı yeniden başlat; sorun sürerse çıkış yapıp tekrar giriş yap.",
     frozenTitle: "Hesabın donduruldu",

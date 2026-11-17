@@ -87,8 +87,9 @@ describe("account-scoped state and redaction wiring", () => {
       expect(declared, `helix.last.${type} must be cleared on sign-out`).toContain(`"helix.last.${type}"`);
     }
     // Sign-out, account deletion, remote invalidation and account switch all
-    // reach the same reset; a fifth teardown path added without it would show up
-    // here as a count mismatch rather than as a silent leak.
+    // reach the same reset — remote invalidation only when nothing unsent keeps
+    // the workspace for its account. A fifth teardown path added without it
+    // would show up here as a count mismatch rather than as a silent leak.
     // Every call, awaited alone or inside a `Promise.all`; not the declaration.
     expect(session.match(/clearAccountScopedDeviceState\(\)(?!:)/g)).toHaveLength(4);
     // Assert the rule, not the literal: EVERY field the sync status store holds
