@@ -35,6 +35,7 @@ const harness = vi.hoisted(() => ({
   reads: 0,
   /** Whose session the client holds. */
   sessionUser: "11111111-1111-4111-8111-111111111111" as string | null,
+  sessionError: null as { message: string } | null,
   rpcArgs: [] as unknown[],
   kv: new Map<string, string>(),
   configured: true,
@@ -144,7 +145,7 @@ vi.mock("../../src/sync/supabase", () => ({
         },
         auth: {
           refreshSession: harness.refresh,
-          getSession: async () => ({ data: { session: harness.sessionUser ? { user: { id: harness.sessionUser } } : null }, error: null }),
+          getSession: async () => ({ data: { session: harness.sessionUser ? { user: { id: harness.sessionUser } } : null }, error: harness.sessionError }),
         },
       }
     : null,
@@ -209,6 +210,7 @@ beforeEach(async () => {
   harness.upserts = [];
   harness.rpcs = [];
   harness.sessionUser = USER;
+  harness.sessionError = null;
   harness.reads = 0;
   harness.rpcArgs = [];
   harness.kv = new Map();
@@ -417,6 +419,139 @@ describe("what leaves the outbox", () => {
     expect(outboxCount(), "nothing of its kind waits now").toBe(0);
   });
 
+  /** A cash row waits aside, as an earlier push left it; the version's one retry of such rows is already spent. */
+  function setAsideCash(table: string, payload: Record<string, unknown>): void {
+    harness.db!.prepare(
+      "INSERT INTO sync_dead_letters (outbox_id, table_name, row_id, payload, reason, quarantined_at) VALUES (99, ?, ?, ?, 'refused', ?)",
+    ).run(table, "01a06b2c-0000-7000-8000-0000000000ff", JSON.stringify(payload), NOW);
+    harness.db!.prepare("INSERT OR IGNORE INTO sync_state (table_name, last_pulled_at) VALUES ('retried:0', ?)").run(NOW);
+  }
+
+  const queueTransaction = (rowId: string, fields: Record<string, unknown>) => queueEvent(rowId, JSON.stringify({
+    id: rowId, user_id: USER, created_at: NOW, updated_at: NOW, deleted_at: null, tombstone_version: 0,
+    type: "expense", amount_minor: 10_000, currency: "TRY", fx_rate: null, amount_try_minor: 10_000,
+    entry_date: "2026-07-03", purchase_date: null, effective_date: "2026-07-03", status: "realized",
+    category_id: null, payment_source_id: null, person_id: "01a06b2c-0000-7000-8000-0000000000aa",
+    installment_plan_id: null, installment_no: null, card_statement_id: null, subscription_id: null,
+    is_aggregate: 0, note: null, ...fields,
+  }), "transactions");
+
+  it.each([
+    ["investment_operations", {
+      product_id: "01a06b2c-0000-7000-8000-0000000000bb", kind: "buy", operation_date: "2026-07-03", quantity: "2",
+      unit_price_minor: 10_000, total_minor: 20_000, cost_basis_minor: 0, realized_profit_loss_minor: 0, note: null, import_key: null,
+    }],
+    ["investment_profiles", { started_on: "2026-01-01", opening_cash_minor: 0 }],
+  ] as const)("holds an %s row while any cash row waits aside", async (table, fields) => {
+    const id = "01a06b2c-0000-7000-8000-000000000001";
+    setAsideCash(table, {});
+    queueEvent(id, JSON.stringify({ id, user_id: USER, created_at: NOW, updated_at: NOW, deleted_at: null, tombstone_version: 0, ...fields }), table);
+    startSyncSession(USER);
+
+    await syncNow(USER, false);
+
+    expect(harness.calls, "never sent, so a cash guard cannot store it deleted").toEqual([]);
+    expect(harness.db!.prepare("SELECT row_id FROM outbox").all()).toEqual([{ row_id: id }]);
+  });
+
+  it("holds only a realized transfer among the transactions while a cash row waits aside", async () => {
+    const held = "01a06b2c-0000-7000-8000-000000000001";
+    const pendingTransfer = "01a06b2c-0000-7000-8000-000000000002";
+    const realizedExpense = "01a06b2c-0000-7000-8000-000000000003";
+    setAsideCash("transactions", { type: "transfer", status: "realized" });
+    queueTransaction(held, { type: "transfer", status: "realized" });
+    queueTransaction(pendingTransfer, { type: "transfer", status: "pending" });
+    queueTransaction(realizedExpense, { type: "expense", status: "realized" });
+    startSyncSession(USER);
+
+    await syncNow(USER, false);
+
+    expect(harness.calls, "the two that no guard takes in another shape go as one run").toEqual([{ table: "transactions", count: 2 }]);
+    expect(harness.db!.prepare("SELECT row_id FROM outbox").all()).toEqual([{ row_id: held }]);
+  });
+
+  it("sends a cash row after a refused row that moves no cash", async () => {
+    const before = "01a06b2c-0000-7000-8000-000000000001";
+    const theirs = "01a06b2c-0000-7000-8000-000000000002";
+    const after = "01a06b2c-0000-7000-8000-000000000003";
+    // Not the first run of this version, whose second push would send a row held in the first.
+    harness.db!.prepare("INSERT INTO sync_state (table_name, last_pulled_at) VALUES ('retried:0', ?)").run(NOW);
+    // A cash row on each side of the refused one, so one follows it in any order the run is sent in.
+    queueCategory(before, { is_transfer: 1 });
+    queueCategory(theirs);
+    queueCategory(after, { is_transfer: 1 });
+    harness.onUpsert = (_table, rows) => rows.some((each) => each.id === theirs)
+      ? { data: null, error: { message: "new row violates row-level security policy for table \"categories\"", code: "42501" } }
+      : { data: rows, error: null };
+    startSyncSession(USER);
+
+    await syncNow(USER, false);
+
+    expect(harness.calls.map((call) => call.count), "the run, then each row alone").toEqual([3, 1, 1, 1]);
+    expect(outboxCount()).toBe(0);
+  });
+
+  it("does not hold a row because a column that is no reference holds a held row's id", async () => {
+    const refused = "01a06b2c-0000-7000-8000-000000000001";
+    const later = "01a06b2c-0000-7000-8000-000000000002";
+    const plain = "01a06b2c-0000-7000-8000-000000000003";
+    const note = "01a06b2c-0000-7000-8000-000000000004";
+    queueCategory(refused, { is_transfer: 1 });
+    queueCategory(later, { is_transfer: 1 });
+    queueCategory(plain);
+    queueEvent(note, JSON.stringify({
+      id: note, user_id: USER, created_at: NOW, updated_at: NOW, deleted_at: null, tombstone_version: 0,
+      month: "2026-09", category_id: plain, body: later,
+    }), "cell_notes");
+    harness.onUpsert = (_table, rows) => rows.some((each) => each.id === refused)
+      ? { data: null, error: { message: "new row violates row-level security policy for table \"categories\"", code: "42501" } }
+      : { data: rows, error: null };
+    startSyncSession(USER);
+
+    await syncNow(USER, false);
+
+    expect(harness.calls.at(-1), "the note names a sent category, and only its text is a held id").toEqual({ table: "cell_notes", count: 1 });
+    expect(harness.db!.prepare("SELECT row_id FROM outbox").all()).toEqual([{ row_id: later }]);
+  });
+
+  it.each([
+    ["a code that only contains the class", { message: "bad", code: "40022" }],
+    ["row-level security under no code", { message: "violates row-level security policy", code: "" }],
+  ])("keeps the run for %s, which is not a refusal", async (_name, error) => {
+    queueCategory("01a06b2c-0000-7000-8000-000000000001");
+    queueCategory("01a06b2c-0000-7000-8000-000000000002");
+    harness.onUpsert = () => ({ data: null, error });
+    startSyncSession(USER);
+
+    expect(await syncNow(USER, false)).toBe(false);
+
+    expect(harness.calls, "the run was asked once, not row by row").toHaveLength(1);
+    expect(outboxCount()).toBe(2);
+    expect(deadLetters()).toEqual([]);
+  });
+
+  it("stops when the session cannot be read, rather than sending under it", async () => {
+    queueCategory(ROW);
+    harness.sessionError = { message: "storage unreadable" };
+    startSyncSession(USER);
+
+    expect(await syncNow(USER, false)).toBe(false);
+
+    expect(harness.calls).toEqual([]);
+    expect(outboxCount()).toBe(1);
+  });
+
+  it("asks for a sign-in when the client holds no session at all", async () => {
+    queueCategory(ROW);
+    harness.sessionUser = null;
+    startSyncSession(USER);
+
+    expect(await syncNow(USER, false)).toBe(false);
+
+    expect(useSyncStatus.getState().error).toBe(tr.sync.errReauth);
+    expect(harness.calls).toEqual([]);
+  });
+
   it("sends nothing under another account's session", async () => {
     queueCategory(ROW);
     harness.sessionUser = OTHER;
@@ -463,6 +598,7 @@ describe("what leaves the outbox", () => {
 
     expect(await syncNow(USER, false)).toBe(false);
 
+    expect(harness.logger.devError).toHaveBeenCalledWith("sync", "push categories: Network request failed");
     expect(outboxCount(), "nothing set aside for a failure a later sync can pass").toBe(2);
     expect(deadLetters()).toEqual([]);
   });

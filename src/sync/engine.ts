@@ -272,7 +272,7 @@ async function atServerGeneration(
  * which a new session fixes.
  */
 function isRefusal(error: { code?: string; message: string }): boolean {
-  return /^2[23]/.test(error.code ?? "") || (error.code === "42501" && /row-level security/i.test(error.message));
+  return /^2[23]/.test(String(error.code)) || (error.code === "42501" && /row-level security/i.test(error.message));
 }
 
 /**
@@ -287,7 +287,7 @@ function isRefusal(error: { code?: string; message: string }): boolean {
 function movesCash(table: SyncedTableName, row: Record<string, unknown>): boolean {
   if (table === "investment_operations" || table === "investment_profiles") return true;
   if (table === "transactions") return row.type === "transfer" && row.status === "realized";
-  return table === "categories" && row.is_transfer === true;
+  return row.is_transfer === true;
 }
 
 /** `movesCash` asked of what waits aside, whose payload is the outbox event's. */
@@ -374,7 +374,7 @@ async function assertSessionIs(userId: string): Promise<void> {
  */
 function holds(table: SyncedTableName, row: Record<string, unknown>, heldRows: Set<string>, cash: CashBlock): boolean {
   if (heldRows.has(String(row.id)) || holdsCash(cash, table, row)) return true;
-  return Object.entries(row).some(([column, value]) => column.endsWith("_id") && typeof value === "string" && heldRows.has(value));
+  return Object.entries(row).some(([column, value]) => column.endsWith("_id") && heldRows.has(value as string));
 }
 
 /** A batch's rows sent run by run; a held row's id joins `heldRows`, which lasts the push. */
@@ -414,7 +414,7 @@ async function pushOutbox(userId: string, token: SessionEpochToken): Promise<voi
   // A write committed after a parent table was passed would reach the server
   // before its parent and be refused for it, so the push takes only what was
   // queued when it began.
-  const ceiling = (await sqlite.getFirstAsync<{ id: number | null }>("SELECT MAX(id) AS id FROM outbox"))?.id ?? 0;
+  const ceiling = (await sqlite.getFirstAsync<{ id: number }>("SELECT COALESCE(MAX(id), 0) AS id FROM outbox"))!.id;
   // Tables refused per reason across the push: `sync_dead_letters` never leaves the device, so the incident log is the only way to know what is stuck.
   const quarantined = new Map<string, Set<string>>();
   // Across tables, so a child of a held parent waits with it.
@@ -477,7 +477,7 @@ async function pushOutbox(userId: string, token: SessionEpochToken): Promise<voi
           );
         }
         const done = events.filter((event) => !heldRows.has(event.row_id)).map((event) => event.id);
-        if (done.length > 0) await sqlite.runAsync(`DELETE FROM outbox WHERE id IN (${done.map(() => "?").join(", ")})`, done);
+        await sqlite.runAsync(`DELETE FROM outbox WHERE id IN (${done.map(() => "?").join(", ")})`, done);
       });
       for (const event of rejected) {
         const tables = quarantined.get(event.reason) ?? new Set<string>();
