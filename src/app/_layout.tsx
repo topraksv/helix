@@ -55,7 +55,7 @@ import { UndoSnackbar, useUndo } from "../ui/undo";
 import { tr } from "../i18n/tr";
 import { loadDevicePreferences } from "../services/device-preferences";
 import { DelayedLoadingIndicator, LoadingIndicator } from "../ui/loading-indicator";
-import { Launch } from "../ui/launch";
+import { Launch, useMarkDrawn } from "../ui/launch";
 import { HeaderBackButton, TransactionBackButton } from "../ui/header-back";
 import { pageScreenOptions } from "../ui/header-bar";
 
@@ -539,14 +539,16 @@ function RootLayoutInner({ launching, onSettled }: { launching: boolean; onSettl
       (frozenState.status === "error" && !frozenState.updatedAt)),
   );
 
+  // The first screen waits for the mark to finish drawing; so does anything that navigates in it.
+  const drawn = useMarkDrawn();
   useWorkspaceMaintenance(ready, userId, locked === false);
   useForegroundSync(ready, userId, locked === false);
   useMarketLifecycle(ready, userId, locked === false);
-  useNavigationAcrossLock(locked, guard.view === "stack" && !frozenGate && !guardQueryFailed, userId);
+  useNavigationAcrossLock(locked, drawn && guard.view === "stack" && !frozenGate && !guardQueryFailed, userId);
   // A tapped reminder opens the record it named. Pushed, not replaced: the
   // screen underneath stays the app the user was already in, so Back and the
   // edge swipe return there rather than closing the app.
-  useNotificationTapRouting(ready, userId, locked === false, (route) =>
+  useNotificationTapRouting(ready && drawn, userId, locked === false, (route) =>
     router.push(route as Parameters<typeof router.push>[0]));
 
   // A redirect only comes with the wait view, so no Stack is mounted and the
@@ -562,6 +564,7 @@ function RootLayoutInner({ launching, onSettled }: { launching: boolean; onSettl
   // stays over these, since dissolving into an empty page and then popping the
   // screen in is the flash it exists to hide.
   const blank =
+    !drawn ||
     !ready ||
     locked === null ||
     (!locked && !frozenGate && !guardQueryFailed && !awaitingFirstPull && guard.view === "wait");
@@ -570,7 +573,8 @@ function RootLayoutInner({ launching, onSettled }: { launching: boolean; onSettl
   }, [blank, onSettled]);
 
   // Only a cold start reaches this: `ready` and a resolved `locked` never revert, so the launch screen above covers it.
-  if (!ready || locked === null) {
+  // Or, on a cold start, the mark is still drawing (`useMarkDrawn`).
+  if (!drawn || !ready || locked === null) {
     return <View style={{ flex: 1, backgroundColor: theme.palette.background }} />;
   }
 

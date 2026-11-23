@@ -89,7 +89,7 @@ function Name({ id, art, ink, written }: { id: string; art: Art; ink: string; wr
  * than an animated value: a mask's stroke is not a prop the native driver can
  * reach, and under two seconds of re-renders on one small tree costs nothing.
  */
-function useIntro(duration: number | undefined, ready: boolean): number | null {
+function useIntro(duration: number | undefined, ready: boolean, onDrawn?: () => void): number | null {
   const reducedMotion = useReducedMotion();
   const [elapsed, setElapsed] = useState<number | null>(0);
   useEffect(() => {
@@ -98,13 +98,18 @@ function useIntro(duration: number | undefined, ready: boolean): number | null {
     let frame = 0;
     const tick = () => {
       const now = Date.now() - start;
-      if (now >= duration) return setElapsed(null);
+      if (now >= duration) {
+        setElapsed(null);
+        // A frame later, so the mark at rest is on screen before what waits on it.
+        if (onDrawn) frame = requestAnimationFrame(onDrawn);
+        return;
+      }
       setElapsed(now);
       frame = requestAnimationFrame(tick);
     };
     frame = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(frame);
-  }, [reducedMotion, duration, ready]);
+  }, [reducedMotion, duration, ready, onDrawn]);
   return reducedMotion || duration === undefined ? null : elapsed;
 }
 
@@ -129,9 +134,12 @@ export function BrandMark({
   height,
   duration,
   named = false,
+  onDrawn,
 }: {
   height: number;
   named?: boolean;
+  /** Called on the intro's last frame, by the clock that draws it. */
+  onDrawn?: () => void;
   /** The whole intro in milliseconds, the kit's timeline scaled evenly to fit.
    *  Omitted, the mark is drawn at rest: it draws itself on
    *  a cold start and nowhere else. */
@@ -142,7 +150,7 @@ export function BrandMark({
   const { leaves } = TIMELINE;
   const natural = leaves.at + leaves.every * ((drawing?.LEAVES.length ?? 1) - 1) + leaves.for;
   const pace = (duration ?? natural) / natural;
-  const elapsed = useIntro(duration, drawing !== undefined);
+  const elapsed = useIntro(duration, drawing !== undefined, onDrawn);
   // `useId` answers with colons, which a `url(#…)` reference cannot hold.
   const id = useId().replace(/[^a-zA-Z0-9]/g, "");
   const progress = (start: number, length: number) => (elapsed === null ? 1 : easeOut(Math.min(1, Math.max(0, (elapsed - start * pace) / (length * pace)))));

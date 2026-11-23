@@ -1,6 +1,6 @@
 /** Cold start: the mark draws itself on the native splash's bare ground, then dissolves once the root is ready and the drawing has rested. It is the only boot indicator, so the gates beneath draw nothing. */
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { Animated, Easing, Platform, StyleSheet, type ViewStyle } from "react-native";
 import * as SplashScreen from "expo-splash-screen";
 
@@ -26,6 +26,25 @@ const LAUNCH = { draw: 2000, rest: 300, fade: 400 } as const;
  *  that arrives late is cut off, not waited for. */
 const HOLD_CEILING = LAUNCH.draw + LAUNCH.rest;
 
+let drawn = false;
+const listeners = new Set<() => void>();
+const subscribe = (listener: () => void) => (listeners.add(listener), () => void listeners.delete(listener));
+function markDrawn() {
+  if (drawn) return;
+  drawn = true;
+  for (const listener of listeners) listener();
+}
+
+/**
+ * Whether the mark has finished drawing. The first screen mounts only then:
+ * mounted mid-draw, its render held the JavaScript thread for a frame of
+ * 80–120 ms (web export, CPU slowed 4×), and the drawing jumped. Mounted in
+ * the rest after it, the same work lands while nothing moves.
+ */
+export function useMarkDrawn(): boolean {
+  return useSyncExternalStore(subscribe, () => drawn, () => false);
+}
+
 function hideSplash() {
   SplashScreen.hideAsync().catch(() => {});
 }
@@ -38,13 +57,23 @@ export function Launch({ settled, onGone }: { settled: boolean; onGone: () => vo
   const [opacity] = useState(() => new Animated.Value(1));
   const leaving = settled && (held || reducedMotion);
 
+  // Reduced motion draws the mark at rest: there is nothing to wait for.
+  useEffect(() => {
+    if (reducedMotion) markDrawn();
+  }, [reducedMotion]);
+
   useEffect(() => {
     let live = true;
     // A rejected chunk still ends the wait: the ground alone is the splash
     // without its symbol, and the app behind it is what matters.
     const show = () => live && setDrawable(true);
     preloadBrandMark().then(show, show);
-    const timer = setTimeout(() => setHeld(true), HOLD_CEILING);
+    // The ceiling also ends the hold on the first screen, should the
+    // drawing's own clock not report its last frame.
+    const timer = setTimeout(() => {
+      markDrawn();
+      setHeld(true);
+    }, HOLD_CEILING);
     return () => {
       live = false;
       clearTimeout(timer);
@@ -65,6 +94,7 @@ export function Launch({ settled, onGone }: { settled: boolean; onGone: () => vo
     // Again, directly: unmounting cancels the frame above, and a native splash
     // left up over a ready app is an app that looks dead.
     hideSplash();
+    markDrawn();
     if (reducedMotion) {
       onGone();
       return;
@@ -114,7 +144,7 @@ export function Launch({ settled, onGone }: { settled: boolean; onGone: () => vo
           : { opacity },
       ]}
     >
-      {drawable && <BrandMark height={MARK_HEIGHT} duration={LAUNCH.draw} named />}
+      {drawable && <BrandMark height={MARK_HEIGHT} duration={LAUNCH.draw} named onDrawn={markDrawn} />}
     </Animated.View>
   );
 }

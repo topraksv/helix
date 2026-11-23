@@ -10,6 +10,7 @@ Notlar kısa tutulur: ne değişti, tek cümle. Sebebi ve ölçümü commit'te.
 
 ### Patch Changes
 
+- Açılışta logo çizilirken görülen kısa takılma giderildi; ilk ekran artık çizim bittikten sonra hazırlanıyor.
 - Expo SDK 58'in son düzeltme sürümleri kuruldu; web'de arkada kalan ekran artık dokunuş ve klavye odağı almıyor.
 
 ## 2.0.5
