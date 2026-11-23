@@ -9,6 +9,7 @@ import {
   openRouteForAudit,
   pickOption,
   routeRedirectProblem,
+  onFocusedScreen,
 } from "./helpers";
 
 test.beforeEach(async ({ context }) => isolateExternalData(context));
@@ -35,7 +36,7 @@ test("canonical interactive primitives retain visible keyboard focus @cross-brow
   const errors = collectRuntimeErrors(page);
   await onboard(page);
 
-  await expectKeyboardFocusVisible(page, page.getByRole("button", { name: /İşlem Ekle/ }).first());
+  await expectKeyboardFocusVisible(page, onFocusedScreen(page.getByRole("button", { name: /İşlem Ekle/ })).first());
 
   await page.goto("/helix/transaction");
   await expect(page.getByRole("heading", { name: "Yeni İşlem" })).toBeVisible();

@@ -2,7 +2,7 @@
   "expo": {
     "name": "Helix",
     "slug": "helix",
-    "version": "2.0.5",
+    "version": "2.0.6",
     "orientation": "default",
     "icon": "./assets/icon.png",
     "scheme": "helix",

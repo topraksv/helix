@@ -6,6 +6,10 @@ const istanbulToday = () => new Intl.DateTimeFormat("en-CA", { timeZone: "Europe
 
 export const currentMonthKey = () => istanbulToday().slice(0, 7);
 
+// expo-router 58.0.31 closes the screen left behind on web with `inert` rather than `aria-hidden`, and a role query
+// still finds an inert subtree: without this, the screen underneath answers too.
+export const onFocusedScreen = (locator: Locator): Locator => locator.and(locator.page().locator(":not([inert], [inert] *)"));
+
 /** Unpadded: the form field takes a number, not a calendar string. */
 export const currentIstanbulDay = () => String(Number(istanbulToday().slice(8)));
 
@@ -163,7 +167,7 @@ export async function addMarketExpense(
   category: string | RegExp = /Market/,
 ): Promise<void> {
   await openCashFlow(page);
-  await page.getByRole("button", { name: "İşlem Ekle" }).click();
+  await onFocusedScreen(page.getByRole("button", { name: "İşlem Ekle" })).click();
   await expect(page.getByRole("heading", { name: "Yeni İşlem" })).toBeVisible();
   await page.getByRole("textbox", { name: "Tutar · TRY" }).fill(amount);
   await pickOption(page, "Ne tür bir harcama?", category);

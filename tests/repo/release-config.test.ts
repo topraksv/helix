@@ -90,7 +90,7 @@ describe("release contract", () => {
     expect(app.expo.android.package).toBe("com.toprak.helix");
     expect(app.expo.android.allowBackup).toBe(false);
     expect(packageJson.dependencies.expo).toMatch(/^~58\./);
-    expect(eas.cli.version).toBe("24.8.0");
+    expect(eas.cli.version).toBe("27.11.0");
     expect(eas.cli.appVersionSource).toBe("remote");
     expect(eas.build.production).toMatchObject({ autoIncrement: true });
     expect(app.expo.ios.config.usesNonExemptEncryption).toBe(false);
@@ -300,7 +300,7 @@ describe("release contract", () => {
     expect(mobile).toContain("dist-mobile-${{ github.run_id }}");
     const build = job("mobile-build");
     expect(build).toContain("if: needs.classify.outputs.deploy_mobile == 'true'");
-    // eas-cli 24.8.0's export for `--platform all` (buildBundlesAsync), with
+    // eas-cli 27.11.0's export for `--platform all` (buildBundlesAsync), with
     // the `.env` its `--environment` switches off switched off here too.
     expect(build).toContain('npx expo export --output-dir "$RUNNER_TEMP/dist-mobile" --source-maps --dump-assetmap --platform ios --platform android --clear');
     expect(build).toContain('EXPO_NO_DOTENV: "1"');

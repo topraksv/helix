@@ -12,6 +12,7 @@ import {
   openCashFlow,
   pickOption,
   renderedContrast,
+  onFocusedScreen,
 } from "./helpers";
 
 test.beforeEach(async ({ context }) => isolateExternalData(context));
@@ -99,7 +100,7 @@ test("an edit that moves a foreign-currency row to another day prices it at that
   }));
 
   await page.goto("/helix/cash-flow");
-  await page.getByRole("button", { name: "İşlem Ekle" }).click();
+  await onFocusedScreen(page.getByRole("button", { name: "İşlem Ekle" })).click();
   await page.getByRole("textbox", { name: "Tutar · TRY" }).fill("10,00");
   await pickOption(page, "Ne tür bir harcama?", /Market/);
   await page.getByRole("textbox", { name: "Not" }).fill("Kur");
@@ -224,7 +225,7 @@ test("saving reports its balance effect without refreshing the screen", async ({
     document.body.append(mark);
   });
 
-  await page.getByRole("button", { name: /İşlem Ekle/ }).first().click();
+  await onFocusedScreen(page.getByRole("button", { name: /İşlem Ekle/ })).first().click();
   await page.getByRole("textbox", { name: "Tutar · TRY", exact: true }).fill("250");
   await pickOption(page, "Ne tür bir harcama?", "Market");
   await page.getByRole("button", { name: "Kaydet", exact: true }).click();
@@ -242,7 +243,7 @@ test("saving reports its balance effect without refreshing the screen", async ({
   expect(await page.locator("#remount-probe").count(), "the route must not remount").toBe(1);
 
   // A refund adds to the balance, and the card says so rather than taking it off again.
-  await page.getByRole("button", { name: /İşlem Ekle/ }).first().click();
+  await onFocusedScreen(page.getByRole("button", { name: /İşlem Ekle/ })).first().click();
   await page.getByRole("textbox", { name: "Tutar · TRY", exact: true }).fill("100");
   await pickOption(page, "Ne tür bir harcama?", "Market");
   await page.getByRole("switch", { name: "Gider iadesi" }).first().click();
@@ -277,7 +278,7 @@ test("a hand-started balance that goes negative asks once for the real figure", 
   await onboard(page);
   await page.evaluate(() => localStorage.removeItem("helix.negative-balance-hint.done"));
 
-  await page.getByRole("button", { name: /İşlem Ekle/ }).first().click();
+  await onFocusedScreen(page.getByRole("button", { name: /İşlem Ekle/ })).first().click();
   await page.getByRole("textbox", { name: "Tutar · TRY", exact: true }).fill("250");
   await pickOption(page, "Ne tür bir harcama?", "Market");
   await page.getByRole("button", { name: "Kaydet", exact: true }).click();
@@ -498,7 +499,7 @@ test("the save confirmation opens the row it just saved, even when taken at once
   const errors = collectRuntimeErrors(page);
   await onboard(page);
 
-  await page.getByRole("button", { name: /İşlem Ekle/u }).first().click();
+  await onFocusedScreen(page.getByRole("button", { name: /İşlem Ekle/u })).first().click();
   await page.getByRole("textbox", { name: "Tutar · TRY", exact: true }).fill("321");
   await pickOption(page, "Ne tür bir harcama?", "Market");
   await page.getByRole("button", { name: "Kaydet", exact: true }).click();
@@ -602,7 +603,7 @@ test("a card statement opens from Durum, takes a partial payment, and Back retur
 
   await page.goto("/helix/");
   await openCashFlow(page);
-  await page.getByRole("button", { name: "İşlem Ekle" }).click();
+  await onFocusedScreen(page.getByRole("button", { name: "İşlem Ekle" })).click();
   await page.getByRole("textbox", { name: "Tutar · TRY" }).fill("1.000,00");
   await pickOption(page, "Ne tür bir harcama?", /Market/);
   await pickOption(page, "Nasıl ödedin?", /Deneme Kart/);
@@ -681,7 +682,7 @@ test("a payment from a digital wallet with a typed balance is listed and not cou
 
   await page.goto("/helix/");
   await expect(page.getByTestId("dashboard-current-balance")).toContainText("0,00");
-  await page.getByRole("button", { name: /İşlem Ekle/ }).first().click();
+  await onFocusedScreen(page.getByRole("button", { name: /İşlem Ekle/ })).first().click();
   await page.getByRole("textbox", { name: "Tutar · TRY", exact: true }).fill("200");
   await pickOption(page, "Ne tür bir harcama?", "Market");
   await pickOption(page, "Nasıl ödedin?", /Tami/);

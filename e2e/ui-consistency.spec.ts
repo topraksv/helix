@@ -1,7 +1,7 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import { addMonthsToKey } from "../src/domain/dates";
 import { monthLabel, monthName } from "../src/i18n/tr";
-import { addMarketExpense, collectRuntimeErrors, currentMonthKey, isolateExternalData, onboard, openCashFlow, pickOption, scrollsSideways } from "./helpers";
+import { addMarketExpense, collectRuntimeErrors, currentMonthKey, isolateExternalData, onboard, onFocusedScreen, openCashFlow, pickOption, scrollsSideways } from "./helpers";
 
 test.beforeEach(async ({ context }) => isolateExternalData(context));
 
@@ -124,7 +124,7 @@ async function enterValue(field: Locator, value: string) {
 test("a card's trailing action leaves the same gap as its first row", async ({ page }) => {
   await onboard(page);
   // A future-dated expense gives the Upcoming card a row and its footer link.
-  await page.getByRole("button", { name: "İşlem Ekle" }).first().click();
+  await onFocusedScreen(page.getByRole("button", { name: "İşlem Ekle" })).first().click();
   await page.getByRole("textbox", { name: "Tutar · TRY" }).fill("750,00");
   await pickOption(page, "Ne tür bir harcama?", /Market/);
   await page.getByRole("button", { name: "Ödeme günü" }).click();
@@ -444,7 +444,7 @@ test("deleting one of two identically-named columns still offers the other as a 
 
   await page.goto("/helix/");
   await openCashFlow(page);
-  await page.getByRole("button", { name: "İşlem Ekle", exact: true }).click();
+  await onFocusedScreen(page.getByRole("button", { name: "İşlem Ekle", exact: true })).click();
   await page.getByRole("textbox", { name: "Tutar · TRY", exact: true }).fill("75,00");
   await page.getByRole("button", { name: "Ne tür bir harcama?", exact: true }).click();
   await page.locator('[aria-modal="true"]').getByRole("radio", { name: "Market Alışverişi", exact: true }).first().click();
@@ -1163,7 +1163,7 @@ test("a declared balance is remembered, so the drift warning can fire", async ({
   // The editor stays put after a save, so reach the ledger by route.
   await page.goto("/helix/cash-flow");
   await expect(page.getByRole("heading", { name: "Mali Tablo", exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "İşlem Ekle", exact: true }).click();
+  await onFocusedScreen(page.getByRole("button", { name: "İşlem Ekle", exact: true })).click();
   await page.getByRole("textbox", { name: "Tutar · TRY", exact: true }).fill("250,00");
   await pickOption(page, "Ne tür bir harcama?", "Market");
   await page.getByRole("button", { name: "Kaydet", exact: true }).click();
@@ -1215,7 +1215,7 @@ test("narrow panel headers keep their title clear of status metadata", async ({ 
 test("a single-person workspace keeps assignment optional and compact", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await onboard(page);
-  await page.getByRole("button", { name: "İşlem Ekle" }).first().click();
+  await onFocusedScreen(page.getByRole("button", { name: "İşlem Ekle" })).first().click();
 
   await expect(page.getByTestId("person-assignment-hint")).toBeVisible();
   await expect(page.getByText(/Sana ait/)).toBeVisible();
@@ -1615,7 +1615,7 @@ test("the financial-table tools are one control, one row, at every width", async
 
   await expect(page.getByTestId("screen-header").getByRole("button", { name: "İşlem Ekle", exact: true })).toHaveCount(0);
   await expect(page.getByTestId("screen-header").getByText(/^\d{4}$/)).toBeVisible();
-  await expect(page.getByRole("button", { name: "İşlem Ekle", exact: true })).toBeVisible();
+  await expect(onFocusedScreen(page.getByRole("button", { name: "İşlem Ekle", exact: true }))).toBeVisible();
 
   // ONE toolbar at every width: it was six labelled buttons above a tablet and five 9px icon tiles below.
   const toolRow = page.locator("text=/^(Kalemler|Taksitler|Analiz|Geçmiş Ay|Bakiyemi düzelt)$/");
@@ -2302,7 +2302,7 @@ for (const viewport of [{ w: 320, h: 640 }, { w: 390, h: 844 }, { w: 1280, h: 72
   test(`the calculator popup stays centred inside a ${viewport.w}x${viewport.h} viewport`, async ({ page }) => {
     await page.setViewportSize({ width: viewport.w, height: viewport.h });
     await onboard(page);
-    await page.getByRole("button", { name: "İşlem Ekle" }).first().click();
+    await onFocusedScreen(page.getByRole("button", { name: "İşlem Ekle" })).first().click();
     await page.getByRole("button", { name: /hesap makinesini aç/i }).first().click();
 
     const box = await page.getByRole("heading", { name: "Hesap Makinesi" }).evaluate((heading) => {

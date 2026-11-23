@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { addMonthsToKey } from "../src/domain/dates";
-import { addMarketExpense, addSubscription, currentMonthKey, isolateExternalData, onboard, openCashFlow, pickOption } from "./helpers";
+import { addMarketExpense, addSubscription, currentMonthKey, isolateExternalData, onboard, onFocusedScreen, openCashFlow, pickOption } from "./helpers";
 import { monthLabel } from "../src/i18n/tr";
 
 test.beforeEach(async ({ context }) => isolateExternalData(context));
@@ -8,7 +8,7 @@ test.beforeEach(async ({ context }) => isolateExternalData(context));
 /** A future-dated expense: month mode, `months` steps forward from today. */
 async function addPlannedExpense(page: Page, months: number, amount: string): Promise<void> {
   await openCashFlow(page);
-  await page.getByRole("button", { name: "İşlem Ekle" }).first().click();
+  await onFocusedScreen(page.getByRole("button", { name: "İşlem Ekle" })).first().click();
   await expect(page.getByRole("heading", { name: "Yeni İşlem" })).toBeVisible();
   await page.getByRole("textbox", { name: "Tutar · TRY" }).fill(amount);
   await pickOption(page, "Ne tür bir harcama?", /Market/);
